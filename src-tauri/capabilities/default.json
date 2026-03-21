@@ -18,6 +18,12 @@
         },
         {
           "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$HOME/.config/**"
+        },
+        {
+          "path": "$HOME\\.config\\**"
         }
       ]
     },
