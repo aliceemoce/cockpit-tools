@@ -1,4 +1,4 @@
-import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal } from 'lucide-react';
+import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Page } from '../../types/navigation';
@@ -286,6 +286,15 @@ export function SideNav({
         >
           <GaugeCircle size={20} />
           <span className="tooltip">{t('nav.dashboard')}</span>
+        </button>
+
+        <button
+          className={`nav-item ${page === 'token-monitor' ? 'active' : ''}`}
+          onClick={() => setPage('token-monitor')}
+          title="Token Monitor"
+        >
+          <Zap size={20} />
+          <span className="tooltip">Token Monitor</span>
         </button>
 
         {sidebarVisibleEntries.map((entry) => {

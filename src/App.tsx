@@ -98,6 +98,9 @@ const SettingsPage = lazy(() =>
 const ManualPage = lazy(() =>
   import('./pages/ManualPage').then((module) => ({ default: module.ManualPage })),
 );
+const TokenMonitorPage = lazy(() =>
+  import('./pages/TokenMonitorPage').then((module) => ({ default: module.TokenMonitorPage })),
+);
 const InstancesPage = lazy(() =>
   import('./pages/InstancesPage').then((module) => ({ default: module.InstancesPage })),
 );
@@ -143,20 +146,20 @@ interface GeneralConfig extends GeneralConfigTheme {
 
 type AppPathMissingDetail = {
   app:
-    | 'antigravity'
-    | 'codex'
-    | 'vscode'
-    | 'windsurf'
-    | 'kiro'
-    | 'cursor'
-    | 'codebuddy'
-    | 'codebuddy_cn'
-    | 'qoder'
-    | 'trae';
+  | 'antigravity'
+  | 'codex'
+  | 'vscode'
+  | 'windsurf'
+  | 'kiro'
+  | 'cursor'
+  | 'codebuddy'
+  | 'codebuddy_cn'
+  | 'qoder'
+  | 'trae';
   retry?:
-    | { kind: 'default' }
-    | { kind: 'instance'; instanceId?: string }
-    | { kind: 'switchAccount'; accountId?: string };
+  | { kind: 'default' }
+  | { kind: 'instance'; instanceId?: string }
+  | { kind: 'switchAccount'; accountId?: string };
 };
 
 const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
@@ -429,7 +432,7 @@ function App() {
     }
     handleEasterEggTriggerClick();
   }, [handleEasterEggTriggerClick, handleResumeBreakout, hasBreakoutSession, resetEasterEggTrigger]);
-  
+
   // 启用自动刷新 hook
   useAutoRefresh();
 
@@ -443,7 +446,7 @@ function App() {
   }, []);
 
   const writeUpdateLog = useCallback((level: 'info' | 'warn' | 'error', message: string) => {
-    void invoke('update_log', { level, message }).catch(() => {});
+    void invoke('update_log', { level, message }).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -499,7 +502,7 @@ function App() {
     if (!handle) {
       return;
     }
-    await handle.close().catch(() => {});
+    await handle.close().catch(() => { });
   }, []);
 
   const handleApplyPendingUpdate = useCallback(async () => {
@@ -1131,7 +1134,7 @@ function App() {
                     return candidate;
                   } catch (error) {
                     if (candidate) {
-                      await candidate.close().catch(() => {});
+                      await candidate.close().catch(() => { });
                     }
                     throw error;
                   }
@@ -1454,71 +1457,71 @@ function App() {
           },
           ...(hasRecommendation
             ? [{
-                id: 'quota-alert-switch',
-                label: t('quotaAlert.modal.switchNow', '快捷切号到 {{email}}', {
-                  email: payload.recommended_email as string,
-                }),
-                variant: 'primary' as const,
-                autoClose: false,
-                onClick: async () => {
-                  try {
-                    const targetAccountId = payload.recommended_account_id as string;
-                    if (platform === 'codex') {
-                      await useCodexAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('codex');
-                    } else if (platform === 'github_copilot') {
-                      await useGitHubCopilotAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('github-copilot');
-                    } else if (platform === 'windsurf') {
-                      await useWindsurfAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('windsurf');
-                    } else if (platform === 'kiro') {
-                      await useKiroAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('kiro');
-                    } else if (platform === 'cursor') {
-                      await useCursorAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('cursor');
-                    } else if (platform === 'gemini') {
-                      await useGeminiAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('gemini');
-                    } else if (platform === 'codebuddy') {
-                      await useCodebuddyAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('codebuddy');
-                    } else if (platform === 'codebuddy_cn') {
-                      await useCodebuddyCnAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('codebuddy-cn');
-                    } else if (platform === 'qoder') {
-                      await useQoderAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('qoder');
-                    } else if (platform === 'trae') {
-                      await useTraeAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('trae');
-                    } else if (platform === 'workbuddy') {
-                      await useWorkbuddyAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('workbuddy');
-                    } else {
-                      await useAccountStore.getState().switchAccount(targetAccountId);
-                      setPage('overview');
-                    }
-                    closeModal();
-                  } catch (error) {
-                    showModal({
-                      title: t('quotaAlert.modal.switchFailedTitle', '切号失败'),
-                      description: t('quotaAlert.modal.switchFailedBody', '快捷切号失败：{{error}}', {
-                        error: String(error),
-                      }),
-                      width: 'sm',
-                      actions: [
-                        {
-                          id: 'quota-alert-switch-failed-ok',
-                          label: t('common.confirm', '确定'),
-                          variant: 'primary',
-                        },
-                      ],
-                    });
+              id: 'quota-alert-switch',
+              label: t('quotaAlert.modal.switchNow', '快捷切号到 {{email}}', {
+                email: payload.recommended_email as string,
+              }),
+              variant: 'primary' as const,
+              autoClose: false,
+              onClick: async () => {
+                try {
+                  const targetAccountId = payload.recommended_account_id as string;
+                  if (platform === 'codex') {
+                    await useCodexAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('codex');
+                  } else if (platform === 'github_copilot') {
+                    await useGitHubCopilotAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('github-copilot');
+                  } else if (platform === 'windsurf') {
+                    await useWindsurfAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('windsurf');
+                  } else if (platform === 'kiro') {
+                    await useKiroAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('kiro');
+                  } else if (platform === 'cursor') {
+                    await useCursorAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('cursor');
+                  } else if (platform === 'gemini') {
+                    await useGeminiAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('gemini');
+                  } else if (platform === 'codebuddy') {
+                    await useCodebuddyAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('codebuddy');
+                  } else if (platform === 'codebuddy_cn') {
+                    await useCodebuddyCnAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('codebuddy-cn');
+                  } else if (platform === 'qoder') {
+                    await useQoderAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('qoder');
+                  } else if (platform === 'trae') {
+                    await useTraeAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('trae');
+                  } else if (platform === 'workbuddy') {
+                    await useWorkbuddyAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('workbuddy');
+                  } else {
+                    await useAccountStore.getState().switchAccount(targetAccountId);
+                    setPage('overview');
                   }
-                },
-              }]
+                  closeModal();
+                } catch (error) {
+                  showModal({
+                    title: t('quotaAlert.modal.switchFailedTitle', '切号失败'),
+                    description: t('quotaAlert.modal.switchFailedBody', '快捷切号失败：{{error}}', {
+                      error: String(error),
+                    }),
+                    width: 'sm',
+                    actions: [
+                      {
+                        id: 'quota-alert-switch-failed-ok',
+                        label: t('common.confirm', '确定'),
+                        variant: 'primary',
+                      },
+                    ],
+                  });
+                }
+              },
+            }]
             : []),
         ],
       });
@@ -1844,19 +1847,19 @@ function App() {
               ? config.vscode_app_path
               : appPathMissing.app === 'windsurf'
                 ? config.windsurf_app_path
-              : appPathMissing.app === 'kiro'
-                ? config.kiro_app_path
-              : appPathMissing.app === 'cursor'
-                ? config.cursor_app_path
-              : appPathMissing.app === 'codebuddy'
-                ? config.codebuddy_app_path
-              : appPathMissing.app === 'codebuddy_cn'
-                ? config.codebuddy_cn_app_path
-              : appPathMissing.app === 'qoder'
-                ? config.qoder_app_path
-              : appPathMissing.app === 'trae'
-                ? config.trae_app_path
-              : config.antigravity_app_path;
+                : appPathMissing.app === 'kiro'
+                  ? config.kiro_app_path
+                  : appPathMissing.app === 'cursor'
+                    ? config.cursor_app_path
+                    : appPathMissing.app === 'codebuddy'
+                      ? config.codebuddy_app_path
+                      : appPathMissing.app === 'codebuddy_cn'
+                        ? config.codebuddy_cn_app_path
+                        : appPathMissing.app === 'qoder'
+                          ? config.qoder_app_path
+                          : appPathMissing.app === 'trae'
+                            ? config.trae_app_path
+                            : config.antigravity_app_path;
         if (active) {
           setAppPathDraft(currentPath || '');
         }
@@ -1991,29 +1994,29 @@ function App() {
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
 
-        listen<string>('tray:navigate', (event) => {
-          const target = String(event.payload || '');
-          switch (target) {
-            case 'overview':
-            case 'codex':
-            case 'github-copilot':
-            case 'windsurf':
-            case 'kiro':
-            case 'cursor':
-            case 'gemini':
-            case 'codebuddy':
-            case 'codebuddy-cn':
-            case 'qoder':
-            case 'trae':
-            case 'workbuddy':
-            case 'manual':
-            case 'settings':
-              setPage(target as Page);
-              break;
-            default:
-              break;
-          }
-        }).then((fn) => { unlisten = fn; });
+    listen<string>('tray:navigate', (event) => {
+      const target = String(event.payload || '');
+      switch (target) {
+        case 'overview':
+        case 'codex':
+        case 'github-copilot':
+        case 'windsurf':
+        case 'kiro':
+        case 'cursor':
+        case 'gemini':
+        case 'codebuddy':
+        case 'codebuddy-cn':
+        case 'qoder':
+        case 'trae':
+        case 'workbuddy':
+        case 'manual':
+        case 'settings':
+          setPage(target as Page);
+          break;
+        default:
+          break;
+      }
+    }).then((fn) => { unlisten = fn; });
 
     return () => {
       if (unlisten) {
@@ -2072,16 +2075,16 @@ function App() {
           : appPathMissing.app === 'kiro'
             ? 'Kiro'
             : appPathMissing.app === 'cursor'
-            ? 'Cursor'
-            : appPathMissing.app === 'codebuddy'
-              ? 'CodeBuddy'
-              : appPathMissing.app === 'codebuddy_cn'
-                ? 'CodeBuddy CN'
-              : appPathMissing.app === 'qoder'
-                ? 'Qoder'
-              : appPathMissing.app === 'trae'
-                ? 'Trae'
-              : 'Antigravity'
+              ? 'Cursor'
+              : appPathMissing.app === 'codebuddy'
+                ? 'CodeBuddy'
+                : appPathMissing.app === 'codebuddy_cn'
+                  ? 'CodeBuddy CN'
+                  : appPathMissing.app === 'qoder'
+                    ? 'Qoder'
+                    : appPathMissing.app === 'trae'
+                      ? 'Trae'
+                      : 'Antigravity'
     : '';
 
   const appPathMissingPathLabel = appPathMissing
@@ -2094,16 +2097,16 @@ function App() {
           : appPathMissing.app === 'kiro'
             ? t('quickSettings.kiro.appPath', 'Kiro 路径')
             : appPathMissing.app === 'cursor'
-            ? t('quickSettings.cursor.appPath', 'Cursor 路径')
-            : appPathMissing.app === 'codebuddy'
-              ? t('quickSettings.codebuddy.appPath', 'CodeBuddy 路径')
-              : appPathMissing.app === 'codebuddy_cn'
-                ? t('quickSettings.codebuddyCn.appPath', 'CodeBuddy CN 路径')
-              : appPathMissing.app === 'qoder'
-                ? t('quickSettings.qoder.appPath', 'Qoder 路径')
-              : appPathMissing.app === 'trae'
-                ? t('quickSettings.trae.appPath', 'Trae 路径')
-              : t('quickSettings.antigravity.appPath', '启动路径')
+              ? t('quickSettings.cursor.appPath', 'Cursor 路径')
+              : appPathMissing.app === 'codebuddy'
+                ? t('quickSettings.codebuddy.appPath', 'CodeBuddy 路径')
+                : appPathMissing.app === 'codebuddy_cn'
+                  ? t('quickSettings.codebuddyCn.appPath', 'CodeBuddy CN 路径')
+                  : appPathMissing.app === 'qoder'
+                    ? t('quickSettings.qoder.appPath', 'Qoder 路径')
+                    : appPathMissing.app === 'trae'
+                      ? t('quickSettings.trae.appPath', 'Trae 路径')
+                      : t('quickSettings.antigravity.appPath', '启动路径')
     : t('quickSettings.antigravity.appPath', '启动路径');
 
   return (
@@ -2111,71 +2114,71 @@ function App() {
       {/* 更新通知：活跃状态时保持挂载（CSS 隐藏），避免重新打开时再次网络请求 */}
       {(showUpdateNotification || updateAction.state !== 'hidden') && (
         <div style={showUpdateNotification ? undefined : { display: 'none' }}>
-        <Suspense fallback={null}>
-          <UpdateNotification
-            key={updateNotificationKey}
-            source={updateCheckSource}
-            updaterTarget={getUpdaterCheckTarget() ?? null}
-            updaterCheckReady={updateRuntimeInfoLoaded}
-            preparedUpdateVersion={updateAction.state === 'ready' ? updateAction.version : null}
-            onRestartUpdate={handleApplyPendingUpdate}
-            actionState={updateAction.state}
-            actionVersion={updateAction.version}
-            actionProgress={updateAction.progress}
-            actionRetryStatus={updateRetryStatus}
-            actionError={updateDownloadError}
-            actionErrorDetails={updateErrorDetails}
-            onPrimaryAction={handleQuickUpdateActionClick}
-            onCancelUpdate={cancelUpdateDownload}
-            onResult={handleUpdateCheckResult}
-            onStateChange={({ phase, version }) => {
-              if (phase === 'ready') {
-                const keepRequiresInstall =
-                  updateAction.state === 'ready' &&
-                  updateAction.version === version &&
-                  updateAction.requiresInstall;
+          <Suspense fallback={null}>
+            <UpdateNotification
+              key={updateNotificationKey}
+              source={updateCheckSource}
+              updaterTarget={getUpdaterCheckTarget() ?? null}
+              updaterCheckReady={updateRuntimeInfoLoaded}
+              preparedUpdateVersion={updateAction.state === 'ready' ? updateAction.version : null}
+              onRestartUpdate={handleApplyPendingUpdate}
+              actionState={updateAction.state}
+              actionVersion={updateAction.version}
+              actionProgress={updateAction.progress}
+              actionRetryStatus={updateRetryStatus}
+              actionError={updateDownloadError}
+              actionErrorDetails={updateErrorDetails}
+              onPrimaryAction={handleQuickUpdateActionClick}
+              onCancelUpdate={cancelUpdateDownload}
+              onResult={handleUpdateCheckResult}
+              onStateChange={({ phase, version }) => {
+                if (phase === 'ready') {
+                  const keepRequiresInstall =
+                    updateAction.state === 'ready' &&
+                    updateAction.version === version &&
+                    updateAction.requiresInstall;
 
-                if (!keepRequiresInstall && pendingSilentUpdateRef.current) {
-                  void pendingSilentUpdateRef.current.close().catch(() => {});
-                  pendingSilentUpdateRef.current = null;
+                  if (!keepRequiresInstall && pendingSilentUpdateRef.current) {
+                    void pendingSilentUpdateRef.current.close().catch(() => { });
+                    pendingSilentUpdateRef.current = null;
+                  }
+                  setUpdateRetryStatus('');
+                  setUpdateDownloadError('');
+                  setUpdateErrorDetails('');
+                  setUpdateAction({
+                    state: 'ready',
+                    version,
+                    progress: 100,
+                    requiresInstall: keepRequiresInstall,
+                  });
+                  return;
                 }
-                setUpdateRetryStatus('');
-                setUpdateDownloadError('');
-                setUpdateErrorDetails('');
-                setUpdateAction({
-                  state: 'ready',
-                  version,
-                  progress: 100,
-                  requiresInstall: keepRequiresInstall,
+                setUpdateAction((prev) => {
+                  if (prev.state === 'downloading' && prev.version === version) {
+                    return prev;
+                  }
+                  if (prev.state === 'installing' && prev.version === version) {
+                    return prev;
+                  }
+                  if (prev.state === 'ready' && prev.version === version) {
+                    return prev;
+                  }
+                  return {
+                    state: 'available',
+                    version,
+                    progress: 0,
+                    requiresInstall: true,
+                  };
                 });
-                return;
-              }
-              setUpdateAction((prev) => {
-                if (prev.state === 'downloading' && prev.version === version) {
-                  return prev;
+                if (updateAction.state !== 'downloading' || updateAction.version !== version) {
+                  setUpdateRetryStatus('');
+                  setUpdateDownloadError('');
+                  setUpdateErrorDetails('');
                 }
-                if (prev.state === 'installing' && prev.version === version) {
-                  return prev;
-                }
-                if (prev.state === 'ready' && prev.version === version) {
-                  return prev;
-                }
-                return {
-                  state: 'available',
-                  version,
-                  progress: 0,
-                  requiresInstall: true,
-                };
-              });
-              if (updateAction.state !== 'downloading' || updateAction.version !== version) {
-                setUpdateRetryStatus('');
-                setUpdateDownloadError('');
-                setUpdateErrorDetails('');
-              }
-            }}
-            onClose={() => setShowUpdateNotification(false)}
-          />
-        </Suspense>
+              }}
+              onClose={() => setShowUpdateNotification(false)}
+            />
+          </Suspense>
         </div>
       )}
       {/* 版本跳跃通知（更新后首次启动） */}
@@ -2266,16 +2269,16 @@ function App() {
                                 : appPathMissing.app === 'kiro'
                                   ? t('settings.general.kiroPathReset', '重置默认')
                                   : appPathMissing.app === 'cursor'
-                                  ? t('settings.general.cursorPathReset', '重置默认')
+                                    ? t('settings.general.cursorPathReset', '重置默认')
                                     : appPathMissing.app === 'codebuddy'
                                       ? t('settings.general.codebuddyPathReset', '重置默认')
-                                    : appPathMissing.app === 'codebuddy_cn'
-                                      ? t('settings.general.codebuddyPathReset', '重置默认')
-                                    : appPathMissing.app === 'qoder'
-                                      ? t('settings.general.qoderPathReset', '重置默认')
-                                    : appPathMissing.app === 'trae'
-                                      ? t('settings.general.traePathReset', '重置默认')
-                                    : t('settings.general.codexPathReset', '重置默认')
+                                      : appPathMissing.app === 'codebuddy_cn'
+                                        ? t('settings.general.codebuddyPathReset', '重置默认')
+                                        : appPathMissing.app === 'qoder'
+                                          ? t('settings.general.qoderPathReset', '重置默认')
+                                          : appPathMissing.app === 'trae'
+                                            ? t('settings.general.traePathReset', '重置默认')
+                                            : t('settings.general.codexPathReset', '重置默认')
                           )
                       }
                     >
@@ -2310,11 +2313,11 @@ function App() {
           </div>
         </div>
       )}
-      
+
       {/* 顶部固定拖拽区域 */}
-      <div 
+      <div
         className="drag-region"
-        data-tauri-drag-region 
+        data-tauri-drag-region
         onMouseDown={handleDragStart}
       />
 
@@ -2396,6 +2399,7 @@ function App() {
               }}
             />
           )}
+          {page === 'token-monitor' && <TokenMonitorPage />}
           {page === 'settings' && <SettingsPage />}
         </Suspense>
       </div>

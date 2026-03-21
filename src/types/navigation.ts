@@ -19,4 +19,5 @@ export type Page =
   | 'fingerprints'
   | 'wakeup'
   | 'verification'
+  | 'token-monitor'
   | 'settings';
