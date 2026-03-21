@@ -48,7 +48,7 @@ interface ModelSummary {
     records: number;
 }
 
-type TimeRange = '10min' | '1h' | '1day';
+type TimeRange = '10min' | '1h' | '1day' | 'overall';
 
 // ── Model catalog (must match models.json) ──
 
@@ -105,9 +105,12 @@ function filterByTimeRange(records: UsageRecord[], range: TimeRange): UsageRecor
         const cutoff = now - 60 * 60 * 1000;
         return records.filter((r) => parseTimestamp(r.timestamp).getTime() >= cutoff);
     }
-    // '1day' — today only
-    const today = getTodayStr();
-    return records.filter((r) => getDateStr(r.timestamp) === today);
+    if (range === '1day') {
+        const today = getTodayStr();
+        return records.filter((r) => getDateStr(r.timestamp) === today);
+    }
+    // 'overall' — all records
+    return records;
 }
 
 function groupByGranularity(records: UsageRecord[], range: TimeRange): ChartPoint[] {
@@ -131,7 +134,20 @@ function groupByGranularity(records: UsageRecord[], range: TimeRange): ChartPoin
             .map(([label, cost]) => ({ label, cost }))
             .sort((a, b) => a.label.localeCompare(b.label));
     }
-    // '1day' — group by date
+    if (range === '1day') {
+        // Group by hour within today, label = HH:00
+        const map = new Map<string, number>();
+        for (const r of records) {
+            const time = r.timestamp.split(' ')[1] ?? '00:00:00';
+            const h = time.split(':')[0];
+            const bucket = `${h}:00`;
+            map.set(bucket, (map.get(bucket) ?? 0) + r.total_cost_est);
+        }
+        return Array.from(map.entries())
+            .map(([label, cost]) => ({ label, cost }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+    }
+    // 'overall' — group by date
     const map = new Map<string, number>();
     for (const r of records) {
         const date = getDateStr(r.timestamp);
@@ -182,12 +198,14 @@ const TIME_RANGE_LABELS: Record<TimeRange, string> = {
     '10min': '10 min',
     '1h': '1 hour',
     '1day': 'Today',
+    'overall': 'Overall',
 };
 
 const CHART_TITLES: Record<TimeRange, string> = {
     '10min': 'Cost (Last 10 min)',
     '1h': 'Cost (Last Hour, 10min buckets)',
-    '1day': 'Daily Cost Trend',
+    '1day': 'Today by Hour',
+    'overall': 'Daily Cost Trend',
 };
 
 // ── Chart ──
@@ -420,7 +438,7 @@ export function TokenMonitorPage() {
     const dataSource = latestRecord?.source ?? 'unknown';
 
     const chartData = useMemo(() => {
-        const src = timeRange === '1day' ? records : filteredRecords;
+        const src = timeRange === 'overall' ? records : filteredRecords;
         return groupByGranularity(src, timeRange);
     }, [records, filteredRecords, timeRange]);
     const modelSummaries = useMemo(() => groupByModel(filteredRecords), [filteredRecords]);
@@ -513,7 +531,7 @@ export function TokenMonitorPage() {
                 {/* Time Range Tabs */}
                 <div className="tm-time-tabs">
                     <Clock size={14} className="tm-time-tabs-icon" />
-                    {(['10min', '1h', '1day'] as TimeRange[]).map((range) => (
+                    {(['10min', '1h', '1day', 'overall'] as TimeRange[]).map((range) => (
                         <button
                             key={range}
                             className={`tm-time-tab ${timeRange === range ? 'active' : ''}`}
