@@ -3122,5 +3122,45 @@
     "cancelEditAccountName": "Hủy chỉnh sửa",
     "accountNameRequired": "Tên tài khoản là bắt buộc.",
     "copySecret": "Sao chép mã bí mật"
+  },
+  "autoRegister": {
+    "pageTitle": "Đăng Ký Tự Động",
+    "pageSubtitle": "Hệ thống tự động tạo email ngẫu nhiên và hoàn tất đăng ký",
+    "stopFirst": "Vui lòng dừng đăng ký trước",
+    "noPendingAccounts": "Không có tài khoản đang chờ đăng ký",
+    "startBatch": "Bắt đầu đăng ký hàng loạt",
+    "completed": "Đăng ký hoàn tất",
+    "userStopped": "Người dùng đã dừng đăng ký",
+    "stopping": "Đang dừng đăng ký...",
+    "starting": "Đang bắt đầu đăng ký",
+    "error": "Lỗi",
+    "startRegistration": "Bắt Đầu Đăng Ký",
+    "logs": "Nhật ký",
+    "noLogs": "Không có nhật ký",
+    "registrationList": "Danh Sách Đăng Ký",
+    "instructions": "Hướng dẫn",
+    "stats": {
+      "total": "Tổng",
+      "success": "Thành công",
+      "failed": "Thất bại",
+      "exists": "Đã tồn tại"
+    },
+    "status": {
+      "pending": "Đang chờ",
+      "exists": "Đã tồn tại",
+      "registering": "Đang đăng ký",
+      "gettingCode": "Đang lấy mã",
+      "success": "Thành công",
+      "failed": "Thất bại"
+    },
+    "table": {
+      "no": "STT",
+      "email": "Email",
+      "name": "Tên",
+      "status": "Trạng thái"
+    },
+    "help": {
+      "browserNote": "Cần cài đặt trình duyệt cho lần sử dụng đầu tiên"
+    }
   }
 }

@@ -3122,5 +3122,45 @@
     "cancelEditAccountName": "Zrušit úpravy",
     "accountNameRequired": "Název účtu je povinný.",
     "copySecret": "Kopírovat tajný klíč"
+  },
+  "autoRegister": {
+    "pageTitle": "Automatická Registrace",
+    "pageSubtitle": "Systém automaticky generuje náhodný e-mail a dokončí registraci",
+    "stopFirst": "Nejprve zastavte registraci",
+    "noPendingAccounts": "Žádné účty čekající na registraci",
+    "startBatch": "Spustit dávkovou registraci",
+    "completed": "Registrace dokončena",
+    "userStopped": "Registrace zastavena uživatelem",
+    "stopping": "Zastavování registrace...",
+    "starting": "Spouštění registrace",
+    "error": "Chyba",
+    "startRegistration": "Spustit Registraci",
+    "logs": "Protokoly",
+    "noLogs": "Žádné protokoly",
+    "registrationList": "Seznam Registrací",
+    "instructions": "Instrukce",
+    "stats": {
+      "total": "Celkem",
+      "success": "Úspěch",
+      "failed": "Selhání",
+      "exists": "Existuje"
+    },
+    "status": {
+      "pending": "Čekající",
+      "exists": "Existuje",
+      "registering": "Probíhá registrace",
+      "gettingCode": "Získání kódu",
+      "success": "Úspěch",
+      "failed": "Selhání"
+    },
+    "table": {
+      "no": "Č.",
+      "email": "E-mail",
+      "name": "Jméno",
+      "status": "Stav"
+    },
+    "help": {
+      "browserNote": "Pro první použití je vyžadována instalace prohlížeče"
+    }
   }
 }

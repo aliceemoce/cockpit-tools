@@ -21,4 +21,5 @@ export type Page =
   | 'wakeup'
   | 'verification'
   | '2fa'
+  | 'auto-register'
   | 'settings';

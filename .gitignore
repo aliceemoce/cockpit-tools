@@ -39,3 +39,8 @@ arms.biz.trace.*
 
 # Swift native menu build artifacts
 src-tauri/native/macos-native-menu/.build/
+
+# 参考的项目
+reference/
+
+.history/

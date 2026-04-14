@@ -3122,5 +3122,45 @@
     "cancelEditAccountName": "編集をキャンセル",
     "accountNameRequired": "アカウント名は必須です。",
     "copySecret": "シークレットをコピー"
+  },
+  "autoRegister": {
+    "pageTitle": "自動登録",
+    "pageSubtitle": "システムが自動的にランダムなメールアドレスを生成し、登録を完了します",
+    "stopFirst": "先に登録を停止してください",
+    "noPendingAccounts": "登録待ちのアカウントがありません",
+    "startBatch": "バッチ登録を開始",
+    "completed": "登録完了",
+    "userStopped": "ユーザーが登録を停止しました",
+    "stopping": "登録を停止中...",
+    "starting": "登録を開始中",
+    "error": "エラー",
+    "startRegistration": "登録を開始",
+    "logs": "ログ",
+    "noLogs": "ログなし",
+    "registrationList": "登録リスト",
+    "instructions": "使用説明",
+    "stats": {
+      "total": "合計",
+      "success": "成功",
+      "failed": "失敗",
+      "exists": "存在"
+    },
+    "status": {
+      "pending": "待機中",
+      "exists": "存在",
+      "registering": "登録中",
+      "gettingCode": "コード取得中",
+      "success": "成功",
+      "failed": "失敗"
+    },
+    "table": {
+      "no": "No.",
+      "email": "メール",
+      "name": "名前",
+      "status": "ステータス"
+    },
+    "help": {
+      "browserNote": "初回使用時はブラウザのインストールが必要です"
+    }
   }
 }

@@ -3122,5 +3122,45 @@
     "cancelEditAccountName": "取消編輯",
     "accountNameRequired": "帳號名不能為空。",
     "copySecret": "複製秘鑰"
+  },
+  "autoRegister": {
+    "pageTitle": "自動註冊",
+    "pageSubtitle": "系統自動生成隨機郵箱並完成註冊",
+    "stopFirst": "請先停止註冊",
+    "noPendingAccounts": "沒有需要註冊的賬號",
+    "startBatch": "開始批量註冊",
+    "completed": "註冊完成",
+    "userStopped": "用戶停止了註冊",
+    "stopping": "正在停止註冊...",
+    "starting": "開始註冊",
+    "error": "錯誤",
+    "startRegistration": "開始註冊",
+    "logs": "運行日誌",
+    "noLogs": "暫無日誌",
+    "registrationList": "註冊列表",
+    "instructions": "使用說明",
+    "stats": {
+      "total": "總數",
+      "success": "成功",
+      "failed": "失敗",
+      "exists": "已存在"
+    },
+    "status": {
+      "pending": "等待",
+      "exists": "已存在",
+      "registering": "註冊中",
+      "gettingCode": "獲取驗證碼",
+      "success": "成功",
+      "failed": "失敗"
+    },
+    "table": {
+      "no": "序號",
+      "email": "郵箱",
+      "name": "姓名",
+      "status": "狀態"
+    },
+    "help": {
+      "browserNote": "首次使用需要安裝瀏覽器"
+    }
   }
 }

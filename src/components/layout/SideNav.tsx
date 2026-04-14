@@ -1,4 +1,4 @@
-import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck } from 'lucide-react';
+import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck, UserPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -873,6 +873,17 @@ export function SideNav({
       {isClassicLayout && (
         <div className="nav-bottom-actions" ref={bottomActionsRef}>
           <button
+            className={`nav-item ${page === 'auto-register' && !shouldLockActiveOnMore ? 'active' : ''}`}
+            onClick={() => setPage('auto-register')}
+            title={t('nav.autoRegister', '自动注册')}
+          >
+            <UserPlus size={isClassicLayout ? classicMainIconSize : 20} />
+            {showClassicLabels ? (
+              <span className="nav-item-text">{t('nav.autoRegister', '自动注册')}</span>
+            ) : null}
+          </button>
+
+          <button
             className={`nav-item ${page === '2fa' && !shouldLockActiveOnMore ? 'active' : ''}`}
             onClick={() => setPage('2fa')}
             title={t('nav.2faManager', '2FA / MFA 管理')}
@@ -893,7 +904,6 @@ export function SideNav({
               <span className="nav-item-text">{t('nav.logs', '日志')}</span>
             ) : null}
           </button>
-
           <button
             className={`nav-item ${page === 'settings' && !shouldLockActiveOnMore ? 'active' : ''}`}
             onClick={() => setPage('settings')}

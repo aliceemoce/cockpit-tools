@@ -3173,5 +3173,45 @@
     "importErrorMsg": "Import failed. Please ensure the file format is a valid exported JSON array.",
     "btnImportTitle": "Import Local JSON Backup",
     "btnExportTitle": "Export Saved as JSON"
+  },
+  "autoRegister": {
+    "pageTitle": "Auto Register",
+    "pageSubtitle": "System automatically generates random email and completes registration",
+    "stopFirst": "Please stop registration first",
+    "noPendingAccounts": "No accounts pending registration",
+    "startBatch": "Starting batch registration",
+    "completed": "Registration completed",
+    "userStopped": "Registration stopped by user",
+    "stopping": "Stopping registration...",
+    "starting": "Starting registration",
+    "error": "Error",
+    "startRegistration": "Start Registration",
+    "logs": "Logs",
+    "noLogs": "No logs",
+    "registrationList": "Registration List",
+    "instructions": "Instructions",
+    "stats": {
+      "total": "Total",
+      "success": "Success",
+      "failed": "Failed",
+      "exists": "Exists"
+    },
+    "status": {
+      "pending": "Pending",
+      "exists": "Exists",
+      "registering": "Registering",
+      "gettingCode": "Getting Code",
+      "success": "Success",
+      "failed": "Failed"
+    },
+    "table": {
+      "no": "No.",
+      "email": "Email",
+      "name": "Name",
+      "status": "Status"
+    },
+    "help": {
+      "browserNote": "Browser installation required for first use"
+    }
   }
 }

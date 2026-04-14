@@ -1,5 +1,7 @@
 pub mod account;
 pub mod account_index_repair;
+pub mod auto_register_kiro;
+pub mod auto_register_windsurf;
 pub mod announcement;
 pub mod antigravity_switch_history;
 pub mod atomic_write;

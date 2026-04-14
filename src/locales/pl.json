@@ -3122,5 +3122,45 @@
     "cancelEditAccountName": "Anuluj edycję",
     "accountNameRequired": "Nazwa konta jest wymagana.",
     "copySecret": "Kopiuj sekret"
+  },
+  "autoRegister": {
+    "pageTitle": "Automatyczna Rejestracja",
+    "pageSubtitle": "System automatycznie generuje losowy e-mail i kończy rejestrację",
+    "stopFirst": "Najpierw zatrzymaj rejestrację",
+    "noPendingAccounts": "Brak kont oczekujących na rejestrację",
+    "startBatch": "Rozpocznij rejestrację wsadową",
+    "completed": "Rejestracja zakończona",
+    "userStopped": "Rejestracja zatrzymana przez użytkownika",
+    "stopping": "Zatrzymywanie rejestracji...",
+    "starting": "Rozpoczynanie rejestracji",
+    "error": "Błąd",
+    "startRegistration": "Rozpocznij Rejestrację",
+    "logs": "Dzienniki",
+    "noLogs": "Brak dzienników",
+    "registrationList": "Lista Rejestracji",
+    "instructions": "Instrukcje",
+    "stats": {
+      "total": "Razem",
+      "success": "Sukces",
+      "failed": "Niepowodzenie",
+      "exists": "Istnieje"
+    },
+    "status": {
+      "pending": "Oczekujące",
+      "exists": "Istnieje",
+      "registering": "Rejestrowanie",
+      "gettingCode": "Pobieranie kodu",
+      "success": "Sukces",
+      "failed": "Niepowodzenie"
+    },
+    "table": {
+      "no": "Nr",
+      "email": "E-mail",
+      "name": "Imię",
+      "status": "Status"
+    },
+    "help": {
+      "browserNote": "Wymagana instalacja przeglądarki przy pierwszym użyciu"
+    }
   }
 }
