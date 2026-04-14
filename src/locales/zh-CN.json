@@ -21,6 +21,7 @@
     "detail": "详情",
     "editable": "可编辑",
     "preview": "预览",
+    "clear": "清空",
     "topRightAd": {
       "ariaLabel": "全局右上角广告位",
       "badge": "广告",
