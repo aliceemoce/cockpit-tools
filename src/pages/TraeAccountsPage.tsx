@@ -27,6 +27,7 @@ import {
 import { TagEditModal } from '../components/TagEditModal';
 import { ExportJsonModal } from '../components/ExportJsonModal';
 import { ModalErrorMessage } from '../components/ModalErrorMessage';
+import { PaginationControls } from '../components/PaginationControls';
 import { QuickSettingsPopover } from '../components/QuickSettingsPopover';
 import {
   PlatformOverviewTab,
@@ -34,17 +35,20 @@ import {
 } from '../components/platform/PlatformOverviewTabsHeader';
 import { useProviderAccountsPage } from '../hooks/useProviderAccountsPage';
 import { MultiSelectFilterDropdown, type MultiSelectFilterOption } from '../components/MultiSelectFilterDropdown';
+import { SingleSelectFilterDropdown } from '../components/SingleSelectFilterDropdown';
 import { TraeInstancesContent } from './TraeInstancesPage';
 import { useTraeAccountStore } from '../stores/useTraeAccountStore';
 import * as traeService from '../services/traeService';
 import type { TraeAccount } from '../types/trae';
 import {
   getTraeAccountDisplayEmail,
+  getTraeAccountDisplayName,
   getTraeLoginProvider,
   getTraePlanBadge,
   getTraePlanBadgeClass,
   getTraePlanDisplayName,
   getTraeUsage,
+  hasTraeQuotaData,
   TRAE_PRODUCT_TYPE,
 } from '../types/trae';
 import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
@@ -53,6 +57,12 @@ import {
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
 } from '../utils/accountValidityFilter';
+import {
+  buildPaginatedGroups,
+  buildPaginationPageSizeStorageKey,
+  isEveryIdSelected,
+  usePagination,
+} from '../hooks/usePagination';
 
 const TRAE_CURRENT_ACCOUNT_ID_KEY = 'agtools.trae.current_account_id';
 const TRAE_FLOW_NOTICE_COLLAPSED_KEY = 'agtools.trae.flow_notice_collapsed';
@@ -343,6 +353,7 @@ export function TraeAccountsPage() {
     if (query) {
       result = result.filter((account) => {
         const searchText = [
+          getTraeAccountDisplayName(account),
           getTraeAccountDisplayEmail(account),
           getTraeLoginProvider(account) ?? '',
           account.user_id ?? '',
@@ -379,6 +390,16 @@ export function TraeAccountsPage() {
 
   const filteredIds = useMemo(() => filteredAccounts.map((account) => account.id), [filteredAccounts]);
   const exportSelectionCount = getScopedSelectedCount(filteredIds);
+  const pagination = usePagination({
+    items: filteredAccounts,
+    storageKey: buildPaginationPageSizeStorageKey('Trae'),
+  });
+  const paginatedAccounts = pagination.pageItems;
+  const paginatedIds = useMemo(() => paginatedAccounts.map((account) => account.id), [paginatedAccounts]);
+  const isAllPaginatedSelected = useMemo(
+    () => isEveryIdSelected(selected, paginatedIds),
+    [paginatedIds, selected],
+  );
 
   const groupedAccounts = useMemo(() => {
     if (!groupByTag) return [] as Array<[string, TraeAccount[]]>;
@@ -411,6 +432,11 @@ export function TraeAccountsPage() {
       return left.localeCompare(right);
     });
   }, [filteredAccounts, groupByTag, normalizeTag, tagFilter]);
+
+  const paginatedGroupedAccounts = useMemo(
+    () => buildPaginatedGroups(groupedAccounts, paginatedAccounts),
+    [groupedAccounts, paginatedAccounts],
+  );
 
   const resolveGroupLabel = useCallback(
     (groupKey: string) =>
@@ -500,6 +526,11 @@ export function TraeAccountsPage() {
     [t],
   );
 
+  const resolveDisplayName = useCallback(
+    (account: TraeAccount) => getTraeAccountDisplayName(account),
+    [],
+  );
+
   const resolveDisplayEmail = useCallback(
     (account: TraeAccount) => getTraeAccountDisplayEmail(account),
     [],
@@ -579,7 +610,9 @@ export function TraeAccountsPage() {
   const renderGridCards = useCallback(
     (items: TraeAccount[], groupKey?: string) =>
       items.map((account) => {
+        const displayName = resolveDisplayName(account);
         const displayEmail = resolveDisplayEmail(account);
+        const showDisplayEmail = displayEmail !== 'unknown' && displayEmail !== displayName;
         const quota = resolveQuotaSummary(account);
         const planLabel = resolvePlanLabel(account);
         const planClass = getTraePlanBadgeClass(planLabel);
@@ -592,6 +625,8 @@ export function TraeAccountsPage() {
         const statusTitle = account.status_reason || t('accounts.status.refreshFailed', '刷新失败');
         const signedInWithText = resolveSignedInWithText(account);
         const userIdText = account.user_id || '--';
+        const quotaError = account.quota_query_last_error?.trim();
+        const hasQuotaData = hasTraeQuotaData(account);
 
         return (
           <div
@@ -606,8 +641,8 @@ export function TraeAccountsPage() {
                   onChange={() => toggleSelect(account.id)}
                 />
               </div>
-              <span className="account-email" title={maskAccountText(displayEmail)}>
-                {maskAccountText(displayEmail)}
+              <span className="account-email" title={maskAccountText(displayName)}>
+                {maskAccountText(displayName)}
               </span>
               {planLabel && planLabel !== 'UNKNOWN' && (
                 <span className={`tier-badge ${planClass} raw-value`}>{planLabel}</span>
@@ -621,10 +656,22 @@ export function TraeAccountsPage() {
                   {t('accounts.status.refreshFailed', '刷新失败')}
                 </span>
               )}
+              {quotaError && (
+                <span className="status-pill warning" title={quotaError}>
+                  <CircleAlert size={12} />
+                  {t('common.shared.quota.queryFailed', '配额查询失败')}
+                </span>
+              )}
             </div>
 
             <div className="account-sub-line">
               <span className="kiro-table-subline">
+                {showDisplayEmail && (
+                  <>
+                    {maskAccountText(displayEmail)}
+                    {' | '}
+                  </>
+                )}
                 {signedInWithText} | {t('kiro.account.userId', 'User ID')}: {maskAccountText(userIdText)}
               </span>
             </div>
@@ -641,7 +688,11 @@ export function TraeAccountsPage() {
             )}
 
             <div className="ghcp-quota-section">
-              {renderCompactQuota(quota, 'card')}
+              {hasQuotaData ? (
+                renderCompactQuota(quota, 'card')
+              ) : (
+                <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
+              )}
             </div>
 
             <div className="card-footer">
@@ -682,7 +733,7 @@ export function TraeAccountsPage() {
                   onClick={() =>
                     handleExportByIds([account.id], resolveSingleExportBaseName(account))
                   }
-                  title={t('common.shared.export', '导出')}
+                  title={t('common.shared.export.title', '导出')}
                 >
                   <Upload size={14} />
                 </button>
@@ -710,6 +761,7 @@ export function TraeAccountsPage() {
       openTagModal,
       refreshing,
       renderCompactQuota,
+      resolveDisplayName,
       resolveDisplayEmail,
       resolveSignedInWithText,
       resolvePlanLabel,
@@ -724,7 +776,9 @@ export function TraeAccountsPage() {
   const renderTableRows = useCallback(
     (items: TraeAccount[], groupKey?: string) =>
       items.map((account) => {
+        const displayName = resolveDisplayName(account);
         const displayEmail = resolveDisplayEmail(account);
+        const showDisplayEmail = displayEmail !== 'unknown' && displayEmail !== displayName;
         const quota = resolveQuotaSummary(account);
         const planLabel = resolvePlanLabel(account);
         const planClass = getTraePlanBadgeClass(planLabel);
@@ -736,6 +790,8 @@ export function TraeAccountsPage() {
         const statusTitle = account.status_reason || t('accounts.status.refreshFailed', '刷新失败');
         const signedInWithText = resolveSignedInWithText(account);
         const userIdText = account.user_id || '--';
+        const quotaError = account.quota_query_last_error?.trim();
+        const hasQuotaData = hasTraeQuotaData(account);
 
         return (
           <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={isCurrent ? 'current' : ''}>
@@ -749,8 +805,8 @@ export function TraeAccountsPage() {
             <td>
               <div className="account-cell">
                 <div className="account-main-line">
-                  <span className="account-email-text" title={maskAccountText(displayEmail)}>
-                    {maskAccountText(displayEmail)}
+                  <span className="account-email-text" title={maskAccountText(displayName)}>
+                    {maskAccountText(displayName)}
                   </span>
                   {planLabel && planLabel !== 'UNKNOWN' && (
                     <span className={`tier-badge ${planClass} raw-value`}>{planLabel}</span>
@@ -767,8 +823,22 @@ export function TraeAccountsPage() {
                     </span>
                   </div>
                 )}
+                {quotaError && (
+                  <div className="account-sub-line">
+                    <span className="status-pill warning" title={quotaError}>
+                      <CircleAlert size={12} />
+                      {t('common.shared.quota.queryFailed', '配额查询失败')}
+                    </span>
+                  </div>
+                )}
                 <div className="account-sub-line">
                   <span className="kiro-table-subline">
+                    {showDisplayEmail && (
+                      <>
+                        {maskAccountText(displayEmail)}
+                        {' | '}
+                      </>
+                    )}
                     {signedInWithText} | {t('kiro.account.userId', 'User ID')}: {maskAccountText(userIdText)}
                   </span>
                 </div>
@@ -785,7 +855,11 @@ export function TraeAccountsPage() {
               </div>
             </td>
             <td>
-              {renderCompactQuota(quota, 'table')}
+              {hasQuotaData ? (
+                renderCompactQuota(quota, 'table')
+              ) : (
+                <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
+              )}
             </td>
             <td>{formatDate(account.created_at)}</td>
             <td className="sticky-action-cell table-action-cell">
@@ -825,7 +899,7 @@ export function TraeAccountsPage() {
                   onClick={() =>
                     handleExportByIds([account.id], resolveSingleExportBaseName(account))
                   }
-                  title={t('common.shared.export', '导出')}
+                  title={t('common.shared.export.title', '导出')}
                 >
                   <Upload size={14} />
                 </button>
@@ -853,6 +927,7 @@ export function TraeAccountsPage() {
       openTagModal,
       refreshing,
       renderCompactQuota,
+      resolveDisplayName,
       resolveDisplayEmail,
       resolveSignedInWithText,
       resolvePlanLabel,
@@ -979,13 +1054,16 @@ export function TraeAccountsPage() {
                     : t('accounts.filterTags', '标签筛选')}
                 </button>
                 {showTagFilter && (
-                  <div className="tag-filter-panel">
+                  <div
+                    ref={page.tagFilterPanelRef}
+                    className={`tag-filter-panel ${page.tagFilterPanelPlacement === 'top' ? 'open-top' : ''}`}
+                  >
                     {availableTags.length === 0 ? (
                       <div className="tag-filter-empty">
                         {t('accounts.noAvailableTags', '暂无可用标签')}
                       </div>
                     ) : (
-                      <div className="tag-filter-options">
+                      <div className="tag-filter-options" style={page.tagFilterScrollContainerStyle}>
                         {availableTags.map((tag) => (
                           <label
                             key={tag}
@@ -1034,18 +1112,17 @@ export function TraeAccountsPage() {
                 )}
               </div>
 
-              <div className="sort-select">
-                <ArrowDownWideNarrow size={14} className="sort-icon" />
-                <select
-                  value={TRAE_KNOWN_SORT_KEYS.includes(sortBy as (typeof TRAE_KNOWN_SORT_KEYS)[number]) ? sortBy : 'created_at'}
-                  onChange={(event) => setSortBy(event.target.value)}
-                  aria-label={t('common.shared.sortLabel')}
-                >
-                  <option value="created_at">{t('accounts.sort.createdAt')}</option>
-                  <option value="plan">{t('accounts.sort.plan')}</option>
-                  <option value="quota">{t('accounts.sort.quota')}</option>
-                </select>
-              </div>
+              <SingleSelectFilterDropdown
+                value={TRAE_KNOWN_SORT_KEYS.includes(sortBy as (typeof TRAE_KNOWN_SORT_KEYS)[number]) ? sortBy : 'created_at'}
+                options={[
+                  { value: 'created_at', label: t('accounts.sort.createdAt') },
+                  { value: 'plan', label: t('accounts.sort.plan') },
+                  { value: 'quota', label: t('accounts.sort.quota') },
+                ]}
+                ariaLabel={t('common.shared.sortLabel')}
+                icon={<ArrowDownWideNarrow size={14} />}
+                onChange={setSortBy}
+              />
 
               <button
                 className="sort-direction-btn"
@@ -1110,13 +1187,13 @@ export function TraeAccountsPage() {
                 disabled={exporting || filteredIds.length === 0}
                 title={
                   exportSelectionCount > 0
-                    ? `${t('common.shared.export', '导出')} (${exportSelectionCount})`
-                    : t('common.shared.export', '导出')
+                    ? `${t('common.shared.export.title', '导出')} (${exportSelectionCount})`
+                    : t('common.shared.export.title', '导出')
                 }
                 aria-label={
                   exportSelectionCount > 0
-                    ? `${t('common.shared.export', '导出')} (${exportSelectionCount})`
-                    : t('common.shared.export', '导出')
+                    ? `${t('common.shared.export.title', '导出')} (${exportSelectionCount})`
+                    : t('common.shared.export.title', '导出')
                 }
               >
                 <Upload size={14} />
@@ -1175,30 +1252,30 @@ export function TraeAccountsPage() {
             </div>
           ) : viewMode === 'grid' ? (
         <div className="grid-view-container">
-          {filteredAccounts.length > 0 && (
+          {paginatedAccounts.length > 0 && (
             <div className="grid-view-header" style={{ marginBottom: '12px', paddingLeft: '4px' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-color)' }}>
-                <input type="checkbox" checked={selected.size === filteredAccounts.length && filteredAccounts.length > 0} onChange={() => toggleSelectAll(filteredAccounts.map((a) => a.id))} />
+                <input type="checkbox" checked={isAllPaginatedSelected} onChange={() => toggleSelectAll(paginatedIds)} />
                 {t('common.selectAll', '全选')}
               </label>
             </div>
           )}
           {groupByTag ? (
               <div className="tag-group-list">
-                {groupedAccounts.map(([groupKey, groupAccounts]) => (
+                {paginatedGroupedAccounts.map(({ groupKey, items, totalCount }) => (
                   <div key={groupKey} className="tag-group-section">
                     <div className="tag-group-header">
                       <span className="tag-group-title">{resolveGroupLabel(groupKey)}</span>
-                      <span className="tag-group-count">{groupAccounts.length}</span>
+                      <span className="tag-group-count">{totalCount}</span>
                     </div>
                     <div className="tag-group-grid ghcp-accounts-grid">
-                      {renderGridCards(groupAccounts, groupKey)}
+                      {renderGridCards(items, groupKey)}
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="ghcp-accounts-grid">{renderGridCards(filteredAccounts)}</div>
+              <div className="ghcp-accounts-grid">{renderGridCards(paginatedAccounts)}</div>
             )}
         </div>
       ) : groupByTag ? (
@@ -1209,8 +1286,8 @@ export function TraeAccountsPage() {
                     <th style={{ width: 40 }}>
                       <input
                         type="checkbox"
-                        checked={selected.size === filteredAccounts.length && filteredAccounts.length > 0}
-                        onChange={() => toggleSelectAll(filteredAccounts.map((account) => account.id))}
+                        checked={isAllPaginatedSelected}
+                        onChange={() => toggleSelectAll(paginatedIds)}
                       />
                     </th>
                     <th style={{ width: 260 }}>{t('common.shared.columns.account')}</th>
@@ -1222,17 +1299,17 @@ export function TraeAccountsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedAccounts.map(([groupKey, groupAccounts]) => (
+                  {paginatedGroupedAccounts.map(({ groupKey, items, totalCount }) => (
                     <Fragment key={groupKey}>
                       <tr className="tag-group-row">
                         <td colSpan={5}>
                           <div className="tag-group-header">
                             <span className="tag-group-title">{resolveGroupLabel(groupKey)}</span>
-                            <span className="tag-group-count">{groupAccounts.length}</span>
+                            <span className="tag-group-count">{totalCount}</span>
                           </div>
                         </td>
                       </tr>
-                      {renderTableRows(groupAccounts, groupKey)}
+                      {renderTableRows(items, groupKey)}
                     </Fragment>
                   ))}
                 </tbody>
@@ -1246,8 +1323,8 @@ export function TraeAccountsPage() {
                     <th style={{ width: 40 }}>
                       <input
                         type="checkbox"
-                        checked={selected.size === filteredAccounts.length && filteredAccounts.length > 0}
-                        onChange={() => toggleSelectAll(filteredAccounts.map((account) => account.id))}
+                        checked={isAllPaginatedSelected}
+                        onChange={() => toggleSelectAll(paginatedIds)}
                       />
                     </th>
                     <th style={{ width: 260 }}>{t('common.shared.columns.account')}</th>
@@ -1258,10 +1335,25 @@ export function TraeAccountsPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody>{renderTableRows(filteredAccounts)}</tbody>
+                <tbody>{renderTableRows(paginatedAccounts)}</tbody>
               </table>
             </div>
           )}
+
+          <PaginationControls
+            totalItems={pagination.totalItems}
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            pageSize={pagination.pageSize}
+            pageSizeOptions={pagination.pageSizeOptions}
+            rangeStart={pagination.rangeStart}
+            rangeEnd={pagination.rangeEnd}
+            canGoPrevious={pagination.canGoPrevious}
+            canGoNext={pagination.canGoNext}
+            onPageSizeChange={pagination.setPageSize}
+            onPreviousPage={pagination.goToPreviousPage}
+            onNextPage={pagination.goToNextPage}
+          />
 
           {showAddModal && (
             <div className="modal-overlay" onClick={closeAddModal}>
@@ -1487,7 +1579,7 @@ export function TraeAccountsPage() {
 
           <ExportJsonModal
             isOpen={showExportModal}
-            title={`${t('common.shared.export', '导出')} JSON`}
+            title={`${t('common.shared.export.title', '导出')} JSON`}
             jsonContent={exportJsonContent}
             hidden={exportJsonHidden}
             copied={exportJsonCopied}

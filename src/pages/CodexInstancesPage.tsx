@@ -53,7 +53,7 @@ export function CodexInstancesContent({
     null,
   );
   const { terminalOptions, selectedTerminal, setSelectedTerminal } =
-    useLaunchTerminalOptions();
+    useLaunchTerminalOptions(isSupportedPlatform);
 
   useEffect(() => {
     const syncCodeReviewVisibility = () => {

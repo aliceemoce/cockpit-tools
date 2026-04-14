@@ -3,6 +3,8 @@
 
 #[cfg(not(target_os = "macos"))]
 use std::collections::{HashMap, HashSet};
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(not(target_os = "macos"))]
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -16,6 +18,9 @@ use crate::modules::logger;
 
 /// 托盘菜单 ID
 pub const TRAY_ID: &str = "main-tray";
+
+#[cfg(target_os = "macos")]
+static MACOS_TRAY_SKIP_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// 单层最多直出的平台数量（超出进入“更多平台”子菜单）
 #[cfg(not(target_os = "macos"))]
@@ -3326,7 +3331,9 @@ pub fn update_tray_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Str
     #[cfg(target_os = "macos")]
     {
         let _ = app;
-        logger::log_info("[Tray] macOS 原生菜单模式，跳过 Tauri 托盘菜单更新");
+        if !MACOS_TRAY_SKIP_LOGGED.swap(true, Ordering::Relaxed) {
+            logger::log_info("[Tray] macOS 原生菜单模式，跳过 Tauri 托盘菜单更新");
+        }
     }
 
     #[cfg(not(target_os = "macos"))]

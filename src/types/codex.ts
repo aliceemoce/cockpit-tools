@@ -146,6 +146,27 @@ export interface CodexSessionTrashSummary {
   message: string;
 }
 
+export interface CodexTrashedSessionLocation {
+  instanceId: string;
+  instanceName: string;
+}
+
+export interface CodexTrashedSessionRecord {
+  sessionId: string;
+  title: string;
+  cwd: string;
+  deletedAt?: number | null;
+  locationCount: number;
+  locations: CodexTrashedSessionLocation[];
+}
+
+export interface CodexSessionRestoreSummary {
+  requestedSessionCount: number;
+  restoredSessionCount: number;
+  restoredInstanceCount: number;
+  message: string;
+}
+
 type JsonRecord = Record<string, unknown>;
 
 function toJsonRecord(value: unknown): JsonRecord | null {

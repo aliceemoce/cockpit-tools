@@ -93,7 +93,7 @@ import {
   shouldShowQoderSubscriptionReset,
 } from '../types/qoder';
 import {
-  getTraeAccountDisplayEmail,
+  getTraeAccountDisplayName,
   getTraePlanBadge,
   getTraePlanBadgeClass,
   getTraeUsage,
@@ -1034,7 +1034,7 @@ export function buildTraeAccountPresentation(
 
   return {
     id: account.id,
-    displayName: getTraeAccountDisplayEmail(account),
+    displayName: getTraeAccountDisplayName(account),
     planLabel,
     planClass: getTraePlanBadgeClass(planLabel),
     quotaItems,

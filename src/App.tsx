@@ -51,6 +51,7 @@ import {
   dispatchExternalProviderImportEvent,
   normalizeExternalProviderImportPayload,
 } from './utils/externalProviderImport';
+import { runAutoBackupCycle } from './services/scheduledBackupService';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -184,7 +185,7 @@ type AppPathMissingDetail = {
     | { kind: 'switchAccount'; accountId?: string };
 };
 
-const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
+  const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
 const TASKS_STORAGE_KEY = 'agtools.wakeup.tasks';
 const WAKEUP_FORCE_DISABLE_MIGRATION_KEY = 'agtools.wakeup.migration.force_disable_0_8_14';
 
@@ -1341,6 +1342,37 @@ function MainApp() {
       }
     };
     void syncWakeupStateOnStartup();
+  }, []);
+
+  useEffect(() => {
+    const AUTO_BACKUP_POLL_INTERVAL_MS = 60 * 60 * 1000;
+    let intervalId: number | undefined;
+    let inFlight = false;
+
+    const checkAutoBackup = async () => {
+      if (inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        await runAutoBackupCycle();
+      } catch (error) {
+        console.warn('[AutoBackup] 定期备份执行失败:', error);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void checkAutoBackup();
+    intervalId = window.setInterval(() => {
+      void checkAutoBackup();
+    }, AUTO_BACKUP_POLL_INTERVAL_MS);
+
+    return () => {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+      }
+    };
   }, []);
 
   // Check for updates on startup

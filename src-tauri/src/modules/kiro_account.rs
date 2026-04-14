@@ -298,6 +298,15 @@ fn upsert_account_record(account: KiroAccount) -> Result<KiroAccount, String> {
     Ok(account)
 }
 
+fn persist_quota_query_error(account_id: &str, message: &str) {
+    let Some(mut account) = load_account(account_id) else {
+        return;
+    };
+    account.quota_query_last_error = Some(message.to_string());
+    account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
+    let _ = upsert_account_record(account);
+}
+
 fn normalize_non_empty(value: Option<&str>) -> Option<String> {
     value.and_then(|raw| {
         let trimmed = raw.trim();
@@ -834,6 +843,8 @@ pub fn upsert_account(payload: KiroOAuthCompletePayload) -> Result<KiroAccount, 
         kiro_usage_raw: payload.kiro_usage_raw.clone(),
         status: payload.status.clone(),
         status_reason: payload.status_reason.clone(),
+        quota_query_last_error: None,
+        quota_query_last_error_at: None,
         usage_updated_at: None,
         created_at,
         last_used: now,
@@ -842,6 +853,8 @@ pub fn upsert_account(payload: KiroOAuthCompletePayload) -> Result<KiroAccount, 
     apply_payload(&mut account, payload);
     account.id = account_id;
     account.created_at = created_at;
+    account.quota_query_last_error = None;
+    account.quota_query_last_error_at = None;
     account.last_used = now;
 
     save_account_file(&account)?;
@@ -872,7 +885,12 @@ async fn refresh_account_token_once(account_id: &str) -> Result<KiroAccount, Str
     account.created_at = created_at;
     let refreshed_at = now_ts();
     if usage_refreshed {
+        account.quota_query_last_error = None;
+        account.quota_query_last_error_at = None;
         account.usage_updated_at = Some(refreshed_at);
+    } else {
+        account.quota_query_last_error = Some("未获取到有效配额数据".to_string());
+        account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
     }
     account.last_used = refreshed_at;
 
@@ -888,10 +906,16 @@ async fn refresh_account_token_once(account_id: &str) -> Result<KiroAccount, Str
 }
 
 pub async fn refresh_account_token(account_id: &str) -> Result<KiroAccount, String> {
-    crate::modules::refresh_retry::retry_once_with_delay("Kiro Refresh", account_id, || async {
-        refresh_account_token_once(account_id).await
-    })
-    .await
+    let result = crate::modules::refresh_retry::retry_once_with_delay(
+        "Kiro Refresh",
+        account_id,
+        || async { refresh_account_token_once(account_id).await },
+    )
+    .await;
+    if let Err(err) = &result {
+        persist_quota_query_error(account_id, err);
+    }
+    result
 }
 
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<KiroAccount, String>)>, String> {

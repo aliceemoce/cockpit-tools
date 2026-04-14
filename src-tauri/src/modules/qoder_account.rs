@@ -338,6 +338,22 @@ fn upsert_account_record(account: QoderAccount) -> Result<QoderAccount, String> 
     Ok(account)
 }
 
+pub fn update_quota_query_error(
+    account_id: &str,
+    message: Option<String>,
+) -> Result<Option<QoderAccount>, String> {
+    let Some(mut account) = load_account(account_id) else {
+        return Ok(None);
+    };
+    account.quota_query_last_error = message;
+    account.quota_query_last_error_at = account
+        .quota_query_last_error
+        .as_ref()
+        .map(|_| chrono::Utc::now().timestamp_millis());
+    let updated = upsert_account_record(account)?;
+    Ok(Some(updated))
+}
+
 fn list_accounts_from_index(index: &QoderAccountIndex) -> Vec<QoderAccount> {
     let mut accounts = Vec::new();
     for summary in &index.accounts {
@@ -850,6 +866,16 @@ fn snapshot_to_account(snapshot: QoderSnapshot, existing: Option<&QoderAccount>)
             .or_else(|| existing.and_then(|item| item.credits_remaining)),
         credits_usage_percent: credits_usage_percent
             .or_else(|| existing.and_then(|item| item.credits_usage_percent)),
+        quota_query_last_error: if snapshot.credit_usage_raw.is_some() {
+            None
+        } else {
+            existing.and_then(|item| item.quota_query_last_error.clone())
+        },
+        quota_query_last_error_at: if snapshot.credit_usage_raw.is_some() {
+            None
+        } else {
+            existing.and_then(|item| item.quota_query_last_error_at)
+        },
         usage_updated_at: if snapshot.credit_usage_raw.is_some() {
             Some(now)
         } else {
@@ -1192,6 +1218,7 @@ fn normalize_imported_account(mut account: QoderAccount) -> QoderAccount {
     account.display_name = normalize_non_empty(account.display_name.as_deref());
     account.plan_type = normalize_non_empty(account.plan_type.as_deref());
     account.tags = normalize_tags(account.tags.unwrap_or_default());
+    account.quota_query_last_error = normalize_non_empty(account.quota_query_last_error.as_deref());
     if account.created_at <= 0 {
         account.created_at = now;
     }

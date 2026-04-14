@@ -54,6 +54,13 @@ type StartInstanceOutcome =
   | "already-running"
   | "missing-path"
   | "failed";
+type AccountSelectPortalPosition = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+  placement: "top" | "bottom";
+};
 
 interface InstancesManagerProps<TAccount extends AccountLike> {
   instanceStore: InstanceStoreState;
@@ -80,6 +87,72 @@ interface InstancesManagerProps<TAccount extends AccountLike> {
 }
 
 const INSTANCE_AUTO_REFRESH_INTERVAL_MS = 10_000;
+const ACCOUNT_SELECT_PORTAL_GAP = 8;
+const ACCOUNT_SELECT_PORTAL_SAFE_MARGIN = 12;
+const ACCOUNT_SELECT_PORTAL_MAX_HEIGHT = 320;
+const ACCOUNT_SELECT_PORTAL_MIN_HEIGHT = 140;
+const ACCOUNT_SELECT_PORTAL_Z_INDEX = 10020;
+
+const resolveAccountSelectPortalPosition = (
+  trigger: HTMLButtonElement | null,
+): AccountSelectPortalPosition | null => {
+  const rect = trigger?.getBoundingClientRect();
+  if (!rect) return null;
+
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const width = Math.min(
+    rect.width,
+    viewportWidth - ACCOUNT_SELECT_PORTAL_SAFE_MARGIN * 2,
+  );
+  const maxLeft = viewportWidth - ACCOUNT_SELECT_PORTAL_SAFE_MARGIN - width;
+  const left = Math.min(
+    Math.max(ACCOUNT_SELECT_PORTAL_SAFE_MARGIN, rect.left),
+    maxLeft,
+  );
+  const spaceBelow =
+    viewportHeight -
+    rect.bottom -
+    ACCOUNT_SELECT_PORTAL_GAP -
+    ACCOUNT_SELECT_PORTAL_SAFE_MARGIN;
+  const spaceAbove =
+    rect.top -
+    ACCOUNT_SELECT_PORTAL_GAP -
+    ACCOUNT_SELECT_PORTAL_SAFE_MARGIN;
+  const placement: "top" | "bottom" =
+    spaceBelow >= ACCOUNT_SELECT_PORTAL_MAX_HEIGHT || spaceBelow >= spaceAbove
+      ? "bottom"
+      : "top";
+  const availableHeight = placement === "bottom" ? spaceBelow : spaceAbove;
+  const maxHeight = Math.min(
+    ACCOUNT_SELECT_PORTAL_MAX_HEIGHT,
+    Math.max(
+      availableHeight,
+      Math.min(
+        ACCOUNT_SELECT_PORTAL_MIN_HEIGHT,
+        Math.max(spaceAbove, spaceBelow),
+      ),
+    ),
+  );
+  const top =
+    placement === "bottom"
+      ? Math.min(
+          rect.bottom + ACCOUNT_SELECT_PORTAL_GAP,
+          viewportHeight - ACCOUNT_SELECT_PORTAL_SAFE_MARGIN,
+        )
+      : Math.max(
+          ACCOUNT_SELECT_PORTAL_SAFE_MARGIN,
+          rect.top - ACCOUNT_SELECT_PORTAL_GAP,
+        );
+
+  return {
+    top,
+    left,
+    width,
+    maxHeight,
+    placement,
+  };
+};
 
 const resolveInstanceSortStorageKeys = (
   appType: InstancesManagerProps<AccountLike>["appType"],
@@ -393,6 +466,7 @@ export function InstancesManager<TAccount extends AccountLike>({
   };
 
   const openCreateModal = () => {
+    setOpenInlineMenuId(null);
     resetForm(true);
     setEditing(null);
     setShowModal(true);
@@ -417,6 +491,7 @@ export function InstancesManager<TAccount extends AccountLike>({
   }, [defaultInstanceId, editing, formCopySourceInstanceId, formInitMode]);
 
   const openEditModal = (instance: InstanceProfile) => {
+    setOpenInlineMenuId(null);
     setEditing(instance);
     setFormName(
       instance.isDefault
@@ -435,6 +510,7 @@ export function InstancesManager<TAccount extends AccountLike>({
   };
 
   const closeModal = () => {
+    setOpenInlineMenuId(null);
     setShowModal(false);
     resetForm();
     setEditing(null);
@@ -964,6 +1040,7 @@ export function InstancesManager<TAccount extends AccountLike>({
         <button
           type="button"
           className={`account-select-item ${isFollowingCurrent ? "active" : ""}`}
+          data-account-select-active={isFollowingCurrent ? "true" : undefined}
           onClick={() => {
             if (onFollowCurrent) {
               onFollowCurrent();
@@ -986,6 +1063,9 @@ export function InstancesManager<TAccount extends AccountLike>({
         <button
           type="button"
           className={`account-select-item ${!value && !isFollowingCurrent ? "active" : ""}`}
+          data-account-select-active={
+            !value && !isFollowingCurrent ? "true" : undefined
+          }
           onClick={() => {
             onChange(null);
             onClose();
@@ -1001,6 +1081,9 @@ export function InstancesManager<TAccount extends AccountLike>({
           type="button"
           key={account.id}
           className={`account-select-item ${value === account.id && !isFollowingCurrent ? "active" : ""}`}
+          data-account-select-active={
+            value === account.id && !isFollowingCurrent ? "true" : undefined
+          }
           onClick={() => {
             onChange(account.id);
             onClose();
@@ -1045,23 +1128,15 @@ export function InstancesManager<TAccount extends AccountLike>({
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const portalMenuRef = useRef<HTMLDivElement | null>(null);
     const isOpen = instanceId ? currentOpenId === instanceId : false;
-    const [portalPos, setPortalPos] = useState<{
-      top: number;
-      left: number;
-      width: number;
-    } | null>(null);
+    const [portalPos, setPortalPos] =
+      useState<AccountSelectPortalPosition | null>(null);
+
+    const updatePortalPos = useCallback(() => {
+      setPortalPos(resolveAccountSelectPortalPosition(triggerRef.current));
+    }, []);
 
     useEffect(() => {
       if (!isOpen) return;
-      const updatePortalPos = () => {
-        const rect = triggerRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setPortalPos({
-          top: rect.bottom + 8,
-          left: rect.left,
-          width: rect.width,
-        });
-      };
       updatePortalPos();
 
       const handleClick = (event: MouseEvent) => {
@@ -1088,7 +1163,31 @@ export function InstancesManager<TAccount extends AccountLike>({
         window.removeEventListener("resize", updatePortalPos);
         window.removeEventListener("scroll", updatePortalPos, true);
       };
-    }, [isOpen, onOpenChange]);
+    }, [isOpen, onOpenChange, updatePortalPos]);
+
+    useEffect(() => {
+      if (!isOpen || !portalPos || !portalMenuRef.current) return;
+
+      const frameId = window.requestAnimationFrame(() => {
+        const activeItem = portalMenuRef.current?.querySelector<HTMLElement>(
+          '[data-account-select-active="true"]',
+        );
+        activeItem?.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        });
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }, [
+      accounts.length,
+      isFollowingCurrent,
+      isOpen,
+      portalPos?.placement,
+      value,
+    ]);
 
     useEffect(() => {
       if (disabled && isOpen) {
@@ -1147,15 +1246,16 @@ export function InstancesManager<TAccount extends AccountLike>({
           </span>
         </button>
         {isOpen && !disabled && portalPos
-          ? createPortal(
+            ? createPortal(
               <div
-                className="instances-page account-select-portal-root"
+                className={`instances-page account-select-portal-root ${portalPos.placement === "top" ? "placement-top" : "placement-bottom"}`}
                 style={{
                   position: "fixed",
                   top: `${portalPos.top}px`,
                   left: `${portalPos.left}px`,
                   width: `${portalPos.width}px`,
-                  zIndex: 9999,
+                  ["--account-select-max-height" as string]: `${portalPos.maxHeight}px`,
+                  zIndex: ACCOUNT_SELECT_PORTAL_Z_INDEX,
                 }}
               >
                 <div ref={portalMenuRef} className="account-select-menu">
@@ -1192,26 +1292,61 @@ export function InstancesManager<TAccount extends AccountLike>({
     placeholder,
   }: FormAccountSelectProps) => {
     const menuRef = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const portalMenuRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
+    const [portalPos, setPortalPos] =
+      useState<AccountSelectPortalPosition | null>(null);
+
+    const updatePortalPos = useCallback(() => {
+      setPortalPos(resolveAccountSelectPortalPosition(triggerRef.current));
+    }, []);
 
     useEffect(() => {
       if (!open) return;
       const handleClick = (event: MouseEvent) => {
-        if (
-          menuRef.current &&
-          !menuRef.current.contains(event.target as Node)
-        ) {
+        const target = event.target as Node;
+        const inTrigger = Boolean(
+          menuRef.current && menuRef.current.contains(target),
+        );
+        const inPortalMenu = Boolean(
+          portalMenuRef.current && portalMenuRef.current.contains(target),
+        );
+        if (!inTrigger && !inPortalMenu) {
           setOpen(false);
         }
       };
+      updatePortalPos();
       const timer = setTimeout(() => {
         document.addEventListener("click", handleClick);
       }, 0);
+      window.addEventListener("resize", updatePortalPos);
+      window.addEventListener("scroll", updatePortalPos, true);
       return () => {
         clearTimeout(timer);
         document.removeEventListener("click", handleClick);
+        window.removeEventListener("resize", updatePortalPos);
+        window.removeEventListener("scroll", updatePortalPos, true);
       };
-    }, [open]);
+    }, [open, updatePortalPos]);
+
+    useEffect(() => {
+      if (!open || !portalPos || !portalMenuRef.current) return;
+
+      const frameId = window.requestAnimationFrame(() => {
+        const activeItem = portalMenuRef.current?.querySelector<HTMLElement>(
+          '[data-account-select-active="true"]',
+        );
+        activeItem?.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        });
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }, [accounts.length, isFollowingCurrent, open, portalPos?.placement, value]);
 
     useEffect(() => {
       if (disabled && open) {
@@ -1245,6 +1380,7 @@ export function InstancesManager<TAccount extends AccountLike>({
         ref={menuRef}
       >
         <button
+          ref={triggerRef}
           type="button"
           className={`account-select-trigger ${open ? "open" : ""}`}
           onClick={() => {
@@ -1268,20 +1404,35 @@ export function InstancesManager<TAccount extends AccountLike>({
             <ChevronDown size={14} />
           </span>
         </button>
-        {open && !disabled && (
-          <div className="account-select-menu">
-            {renderAccountMenuItems({
-              value,
-              isFollowingCurrent,
-              allowFollowCurrent,
-              allowUnbound,
-              onFollowCurrent,
-              onChange,
-              onClose: () => setOpen(false),
-              selectedAccount,
-            })}
-          </div>
-        )}
+        {open && !disabled && portalPos
+          ? createPortal(
+              <div
+                className={`instances-page account-select-portal-root ${portalPos.placement === "top" ? "placement-top" : "placement-bottom"}`}
+                style={{
+                  position: "fixed",
+                  top: `${portalPos.top}px`,
+                  left: `${portalPos.left}px`,
+                  width: `${portalPos.width}px`,
+                  ["--account-select-max-height" as string]: `${portalPos.maxHeight}px`,
+                  zIndex: ACCOUNT_SELECT_PORTAL_Z_INDEX,
+                }}
+              >
+                <div ref={portalMenuRef} className="account-select-menu">
+                  {renderAccountMenuItems({
+                    value,
+                    isFollowingCurrent,
+                    allowFollowCurrent,
+                    allowUnbound,
+                    onFollowCurrent,
+                    onChange,
+                    onClose: () => setOpen(false),
+                    selectedAccount,
+                  })}
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
     );
   };

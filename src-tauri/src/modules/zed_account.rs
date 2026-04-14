@@ -423,6 +423,23 @@ fn upsert_account_record(
     Ok(account.to_public())
 }
 
+fn update_quota_query_error(
+    account_id: &str,
+    message: Option<String>,
+) -> Result<Option<ZedAccount>, String> {
+    let Some(mut stored) = load_stored_account(account_id) else {
+        return Ok(None);
+    };
+    stored.public_account.quota_query_last_error = message;
+    stored.public_account.quota_query_last_error_at = stored
+        .public_account
+        .quota_query_last_error
+        .as_ref()
+        .map(|_| chrono::Utc::now().timestamp_millis());
+    let updated = upsert_account_record(stored, false, false)?;
+    Ok(Some(updated))
+}
+
 pub fn remove_account(account_id: &str) -> Result<(), String> {
     let _lock = ZED_ACCOUNT_INDEX_LOCK
         .lock()
@@ -579,14 +596,10 @@ async fn fetch_json(
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         return Err(format!(
-            "请求 Zed 接口失败 ({}): status={}, body={}",
+            "请求 Zed 接口失败 ({}): status={}, body_len={}",
             path,
             status,
-            if body.trim().is_empty() {
-                "<empty>".to_string()
-            } else {
-                body
-            }
+            body.len()
         ));
     }
 
@@ -772,6 +785,8 @@ fn build_stored_account_from_bundle(
                 .and_then(value_to_string)
             }),
             edit_predictions_remaining_raw,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
             usage_updated_at: pick_first_i64(&[
                 json_nested_timestamp(&bundle.usage_tokens_raw, &["usage_cache_updated_at"]),
                 json_nested_timestamp(&bundle.usage_raw, &["usage_cache_updated_at"]),
@@ -817,14 +832,23 @@ pub async fn upsert_account_from_credentials(
 pub async fn refresh_account(account_id: &str) -> Result<ZedAccount, String> {
     let stored =
         load_stored_account(account_id).ok_or_else(|| format!("Zed 账号不存在: {}", account_id))?;
-    let bundle = fetch_remote_bundle(&stored.public_account.user_id, &stored.access_token).await?;
+    let bundle =
+        match fetch_remote_bundle(&stored.public_account.user_id, &stored.access_token).await {
+            Ok(bundle) => bundle,
+            Err(err) => {
+                let _ = update_quota_query_error(account_id, Some(err.clone()));
+                return Err(err);
+            }
+        };
     let refreshed = build_stored_account_from_bundle(
         &stored.public_account.user_id,
         &stored.access_token,
         bundle,
         Some(&stored),
     )?;
-    upsert_account_record(refreshed, false, false)
+    let updated = upsert_account_record(refreshed, false, false)?;
+    let _ = update_quota_query_error(account_id, None)?;
+    Ok(updated)
 }
 
 pub async fn refresh_all_accounts() -> Result<Vec<ZedAccount>, String> {

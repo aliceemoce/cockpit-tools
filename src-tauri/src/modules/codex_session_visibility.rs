@@ -162,6 +162,10 @@ pub fn repair_session_visibility_across_instances(
     })
 }
 
+pub fn read_history_visibility_provider_for_dir(data_dir: &Path) -> Result<String, String> {
+    read_target_provider(data_dir)
+}
+
 fn repair_single_instance(
     data_dir: &Path,
     target_provider: &str,

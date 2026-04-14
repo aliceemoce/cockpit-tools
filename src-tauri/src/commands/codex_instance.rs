@@ -273,6 +273,19 @@ pub async fn codex_move_sessions_to_trash_across_instances(
 }
 
 #[tauri::command]
+pub async fn codex_list_trashed_sessions_across_instances(
+) -> Result<Vec<modules::codex_session_manager::CodexTrashedSessionRecord>, String> {
+    modules::codex_session_manager::list_trashed_sessions_across_instances()
+}
+
+#[tauri::command]
+pub async fn codex_restore_sessions_from_trash_across_instances(
+    session_ids: Vec<String>,
+) -> Result<modules::codex_session_manager::CodexSessionRestoreSummary, String> {
+    modules::codex_session_manager::restore_sessions_from_trash_across_instances(session_ids)
+}
+
+#[tauri::command]
 pub async fn codex_create_instance(
     name: String,
     user_data_dir: String,

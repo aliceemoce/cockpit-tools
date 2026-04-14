@@ -26,8 +26,10 @@ import {
 import { useTranslation } from 'react-i18next';
 import { ExportJsonModal } from '../components/ExportJsonModal';
 import { ModalErrorMessage } from '../components/ModalErrorMessage';
+import { PaginationControls } from '../components/PaginationControls';
 import { MultiSelectFilterDropdown, type MultiSelectFilterOption } from '../components/MultiSelectFilterDropdown';
 import { QuickSettingsPopover } from '../components/QuickSettingsPopover';
+import { SingleSelectFilterDropdown } from '../components/SingleSelectFilterDropdown';
 import { TagEditModal } from '../components/TagEditModal';
 import { ZedOverviewTabsHeader } from '../components/ZedOverviewTabsHeader';
 import { usePlatformRuntimeSupport } from '../hooks/usePlatformRuntimeSupport';
@@ -38,6 +40,7 @@ import {
   getZedAccountDisplayEmail,
   getZedEditPredictionsMetrics,
   getZedPlanBadge,
+  hasZedQuotaData,
   type ZedAccount,
 } from '../types/zed';
 import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
@@ -45,6 +48,12 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
 } from '../utils/accountValidityFilter';
+import {
+  buildPaginatedGroups,
+  buildPaginationPageSizeStorageKey,
+  isEveryIdSelected,
+  usePagination,
+} from '../hooks/usePagination';
 import './ZedAccountsPage.css';
 
 type ZedSortKey = 'created_at' | 'token_spend' | 'billing_end';
@@ -473,6 +482,16 @@ export function ZedAccountsPage() {
 
   const filteredIds = useMemo(() => filteredAccounts.map((account) => account.id), [filteredAccounts]);
   const exportSelectionCount = getScopedSelectedCount(filteredIds);
+  const pagination = usePagination({
+    items: filteredAccounts,
+    storageKey: buildPaginationPageSizeStorageKey('Zed'),
+  });
+  const paginatedAccounts = pagination.pageItems;
+  const paginatedIds = useMemo(() => paginatedAccounts.map((account) => account.id), [paginatedAccounts]);
+  const isAllPaginatedSelected = useMemo(
+    () => isEveryIdSelected(selected, paginatedIds),
+    [paginatedIds, selected],
+  );
 
   const groupedAccounts = useMemo(() => {
     if (!groupByTag) return [] as Array<[string, typeof filteredAccounts]>;
@@ -503,6 +522,11 @@ export function ZedAccountsPage() {
       return leftKey.localeCompare(rightKey);
     });
   }, [filteredAccounts, groupByTag, normalizeTag, tagFilter]);
+
+  const paginatedGroupedAccounts = useMemo(
+    () => buildPaginatedGroups(groupedAccounts, paginatedAccounts),
+    [groupedAccounts, paginatedAccounts],
+  );
 
   const resolveGroupLabel = useCallback(
     (groupKey: string) =>
@@ -584,6 +608,16 @@ export function ZedAccountsPage() {
             },
           ],
           title: t('zed.runtime.noCurrentAccount', '当前没有生效的 Zed 账号'),
+        };
+      }
+
+      if (!hasZedQuotaData(account)) {
+        const note = t('common.shared.quota.noData', '暂无配额数据');
+        return {
+          headline: '',
+          note,
+          items: [],
+          title: note,
         };
       }
 
@@ -703,6 +737,7 @@ export function ZedAccountsPage() {
       const moreTagCount = Math.max(0, accountTags.length - visibleTags.length);
       const isSelected = selected.has(account.id);
       const isCurrent = currentAccountId === account.id;
+      const quotaError = account.quota_query_last_error?.trim();
       const statusTone = account.subscription_status
         ? getZedStatusTone(account.subscription_status)
         : null;
@@ -724,6 +759,12 @@ export function ZedAccountsPage() {
               {maskAccountText(emailText)}
             </span>
             {isCurrent && <span className="current-tag">{t('accounts.status.current')}</span>}
+            {quotaError && (
+              <span className="status-pill warning" title={quotaError}>
+                <CircleAlert size={12} />
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
+              </span>
+            )}
             <span className={`tier-badge ${getZedPlanTone(account.plan_raw)}`}>
               {getZedPlanBadge(account)}
             </span>
@@ -787,7 +828,7 @@ export function ZedAccountsPage() {
               <button
                 className="card-action-btn export-btn"
                 onClick={() => handleExportByIds([account.id], resolveSingleExportBaseName(account))}
-                title={t('common.shared.export', '导出')}
+                title={t('common.shared.export.title', '导出')}
               >
                 <Upload size={14} />
               </button>
@@ -813,6 +854,7 @@ export function ZedAccountsPage() {
       const visibleTags = accountTags.slice(0, 3);
       const moreTagCount = Math.max(0, accountTags.length - visibleTags.length);
       const isCurrent = currentAccountId === account.id;
+      const quotaError = account.quota_query_last_error?.trim();
 
       return (
         <tr
@@ -841,6 +883,14 @@ export function ZedAccountsPage() {
                     : `@${account.github_login}`}
                 </span>
               </div>
+              {quotaError && (
+                <div className="account-sub-line">
+                  <span className="status-pill warning" title={quotaError}>
+                    <CircleAlert size={12} />
+                    {t('common.shared.quota.queryFailed', '配额查询失败')}
+                  </span>
+                </div>
+              )}
               {accountTags.length > 0 && (
                 <div className="account-tags-inline">
                   {visibleTags.map((tag, index) => (
@@ -896,7 +946,7 @@ export function ZedAccountsPage() {
               <button
                 className="action-btn"
                 onClick={() => handleExportByIds([account.id], resolveSingleExportBaseName(account))}
-                title={t('common.shared.export', '导出')}
+                title={t('common.shared.export.title', '导出')}
               >
                 <Upload size={14} />
               </button>
@@ -1019,11 +1069,14 @@ export function ZedAccountsPage() {
                 : t('accounts.filterTags', '标签筛选')}
             </button>
             {showTagFilter && (
-              <div className="tag-filter-panel">
+              <div
+                ref={page.tagFilterPanelRef}
+                className={`tag-filter-panel ${page.tagFilterPanelPlacement === 'top' ? 'open-top' : ''}`}
+              >
                 {availableTags.length === 0 ? (
                   <div className="tag-filter-empty">{t('accounts.noAvailableTags', '暂无可用标签')}</div>
                 ) : (
-                  <div className="tag-filter-options">
+                  <div className="tag-filter-options" style={page.tagFilterScrollContainerStyle}>
                     {availableTags.map((tag) => (
                       <label
                         key={tag}
@@ -1072,18 +1125,17 @@ export function ZedAccountsPage() {
             )}
           </div>
 
-          <div className="sort-select">
-            <ArrowDownWideNarrow size={14} className="sort-icon" />
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value)}
-              aria-label={t('common.shared.sortLabel', '排序')}
-            >
-              <option value="created_at">{t('common.shared.sort.createdAt', '按创建时间')}</option>
-              <option value="token_spend">{t('zed.sort.tokenSpend', '按 Token Spend')}</option>
-              <option value="billing_end">{t('common.shared.sort.planEnd', '按配额周期结束时间')}</option>
-            </select>
-          </div>
+          <SingleSelectFilterDropdown
+            value={sortBy}
+            options={[
+              { value: 'created_at', label: t('common.shared.sort.createdAt', '按创建时间') },
+              { value: 'token_spend', label: t('zed.sort.tokenSpend', '按 Token Spend') },
+              { value: 'billing_end', label: t('common.shared.sort.planEnd', '按配额周期结束时间') },
+            ]}
+            ariaLabel={t('common.shared.sortLabel', '排序')}
+            icon={<ArrowDownWideNarrow size={14} />}
+            onChange={setSortBy}
+          />
 
           <button
             className="sort-direction-btn"
@@ -1140,8 +1192,8 @@ export function ZedAccountsPage() {
             disabled={exporting || filteredIds.length === 0}
             title={
               exportSelectionCount > 0
-                ? `${t('common.shared.export', '导出')} (${exportSelectionCount})`
-                : t('common.shared.export', '导出')
+                ? `${t('common.shared.export.title', '导出')} (${exportSelectionCount})`
+                : t('common.shared.export.title', '导出')
             }
           >
             <Upload size={14} />
@@ -1180,28 +1232,28 @@ export function ZedAccountsPage() {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid-view-container">
-          {filteredAccounts.length > 0 && (
+          {paginatedAccounts.length > 0 && (
             <div className="grid-view-header" style={{ marginBottom: '12px', paddingLeft: '4px' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-color)' }}>
-                <input type="checkbox" checked={selected.size === filteredAccounts.length && filteredAccounts.length > 0} onChange={() => toggleSelectAll(filteredAccounts.map((a) => a.id))} />
+                <input type="checkbox" checked={isAllPaginatedSelected} onChange={() => toggleSelectAll(paginatedIds)} />
                 {t('common.selectAll', '全选')}
               </label>
             </div>
           )}
           {groupByTag ? (
           <div className="tag-group-list">
-            {groupedAccounts.map(([groupKey, groupAccounts]) => (
+            {paginatedGroupedAccounts.map(({ groupKey, items, totalCount }) => (
               <div key={groupKey} className="tag-group-section">
                 <div className="tag-group-header">
                   <span className="tag-group-title">{resolveGroupLabel(groupKey)}</span>
-                  <span className="tag-group-count">{groupAccounts.length}</span>
+                  <span className="tag-group-count">{totalCount}</span>
                 </div>
-                <div className="tag-group-grid ghcp-accounts-grid">{renderGridCards(groupAccounts, groupKey)}</div>
+                <div className="tag-group-grid ghcp-accounts-grid">{renderGridCards(items, groupKey)}</div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="ghcp-accounts-grid">{renderGridCards(filteredAccounts)}</div>
+          <div className="ghcp-accounts-grid">{renderGridCards(paginatedAccounts)}</div>
         )}
         </div>
       ) : groupByTag ? (
@@ -1212,8 +1264,8 @@ export function ZedAccountsPage() {
                 <th style={{ width: 40 }}>
                   <input
                     type="checkbox"
-                    checked={selected.size === filteredAccounts.length && filteredAccounts.length > 0}
-                    onChange={() => toggleSelectAll(filteredAccounts.map((account) => account.id))}
+                    checked={isAllPaginatedSelected}
+                    onChange={() => toggleSelectAll(paginatedIds)}
                   />
                 </th>
                 <th style={{ width: 240 }}>{pageT('common.shared.columns.email', '邮箱')}</th>
@@ -1226,17 +1278,17 @@ export function ZedAccountsPage() {
               </tr>
             </thead>
             <tbody>
-              {groupedAccounts.map(([groupKey, groupAccounts]) => (
+              {paginatedGroupedAccounts.map(({ groupKey, items, totalCount }) => (
                 <Fragment key={groupKey}>
                   <tr className="tag-group-row">
                     <td colSpan={6}>
                       <div className="tag-group-header">
                         <span className="tag-group-title">{resolveGroupLabel(groupKey)}</span>
-                        <span className="tag-group-count">{groupAccounts.length}</span>
+                        <span className="tag-group-count">{totalCount}</span>
                       </div>
                     </td>
                   </tr>
-                  {renderTableRows(groupAccounts, groupKey)}
+                  {renderTableRows(items, groupKey)}
                 </Fragment>
               ))}
             </tbody>
@@ -1250,8 +1302,8 @@ export function ZedAccountsPage() {
                 <th style={{ width: 40 }}>
                   <input
                     type="checkbox"
-                    checked={selected.size === filteredAccounts.length && filteredAccounts.length > 0}
-                    onChange={() => toggleSelectAll(filteredAccounts.map((account) => account.id))}
+                    checked={isAllPaginatedSelected}
+                    onChange={() => toggleSelectAll(paginatedIds)}
                   />
                 </th>
                 <th style={{ width: 240 }}>{pageT('common.shared.columns.email', '邮箱')}</th>
@@ -1263,10 +1315,25 @@ export function ZedAccountsPage() {
                 </th>
               </tr>
             </thead>
-            <tbody>{renderTableRows(filteredAccounts)}</tbody>
+            <tbody>{renderTableRows(paginatedAccounts)}</tbody>
           </table>
         </div>
       )}
+
+      <PaginationControls
+        totalItems={pagination.totalItems}
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
+        pageSize={pagination.pageSize}
+        pageSizeOptions={pagination.pageSizeOptions}
+        rangeStart={pagination.rangeStart}
+        rangeEnd={pagination.rangeEnd}
+        canGoPrevious={pagination.canGoPrevious}
+        canGoNext={pagination.canGoNext}
+        onPageSizeChange={pagination.setPageSize}
+        onPreviousPage={pagination.goToPreviousPage}
+        onNextPage={pagination.goToNextPage}
+      />
 
       {showAddModal && (
         <div className="modal-overlay" onClick={closeAddModal}>

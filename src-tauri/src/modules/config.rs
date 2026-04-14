@@ -148,6 +148,21 @@ pub struct UserConfig {
     /// 关闭悬浮卡片前是否显示确认弹框
     #[serde(default = "default_floating_card_confirm_on_close")]
     pub floating_card_confirm_on_close: bool,
+    /// 是否启用定期自动备份
+    #[serde(default = "default_auto_backup_enabled")]
+    pub auto_backup_enabled: bool,
+    /// 自动备份是否包含账号数据
+    #[serde(default = "default_auto_backup_include_accounts")]
+    pub auto_backup_include_accounts: bool,
+    /// 自动备份是否包含配置数据
+    #[serde(default = "default_auto_backup_include_config")]
+    pub auto_backup_include_config: bool,
+    /// 自动备份保留天数
+    #[serde(default = "default_auto_backup_retention_days")]
+    pub auto_backup_retention_days: i32,
+    /// 最近一次自动备份时间（ISO 8601）
+    #[serde(default)]
+    pub auto_backup_last_backup_at: Option<String>,
     /// 悬浮卡片保存的横向位置（物理像素）
     #[serde(default)]
     pub floating_card_position_x: Option<i32>,
@@ -478,6 +493,34 @@ fn default_codex_startup_wakeup_delay_seconds() -> i32 {
 fn default_floating_card_confirm_on_close() -> bool {
     true
 }
+pub fn default_auto_backup_enabled() -> bool {
+    true
+}
+pub fn default_auto_backup_include_accounts() -> bool {
+    true
+}
+pub fn default_auto_backup_include_config() -> bool {
+    true
+}
+pub fn default_auto_backup_retention_days() -> i32 {
+    3
+}
+pub fn sanitize_auto_backup_retention_days(raw: i32) -> i32 {
+    raw.clamp(1, 365)
+}
+pub fn normalize_auto_backup_selection(
+    include_accounts: bool,
+    include_config: bool,
+) -> (bool, bool) {
+    if !include_accounts && !include_config {
+        (
+            default_auto_backup_include_accounts(),
+            default_auto_backup_include_config(),
+        )
+    } else {
+        (include_accounts, include_config)
+    }
+}
 fn default_opencode_app_path() -> String {
     String::new()
 }
@@ -699,6 +742,11 @@ impl Default for UserConfig {
             codex_startup_wakeup_enabled: default_codex_startup_wakeup_enabled(),
             codex_startup_wakeup_delay_seconds: default_codex_startup_wakeup_delay_seconds(),
             floating_card_confirm_on_close: default_floating_card_confirm_on_close(),
+            auto_backup_enabled: default_auto_backup_enabled(),
+            auto_backup_include_accounts: default_auto_backup_include_accounts(),
+            auto_backup_include_config: default_auto_backup_include_config(),
+            auto_backup_retention_days: default_auto_backup_retention_days(),
+            auto_backup_last_backup_at: None,
             floating_card_position_x: None,
             floating_card_position_y: None,
             opencode_app_path: default_opencode_app_path(),
@@ -1094,6 +1142,36 @@ pub fn load_user_config() -> Result<UserConfig, String> {
                 json!(default_floating_card_confirm_on_close()),
             );
         }
+        if !obj.contains_key("auto_backup_enabled") {
+            obj.insert(
+                "auto_backup_enabled".to_string(),
+                json!(default_auto_backup_enabled()),
+            );
+        }
+        if !obj.contains_key("auto_backup_include_accounts") {
+            obj.insert(
+                "auto_backup_include_accounts".to_string(),
+                json!(default_auto_backup_include_accounts()),
+            );
+        }
+        if !obj.contains_key("auto_backup_include_config") {
+            obj.insert(
+                "auto_backup_include_config".to_string(),
+                json!(default_auto_backup_include_config()),
+            );
+        }
+        if !obj.contains_key("auto_backup_retention_days") {
+            obj.insert(
+                "auto_backup_retention_days".to_string(),
+                json!(default_auto_backup_retention_days()),
+            );
+        }
+        if !obj.contains_key("auto_backup_last_backup_at") {
+            obj.insert(
+                "auto_backup_last_backup_at".to_string(),
+                serde_json::Value::Null,
+            );
+        }
 
         if !obj.contains_key("report_enabled") {
             obj.insert(
@@ -1365,7 +1443,26 @@ pub fn load_user_config() -> Result<UserConfig, String> {
         }
     }
 
-    serde_json::from_value(value).map_err(|e| format!("解析配置文件失败: {}", e))
+    let mut config: UserConfig =
+        serde_json::from_value(value).map_err(|e| format!("解析配置文件失败: {}", e))?;
+    let (include_accounts, include_config) = normalize_auto_backup_selection(
+        config.auto_backup_include_accounts,
+        config.auto_backup_include_config,
+    );
+    config.auto_backup_include_accounts = include_accounts;
+    config.auto_backup_include_config = include_config;
+    config.auto_backup_retention_days =
+        sanitize_auto_backup_retention_days(config.auto_backup_retention_days);
+    config.auto_backup_last_backup_at = config.auto_backup_last_backup_at.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    });
+
+    Ok(config)
 }
 
 /// 保存用户配置

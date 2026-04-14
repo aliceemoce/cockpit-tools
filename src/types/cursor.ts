@@ -17,6 +17,8 @@ export interface CursorAccount {
 
   status?: string | null;
   status_reason?: string | null;
+  quota_query_last_error?: string | null;
+  quota_query_last_error_at?: number | null;
 
   created_at: number;
   last_used: number;
@@ -429,4 +431,8 @@ export function isCursorAccountBanned(account: CursorAccount): boolean {
   const reason = (account.status_reason || '').toLowerCase();
   return status === 'banned' || status === 'forbidden' ||
     reason.includes('banned') || reason.includes('suspended') || reason.includes('disabled');
+}
+
+export function hasCursorQuotaData(account: CursorAccount): boolean {
+  return account.cursor_usage_raw != null;
 }

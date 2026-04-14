@@ -40,12 +40,16 @@
         "creditPackage": "附加 Credits",
         "sharedCreditPackage": "共享资源包",
         "account": "账号",
-        "createdAt": "创建时间"
+        "createdAt": "创建时间",
+        "userId": "用户 ID"
       },
       "empty": {
         "title": "暂无账号"
       },
-      "export": "导出",
+      "export": {
+        "title": "导出",
+        "copyFailed": "复制失败，请手动复制"
+      },
       "filter": {
         "all": "全部 ({{count}})",
         "enterprise": "企业 ({{count}})",
@@ -135,9 +139,11 @@
       },
       "quota": {
         "noData": "暂无配额数据",
+        "queryFailed": "配额查询失败",
         "resetDone": "已重置",
         "hourly": "Inline Suggestions",
-        "weekly": "Chat messages"
+        "weekly": "Chat messages",
+        "resetAt": "重置：{{time}}"
       },
       "subtitle": "实时监控所有账号的配额状态。",
       "time": {
@@ -169,9 +175,19 @@
       },
       "updated": {
         "label": "更新于 {{relative}}前"
-      }
+      },
+      "clear": "清除",
+      "loginSuccess": "登录成功",
+      "switchAccount": "切换账号"
     },
-    "clear": "清空"
+    "appName": "Cockpit Tools",
+    "collapse": "收起",
+    "confirmDelete": "确认删除",
+    "confirmDeleteTag": "确认删除标签",
+    "deleteTagWarning": "确定要从所有账号中移除标签 ",
+    "expand": "展开",
+    "processing": "处理中...",
+    "selectAll": "全选"
   },
   "floatingCard": {
     "selectPlatform": "切换平台",
@@ -413,7 +429,7 @@
       "optional": "可选",
       "launchMode": "启动方式",
       "launchModeApp": "桌面版",
-      "launchModeCli": "CLI",
+      "launchModeCli": "命令行 CLI",
       "workingDir": "工作目录",
       "workingDirPlaceholder": "默认当前路径",
       "workingDirDesc": "启动时将首先切换到此目录",
@@ -510,6 +526,92 @@
       "general": "通用",
       "network": "网络服务",
       "about": "关于"
+    },
+    "transfer": {
+      "backup": {
+        "title": "备份管理",
+        "desc": "统一管理定期备份、备份目录和备份列表。",
+        "modalDesc": "在这里配置自动备份规则，查看项目目录内的备份文件，并执行恢复或清理。",
+        "statusEnabled": "自动备份已开启",
+        "statusDisabled": "自动备份已关闭",
+        "lastRunLabel": "最近备份：{{time}}",
+        "lastRunNever": "尚未生成备份",
+        "autoTitle": "定期备份",
+        "autoDesc": "开启后每天自动导出一次备份，文件可直接用当前导入恢复。",
+        "runNow": "立即备份",
+        "running": "备份中...",
+        "typeTitle": "备份类型",
+        "typeDesc": "选择自动备份的数据范围。",
+        "typeFull": "完整数据",
+        "typeAccounts": "仅账号",
+        "typeConfig": "仅配置",
+        "retentionTitle": "保留天数",
+        "retentionDesc": "超过天数的备份会在下次检查时自动清理。",
+        "retentionUnit": "天",
+        "directoryTitle": "备份目录",
+        "directoryDesc": "备份固定保存到项目目录下的 backups 文件夹。",
+        "openFolder": "打开目录",
+        "listTitle": "备份列表",
+        "listDesc": "支持直接导入当前备份，或删除旧备份。",
+        "openList": "打开列表",
+        "emptyTitle": "暂无备份",
+        "emptyDesc": "开启自动备份或点击“立即备份”后，会在这里显示可恢复的 JSON 备份。",
+        "sourceAuto": "自动",
+        "sourceManual": "手动",
+        "fileTime": "时间：{{time}}",
+        "fileSize": "大小：{{size}}",
+        "importAction": "导入",
+        "deleteAction": "删除",
+        "deleteConfirm": "确认删除备份 {{name}}？",
+        "feedback": {
+          "running": "正在生成备份...",
+          "runSuccess": "备份已保存到 {{path}}",
+          "runSuccessWithCleanup": "备份已保存到 {{path}}，并清理了 {{count}} 个过期备份",
+          "runFailed": "备份失败：{{error}}",
+          "deleteSuccess": "备份已删除",
+          "deleteFailed": "删除备份失败：{{error}}",
+          "loadFailed": "加载备份列表失败：{{error}}",
+          "saveSettingsFailed": "保存备份设置失败：{{error}}",
+          "cleanupDone": "已清理 {{count}} 个过期备份",
+          "cleanupFailed": "清理过期备份失败：{{error}}",
+          "openFolderFailed": "打开备份目录失败：{{error}}"
+        },
+        "errors": {
+          "invalidRetention": "保留天数需在 1 到 365 天之间"
+        }
+      },
+      "exportTitle": "数据导出",
+      "exportDesc": "按需导出账号数据、配置数据，或一次导出完整迁移包。",
+      "importTitle": "数据导入",
+      "importDesc": "导入账号备份、配置备份或统一数据包。",
+      "exportModalDesc": "选择要导出的数据类型。勾选账号和配置即可生成完整迁移包。",
+      "importModalDesc": "选择要导入的数据类型。旧版账号备份会自动按“仅账号数据”处理。",
+      "selectionTitle": "数据范围",
+      "accountsOptionTitle": "账号数据",
+      "accountsOptionDesc": "包含各平台账号备份，并继续兼容旧版账号 JSON。",
+      "configOptionTitle": "配置数据",
+      "configOptionDesc": "包含应用设置、分组、实例、唤醒任务与模型 Provider 配置。",
+      "exportConfirm": "导出数据",
+      "fromFileTitle": "从本地文件导入",
+      "fromFileDesc": "选择 JSON 文件导入数据包；旧版账号备份也可直接导入。",
+      "jsonPlaceholder": "粘贴数据包或旧版账号 JSON 内容",
+      "feedback": {
+        "accountsImported": "已导入 {{count}} 个账号",
+        "configImported": "配置数据已恢复",
+        "accountsSectionMissing": "备份不包含账号数据",
+        "configSectionMissing": "备份不包含配置数据，仅恢复账号数据",
+        "unresolvedRefs": "{{count}} 个账号绑定未匹配，已跳过",
+        "disabledTasks": "{{count}} 个任务因缺少账号已自动禁用",
+        "restartRequired": "网络服务配置已恢复，部分变更需重启应用后生效",
+        "partialAccountFailure": "部分账号导入失败：{{error}}"
+      },
+      "errors": {
+        "selectionRequired": "请至少选择一项数据类型",
+        "accountsOnlyFile": "该备份仅包含账号数据，请勾选“账号数据”后再导入",
+        "selectedSectionsMissing": "所选数据类型不在当前备份中",
+        "unsupportedLegacyFile": "无法识别该旧版账号备份格式",
+        "unsupportedVersion": "当前版本暂不支持该数据包版本"
+      }
     },
     "general": {
       "appearance": "界面外观",
@@ -681,7 +783,23 @@
       "ghcpOpencodeRestart": "切换 GitHub Copilot 时自动重启 OpenCode",
       "ghcpLaunchOnSwitch": "切换 GitHub Copilot 时自动启动 GitHub Copilot App",
       "antigravityDualSwitchNoRestart": "无感双通道切号（不重启）",
-      "antigravityDualSwitchNoRestartDesc": "切号时同时执行本地落盘与扩展无感切号，不再自动重启 Antigravity。"
+      "antigravityDualSwitchNoRestartDesc": "切号时同时执行本地落盘与扩展无感切号，不再自动重启 Antigravity。",
+      "codebuddyCnAppPath": "CodeBuddy CN 启动路径",
+      "codebuddyCnAppPathDesc": "留空则使用默认路径",
+      "codebuddyCnAppPathPlaceholder": "默认路径",
+      "codebuddyCnAutoRefresh": "CodeBuddy CN 自动刷新配额",
+      "codebuddyCnAutoRefreshDesc": "后台自动更新频率",
+      "codebuddyCnPathReset": "重置默认",
+      "codebuddyCnPathSelect": "选择",
+      "codebuddyCnSettingsTitle": "CodeBuddy CN 设置",
+      "qoderAppPath": "Qoder 启动路径",
+      "qoderAppPathDesc": "留空则使用默认路径",
+      "qoderAppPathPlaceholder": "默认路径",
+      "qoderAutoRefresh": "Qoder 自动刷新配额",
+      "qoderAutoRefreshDesc": "后台自动更新频率",
+      "qoderPathSelect": "选择",
+      "workbuddyAutoRefresh": "WorkBuddy 自动刷新配额",
+      "workbuddyAutoRefreshDesc": "后台自动更新频率"
     },
     "network": {
       "apiTitle": "反重力驾驶舱 API",
@@ -745,6 +863,9 @@
     "saveSettings": "保存设置"
   },
   "appPath": {
+    "modal": {
+      "desc": "未找到 {{app}} 应用程序路径，请立即设置后继续。"
+    },
     "missing": {
       "title": "未找到应用程序路径",
       "desc": "未找到 {{app}} 应用程序路径，请立即设置后继续启动。",
@@ -859,7 +980,11 @@
       "fingerprint": "指纹",
       "switch": "切换账号",
       "switchTo": "切换到此账号",
-      "selectFingerprint": "点击选择指纹"
+      "selectFingerprint": "点击选择指纹",
+      "delete": "删除",
+      "deleteSelected": "删除选中",
+      "export": "导出",
+      "refreshAll": "刷新全部"
     },
     "switchHistory": {
       "title": "切换记录",
@@ -956,7 +1081,40 @@
       "accountPickerEmpty": "没有符合条件的账号",
       "filterHint": "已勾选 {{count}} 个分组做筛选",
       "filterToggle": "勾选以筛选此分组"
-    }
+    },
+    "clearTagFilter": "清空标签",
+    "compact": {
+      "hide": "隐藏",
+      "show": "显示"
+    },
+    "deleteConfirm": {
+      "multi": "确认删除选中的 {{count}} 个账号？",
+      "single": "确认删除该账号？"
+    },
+    "deleteFailed": "删除失败：{{error}}",
+    "deleteSuccess": "删除成功",
+    "deleteTagFailed": "删除标签失败：{{error}}",
+    "exportError": "导出失败：{{error}}",
+    "exportModal": {
+      "title": "导出 JSON"
+    },
+    "importJsonFailed": "JSON 导入失败：{{error}}",
+    "importJsonHint": "导入由本工具导出的 Qoder JSON 文件。",
+    "importJsonSuccess": "JSON 导入成功",
+    "noTags": "暂无标签",
+    "privacy": {
+      "disable": "关闭隐私模式",
+      "enable": "开启隐私模式"
+    },
+    "refreshAllFailed": "批量刷新失败：{{error}}",
+    "refreshAllSuccess": "已刷新全部账号",
+    "refreshFailed": "刷新失败：{{error}}",
+    "refreshSuccess": "刷新成功",
+    "switchFailed": "切换失败：{{error}}",
+    "switchSuccess": "切换成功",
+    "switched": "已切换至 {{email}}",
+    "tagButton": "编辑标签",
+    "tagUpdated": "标签已更新"
   },
   "overview": {
     "title": "账号总览",
@@ -1459,7 +1617,9 @@
       "portInUseConfirm": "端口 {{port}} 已被占用，是否关闭占用该端口的进程？",
       "portCloseFailed": "关闭端口失败: {{error}}",
       "portStillInUse": "端口 {{port}} 仍被占用。",
-      "portInUseAction": "关闭占用端口并重试"
+      "portInUseAction": "关闭占用端口并重试",
+      "timeout": "授权超时，请点击",
+      "timeoutRetry": "刷新授权链接"
     },
     "token": {
       "desc": "粘贴 auth.json 内容或账号 JSON 数据",
@@ -1658,6 +1818,9 @@
     },
     "usage": {
       "open": "查看 OpenAI 用量",
+      "search": {
+        "placeholder": "搜索账号..."
+      },
       "hint": "API Key 额度请在 OpenAI Usage 页面查看。",
       "openFailed": "打开用量页面失败: {{error}}"
     },
@@ -1886,11 +2049,12 @@
     },
     "sessionManager": {
       "title": "会话管理",
-      "desc": "同步、可见性修复和清理统一放在这里：顶部可一键同步会话或修复历史可见性，下面按项目展开查看会话并移到废纸篓。",
+      "desc": "同步、可见性修复、清理与恢复统一放在这里：顶部可一键同步会话、修复历史可见性或从废纸篓恢复，下面按项目展开查看会话并移到废纸篓。",
       "actions": {
         "moveToTrash": "移到废纸篓",
         "syncSessions": "同步会话",
         "repairVisibility": "修复可见性",
+        "restoreSessions": "恢复会话",
         "expand": "展开",
         "collapse": "收起"
       },
@@ -1906,12 +2070,23 @@
       },
       "messages": {
         "pickOne": "请至少选择一条会话",
+        "pickRestoreOne": "请至少选择一条待恢复会话",
         "syncNeedTwo": "至少需要两个实例才能同步会话"
       },
       "groupCount": "{{count}} 条会话",
       "updatedAt": "最近更新",
       "locationRunning": "（运行中）",
-      "untitled": "未命名会话"
+      "untitled": "未命名会话",
+      "restoreModal": {
+        "title": "恢复会话",
+        "hint": "恢复会把 rollout 文件、SQLite 线程记录和 session_index 条目一起放回原实例。",
+        "emptyTitle": "废纸篓里还没有会话",
+        "emptyDesc": "已移到废纸篓的会话会显示在这里。",
+        "restoreAction": "恢复选中会话"
+      }
+    },
+    "groups": {
+      "addToGroup": "添加至分组"
     }
   },
   "codebuddy": {
@@ -1993,7 +2168,8 @@
       "expireUnknown": "到期时间：暂无",
       "packageTitle": {
         "base": "基础体验包",
-        "activity": "活动赠送包"
+        "activity": "活动赠送包",
+        "pro": "专业版订阅"
       }
     },
     "extraCredit": {
@@ -2256,6 +2432,53 @@
     "oauth": {
       "desc": "点击下方按钮，在浏览器中完成 Windsurf OAuth 授权。"
     },
+    "password": {
+      "desc": "使用 Windsurf 账号邮箱和密码登录，自动获取 API Key 与账号信息。",
+      "emailPlaceholder": "邮箱地址",
+      "passwordPlaceholder": "密码",
+      "empty": "请输入邮箱和密码",
+      "login": "登录",
+      "logging": "正在登录...",
+      "success": "登录成功：{{login}}",
+      "failed": "登录失败：{{error}}",
+      "modeLabel": "操作方式",
+      "modeSingle": "单个登录",
+      "modeBatch": "批量导入",
+      "batchDesc": "批量导入支持 JSON 或逐行文本；文本模式必须显式选择分隔符。",
+      "batchInputModeLabel": "导入格式",
+      "batchInputModeJson": "JSON 格式",
+      "batchInputModeText": "文本",
+      "batchDelimiterLabel": "分隔符",
+      "batchDelimiterTab": "制表符",
+      "batchDelimiterSpace": "空格",
+      "batchDelimiterComma": "逗号",
+      "batchDelimiterPipe": "竖线",
+      "batchDelimiterDash": "----",
+      "batchDelimiterCustom": "自定义",
+      "batchJsonDesc": "粘贴 JSON 数组，每项包含 email 和 password。",
+      "batchTextDesc": "每行一组账号，严格按当前分隔符解析。",
+      "batchExampleTitle": "格式示例（点击展开）",
+      "batchExampleJsonLabel": "JSON 示例",
+      "batchExampleTextLabel": "文本示例",
+      "batchCustomDelimiterPlaceholder": "输入自定义分隔符",
+      "batchCustomDelimiterEmpty": "请输入自定义分隔符",
+      "batchPlaceholderJson": "粘贴 JSON 数组，每项包含 email 和 password",
+      "batchPlaceholderText": "每行一组账号，使用当前分隔符填写 email 和 password",
+      "batchEmpty": "请先输入批量导入内容",
+      "batchJsonInvalid": "JSON 格式无效：{{error}}",
+      "batchJsonArrayRequired": "JSON 顶层必须是数组",
+      "batchJsonItemInvalid": "第 {{line}} 项必须包含 email 和 password 字段",
+      "batchTextLineInvalid": "第 {{line}} 行格式无效，请检查当前分隔符设置",
+      "batchImport": "批量导入",
+      "batchImporting": "正在导入 {{count}} 个账号...",
+      "batchImportingShort": "导入中...",
+      "batchSuccess": "成功导入 {{count}} 个账号",
+      "batchPartial": "成功 {{success}} 个，失败 {{failed}} 个",
+      "batchFailed": "批量导入失败，共 {{failed}} 个账号失败",
+      "batchFailureEntryWithLine": "第 {{line}} 项（{{email}}）：{{error}}",
+      "batchFailureEntry": "{{email}}：{{error}}",
+      "batchFailureMore": "还有 {{count}} 项失败"
+    },
     "token": {
       "desc": "粘贴您的 Windsurf Access Token 或导出的 JSON 数据。"
     },
@@ -2294,16 +2517,6 @@
       "inject": "一键切号：本工具读取本机 Windsurf 加密材料（DPAPI/Keychain/Secret Service），处理 state.vscdb 中的认证会话并写回 Windsurf 令牌 —— 全部在本机完成。",
       "reason": "权限需求：读取 Windsurf 认证数据库（state.vscdb），并使用系统加密能力（Windows DPAPI / macOS Keychain / Linux Secret Service）处理登录会话的解密与写回。",
       "storage": "读取范围：仅处理 Windsurf 登录会话相关数据，所有流程均在本地执行。"
-    },
-    "password": {
-      "desc": "使用 Windsurf 账号的邮箱和密码登录，自动获取 API Key 和账号信息。",
-      "emailPlaceholder": "邮箱地址",
-      "passwordPlaceholder": "密码",
-      "login": "登录",
-      "logging": "正在登录...",
-      "empty": "请输入邮箱和密码",
-      "success": "登录成功: {{login}}",
-      "failed": "登录失败: {{error}}"
     }
   },
   "kiro": {
@@ -2407,6 +2620,12 @@
   },
   "gemini": {
     "injectToGemini": "切换到 Gemini Cli",
+    "identity": {
+      "authMethod": "认证方式",
+      "tier": "套餐",
+      "signedInWithGoogle": "使用 Google 登录",
+      "signedInWithGoogleEmail": "使用 Google 登录（{{email}}）"
+    },
     "updated": {
       "label": "更新于 {{relative}}前"
     },
@@ -2418,6 +2637,20 @@
       "resetsSoon": "即将重置",
       "resetsUnknown": "重置时间未知",
       "onDemand": "按需使用"
+    },
+    "quotaTable": {
+      "model": "模型",
+      "leftOfTotal": "剩余 / 总量",
+      "usage": "已用",
+      "usageResets": "重置时间",
+      "usedPercent": "{{value}}%",
+      "remainingOfTotal": "{{remaining}} / {{total}}",
+      "resetAtWithRelative": "{{absolute}}（{{relative}}）"
+    },
+    "tierText": {
+      "pro": "Google One AI Pro 的 Gemini Code Assist",
+      "ultra": "Google AI Ultra 的 Gemini Code Assist",
+      "free": "Gemini Code Assist（免费版）"
     },
     "title": "Gemini Cli 账号管理",
     "instances": {
@@ -2829,7 +3062,12 @@
       "title": "添加 Qoder 账号"
     },
     "import": {
-      "localDesc": "从本机 Qoder 客户端读取当前登录状态（包含用户信息、套餐与 Credits 使用情况）。"
+      "localDesc": "从本机 Qoder 客户端读取当前登录状态（包含用户信息、套餐与 Credits 使用情况）。",
+      "localFailed": "本机导入失败：{{error}}",
+      "localSuccess": "已从本机 Qoder 导入账号。"
+    },
+    "empty": {
+      "desc": "点击“添加账号”，可使用授权登录、本机导入或 JSON 导入。"
     }
   },
   "zed": {
@@ -2861,7 +3099,8 @@
       "unknownStatus": "未知状态",
       "overdueField": "是否欠费",
       "overdueYes": "是",
-      "overdueNo": "否"
+      "overdueNo": "否",
+      "usageUpdatedAt": "Updated: {{time}}"
     },
     "runtime": {
       "title": "当前 Zed 会话",
@@ -2881,7 +3120,8 @@
       "complete": "完成登录",
       "startFailed": "启动 Zed 登录失败",
       "completeSuccess": "Zed 登录完成：{{account}}",
-      "importOnlySuccess": "授权成功，账号已导入；如需让官方 Zed 使用该账号，请点击“应用并重启”。"
+      "importOnlySuccess": "授权成功，账号已导入；如需让官方 Zed 使用该账号，请点击“应用并重启”。",
+      "desc": "点击下方按钮，在浏览器中完成 Zed 官方登录授权。"
     },
     "actions": {
       "addAccount": "登录 Zed",
@@ -2897,6 +3137,9 @@
       "applyAndRestart": "应用并重启",
       "reapply": "重新应用",
       "exportTitle": "导出 Zed 账号 JSON"
+    },
+    "sort": {
+      "tokenSpend": "按 Token Spend"
     }
   },
   "trae": {
@@ -2993,7 +3236,10 @@
         "other": "其他",
         "empty": "暂无配额数据"
       }
-    }
+    },
+    "syncFailed": "同步失败: {{error}}",
+    "syncSuccess": "成功同步 {{count}} 个账号到 WorkBuddy",
+    "syncToWorkbuddy": "同步到 WorkBuddy"
   },
   "workbuddy": {
     "title": "WorkBuddy 账号管理",

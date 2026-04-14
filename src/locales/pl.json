@@ -33,12 +33,16 @@
         "creditPackage": "Pakiet kredytów",
         "sharedCreditPackage": "Wspólny pakiet kredytów",
         "account": "Konto",
-        "createdAt": "Czas utworzenia"
+        "createdAt": "Czas utworzenia",
+        "userId": "ID użytkownika"
       },
       "empty": {
         "title": "Brak kont"
       },
-      "export": "Eksportuj",
+      "export": {
+        "title": "Eksportuj",
+        "copyFailed": "Kopiowanie nie powiodło się, skopiuj ręcznie"
+      },
       "filter": {
         "all": "Wszystkie ({{count}})",
         "enterprise": "PRZEDSIĘBIORSTWO (__MASKA_0__)",
@@ -128,9 +132,11 @@
       },
       "quota": {
         "noData": "Brak danych limitu",
+        "queryFailed": "Pobranie limitu nie powiodło się",
         "resetDone": "Zresetowano",
         "hourly": "Limit 5 godzin",
-        "weekly": "Limit tygodniowy"
+        "weekly": "Limit tygodniowy",
+        "resetAt": "Odnowienie: {{time}}"
       },
       "subtitle": "Zarządzaj kontami GitHub Copilot",
       "time": {
@@ -162,7 +168,10 @@
       },
       "updated": {
         "label": "Zaktualizowano {{relative}} temu"
-      }
+      },
+      "clear": "Wyczyść",
+      "loginSuccess": "Logowanie powiodło się",
+      "switchAccount": "Przełącz konto"
     },
     "topRightAd": {
       "ariaLabel": "Globalne miejsce reklamowe w prawym górnym rogu",
@@ -170,7 +179,15 @@
       "title": "Miejsce reklamowe w prawym górnym rogu",
       "desc": "Ten obszar jest przypięty w prawym górnym rogu na wszystkich stronach i nadaje się do kampanii lub reklam marki.",
       "action": "Zobacz szczegóły"
-    }
+    },
+    "appName": "Cockpit Tools",
+    "collapse": "Zwiń",
+    "confirmDelete": "Potwierdź usunięcie",
+    "confirmDeleteTag": "Potwierdź usunięcie tagu",
+    "deleteTagWarning": "Czy na pewno chcesz usunąć ten tag ze wszystkich kont?",
+    "expand": "Rozwiń",
+    "processing": "Przetwarzanie...",
+    "selectAll": "Zaznacz wszystko"
   },
   "nav": {
     "overview": "Antigravity",
@@ -293,7 +310,8 @@
       "running": "Uruchomiona",
       "stopped": "Zatrzymana",
       "restarting": "Restartowanie",
-      "starting": "Startowy"
+      "starting": "Startowy",
+      "ready": "Gotowe"
     },
     "labels": {
       "path": "Katalog",
@@ -303,7 +321,8 @@
       "unbound": "Brak powiązania",
       "pendingInit": "Oczekuje na inicjalizację (najpierw uruchom raz)",
       "quota": "Limit",
-      "lastLaunched": "Ostatnie uruchomienie"
+      "lastLaunched": "Ostatnie uruchomienie",
+      "argsPresent": "Ustawione"
     },
     "columns": {
       "instance": "Instancja",
@@ -353,7 +372,14 @@
       "extraArgsDesc": "Oddzielaj argumenty spacjami, cudzysłowy są obsługiwane",
       "nameRequired": "Proszę podać nazwę instancji",
       "pathRequired": "Proszę wybrać katalog instancji",
-      "bindRequired": "Proszę wybrać konto do powiązania"
+      "bindRequired": "Proszę wybrać konto do powiązania",
+      "optional": "Opcjonalne",
+      "launchMode": "Tryb uruchamiania",
+      "launchModeApp": "Aplikacja",
+      "launchModeCli": "Tryb CLI",
+      "workingDir": "Katalog roboczy",
+      "workingDirPlaceholder": "Domyślnie bieżąca ścieżka",
+      "workingDirDesc": "Przy starcie najpierw przełączy się do tego katalogu"
     },
     "quota": {
       "unbound": "Konto niepowiązane",
@@ -373,7 +399,8 @@
       "closedAll": "Wszystkie instancje zostały zatrzymane",
       "allAlreadyRunning": "Wszystkie instancje są już uruchomione",
       "noneRunning": "Nie znaleziono uruchomionych instancji",
-      "syncThreadsNeedTwo": "Do synchronizacji wątków wymagane są co najmniej dwie instancje"
+      "syncThreadsNeedTwo": "Do synchronizacji wątków wymagane są co najmniej dwie instancje",
+      "launchPrepared": "Polecenie uruchomienia jest gotowe"
     },
     "runningDialog": {
       "title": "Instancja jest już uruchomiona",
@@ -436,6 +463,13 @@
       "bindHint": "Konto możesz powiązać później z listy instancji",
       "pathRequired": "Najpierw wybierz katalog",
       "submit": "Importuj"
+    },
+    "launchDialog": {
+      "title": "Uruchom instancję",
+      "terminal": "Okno terminala",
+      "command": "Polecenie uruchomienia",
+      "hint": "Skopiuj polecenie i uruchom je ręcznie albo wykonaj je bezpośrednio w terminalu.",
+      "runInTerminal": "Uruchom w terminalu"
     }
   },
   "settings": {
@@ -616,7 +650,23 @@
       "autoSwitchAccountScopeAllHint": "Aktualny zakres obejmuje wszystkie konta. {{total}} kont weźmie udział w automatycznym przełączaniu.",
       "codexAutoSwitchAccountScope": "Zakres automatycznego przełączania kont Codex",
       "codexAutoSwitchAccountScopeDesc": "Aktualny stan automatycznego przełączania Codex: {{status}}. Uwzględniane będą tylko konta z tego zakresu.",
-      "currentAccountRefreshRequiresAutoRefresh": "Aby skonfigurować odświeżanie bieżącego konta, najpierw włącz „Automatyczne odświeżanie limitu”."
+      "currentAccountRefreshRequiresAutoRefresh": "Aby skonfigurować odświeżanie bieżącego konta, najpierw włącz „Automatyczne odświeżanie limitu”.",
+      "codebuddyCnAppPath": "Ścieżka aplikacji CodeBuddy CN",
+      "codebuddyCnAppPathDesc": "Pozostaw puste, aby użyć domyślnej ścieżki",
+      "codebuddyCnAppPathPlaceholder": "Domyślna ścieżka",
+      "codebuddyCnAutoRefresh": "Automatyczne odświeżanie limitu CodeBuddy CN",
+      "codebuddyCnAutoRefreshDesc": "Częstotliwość automatycznego odświeżania w tle",
+      "codebuddyCnPathReset": "Przywróć domyślne",
+      "codebuddyCnPathSelect": "Wybierz",
+      "codebuddyCnSettingsTitle": "Ustawienia CodeBuddy CN",
+      "qoderAppPath": "Ścieżka aplikacji Qoder",
+      "qoderAppPathDesc": "Pozostaw puste, aby użyć domyślnej ścieżki",
+      "qoderAppPathPlaceholder": "Domyślna ścieżka",
+      "qoderAutoRefresh": "Automatyczne odświeżanie limitu Qoder",
+      "qoderAutoRefreshDesc": "Częstotliwość automatycznego odświeżania w tle",
+      "qoderPathSelect": "Wybierz",
+      "workbuddyAutoRefresh": "Automatyczne odświeżanie limitu WorkBuddy",
+      "workbuddyAutoRefreshDesc": "Częstotliwość automatycznego odświeżania w tle"
     },
     "network": {
       "apiTitle": "API kokpitu antygrawitacyjnego",
@@ -677,7 +727,93 @@
       "download": "Pobierz",
       "checkFailed": "Błąd sprawdzania aktualizacji"
     },
-    "saveSettings": "Zapisz ustawienia"
+    "saveSettings": "Zapisz ustawienia",
+    "transfer": {
+      "backup": {
+        "title": "Menedżer kopii zapasowych",
+        "desc": "Zarządzaj zaplanowanymi kopiami, folderem kopii i listą plików w jednym miejscu.",
+        "modalDesc": "Skonfiguruj automatyczne kopie, przeglądaj pliki zapisane w folderze kopii projektu i przywracaj je lub czyść tutaj.",
+        "statusEnabled": "Automatyczna kopia jest włączona",
+        "statusDisabled": "Automatyczna kopia jest wyłączona",
+        "lastRunLabel": "Ostatnia kopia: {{time}}",
+        "lastRunNever": "Brak kopii zapasowych",
+        "autoTitle": "Zaplanowana kopia",
+        "autoDesc": "Po włączeniu jedna kopia jest eksportowana każdego dnia i można ją przywrócić przez bieżący import.",
+        "runNow": "Utwórz kopię teraz",
+        "running": "Tworzenie kopii...",
+        "typeTitle": "Typ kopii",
+        "typeDesc": "Wybierz zakres danych dla automatycznej kopii.",
+        "typeFull": "Pełne dane",
+        "typeAccounts": "Tylko konta",
+        "typeConfig": "Tylko ustawienia",
+        "retentionTitle": "Przechowywanie",
+        "retentionDesc": "Starsze kopie zostaną usunięte podczas następnego sprawdzenia.",
+        "retentionUnit": "dni",
+        "directoryTitle": "Folder kopii",
+        "directoryDesc": "Kopie są zawsze zapisywane w folderze backups projektu.",
+        "openFolder": "Otwórz folder",
+        "listTitle": "Lista kopii",
+        "listDesc": "Zaimportuj kopię bezpośrednio lub usuń stare pliki.",
+        "openList": "Otwórz listę",
+        "emptyTitle": "Brak kopii zapasowych",
+        "emptyDesc": "Włącz automatyczne kopie lub kliknij „Utwórz kopię teraz”, aby utworzyć tutaj przywracalne kopie JSON.",
+        "sourceAuto": "Auto.",
+        "sourceManual": "Ręcznie",
+        "fileTime": "Czas: {{time}}",
+        "fileSize": "Rozmiar: {{size}}",
+        "importAction": "Importuj",
+        "deleteAction": "Usuń",
+        "deleteConfirm": "Usunąć kopię {{name}}?",
+        "feedback": {
+          "running": "Tworzenie kopii zapasowej...",
+          "runSuccess": "Kopia została zapisana w {{path}}",
+          "runSuccessWithCleanup": "Kopia została zapisana w {{path}} i wyczyszczono {{count}} wygasłych kopii",
+          "runFailed": "Tworzenie kopii nie powiodło się: {{error}}",
+          "deleteSuccess": "Kopia została usunięta",
+          "deleteFailed": "Nie udało się usunąć kopii: {{error}}",
+          "loadFailed": "Nie udało się wczytać listy kopii: {{error}}",
+          "saveSettingsFailed": "Nie udało się zapisać ustawień kopii: {{error}}",
+          "cleanupDone": "Wyczyszczono {{count}} wygasłych kopii",
+          "cleanupFailed": "Nie udało się wyczyścić wygasłych kopii: {{error}}",
+          "openFolderFailed": "Nie udało się otworzyć folderu kopii: {{error}}"
+        },
+        "errors": {
+          "invalidRetention": "Czas przechowywania musi wynosić od 1 do 365 dni"
+        }
+      },
+      "exportTitle": "Eksport danych",
+      "exportDesc": "Eksportuj dane kont, dane konfiguracji lub pełny pakiet migracyjny w zależności od potrzeb.",
+      "importTitle": "Import danych",
+      "importDesc": "Importuj kopie zapasowe kont, kopie konfiguracji lub ujednolicony pakiet danych.",
+      "exportModalDesc": "Wybierz, co chcesz wyeksportować. Zaznacz konta i konfigurację, aby utworzyć pełny pakiet migracyjny.",
+      "importModalDesc": "Wybierz, co chcesz zaimportować. Starsze kopie kont są obsługiwane jako import tylko danych kont.",
+      "selectionTitle": "Zakres danych",
+      "accountsOptionTitle": "Dane kont",
+      "accountsOptionDesc": "Zawiera kopie zapasowe kont platform i zachowuje zgodność ze starszym JSON-em kont.",
+      "configOptionTitle": "Dane konfiguracji",
+      "configOptionDesc": "Zawiera ustawienia aplikacji, grupy, instancje, zadania wakeup i konfigurację dostawców modeli.",
+      "exportConfirm": "Eksportuj dane",
+      "fromFileTitle": "Import z pliku",
+      "fromFileDesc": "Wybierz plik JSON do importu. Starsze kopie kont też są tu obsługiwane.",
+      "jsonPlaceholder": "Wklej pakiet danych lub starszy JSON kont",
+      "feedback": {
+        "accountsImported": "Zaimportowano {{count}} kont",
+        "configImported": "Przywrócono dane konfiguracji",
+        "accountsSectionMissing": "Ta kopia zapasowa nie zawiera danych kont",
+        "configSectionMissing": "Ta kopia zapasowa nie zawiera danych konfiguracji, więc przywrócono tylko dane kont",
+        "unresolvedRefs": "Nie udało się dopasować {{count}} powiązań kont i zostały pominięte",
+        "disabledTasks": "Wyłączono {{count}} zadań, ponieważ nie udało się dopasować konta",
+        "restartRequired": "Przywrócono ustawienia usługi sieciowej. Część zmian zacznie działać po ponownym uruchomieniu",
+        "partialAccountFailure": "Import części kont nie powiódł się: {{error}}"
+      },
+      "errors": {
+        "selectionRequired": "Wybierz co najmniej jeden typ danych",
+        "accountsOnlyFile": "Ta kopia zawiera tylko dane kont. Wybierz \"Dane kont\", aby ją zaimportować",
+        "selectedSectionsMissing": "Wybrany typ danych nie występuje w tej kopii",
+        "unsupportedLegacyFile": "Ten starszy format kopii kont nie jest rozpoznawany",
+        "unsupportedVersion": "Ta wersja aplikacji nie obsługuje tej wersji pakietu"
+      }
+    }
   },
   "appPath": {
     "missing": {
@@ -685,6 +821,9 @@
       "desc": "Nie udało się znaleźć ścieżki aplikacji {{app}}. Ustaw ją teraz, aby kontynuować.",
       "action": "Ustaw teraz",
       "codexLaunchHint": "Po wyłączeniu przełączanie konta i nadpisanie logowania nadal będą działać, ale aplikacja Codex nie będzie już uruchamiana i ten monit o ścieżkę nie pojawi się ponownie."
+    },
+    "modal": {
+      "desc": "Nie znaleziono ścieżki aplikacji {{app}}. Skonfiguruj ją teraz, aby kontynuować."
     }
   },
   "accounts": {
@@ -794,7 +933,11 @@
       "fingerprint": "Odcisk",
       "switch": "Przełącz konto",
       "switchTo": "Przełącz na to konto",
-      "selectFingerprint": "Wybierz odcisk"
+      "selectFingerprint": "Wybierz odcisk",
+      "delete": "Usuń",
+      "deleteSelected": "Usuń zaznaczone",
+      "export": "Eksportuj",
+      "refreshAll": "Odśwież wszystko"
     },
     "tabs": {
       "oauth": "Autoryzacja OAuth",
@@ -891,7 +1034,40 @@
       "clearConfirm": "Wyczyścić całą historię przełączeń?",
       "loadFailed": "Nie udało się wczytać historii przełączeń: {{error}}",
       "clearFailed": "Nie udało się wyczyścić historii przełączeń: {{error}}"
-    }
+    },
+    "clearTagFilter": "Wyczyść filtr tagu",
+    "compact": {
+      "hide": "Ukryj",
+      "show": "Pokaż"
+    },
+    "deleteConfirm": {
+      "multi": "Usunąć {{count}} wybranych kont?",
+      "single": "Usunąć to konto?"
+    },
+    "deleteFailed": "Usunięcie nie powiodło się: {{error}}",
+    "deleteSuccess": "Usunięto pomyślnie",
+    "deleteTagFailed": "Usunięcie tagu nie powiodło się: {{error}}",
+    "exportError": "Eksport nie powiódł się: {{error}}",
+    "exportModal": {
+      "title": "Eksportuj JSON"
+    },
+    "importJsonFailed": "Import JSON nie powiódł się: {{error}}",
+    "importJsonHint": "Importuj plik Qoder JSON wyeksportowany z tego narzędzia.",
+    "importJsonSuccess": "Import JSON zakończony sukcesem",
+    "noTags": "Brak tagów",
+    "privacy": {
+      "disable": "Wyłącz tryb prywatności",
+      "enable": "Włącz tryb prywatności"
+    },
+    "refreshAllFailed": "Masowe odświeżanie nie powiodło się: {{error}}",
+    "refreshAllSuccess": "Wszystkie konta odświeżone",
+    "refreshFailed": "Odświeżanie nie powiodło się: {{error}}",
+    "refreshSuccess": "Odświeżono pomyślnie",
+    "switchFailed": "Przełączanie nie powiodło się: {{error}}",
+    "switchSuccess": "Przełączono pomyślnie",
+    "switched": "Przełączono na {{email}}",
+    "tagButton": "Edytuj tagi",
+    "tagUpdated": "Tag zaktualizowany"
   },
   "overview": {
     "title": "Przegląd kont",
@@ -1391,7 +1567,9 @@
       "portInUseConfirm": "Port {{port}} jest zajęty. Zamknąć proces używający tego portu?",
       "portCloseFailed": "Nie udało się zamknąć portu: {{error}}",
       "portStillInUse": "Port {{port}} nadal jest zajęty.",
-      "portInUseAction": "Zamknij port i spróbuj ponownie"
+      "portInUseAction": "Zamknij port i spróbuj ponownie",
+      "timeout": "Uwierzytelnianie przekroczyło limit czasu. Kliknij",
+      "timeoutRetry": "Odśwież link uwierzytelniania"
     },
     "token": {
       "desc": "Wklej zawartość auth.json lub dane JSON konta",
@@ -1463,7 +1641,10 @@
     "usage": {
       "open": "Otwórz użycie OpenAI",
       "hint": "Limit API Key sprawdzisz na stronie OpenAI Usage.",
-      "openFailed": "Nie udało się otworzyć strony użycia: {{error}}"
+      "openFailed": "Nie udało się otworzyć strony użycia: {{error}}",
+      "search": {
+        "placeholder": "Szukaj kont..."
+      }
     },
     "wakeup": {
       "tab": "Zadania wybudzania",
@@ -1650,7 +1831,8 @@
         "syncSessions": "Synchronizuj sesje",
         "expand": "Rozwiń",
         "collapse": "Zwiń",
-        "repairVisibility": "Napraw widoczność"
+        "repairVisibility": "Napraw widoczność",
+        "restoreSessions": "Przywróć sesje"
       },
       "confirm": {
         "title": "Przenieś do kosza",
@@ -1664,12 +1846,20 @@
       },
       "messages": {
         "pickOne": "Wybierz co najmniej jedną sesję",
-        "syncNeedTwo": "Do synchronizacji sesji wymagane są co najmniej dwie instancje"
+        "syncNeedTwo": "Do synchronizacji sesji wymagane są co najmniej dwie instancje",
+        "pickRestoreOne": "Wybierz co najmniej jedną sesję do przywrócenia"
       },
       "groupCount": "{{count}} sesji",
       "updatedAt": "Zaktualizowano",
       "locationRunning": " (uruchomiona)",
-      "untitled": "Sesja bez tytułu"
+      "untitled": "Sesja bez tytułu",
+      "restoreModal": {
+        "title": "Przywróć sesje",
+        "hint": "Przywrócenie umieszcza plik rollout, wiersz wątku SQLite i wpis session_index z powrotem razem w oryginalnej instancji.",
+        "emptyTitle": "Kosz jest pusty",
+        "emptyDesc": "Sesje przeniesione do kosza pojawią się tutaj.",
+        "restoreAction": "Przywróć wybrane sesje"
+      }
     },
     "api": {
       "baseUrl": "Bazowy URL",
@@ -1795,7 +1985,41 @@
       "selectSavedApiKey": "Zapisane klucze API",
       "noSavedProviders": "Nie ma jeszcze zapisanych dostawców. Możesz uzupełnić pola bezpośrednio, a wpis zostanie zapisany automatycznie.",
       "newProviderName": "Nazwa dostawcy (opcjonalnie, używana do automatycznego zapisu)",
-      "newProviderNamePlaceholder": "Jeśli pole jest puste, nazwa hosta zostanie użyta automatycznie"
+      "newProviderNamePlaceholder": "Jeśli pole jest puste, nazwa hosta zostanie użyta automatycznie",
+      "preview": {
+        "title": "Podgląd zapisu",
+        "desc": "Zapisanie dostawcy najpierw aktualizuje magazyn dostawców. Bieżąca oficjalna konfiguracja Codex nie przełącza się od razu.",
+        "writeNow": "Zostanie zapisane",
+        "noImmediateChange": "Bez natychmiastowej zmiany",
+        "providerStoreTitle": "Magazyn dostawców",
+        "providerStoreDesc": "Zapisuje nazwę dostawcy, Base URL, linki do strony/API Key oraz każdy nowy API Key dodany w tym oknie.",
+        "codexConfigTitle": "Bieżąca konfiguracja Codex",
+        "codexConfigDesc": "Bieżący provider ani Base URL nie zmienią się od razu. Ten plik aktualizuje się dopiero przy zapisie lub przełączeniu konta Codex API key.",
+        "authFileTitle": "Bieżące dane logowania Codex",
+        "authFileDesc": "Zapisanie dostawcy nie nadpisuje bieżącego OPENAI_API_KEY w auth.json."
+      },
+      "quickConfig": {
+        "title": "Bieżąca konfiguracja Codex",
+        "desc": "Te szybkie ustawienia zapisują bezpośrednio do aktywnego ~/.codex/config.toml i nie zmieniają magazynu dostawców modeli.",
+        "configPath": "Plik konfiguracyjny",
+        "openConfig": "Otwórz plik",
+        "loadFailed": "Nie udało się wczytać bieżącej konfiguracji Codex: {{error}}",
+        "openFailed": "Nie udało się otworzyć config.toml: {{error}}",
+        "saveSuccess": "Bieżąca konfiguracja Codex została zapisana.",
+        "saveFailed": "Nie udało się zapisać bieżącej konfiguracji Codex: {{error}}",
+        "contextWindow1m": "Okno kontekstu 1M",
+        "contextWindow1mHint": "Po włączeniu zapisuje model_context_window = 1000000 i wspólnie zarządza limitem auto-compact.",
+        "autoCompactLimit": "Limit auto-compact",
+        "autoCompactLimitHint": "Zapisuje model_auto_compact_token_limit. Wyłączenie przełącznika 1M usuwa też to pole.",
+        "preview": "Podgląd zapisu",
+        "previewApply": "Zostanie zapisane",
+        "previewRemove": "Zostanie usunięte",
+        "customDetected": "W config.toml wykryto niestandardowe model_context_window = {{context}}. Zapis nadpisze je szybkim ustawieniem poniżej.",
+        "compactMissingDetected": "Kontekst 1M jest już włączony, ale brakuje limitu auto-compact. Zapisze się domyślna wartość {{limit}}.",
+        "validation": {
+          "autoCompactInvalid": "Limit auto-compact musi być liczbą całkowitą większą od 0."
+        }
+      }
     },
     "quickSwitch": {
       "action": "Szybka zmiana dostawcy",
@@ -1813,6 +2037,9 @@
         "providerRequired": "Wybierz dostawcę.",
         "apiKeyRequired": "Wybierz klucz API."
       }
+    },
+    "groups": {
+      "addToGroup": "Dodaj do grupy"
     }
   },
   "githubCopilot": {
@@ -2053,7 +2280,54 @@
     },
     "addModal": {
       "title": "Dodaj konto Windsurf",
-      "password": "E-mail i hasło"
+      "password": "Logowanie e-mailem"
+    },
+    "password": {
+      "desc": "Zaloguj się adresem e-mail i hasłem konta Windsurf, aby automatycznie pobrać klucz API i dane konta.",
+      "emailPlaceholder": "Adres e-mail",
+      "passwordPlaceholder": "Hasło",
+      "empty": "Wpisz e-mail i hasło",
+      "login": "Zaloguj",
+      "logging": "Logowanie...",
+      "success": "Zalogowano: {{login}}",
+      "failed": "Logowanie nie powiodło się: {{error}}",
+      "modeLabel": "Tryb",
+      "modeSingle": "Pojedynczo",
+      "modeBatch": "Wsadowo",
+      "batchDesc": "Import wsadowy obsługuje JSON lub tekst z jednym kontem w wierszu. Tryb tekstowy wymaga jawnego separatora.",
+      "batchInputModeLabel": "Format wejścia",
+      "batchInputModeJson": "Format JSON",
+      "batchInputModeText": "Tekst",
+      "batchDelimiterLabel": "Separator",
+      "batchDelimiterTab": "Tabulator",
+      "batchDelimiterSpace": "Spacja",
+      "batchDelimiterComma": "Przecinek",
+      "batchDelimiterPipe": "Pionowa kreska",
+      "batchDelimiterDash": "----",
+      "batchDelimiterCustom": "Własny",
+      "batchJsonDesc": "Wklej tablicę JSON, w której każdy element zawiera email i password.",
+      "batchTextDesc": "Wpisz jedno konto w wierszu; parsowanie będzie ściśle zgodne z wybranym separatorem.",
+      "batchExampleTitle": "Przykład formatu (kliknij, aby rozwinąć)",
+      "batchExampleJsonLabel": "Przykład JSON",
+      "batchExampleTextLabel": "Przykład tekstu",
+      "batchCustomDelimiterPlaceholder": "Wpisz własny separator",
+      "batchCustomDelimiterEmpty": "Wpisz własny separator",
+      "batchPlaceholderJson": "Wklej tablicę JSON z email i password",
+      "batchPlaceholderText": "Jedno konto w wierszu z użyciem wybranego separatora",
+      "batchEmpty": "Najpierw wpisz zawartość importu wsadowego",
+      "batchJsonInvalid": "Nieprawidłowy JSON: {{error}}",
+      "batchJsonArrayRequired": "Główny element JSON musi być tablicą",
+      "batchJsonItemInvalid": "Element {{line}} musi zawierać pola email i password",
+      "batchTextLineInvalid": "Wiersz {{line}} jest nieprawidłowy. Sprawdź wybrany separator.",
+      "batchImport": "Import wsadowy",
+      "batchImporting": "Importowanie {{count}} kont...",
+      "batchImportingShort": "Importowanie...",
+      "batchSuccess": "Zaimportowano {{count}} kont",
+      "batchPartial": "Sukces {{success}}, błędy {{failed}}",
+      "batchFailed": "Import wsadowy nie powiódł się dla {{failed}} kont",
+      "batchFailureEntryWithLine": "Element {{line}} ({{email}}): {{error}}",
+      "batchFailureEntry": "{{email}}: {{error}}",
+      "batchFailureMore": "{{count}} kolejnych nie powiodło się"
     },
     "oauth": {
       "desc": "Kliknij poniżej i dokończ autoryzację Windsurf w przeglądarce."
@@ -2096,16 +2370,6 @@
       "inject": "Przełączanie jednym kliknięciem: to narzędzie odczytuje lokalny materiał szyfrujący Windsurf (DPAPI/Keychain/Secret Service), odszyfrowuje sesję uwierzytelniania w state.vscdb, podmienia token Windsurf i ponownie szyfruje dane — wszystko lokalnie na Twoim urządzeniu.",
       "reason": "Zakres uprawnień: odczyt bazy uwierzytelniania Windsurf (state.vscdb) oraz użycie szyfrowania systemowego (Windows DPAPI / macOS Keychain / Linux Secret Service) do odszyfrowania i ponownego zapisu.",
       "storage": "Zakres odczytu: przetwarzane są tylko dane związane z sesją logowania Windsurf; wszystkie procesy są wykonywane lokalnie."
-    },
-    "password": {
-      "desc": "Zaloguj się adresem e-mail i hasłem konta Windsurf, aby automatycznie pobrać klucz API i informacje o koncie.",
-      "emailPlaceholder": "Adres e-mail",
-      "passwordPlaceholder": "Hasło",
-      "login": "Zaloguj się",
-      "logging": "Logowanie...",
-      "empty": "Wprowadź e-mail i hasło",
-      "success": "Logowanie udane: {{login}}",
-      "failed": "Logowanie nieudane: {{error}}"
     }
   },
   "kiro": {
@@ -2595,6 +2859,26 @@
       "saved": "Projekt zapisany: {{projectId}}",
       "cleared": "Przywrócono automatyczne wykrywanie projektu",
       "savedWithRefreshError": "Projekt zapisany, ale odświeżanie limitu nie powiodło się: {{error}}"
+    },
+    "identity": {
+      "authMethod": "Metoda uwierzytelniania",
+      "tier": "Plan",
+      "signedInWithGoogle": "Zalogowano przez Google",
+      "signedInWithGoogleEmail": "Zalogowano przez Google ({{email}})"
+    },
+    "quotaTable": {
+      "model": "Nazwa modelu",
+      "leftOfTotal": "Pozostało / Razem",
+      "usage": "Zużyto",
+      "usageResets": "Reset użycia",
+      "usedPercent": "{{value}}%",
+      "remainingOfTotal": "{{remaining}} / {{total}}",
+      "resetAtWithRelative": "{{absolute}} ({{relative}})"
+    },
+    "tierText": {
+      "pro": "Gemini Code Assist w Google One AI Pro",
+      "ultra": "Gemini Code Assist w Google AI Ultra",
+      "free": "Bezpłatny Gemini Code Assist"
     }
   },
   "codebuddy": {
@@ -2662,7 +2946,8 @@
       "expireUnknown": "Wygasa: brak danych",
       "packageTitle": {
         "base": "Podstawowy pakiet doświadczenia",
-        "activity": "Pakiet prezentowy z wydarzeń"
+        "activity": "Pakiet prezentowy z wydarzeń",
+        "pro": "Subskrypcja Pro"
       }
     },
     "extraCredit": {
@@ -2730,7 +3015,12 @@
       "title": "Dodaj konto Qoder"
     },
     "import": {
-      "localDesc": "Odczytuje bieżący stan logowania z lokalnego klienta Qoder, w tym informacje o użytkowniku, planie i wykorzystaniu kredytów."
+      "localDesc": "Odczytuje bieżący stan logowania z lokalnego klienta Qoder, w tym informacje o użytkowniku, planie i wykorzystaniu kredytów.",
+      "localFailed": "Import lokalny nie powiódł się: {{error}}",
+      "localSuccess": "Konto zostało zaimportowane z lokalnego Qodera."
+    },
+    "empty": {
+      "desc": "Kliknij Dodaj konto, aby użyć logowania auth, importu lokalnego lub importu JSON."
     }
   },
   "trae": {
@@ -2827,7 +3117,10 @@
         "other": "Inne",
         "empty": "Brak danych limitu"
       }
-    }
+    },
+    "syncFailed": "Synchronizacja nie powiodła się: {{error}}",
+    "syncSuccess": "{{count}} kont(a) zsynchronizowanych z WorkBuddy",
+    "syncToWorkbuddy": "Synchronizuj z WorkBuddy"
   },
   "workbuddy": {
     "title": "Zarządzanie kontami WorkBuddy",
@@ -2962,7 +3255,8 @@
       "unknownStatus": "Nieznany stan",
       "overdueField": "Zaległe faktury",
       "overdueYes": "Tak",
-      "overdueNo": "Nie"
+      "overdueNo": "Nie",
+      "usageUpdatedAt": "Zaktualizowano: {{time}}"
     },
     "runtime": {
       "title": "Bieżąca sesja Zed",
@@ -2982,7 +3276,8 @@
       "complete": "Zakończ logowanie",
       "startFailed": "Nie udało się rozpocząć logowania do Zed",
       "completeSuccess": "Logowanie do Zed zakończone: {{account}}",
-      "importOnlySuccess": "Autoryzacja zakończyła się powodzeniem. Konto zostało zaimportowane. Aby oficjalny Zed używał tego konta, kliknij „Zastosuj i uruchom ponownie”."
+      "importOnlySuccess": "Autoryzacja zakończyła się powodzeniem. Konto zostało zaimportowane. Aby oficjalny Zed używał tego konta, kliknij „Zastosuj i uruchom ponownie”.",
+      "desc": "Kliknij przycisk poniżej, aby ukończyć oficjalne uwierzytelnianie logowania Zed w przeglądarce."
     },
     "actions": {
       "addAccount": "Zaloguj do Zed",
@@ -2998,6 +3293,9 @@
       "applyAndRestart": "Zastosuj i uruchom ponownie",
       "reapply": "Zastosuj ponownie",
       "exportTitle": "Eksportuj konta Zed do JSON"
+    },
+    "sort": {
+      "tokenSpend": "Sortuj według wydanych tokenów"
     }
   },
   "floatingCard": {

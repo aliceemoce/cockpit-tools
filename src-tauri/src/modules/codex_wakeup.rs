@@ -1922,7 +1922,31 @@ async fn run_single_account(
         );
     };
 
-    let account = match codex_account::prepare_account_for_injection(account_id).await {
+    let managed_home = match managed_home_path(account_id) {
+        Ok(path) => path,
+        Err(err) => {
+            return create_failure_record(
+                run_id,
+                &context.trigger_type,
+                context.task_id.as_deref(),
+                context.task_name.as_deref(),
+                account_id,
+                existing.email,
+                existing_context_text,
+                prompt_value,
+                execution_config,
+                err,
+                Some(binary.path.display().to_string()),
+            );
+        }
+    };
+
+    let account = match codex_account::prepare_account_for_injection_from_auth_dir(
+        account_id,
+        Some(&managed_home),
+    )
+    .await
+    {
         Ok(account) => account,
         Err(err) => {
             return create_failure_record(
@@ -1938,27 +1962,6 @@ async fn run_single_account(
                 err,
                 binary_path,
             )
-        }
-    };
-
-    let managed_home = match managed_home_path(&account.id) {
-        Ok(path) => path,
-        Err(err) => {
-            let account_context_text = resolve_account_context_text(&account);
-            let account_email = account.email;
-            return create_failure_record(
-                run_id,
-                &context.trigger_type,
-                context.task_id.as_deref(),
-                context.task_name.as_deref(),
-                account_id,
-                account_email,
-                account_context_text,
-                prompt_value,
-                execution_config,
-                err,
-                Some(binary.path.display().to_string()),
-            );
         }
     };
 
@@ -2000,6 +2003,14 @@ async fn run_single_account(
 
     let command_result =
         run_codex_exec_sync(binary, &managed_home, prompt, execution_config, cancel_flag);
+    if let Err(err) = codex_account::sync_account_from_auth_dir(account_id, &managed_home) {
+        logger::log_warn(&format!(
+            "Codex 唤醒执行后同步受管目录 Token 失败: account_id={}, managed_home={}, error={}",
+            account_id,
+            managed_home.display(),
+            err
+        ));
+    }
 
     match command_result {
         Ok(output) => {

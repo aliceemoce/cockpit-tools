@@ -40,12 +40,16 @@
         "creditPackage": "Paket Kredit",
         "sharedCreditPackage": "Paket Kredit Bersama",
         "account": "Akun",
-        "createdAt": "Waktu Dibuat"
+        "createdAt": "Waktu Dibuat",
+        "userId": "ID Pengguna"
       },
       "empty": {
         "title": "Belum Ada Akun"
       },
-      "export": "Ekspor",
+      "export": {
+        "title": "Ekspor",
+        "copyFailed": "Gagal menyalin, silakan salin secara manual"
+      },
       "filter": {
         "all": "Semua ({{count}})",
         "enterprise": "ENTERPRISE ({{count}})",
@@ -135,9 +139,11 @@
       },
       "quota": {
         "noData": "Tidak ada data kuota",
+        "queryFailed": "Kueri kuota gagal",
         "resetDone": "Direset",
         "hourly": "Saran Inline",
-        "weekly": "Pesan obrolan"
+        "weekly": "Pesan obrolan",
+        "resetAt": "Atur ulang: {{time}}"
       },
       "subtitle": "Pantau status kuota seluruh akun secara real-time.",
       "time": {
@@ -169,8 +175,19 @@
       },
       "updated": {
         "label": "Diperbarui {{relative}} yang lalu"
-      }
-    }
+      },
+      "clear": "Hapus",
+      "loginSuccess": "Login berhasil",
+      "switchAccount": "Ganti Akun"
+    },
+    "appName": "Cockpit Tools",
+    "collapse": "Ciutkan",
+    "confirmDelete": "Konfirmasi Hapus",
+    "confirmDeleteTag": "Konfirmasi Hapus Tag",
+    "deleteTagWarning": "Apakah Anda yakin ingin menghapus tag ini dari semua akun?",
+    "expand": "Perluas",
+    "processing": "Memproses...",
+    "selectAll": "Pilih Semua"
   },
   "floatingCard": {
     "selectPlatform": "Ganti platform",
@@ -351,7 +368,8 @@
       "running": "Berjalan",
       "stopped": "Berhenti",
       "restarting": "Memulai Ulang",
-      "starting": "Memulai"
+      "starting": "Memulai",
+      "ready": "Siap"
     },
     "labels": {
       "path": "Direktori",
@@ -361,7 +379,8 @@
       "unbound": "Belum Ditautkan",
       "pendingInit": "Menunggu inisialisasi (jalankan sekali)",
       "quota": "Kuota",
-      "lastLaunched": "Terakhir Diluncurkan"
+      "lastLaunched": "Terakhir Diluncurkan",
+      "argsPresent": "Arg aktif"
     },
     "columns": {
       "instance": "Instansi",
@@ -411,7 +430,14 @@
       "extraArgsDesc": "Pisahkan argumen dengan spasi, tanda kutip didukung",
       "nameRequired": "Silakan masukkan nama instansi",
       "pathRequired": "Silakan pilih direktori instansi",
-      "bindRequired": "Silakan pilih akun untuk ditautkan"
+      "bindRequired": "Silakan pilih akun untuk ditautkan",
+      "optional": "Opsional",
+      "launchMode": "Mode peluncuran",
+      "launchModeApp": "Aplikasi desktop",
+      "launchModeCli": "Mode CLI",
+      "workingDir": "Direktori kerja",
+      "workingDirPlaceholder": "Default ke path saat ini",
+      "workingDirDesc": "Saat startup, akan pindah ke direktori ini terlebih dulu"
     },
     "quota": {
       "unbound": "Tidak ada akun tertaut",
@@ -431,7 +457,8 @@
       "closedAll": "Semua instansi telah ditutup",
       "allAlreadyRunning": "Semua instansi sudah berjalan",
       "noneRunning": "Tidak ditemukan instansi yang sedang berjalan",
-      "syncThreadsNeedTwo": "Diperlukan setidaknya dua instansi untuk menyinkronkan thread"
+      "syncThreadsNeedTwo": "Diperlukan setidaknya dua instansi untuk menyinkronkan thread",
+      "launchPrepared": "Perintah peluncuran siap"
     },
     "runningDialog": {
       "title": "Instansi sudah berjalan",
@@ -482,6 +509,13 @@
     "delete": {
       "title": "Hapus Instansi",
       "message": "Hapus instansi {{name}}? Tindakan ini akan menghapus konfigurasi dan folder instansi."
+    },
+    "launchDialog": {
+      "title": "Luncurkan instans",
+      "terminal": "Jendela terminal",
+      "command": "Perintah peluncuran",
+      "hint": "Salin perintah lalu jalankan secara manual, atau eksekusi langsung di terminal.",
+      "runInTerminal": "Jalankan di terminal"
     }
   },
   "settings": {
@@ -662,7 +696,23 @@
       "defaultTerminal": "Terminal default",
       "defaultTerminalDesc": "Terminal yang digunakan saat membuka Gemini CLI.",
       "terminalSystem": "Ikuti sistem",
-      "currentAccountRefreshRequiresAutoRefresh": "Aktifkan terlebih dahulu \"Penyegaran Kuota Otomatis\" untuk mengatur penyegaran akun saat ini."
+      "currentAccountRefreshRequiresAutoRefresh": "Aktifkan terlebih dahulu \"Penyegaran Kuota Otomatis\" untuk mengatur penyegaran akun saat ini.",
+      "codebuddyCnAppPath": "Path Aplikasi CodeBuddy CN",
+      "codebuddyCnAppPathDesc": "Kosongkan untuk menggunakan path default",
+      "codebuddyCnAppPathPlaceholder": "Path default",
+      "codebuddyCnAutoRefresh": "Auto Refresh Kuota CodeBuddy CN",
+      "codebuddyCnAutoRefreshDesc": "Frekuensi auto-refresh di latar belakang",
+      "codebuddyCnPathReset": "Reset ke Default",
+      "codebuddyCnPathSelect": "Pilih",
+      "codebuddyCnSettingsTitle": "Pengaturan CodeBuddy CN",
+      "qoderAppPath": "Path Aplikasi Qoder",
+      "qoderAppPathDesc": "Kosongkan untuk menggunakan path default",
+      "qoderAppPathPlaceholder": "Path default",
+      "qoderAutoRefresh": "Auto Refresh Kuota Qoder",
+      "qoderAutoRefreshDesc": "Frekuensi auto-refresh di latar belakang",
+      "qoderPathSelect": "Pilih",
+      "workbuddyAutoRefresh": "Auto Refresh Kuota WorkBuddy",
+      "workbuddyAutoRefreshDesc": "Frekuensi auto-refresh di latar belakang"
     },
     "network": {
       "apiTitle": "API Antigravity Cockpit",
@@ -723,7 +773,93 @@
       "download": "Unduh",
       "checkFailed": "Gagal memeriksa pembaruan, silakan coba lagi"
     },
-    "saveSettings": "Simpan Pengaturan"
+    "saveSettings": "Simpan Pengaturan",
+    "transfer": {
+      "backup": {
+        "title": "Manajer cadangan",
+        "desc": "Kelola cadangan terjadwal, folder cadangan, dan daftar file dari satu tempat.",
+        "modalDesc": "Atur cadangan otomatis, telusuri file yang tersimpan di folder cadangan proyek, lalu pulihkan atau bersihkan di sini.",
+        "statusEnabled": "Cadangan otomatis aktif",
+        "statusDisabled": "Cadangan otomatis nonaktif",
+        "lastRunLabel": "Cadangan terakhir: {{time}}",
+        "lastRunNever": "Belum ada cadangan",
+        "autoTitle": "Cadangan terjadwal",
+        "autoDesc": "Saat diaktifkan, satu cadangan diekspor setiap hari dan dapat dipulihkan melalui impor saat ini.",
+        "runNow": "Cadangkan sekarang",
+        "running": "Mencadangkan...",
+        "typeTitle": "Jenis cadangan",
+        "typeDesc": "Pilih cakupan data untuk cadangan otomatis.",
+        "typeFull": "Data lengkap",
+        "typeAccounts": "Akun saja",
+        "typeConfig": "Konfigurasi saja",
+        "retentionTitle": "Masa simpan",
+        "retentionDesc": "Cadangan yang lebih lama dari ini akan dihapus saat pemeriksaan berikutnya.",
+        "retentionUnit": "hari",
+        "directoryTitle": "Folder cadangan",
+        "directoryDesc": "Cadangan selalu disimpan di folder backups milik proyek.",
+        "openFolder": "Buka folder",
+        "listTitle": "Daftar cadangan",
+        "listDesc": "Impor cadangan secara langsung atau hapus file lama.",
+        "openList": "Buka daftar",
+        "emptyTitle": "Belum ada cadangan",
+        "emptyDesc": "Aktifkan cadangan otomatis atau klik \"Cadangkan sekarang\" untuk membuat cadangan JSON yang dapat dipulihkan di sini.",
+        "sourceAuto": "Otomatis",
+        "sourceManual": "Mode manual",
+        "fileTime": "Waktu: {{time}}",
+        "fileSize": "Ukuran: {{size}}",
+        "importAction": "Impor",
+        "deleteAction": "Hapus",
+        "deleteConfirm": "Hapus cadangan {{name}}?",
+        "feedback": {
+          "running": "Membuat cadangan...",
+          "runSuccess": "Cadangan disimpan ke {{path}}",
+          "runSuccessWithCleanup": "Cadangan disimpan ke {{path}} dan {{count}} cadangan kedaluwarsa dibersihkan",
+          "runFailed": "Cadangan gagal: {{error}}",
+          "deleteSuccess": "Cadangan dihapus",
+          "deleteFailed": "Gagal menghapus cadangan: {{error}}",
+          "loadFailed": "Gagal memuat daftar cadangan: {{error}}",
+          "saveSettingsFailed": "Gagal menyimpan pengaturan cadangan: {{error}}",
+          "cleanupDone": "{{count}} cadangan kedaluwarsa dibersihkan",
+          "cleanupFailed": "Gagal membersihkan cadangan kedaluwarsa: {{error}}",
+          "openFolderFailed": "Gagal membuka folder cadangan: {{error}}"
+        },
+        "errors": {
+          "invalidRetention": "Masa simpan harus antara 1 dan 365 hari"
+        }
+      },
+      "exportTitle": "Ekspor data",
+      "exportDesc": "Ekspor data akun, data konfigurasi, atau paket migrasi penuh sesuai kebutuhan.",
+      "importTitle": "Impor data",
+      "importDesc": "Impor cadangan akun, cadangan konfigurasi, atau paket data terpadu.",
+      "exportModalDesc": "Pilih data yang ingin diekspor. Pilih akun dan konfigurasi sekaligus untuk paket migrasi penuh.",
+      "importModalDesc": "Pilih data yang ingin diimpor. Cadangan akun lama akan diproses sebagai impor akun saja.",
+      "selectionTitle": "Cakupan data",
+      "accountsOptionTitle": "Data akun",
+      "accountsOptionDesc": "Mencakup cadangan akun platform dan tetap kompatibel dengan JSON akun lama.",
+      "configOptionTitle": "Data konfigurasi",
+      "configOptionDesc": "Mencakup pengaturan aplikasi, grup, instance, tugas wakeup, dan konfigurasi penyedia model.",
+      "exportConfirm": "Ekspor data",
+      "fromFileTitle": "Impor dari file",
+      "fromFileDesc": "Pilih file JSON untuk diimpor. Cadangan akun lama juga didukung di sini.",
+      "jsonPlaceholder": "Tempel paket data atau JSON akun lama",
+      "feedback": {
+        "accountsImported": "Berhasil mengimpor {{count}} akun",
+        "configImported": "Data konfigurasi dipulihkan",
+        "accountsSectionMissing": "Cadangan ini tidak memuat data akun",
+        "configSectionMissing": "Cadangan ini tidak memuat data konfigurasi, jadi hanya data akun yang dipulihkan",
+        "unresolvedRefs": "{{count}} keterkaitan akun tidak dapat dicocokkan dan dilewati",
+        "disabledTasks": "{{count}} tugas dinonaktifkan karena tidak ada akun yang cocok",
+        "restartRequired": "Pengaturan layanan jaringan telah dipulihkan. Sebagian perubahan berlaku setelah restart",
+        "partialAccountFailure": "Sebagian impor akun gagal: {{error}}"
+      },
+      "errors": {
+        "selectionRequired": "Pilih setidaknya satu jenis data",
+        "accountsOnlyFile": "Cadangan ini hanya berisi data akun. Pilih \"Data akun\" untuk mengimpornya",
+        "selectedSectionsMissing": "Jenis data yang dipilih tidak ada di cadangan ini",
+        "unsupportedLegacyFile": "Format cadangan akun lama ini tidak dikenali",
+        "unsupportedVersion": "Versi aplikasi ini tidak mendukung versi bundel tersebut"
+      }
+    }
   },
   "appPath": {
     "missing": {
@@ -731,6 +867,9 @@
       "desc": "Tidak dapat menemukan jalur aplikasi {{app}}. Silakan atur sekarang untuk melanjutkan.",
       "codexLaunchHint": "Jika dinonaktifkan, penggantian akun dan penimpaan login tetap berjalan, tetapi Aplikasi Codex tidak akan diluncurkan lagi dan perintah jalur ini tidak akan muncul kembali.",
       "action": "Atur sekarang"
+    },
+    "modal": {
+      "desc": "Path aplikasi {{app}} tidak ditemukan. Silakan konfigurasi sekarang untuk melanjutkan."
     }
   },
   "accounts": {
@@ -840,7 +979,11 @@
       "fingerprint": "Sidik Jari",
       "switch": "Ganti akun",
       "switchTo": "Ganti ke akun ini",
-      "selectFingerprint": "Pilih sidik jari"
+      "selectFingerprint": "Pilih sidik jari",
+      "delete": "Hapus",
+      "deleteSelected": "Hapus yang Dipilih",
+      "export": "Ekspor",
+      "refreshAll": "Refresh Semua"
     },
     "switchHistory": {
       "title": "Riwayat Penggantian",
@@ -937,7 +1080,40 @@
       "accountPickerEmpty": "Tidak ada akun yang cocok",
       "filterHint": "{{count}} grup dipilih untuk penyaringan",
       "filterToggle": "Centang untuk menyaring berdasarkan grup ini"
-    }
+    },
+    "clearTagFilter": "Hapus Filter Tag",
+    "compact": {
+      "hide": "Sembunyikan",
+      "show": "Tampilkan"
+    },
+    "deleteConfirm": {
+      "multi": "Hapus {{count}} akun yang dipilih?",
+      "single": "Hapus akun ini?"
+    },
+    "deleteFailed": "Hapus gagal: {{error}}",
+    "deleteSuccess": "Berhasil dihapus",
+    "deleteTagFailed": "Hapus tag gagal: {{error}}",
+    "exportError": "Ekspor gagal: {{error}}",
+    "exportModal": {
+      "title": "Ekspor JSON"
+    },
+    "importJsonFailed": "Import JSON gagal: {{error}}",
+    "importJsonHint": "Impor file Qoder JSON yang diekspor dari alat ini.",
+    "importJsonSuccess": "Import JSON berhasil",
+    "noTags": "Tidak ada tag",
+    "privacy": {
+      "disable": "Nonaktifkan Mode Privasi",
+      "enable": "Aktifkan Mode Privasi"
+    },
+    "refreshAllFailed": "Refresh semua gagal: {{error}}",
+    "refreshAllSuccess": "Semua akun berhasil diperbarui",
+    "refreshFailed": "Refresh gagal: {{error}}",
+    "refreshSuccess": "Berhasil diperbarui",
+    "switchFailed": "Ganti akun gagal: {{error}}",
+    "switchSuccess": "Berhasil beralih",
+    "switched": "Beralih ke {{email}}",
+    "tagButton": "Edit Tag",
+    "tagUpdated": "Tag diperbarui"
   },
   "overview": {
     "title": "Ringkasan",
@@ -1440,7 +1616,9 @@
       "portInUseConfirm": "Port {{port}} sedang digunakan. Tutup proses yang menggunakan port ini?",
       "portCloseFailed": "Gagal menutup port: {{error}}",
       "portStillInUse": "Port {{port}} masih digunakan.",
-      "portInUseAction": "Tutup port dan coba lagi"
+      "portInUseAction": "Tutup port dan coba lagi",
+      "timeout": "Autentikasi habis waktu. Silakan klik",
+      "timeoutRetry": "Perbarui Link Auth"
     },
     "token": {
       "desc": "Tempel konten auth.json atau data JSON akun",
@@ -1546,7 +1724,10 @@
     "usage": {
       "open": "Buka penggunaan OpenAI",
       "hint": "Untuk kredit kunci API, gunakan halaman Penggunaan OpenAI.",
-      "openFailed": "Gagal membuka halaman penggunaan: {{error}}"
+      "openFailed": "Gagal membuka halaman penggunaan: {{error}}",
+      "search": {
+        "placeholder": "Cari akun..."
+      }
     },
     "quotaError": {
       "badge": "Kesalahan kuota",
@@ -1779,7 +1960,8 @@
         "syncSessions": "Sinkronkan Sesi",
         "expand": "Perluas",
         "collapse": "Ciutkan",
-        "repairVisibility": "Perbaiki visibilitas"
+        "repairVisibility": "Perbaiki visibilitas",
+        "restoreSessions": "Pulihkan sesi"
       },
       "confirm": {
         "title": "Pindahkan ke Sampah",
@@ -1793,12 +1975,20 @@
       },
       "messages": {
         "pickOne": "Silakan pilih setidaknya satu sesi",
-        "syncNeedTwo": "Setidaknya dua instansi diperlukan untuk menyinkronkan sesi"
+        "syncNeedTwo": "Setidaknya dua instansi diperlukan untuk menyinkronkan sesi",
+        "pickRestoreOne": "Pilih setidaknya satu sesi untuk dipulihkan"
       },
       "groupCount": "{{count}} sesi",
       "updatedAt": "Diperbarui",
       "locationRunning": " (berjalan)",
-      "untitled": "Sesi tanpa judul"
+      "untitled": "Sesi tanpa judul",
+      "restoreModal": {
+        "title": "Pulihkan sesi",
+        "hint": "Saat dipulihkan, file rollout, baris thread SQLite, dan entri session_index akan dikembalikan bersama ke instance asal.",
+        "emptyTitle": "Trash kosong",
+        "emptyDesc": "Sesi yang dipindahkan ke Trash akan muncul di sini.",
+        "restoreAction": "Pulihkan sesi terpilih"
+      }
     },
     "modelProviders": {
       "tab": "Penyedia model",
@@ -1841,7 +2031,41 @@
       "selectSavedApiKey": "API Key tersimpan",
       "noSavedProviders": "Belum ada penyedia tersimpan. Anda bisa mengisi field secara langsung dan data akan disimpan otomatis.",
       "newProviderName": "Nama penyedia (opsional, dipakai untuk simpan otomatis)",
-      "newProviderNamePlaceholder": "Jika kosong, nama host akan dipakai otomatis"
+      "newProviderNamePlaceholder": "Jika kosong, nama host akan dipakai otomatis",
+      "preview": {
+        "title": "Pratinjau simpan",
+        "desc": "Menyimpan penyedia akan memperbarui penyimpanan penyedia lebih dulu. Konfigurasi resmi Codex saat ini tidak langsung berpindah.",
+        "writeNow": "Akan ditulis",
+        "noImmediateChange": "Tidak langsung berubah",
+        "providerStoreTitle": "Penyimpanan penyedia",
+        "providerStoreDesc": "Menyimpan nama penyedia, Base URL, tautan situs/halaman API Key, dan API Key baru yang ditambahkan di dialog ini.",
+        "codexConfigTitle": "Konfigurasi Codex saat ini",
+        "codexConfigDesc": "Penyedia atau Base URL saat ini tidak langsung berubah. File itu hanya diperbarui saat akun Codex API key disimpan atau diganti.",
+        "authFileTitle": "Kredensial Codex saat ini",
+        "authFileDesc": "Menyimpan penyedia tidak akan menimpa OPENAI_API_KEY saat ini di auth.json."
+      },
+      "quickConfig": {
+        "title": "Konfigurasi Codex saat ini",
+        "desc": "Pengaturan cepat ini menulis langsung ke ~/.codex/config.toml yang aktif dan tidak mengubah penyimpanan penyedia model.",
+        "configPath": "File konfigurasi",
+        "openConfig": "Buka file",
+        "loadFailed": "Gagal memuat konfigurasi Codex saat ini: {{error}}",
+        "openFailed": "Gagal membuka config.toml: {{error}}",
+        "saveSuccess": "Konfigurasi Codex saat ini telah disimpan.",
+        "saveFailed": "Gagal menyimpan konfigurasi Codex saat ini: {{error}}",
+        "contextWindow1m": "Jendela konteks 1M",
+        "contextWindow1mHint": "Saat diaktifkan, akan menulis model_context_window = 1000000 dan mengelola batas auto-compact bersama-sama.",
+        "autoCompactLimit": "Batas auto-compact",
+        "autoCompactLimitHint": "Menulis model_auto_compact_token_limit. Saat sakelar 1M dimatikan, field ini juga akan dihapus.",
+        "preview": "Pratinjau penulisan",
+        "previewApply": "Akan ditulis",
+        "previewRemove": "Akan dihapus",
+        "customDetected": "Terdeteksi model_context_window = {{context}} kustom di config.toml. Menyimpan akan menulis ulang nilainya sesuai pengaturan cepat di bawah.",
+        "compactMissingDetected": "Konteks 1M sudah aktif, tetapi batas auto-compact belum ada. Menyimpan akan menulis nilai default {{limit}}.",
+        "validation": {
+          "autoCompactInvalid": "Batas auto-compact harus berupa bilangan bulat lebih besar dari 0."
+        }
+      }
     },
     "quickSwitch": {
       "action": "Alih cepat penyedia",
@@ -1859,6 +2083,9 @@
         "providerRequired": "Pilih penyedia.",
         "apiKeyRequired": "Pilih API Key."
       }
+    },
+    "groups": {
+      "addToGroup": "Tambahkan ke Grup"
     }
   },
   "codebuddy": {
@@ -1940,7 +2167,8 @@
       "expireUnknown": "Expires at: N/A",
       "packageTitle": {
         "base": "Base Experience Package",
-        "activity": "Activity Gift Package"
+        "activity": "Activity Gift Package",
+        "pro": "Langganan Pro"
       }
     },
     "extraCredit": {
@@ -2198,7 +2426,54 @@
     },
     "addModal": {
       "title": "Tambah Akun Windsurf",
-      "password": "Email & Kata Sandi"
+      "password": "Login email"
+    },
+    "password": {
+      "desc": "Masuk dengan email dan kata sandi akun Windsurf untuk mengambil API key dan data akun secara otomatis.",
+      "emailPlaceholder": "Alamat email",
+      "passwordPlaceholder": "Kata sandi",
+      "empty": "Masukkan email dan kata sandi",
+      "login": "Masuk",
+      "logging": "Sedang masuk...",
+      "success": "Berhasil masuk: {{login}}",
+      "failed": "Gagal masuk: {{error}}",
+      "modeLabel": "Jenis",
+      "modeSingle": "Tunggal",
+      "modeBatch": "Massal",
+      "batchDesc": "Impor massal mendukung JSON atau teks satu akun per baris. Mode teks mewajibkan pemisah yang jelas.",
+      "batchInputModeLabel": "Jenis input",
+      "batchInputModeJson": "Format JSON",
+      "batchInputModeText": "Teks",
+      "batchDelimiterLabel": "Pemisah",
+      "batchDelimiterTab": "Tabulasi",
+      "batchDelimiterSpace": "Spasi",
+      "batchDelimiterComma": "Koma",
+      "batchDelimiterPipe": "Garis tegak",
+      "batchDelimiterDash": "----",
+      "batchDelimiterCustom": "Kustom",
+      "batchJsonDesc": "Tempel array JSON yang tiap itemnya berisi email dan password.",
+      "batchTextDesc": "Masukkan satu akun per baris dan parse ketat sesuai pemisah yang dipilih.",
+      "batchExampleTitle": "Contoh format (klik untuk membuka)",
+      "batchExampleJsonLabel": "Contoh JSON",
+      "batchExampleTextLabel": "Contoh teks",
+      "batchCustomDelimiterPlaceholder": "Masukkan pemisah kustom",
+      "batchCustomDelimiterEmpty": "Masukkan pemisah kustom",
+      "batchPlaceholderJson": "Tempel array JSON berisi email dan password",
+      "batchPlaceholderText": "Satu akun per baris dengan pemisah yang dipilih",
+      "batchEmpty": "Masukkan isi impor massal terlebih dahulu",
+      "batchJsonInvalid": "JSON tidak valid: {{error}}",
+      "batchJsonArrayRequired": "Root JSON harus berupa array",
+      "batchJsonItemInvalid": "Item {{line}} harus berisi field email dan password",
+      "batchTextLineInvalid": "Baris {{line}} tidak valid. Periksa pemisah yang dipilih.",
+      "batchImport": "Impor massal",
+      "batchImporting": "Mengimpor {{count}} akun...",
+      "batchImportingShort": "Mengimpor...",
+      "batchSuccess": "{{count}} akun berhasil diimpor",
+      "batchPartial": "{{success}} berhasil, {{failed}} gagal",
+      "batchFailed": "Impor massal gagal untuk {{failed}} akun",
+      "batchFailureEntryWithLine": "Baris {{line}} ({{email}}): {{error}}",
+      "batchFailureEntry": "{{email}}: {{error}}",
+      "batchFailureMore": "{{count}} lainnya gagal"
     },
     "oauth": {
       "desc": "Klik tombol di bawah ini dan selesaikan otorisasi Windsurf di peramban Anda."
@@ -2241,16 +2516,6 @@
       "inject": "Penggantian satu klik: Alat ini membaca materi enkripsi lokal Windsurf (DPAPI/Keychain/Secret Service), memproses sesi auth di state.vscdb, menulis kembali token Windsurf, dan menjaga semuanya lokal di mesin Anda.",
       "reason": "Cakupan izin: baca database auth Windsurf (state.vscdb) dan gunakan kemampuan enkripsi sistem (Windows DPAPI / macOS Keychain / Linux Secret Service) untuk mendekripsi dan menulis kembali data sesi auth.",
       "storage": "Cakupan data: hanya entri terkait sesi auth Windsurf yang dibaca/diperbarui; semua proses berjalan secara lokal."
-    },
-    "password": {
-      "desc": "Masuk dengan email dan kata sandi akun Windsurf Anda untuk mengambil kunci API dan info akun secara otomatis.",
-      "emailPlaceholder": "Alamat email",
-      "passwordPlaceholder": "Kata sandi",
-      "login": "Masuk",
-      "logging": "Masuk...",
-      "empty": "Silakan masukkan email dan kata sandi",
-      "success": "Masuk: {{login}}",
-      "failed": "Masuk gagal: {{error}}"
     }
   },
   "kiro": {
@@ -2419,6 +2684,26 @@
       "desc": "Kelola akun Gemini Cli dengan mengimpor dari konfigurasi Gemini Cli lokal, menempelkan token JWT, atau masuk melalui OAuth.",
       "reason": "Cakupan izin: baca dan tulis oauth_creds.json, google_accounts.json, dan settings.json di bawah ~/.gemini default atau jalur instansi (GEMINI_CLI_HOME/.gemini) untuk impor akun dan injeksi kredensial lokal (penggantian akun).",
       "storage": "Cakupan jaringan: OAuth dan penyegaran memanggil API resmi Google/Gemini (seperti oauth2.googleapis.com dan googleapis.com). Hanya bidang auth/kuota yang diperlukan yang dikirim; berkas akun lokal tidak diunggah ke server pihak ketiga."
+    },
+    "identity": {
+      "authMethod": "Metode autentikasi",
+      "tier": "Paket",
+      "signedInWithGoogle": "Masuk dengan Google",
+      "signedInWithGoogleEmail": "Masuk dengan Google ({{email}})"
+    },
+    "quotaTable": {
+      "model": "Nama model",
+      "leftOfTotal": "Sisa / Total",
+      "usage": "Terpakai",
+      "usageResets": "Reset penggunaan",
+      "usedPercent": "{{value}}%",
+      "remainingOfTotal": "{{remaining}} / {{total}}",
+      "resetAtWithRelative": "{{absolute}} ({{relative}})"
+    },
+    "tierText": {
+      "pro": "Gemini Code Assist di Google One AI Pro",
+      "ultra": "Gemini Code Assist di Google AI Ultra",
+      "free": "Gemini Code Assist gratis"
     }
   },
   "breakout": {
@@ -2776,7 +3061,12 @@
       "title": "Tambah Akun Qoder"
     },
     "import": {
-      "localDesc": "Baca status masuk saat ini dari klien Qoder lokal, termasuk info pengguna, paket, dan penggunaan kredit."
+      "localDesc": "Baca status masuk saat ini dari klien Qoder lokal, termasuk info pengguna, paket, dan penggunaan kredit.",
+      "localFailed": "Import lokal gagal: {{error}}",
+      "localSuccess": "Akun berhasil diimpor dari Qoder lokal."
+    },
+    "empty": {
+      "desc": "Klik \"Tambah Akun\" untuk menggunakan login auth, import lokal, atau import JSON."
     }
   },
   "zed": {
@@ -2808,7 +3098,8 @@
       "unknownStatus": "Status tidak diketahui",
       "overdueField": "Terlambat",
       "overdueYes": "Ya",
-      "overdueNo": "Tidak"
+      "overdueNo": "Tidak",
+      "usageUpdatedAt": "Diperbarui: {{time}}"
     },
     "runtime": {
       "title": "Sesi Zed Saat Ini",
@@ -2828,7 +3119,8 @@
       "complete": "Selesaikan Login",
       "startFailed": "Gagal memulai login Zed",
       "completeSuccess": "Login Zed selesai: {{account}}",
-      "importOnlySuccess": "Otorisasi berhasil. Akun telah diimpor. Untuk membuat Zed resmi menggunakannya, klik \"Terapkan dan Mulai Ulang\"."
+      "importOnlySuccess": "Otorisasi berhasil. Akun telah diimpor. Untuk membuat Zed resmi menggunakannya, klik \"Terapkan dan Mulai Ulang\".",
+      "desc": "Klik tombol di bawah untuk menyelesaikan autentikasi login resmi Zed di browser."
     },
     "actions": {
       "addAccount": "Masuk ke Zed",
@@ -2844,6 +3136,9 @@
       "applyAndRestart": "Terapkan dan Mulai Ulang",
       "reapply": "Terapkan Ulang",
       "exportTitle": "Ekspor JSON Akun Zed"
+    },
+    "sort": {
+      "tokenSpend": "Urutkan berdasarkan Token Spend"
     }
   },
   "trae": {
@@ -2940,7 +3235,10 @@
         "other": "Lainnya",
         "empty": "Tidak ada data kuota"
       }
-    }
+    },
+    "syncFailed": "Sinkronisasi gagal: {{error}}",
+    "syncSuccess": "{{count}} akun berhasil disinkronkan ke WorkBuddy",
+    "syncToWorkbuddy": "Sinkronkan ke WorkBuddy"
   },
   "workbuddy": {
     "title": "Akun WorkBuddy",

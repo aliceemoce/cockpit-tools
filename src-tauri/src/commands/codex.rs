@@ -8,6 +8,7 @@ use crate::modules::{
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::AppHandle;
 use tauri::Emitter;
+use tauri_plugin_opener::OpenerExt;
 
 static CODEX_POST_REFRESH_CHECK_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
@@ -27,6 +28,18 @@ pub fn get_current_codex_account() -> Result<Option<CodexAccount>, String> {
 pub fn get_codex_config_toml_path() -> Result<String, String> {
     let path = codex_account::get_codex_home().join("config.toml");
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn open_codex_config_toml(app: AppHandle) -> Result<(), String> {
+    let path = codex_account::get_codex_home().join("config.toml");
+    if !path.exists() {
+        return Err(format!("未找到 Codex config.toml 文件: {}", path.display()));
+    }
+
+    app.opener()
+        .open_path(path.to_string_lossy().to_string(), None::<String>)
+        .map_err(|e| format!("打开 Codex config.toml 失败: {}", e))
 }
 
 #[tauri::command]
@@ -55,6 +68,19 @@ pub async fn switch_codex_account(
     account_id: String,
 ) -> Result<CodexAccount, String> {
     let _ = codex_account::prepare_account_for_injection(&account_id).await?;
+    let codex_home = codex_account::get_codex_home();
+    let provider_before =
+        crate::modules::codex_session_visibility::read_history_visibility_provider_for_dir(
+            &codex_home,
+        )
+        .map(Some)
+        .unwrap_or_else(|error| {
+            logger::log_warn(&format!(
+                "切号前读取 Codex provider 失败，跳过自动修复预判: {}",
+                error
+            ));
+            None
+        });
 
     // 切换账号（写入 auth.json）
     let account = codex_account::switch_account(&account_id)?;
@@ -72,6 +98,41 @@ pub async fn switch_codex_account(
             "已同步更新 Codex 默认实例绑定账号: {}",
             account_id
         ));
+    }
+
+    let provider_after =
+        crate::modules::codex_session_visibility::read_history_visibility_provider_for_dir(
+            &codex_home,
+        )
+        .map(Some)
+        .unwrap_or_else(|error| {
+            logger::log_warn(&format!(
+                "切号后读取 Codex provider 失败，跳过自动修复可见性: {}",
+                error
+            ));
+            None
+        });
+    let should_repair_visibility = match (provider_before.as_deref(), provider_after.as_deref()) {
+        (Some(before), Some(after)) => before != after,
+        (None, Some(_)) => true,
+        _ => false,
+    };
+    if should_repair_visibility {
+        match crate::modules::codex_session_visibility::repair_session_visibility_across_instances()
+        {
+            Ok(summary) => {
+                logger::log_info(&format!(
+                    "Codex 切号后已自动执行历史会话可见性修复: {}",
+                    summary.message
+                ));
+            }
+            Err(error) => {
+                logger::log_warn(&format!(
+                    "Codex 切号成功，但自动修复历史会话可见性失败，请稍后在会话管理中手动补跑: {}",
+                    error
+                ));
+            }
+        }
     }
 
     let user_config = config::get_user_config();

@@ -12,7 +12,7 @@ export interface LaunchTerminalOption {
   label: string;
 }
 
-export function useLaunchTerminalOptions() {
+export function useLaunchTerminalOptions(enabled = true) {
   const { t } = useTranslation();
   const isMacOS = usePlatformRuntimeSupport("macos-only");
   const isWindows = usePlatformRuntimeSupport("windows-only");
@@ -23,6 +23,12 @@ export function useLaunchTerminalOptions() {
   const [selectedTerminal, setSelectedTerminal] = useState("system");
 
   useEffect(() => {
+    if (!enabled) {
+      setAvailableTerminals(["system"]);
+      setSelectedTerminal("system");
+      return;
+    }
+
     let disposed = false;
 
     Promise.all([
@@ -47,7 +53,7 @@ export function useLaunchTerminalOptions() {
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [enabled]);
 
   const terminalOptions = useMemo<LaunchTerminalOption[]>(() => {
     const common = [

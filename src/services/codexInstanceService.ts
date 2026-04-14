@@ -5,6 +5,8 @@ import type {
   CodexInstanceThreadSyncSummary,
   CodexSessionRecord,
   CodexSessionTrashSummary,
+  CodexTrashedSessionRecord,
+  CodexSessionRestoreSummary,
 } from "../types/codex";
 import type { InstanceLaunchMode, InstanceProfile } from "../types/instance";
 
@@ -113,6 +115,20 @@ export async function moveSessionsToTrashAcrossInstances(
   sessionIds: string[],
 ): Promise<CodexSessionTrashSummary> {
   return await invoke("codex_move_sessions_to_trash_across_instances", {
+    sessionIds,
+  });
+}
+
+export async function listTrashedSessionsAcrossInstances(): Promise<
+  CodexTrashedSessionRecord[]
+> {
+  return await invoke("codex_list_trashed_sessions_across_instances");
+}
+
+export async function restoreSessionsFromTrashAcrossInstances(
+  sessionIds: string[],
+): Promise<CodexSessionRestoreSummary> {
+  return await invoke("codex_restore_sessions_from_trash_across_instances", {
     sessionIds,
   });
 }

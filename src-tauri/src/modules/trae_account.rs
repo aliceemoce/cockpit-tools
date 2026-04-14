@@ -188,6 +188,17 @@ fn resolve_trae_account_api_origin(
     official_trae_account_api_origin_for_region(store_region, ai_region, login_region)
 }
 
+fn resolve_trae_auth_storage_origin(
+    host: Option<&str>,
+    store_region: Option<&str>,
+    ai_region: Option<&str>,
+    login_region: Option<&str>,
+) -> String {
+    host.and_then(normalize_origin).unwrap_or_else(|| {
+        official_trae_account_api_origin_for_region(store_region, ai_region, login_region)
+    })
+}
+
 fn build_api_urls(origin: &str, path: &str) -> Vec<String> {
     vec![format!("{}{}", origin.trim_end_matches('/'), path)]
 }
@@ -428,6 +439,15 @@ fn upsert_account_record(account: TraeAccount) -> Result<TraeAccount, String> {
     refresh_summary(&mut index, &account);
     save_account_index(&index)?;
     Ok(account)
+}
+
+fn persist_quota_query_error(account_id: &str, message: &str) {
+    let Some(mut account) = load_account(account_id) else {
+        return;
+    };
+    account.quota_query_last_error = Some(message.to_string());
+    account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
+    let _ = upsert_account_record(account);
 }
 
 fn extract_json_value(root: Option<&Value>, path: &[&str]) -> Option<Value> {
@@ -960,6 +980,8 @@ pub fn upsert_account(payload: TraeImportPayload) -> Result<TraeAccount, String>
         trae_usertag_raw: normalize_non_empty(payload.trae_usertag_raw.as_deref()),
         status: normalize_non_empty(payload.status.as_deref()),
         status_reason: normalize_non_empty(payload.status_reason.as_deref()),
+        quota_query_last_error: None,
+        quota_query_last_error_at: None,
         usage_updated_at: None,
         created_at,
         last_used: now,
@@ -969,6 +991,8 @@ pub fn upsert_account(payload: TraeImportPayload) -> Result<TraeAccount, String>
     apply_payload(&mut account, payload);
     account.id = account_id;
     account.created_at = created_at;
+    account.quota_query_last_error = None;
+    account.quota_query_last_error_at = None;
     account.last_used = now;
 
     save_account_file(&account)?;
@@ -1966,7 +1990,7 @@ fn ensure_auth_raw_for_inject(account: &TraeAccount, existing_auth_raw: Option<&
         .as_deref(),
     );
 
-    let api_host = resolve_trae_account_api_origin(
+    let api_host = resolve_trae_auth_storage_origin(
         pick_string_multi(
             &roots,
             &[
@@ -2006,6 +2030,7 @@ fn ensure_auth_raw_for_inject(account: &TraeAccount, existing_auth_raw: Option<&
         &[
             &["refreshExpiredAt"],
             &["RefreshExpireAt"],
+            &["Result", "RefreshExpireAt"],
             &["exchangeResponse", "Result", "RefreshExpireAt"],
             &["callbackQuery", "refreshExpireAt"],
         ],
@@ -2421,6 +2446,104 @@ fn merge_refresh_routing_context(response: &Value, context: &TraeRefreshRoutingC
     Value::Object(merged)
 }
 
+fn merge_exchange_auth_raw(
+    existing_auth_raw: Option<&Value>,
+    exchange_response: &Value,
+    context: &TraeRefreshRoutingContext,
+    access_token: &str,
+    refresh_token: Option<&str>,
+    token_type: Option<&str>,
+    expires_at: Option<i64>,
+) -> Value {
+    let mut merged = match existing_auth_raw {
+        Some(Value::Object(obj)) => obj.clone(),
+        _ => Map::new(),
+    };
+
+    merged.insert("exchangeResponse".to_string(), exchange_response.clone());
+    merged.insert("token".to_string(), Value::String(access_token.to_string()));
+    merged.insert(
+        "accessToken".to_string(),
+        Value::String(access_token.to_string()),
+    );
+
+    if let Some(refresh) = normalize_non_empty(refresh_token) {
+        merged.insert("refreshToken".to_string(), Value::String(refresh));
+    }
+
+    if let Some(kind) = normalize_non_empty(token_type) {
+        merged.insert("tokenType".to_string(), Value::String(kind));
+    }
+
+    let response_roots = [Some(exchange_response)];
+
+    if let Some(expired_at) = resolve_iso_timestamp(
+        expires_at,
+        &response_roots,
+        &[
+            &["expiredAt"],
+            &["expiresAt"],
+            &["TokenExpireAt"],
+            &["Result", "TokenExpireAt"],
+        ],
+    ) {
+        merged.insert("expiredAt".to_string(), Value::String(expired_at));
+    }
+
+    if let Some(refresh_expired_at) = resolve_iso_timestamp(
+        None,
+        &response_roots,
+        &[
+            &["refreshExpiredAt"],
+            &["RefreshExpireAt"],
+            &["Result", "RefreshExpireAt"],
+        ],
+    ) {
+        merged.insert(
+            "refreshExpiredAt".to_string(),
+            Value::String(refresh_expired_at),
+        );
+    }
+
+    if let Some(token_release_at) =
+        resolve_iso_timestamp(None, &response_roots, &[&["tokenReleaseAt"]])
+    {
+        merged.insert(
+            "tokenReleaseAt".to_string(),
+            Value::String(token_release_at),
+        );
+    }
+
+    if !context.login_host.is_empty() {
+        merged
+            .entry("host".to_string())
+            .or_insert_with(|| Value::String(context.login_host.clone()));
+        merged
+            .entry("loginHost".to_string())
+            .or_insert_with(|| Value::String(context.login_host.clone()));
+    }
+
+    if let Some(login_region) = context.login_region.as_ref() {
+        merged
+            .entry("loginRegion".to_string())
+            .or_insert_with(|| Value::String(login_region.clone()));
+    }
+
+    if let Some(store_region) = context.store_region.as_ref() {
+        merged
+            .entry("storeRegion".to_string())
+            .or_insert_with(|| Value::String(store_region.clone()));
+    }
+
+    if let Some(ai_region) = context.ai_region.as_ref() {
+        merged
+            .entry("AIRegion".to_string())
+            .or_insert_with(|| Value::String(ai_region.clone()));
+    }
+
+    Value::Object(merged)
+}
+
 fn header_value_or_dash(headers: &reqwest::header::HeaderMap, key: &str) -> String {
     headers
         .get(key)
@@ -2809,7 +2932,15 @@ fn apply_exchange_response(
         account.expires_at = expires_at;
     }
 
-    account.trae_auth_raw = Some(merged_response);
+    account.trae_auth_raw = Some(merge_exchange_auth_raw(
+        account.trae_auth_raw.as_ref(),
+        &merged_response,
+        context,
+        account.access_token.as_str(),
+        account.refresh_token.as_deref(),
+        account.token_type.as_deref(),
+        account.expires_at,
+    ));
 }
 
 fn apply_check_login_response(
@@ -2942,9 +3073,13 @@ async fn refresh_account_async_once(account_id: &str) -> Result<TraeAccount, Str
     )
     .await;
 
+    let mut quota_query_errors: Vec<String> = Vec::new();
     match entitlement_response {
         Ok(response) => apply_entitlement_response(&mut account, &response),
-        Err(err) => logger::log_warn(&format!("[Trae Refresh] ide_user_pay_status 失败: {}", err)),
+        Err(err) => {
+            logger::log_warn(&format!("[Trae Refresh] ide_user_pay_status 失败: {}", err));
+            quota_query_errors.push(err);
+        }
     }
 
     let usage_urls = build_refresh_api_urls(&account, TRAE_ENT_USAGE_PATH);
@@ -2966,12 +3101,20 @@ async fn refresh_account_async_once(account_id: &str) -> Result<TraeAccount, Str
             apply_usage_response(&mut account, &response);
             usage_refreshed = true;
         }
-        Err(err) => logger::log_warn(&format!("[Trae Refresh] ide_user_ent_usage 失败: {}", err)),
+        Err(err) => {
+            logger::log_warn(&format!("[Trae Refresh] ide_user_ent_usage 失败: {}", err));
+            quota_query_errors.push(err);
+        }
     }
 
     let refreshed_at = now_ts();
     if usage_refreshed {
+        account.quota_query_last_error = None;
+        account.quota_query_last_error_at = None;
         account.usage_updated_at = Some(refreshed_at);
+    } else if !quota_query_errors.is_empty() {
+        account.quota_query_last_error = Some(quota_query_errors.join(" | "));
+        account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
     }
     account.last_used = refreshed_at;
     let updated = account.clone();
@@ -2984,10 +3127,16 @@ async fn refresh_account_async_once(account_id: &str) -> Result<TraeAccount, Str
 }
 
 pub async fn refresh_account_async(account_id: &str) -> Result<TraeAccount, String> {
-    crate::modules::refresh_retry::retry_once_with_delay("Trae Refresh", account_id, || async {
-        refresh_account_async_once(account_id).await
-    })
-    .await
+    let result = crate::modules::refresh_retry::retry_once_with_delay(
+        "Trae Refresh",
+        account_id,
+        || async { refresh_account_async_once(account_id).await },
+    )
+    .await;
+    if let Err(err) = &result {
+        persist_quota_query_error(account_id, err);
+    }
+    result
 }
 
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<TraeAccount, String>)>, String> {
@@ -2999,4 +3148,151 @@ pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<TraeAccount, Str
         results.push((account_id, result));
     }
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::trae::TraeAccount;
+
+    fn sample_account() -> TraeAccount {
+        TraeAccount {
+            id: "trae_test".to_string(),
+            email: "lijie769328281@gmail.com".to_string(),
+            user_id: Some("7463021402682639361".to_string()),
+            nickname: Some("李杰".to_string()),
+            tags: None,
+            access_token: "old-access".to_string(),
+            refresh_token: Some("old-refresh".to_string()),
+            token_type: Some("Bearer".to_string()),
+            expires_at: Some(1_777_220_302),
+            plan_type: None,
+            plan_reset_at: None,
+            trae_auth_raw: None,
+            trae_profile_raw: Some(serde_json::json!({
+                "Result": {
+                    "ScreenName": "李杰",
+                    "NonPlainTextEmail": "lijie769328281@gmail.com",
+                    "UserID": "7463021402682639361",
+                    "AvatarUrl": "https://example.com/avatar.png",
+                    "Description": "",
+                    "StoreCountry": "jp",
+                    "StoreCountrySrc": "uid",
+                    "AIRegion": "SG",
+                }
+            })),
+            trae_entitlement_raw: None,
+            trae_usage_raw: None,
+            trae_server_raw: None,
+            trae_usertag_raw: Some("row".to_string()),
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: None,
+            created_at: 0,
+            last_used: 0,
+        }
+    }
+
+    #[test]
+    fn apply_exchange_response_preserves_existing_auth_context() {
+        let mut account = sample_account();
+        account.trae_auth_raw = Some(serde_json::json!({
+            "host": "https://api-sg-central.trae.ai",
+            "loginHost": "https://api-sg-central.trae.ai",
+            "refreshExpiredAt": "2026-10-09T16:18:22.466Z",
+            "tokenReleaseAt": "2026-04-12T16:18:25.030Z",
+            "account": {
+                "username": "李杰"
+            }
+        }));
+
+        let response = serde_json::json!({
+            "Result": {
+                "Token": "new-access",
+                "RefreshToken": "new-refresh",
+                "TokenType": "Bearer",
+                "TokenExpireAt": 1777220302466_u64,
+                "RefreshExpireAt": 1791562702466_u64
+            }
+        });
+        let context = TraeRefreshRoutingContext {
+            login_host: "https://growsg-normal.trae.ai".to_string(),
+            login_region: Some("sg".to_string()),
+            store_region: Some("SG".to_string()),
+            ai_region: Some("SG".to_string()),
+        };
+
+        apply_exchange_response(&mut account, &response, &context);
+
+        let auth_raw = account
+            .trae_auth_raw
+            .as_ref()
+            .and_then(Value::as_object)
+            .expect("auth raw should be object");
+
+        assert_eq!(account.access_token, "new-access");
+        assert_eq!(account.refresh_token.as_deref(), Some("new-refresh"));
+        assert_eq!(
+            auth_raw.get("host").and_then(Value::as_str),
+            Some("https://api-sg-central.trae.ai")
+        );
+        assert_eq!(
+            auth_raw.get("refreshExpiredAt").and_then(Value::as_str),
+            Some("2026-10-09T16:18:22.466Z")
+        );
+        assert_eq!(
+            auth_raw
+                .get("exchangeResponse")
+                .and_then(|value| value.get("Result"))
+                .and_then(|value| value.get("RefreshExpireAt"))
+                .and_then(Value::as_u64),
+            Some(1791562702466_u64)
+        );
+        assert_eq!(
+            auth_raw
+                .get("account")
+                .and_then(|value| value.get("username"))
+                .and_then(Value::as_str),
+            Some("李杰")
+        );
+    }
+
+    #[test]
+    fn ensure_auth_raw_for_inject_recovers_refresh_expiry_and_host() {
+        let mut account = sample_account();
+        account.trae_auth_raw = Some(serde_json::json!({
+            "host": "https://www.trae.ai",
+            "storeRegion": "SG",
+            "AIRegion": "SG",
+            "loginRegion": "sg",
+            "Result": {
+                "RefreshExpireAt": 1791562702466_u64
+            }
+        }));
+
+        let auth_raw = ensure_auth_raw_for_inject(&account, None);
+        let auth_obj = auth_raw.as_object().expect("auth raw should be object");
+
+        assert_eq!(
+            auth_obj.get("host").and_then(Value::as_str),
+            Some("https://www.trae.ai")
+        );
+        assert_eq!(
+            auth_obj.get("loginHost").and_then(Value::as_str),
+            Some("https://www.trae.ai")
+        );
+        assert_eq!(
+            auth_obj.get("refreshExpiredAt").and_then(Value::as_str),
+            Some("2026-10-09T16:18:22.466Z")
+        );
+        assert_eq!(
+            auth_obj
+                .get("account")
+                .and_then(|value| value.get("username"))
+                .and_then(Value::as_str),
+            Some("李杰")
+        );
+    }
 }

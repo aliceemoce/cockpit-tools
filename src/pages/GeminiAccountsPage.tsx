@@ -31,8 +31,10 @@ import * as geminiInstanceService from "../services/geminiInstanceService";
 import { TagEditModal } from "../components/TagEditModal";
 import { ExportJsonModal } from "../components/ExportJsonModal";
 import { ModalErrorMessage } from "../components/ModalErrorMessage";
+import { PaginationControls } from "../components/PaginationControls";
 import { QuickSettingsPopover } from "../components/QuickSettingsPopover";
 import { SingleSelectDropdown } from "../components/SingleSelectDropdown";
+import { SingleSelectFilterDropdown } from "../components/SingleSelectFilterDropdown";
 import {
   MultiSelectFilterDropdown,
   type MultiSelectFilterOption,
@@ -42,15 +44,23 @@ import {
   getGeminiPlanBadgeClass,
   getGeminiPlanDisplayName,
   getGeminiAccountDisplayEmail,
+  getGeminiTierQuotaSummary,
+  hasGeminiQuotaData,
   isGeminiAccountBanned,
 } from "../types/gemini";
-import type { GeminiAccount } from "../types/gemini";
+import type { GeminiAccount, GeminiTierQuotaSummary } from "../types/gemini";
 import { compareCurrentAccountFirst } from "../utils/currentAccountSort";
 import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
 } from "../utils/accountValidityFilter";
+import {
+  buildPaginatedGroups,
+  buildPaginationPageSizeStorageKey,
+  isEveryIdSelected,
+  usePagination,
+} from "../hooks/usePagination";
 
 import { useProviderAccountsPage } from "../hooks/useProviderAccountsPage";
 import {
@@ -85,6 +95,24 @@ interface GeminiLaunchModalState {
   executing: boolean;
   executeMessage: string | null;
   executeError: string | null;
+}
+
+interface GeminiQuotaRowDisplay {
+  key: "pro" | "flash";
+  label: string;
+  remainingPercent: number;
+  remainingText: string;
+  resetText: string;
+  quotaClass: string;
+}
+
+function getGeminiQuotaClass(
+  usedPercent: number,
+): "high" | "medium" | "low" | "critical" {
+  if (usedPercent >= 90) return "critical";
+  if (usedPercent >= 70) return "low";
+  if (usedPercent >= 40) return "medium";
+  return "high";
 }
 
 export function GeminiAccountsPage() {
@@ -296,6 +324,114 @@ export function GeminiAccountsPage() {
   const accounts = store.accounts;
   const loading = store.loading;
 
+  const formatRelativeDuration = useCallback(
+    (seconds: number) => {
+      const safe = Math.max(0, Math.floor(seconds));
+      const totalMinutes = Math.floor(safe / 60);
+      if (totalMinutes < 1) {
+        return t("common.shared.time.lessThanMinute", "<1分钟");
+      }
+
+      const days = Math.floor(totalMinutes / (60 * 24));
+      const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+      const minutes = totalMinutes % 60;
+
+      if (days > 0 && hours > 0) {
+        return t(
+          "common.shared.time.relativeDaysHours",
+          "{{days}}天{{hours}}小时",
+          {
+            days,
+            hours,
+          },
+        );
+      }
+      if (days > 0) {
+        return t("common.shared.time.relativeDays", "{{days}}天", { days });
+      }
+      if (hours > 0 && minutes > 0) {
+        return t(
+          "common.shared.time.relativeHoursMinutes",
+          "{{hours}}小时{{minutes}}分钟",
+          { hours, minutes },
+        );
+      }
+      if (hours > 0) {
+        return t("common.shared.time.relativeHours", "{{hours}}小时", {
+          hours,
+        });
+      }
+      return t("common.shared.time.relativeMinutes", "{{minutes}}分钟", {
+        minutes,
+      });
+    },
+    [t],
+  );
+
+  const formatQuotaResetText = useCallback(
+    (resetAt: number | null) => {
+      if (resetAt == null || !Number.isFinite(resetAt)) {
+        return t("gemini.quota.resetsUnknown", "重置时间未知");
+      }
+
+      const secondsLeft = Math.floor(resetAt - Date.now() / 1000);
+      if (secondsLeft <= 0) {
+        return t("gemini.quota.resetsSoon", "即将重置");
+      }
+
+      return t("gemini.quota.resetsIn", "{{relative}} 后重置", {
+        relative: formatRelativeDuration(secondsLeft),
+      });
+    },
+    [formatRelativeDuration, t],
+  );
+
+  const resolveUpdatedText = useCallback(
+    (account: GeminiAccount) => {
+      const updatedAt = account.last_used || account.created_at || 0;
+      const secondsAgo = Math.max(
+        0,
+        Math.floor(Date.now() / 1000) - updatedAt,
+      );
+      return t("gemini.updated.label", "{{relative}}前更新", {
+        relative: formatRelativeDuration(secondsAgo),
+      });
+    },
+    [formatRelativeDuration, t],
+  );
+
+  const resolveQuotaRows = useCallback(
+    (account: GeminiAccount): GeminiQuotaRowDisplay[] => {
+      const tierSummary = getGeminiTierQuotaSummary(account);
+      const buildTierRow = (
+        tier: GeminiTierQuotaSummary,
+      ): GeminiQuotaRowDisplay => {
+        const remainingPercent =
+          tier.remainingPercent == null
+            ? 0
+            : Math.max(0, Math.min(100, Math.round(tier.remainingPercent)));
+        const usedPercent = 100 - remainingPercent;
+
+        return {
+          key: tier.key,
+          label: t(`gemini.quota.${tier.key}`, tier.label),
+          remainingPercent,
+          remainingText:
+            tier.remainingPercent == null
+              ? "--"
+              : t("gemini.quota.left", "{{value}}% 剩余", {
+                  value: remainingPercent,
+                }),
+          resetText: formatQuotaResetText(tier.resetAt),
+          quotaClass: getGeminiQuotaClass(usedPercent),
+        };
+      };
+
+      return [buildTierRow(tierSummary.pro), buildTierRow(tierSummary.flash)];
+    },
+    [formatQuotaResetText, t],
+  );
+
   const handleCopyLaunchCommand = useCallback(async () => {
     if (!launchModal) return;
     try {
@@ -388,58 +524,6 @@ export function GeminiAccountsPage() {
     },
     [resolveDisplayEmail],
   );
-
-  const resolveAuthMethodText = useCallback((account: GeminiAccount) => {
-    const raw = (account.selected_auth_type || "").trim();
-    const email = (account.email || "").trim();
-    const normalized = raw.toLowerCase();
-
-    if (normalized.includes("oauth") || normalized.includes("google")) {
-      return email
-        ? `Signed in with Google (${email})`
-        : "Signed in with Google";
-    }
-
-    if (email) {
-      return `Signed in with Google (${email})`;
-    }
-
-    return raw || "--";
-  }, []);
-
-  const resolveTierRawText = useCallback((account: GeminiAccount) => {
-    const raw = (account.plan_name || account.tier_id || "").trim();
-    if (!raw) return "--";
-
-    const normalized = raw.toLowerCase();
-    if (normalized.startsWith("gemini code assist")) {
-      return raw;
-    }
-
-    if (
-      normalized.includes("google_one_ai_premium") ||
-      normalized.includes("google one ai premium") ||
-      normalized.includes("google_one_ai_pro") ||
-      normalized.includes("google one ai pro") ||
-      normalized.includes("pro-tier")
-    ) {
-      return "Gemini Code Assist in Google One AI Pro";
-    }
-
-    if (normalized.includes("ultra")) {
-      return "Gemini Code Assist in Google AI Ultra";
-    }
-
-    if (
-      normalized.includes("standard-tier") ||
-      normalized.includes("free-tier") ||
-      normalized === "free"
-    ) {
-      return "Gemini Code Assist";
-    }
-
-    return raw;
-  }, []);
 
   // ─── Platform-specific: Dynamic tier filter ────────────────────────
 
@@ -645,6 +729,19 @@ export function GeminiAccountsPage() {
     [filteredAccounts],
   );
   const exportSelectionCount = getScopedSelectedCount(filteredIds);
+  const pagination = usePagination({
+    items: filteredAccounts,
+    storageKey: buildPaginationPageSizeStorageKey("Gemini"),
+  });
+  const paginatedAccounts = pagination.pageItems;
+  const paginatedIds = useMemo(
+    () => paginatedAccounts.map((account) => account.id),
+    [paginatedAccounts],
+  );
+  const isAllPaginatedSelected = useMemo(
+    () => isEveryIdSelected(selected, paginatedIds),
+    [paginatedIds, selected],
+  );
 
   const groupedAccounts = useMemo(() => {
     if (!groupByTag) return [] as Array<[string, typeof filteredAccounts]>;
@@ -675,6 +772,11 @@ export function GeminiAccountsPage() {
     });
   }, [filteredAccounts, groupByTag, normalizeTag, tagFilter, untaggedKey]);
 
+  const paginatedGroupedAccounts = useMemo(
+    () => buildPaginatedGroups(groupedAccounts, paginatedAccounts),
+    [groupedAccounts, paginatedAccounts],
+  );
+
   const resolveGroupLabel = (groupKey: string) =>
     groupKey === untaggedKey
       ? t("accounts.defaultGroup", "默认分组")
@@ -682,12 +784,58 @@ export function GeminiAccountsPage() {
 
   // ─── Render helpers ────────────────────────────────────────────────
 
+  const renderQuotaSection = (
+    account: GeminiAccount,
+    variant: "card" | "table",
+  ) => {
+    if (!hasGeminiQuotaData(account)) {
+      return (
+        <div className="ghcp-quota-section">
+          <div className="quota-empty">
+            {t("common.shared.quota.noData", "暂无配额数据")}
+          </div>
+        </div>
+      );
+    }
+
+    const quotaRows = resolveQuotaRows(account);
+    return (
+      <div className="ghcp-quota-section">
+        {quotaRows.map((row) => (
+          <div
+            className={`quota-item windsurf-credit-item ${variant === "table" ? "windsurf-table-credit-item" : ""}`}
+            key={`${account.id}-${row.key}`}
+          >
+            <div className="quota-header">
+              <span className="quota-label">{row.label}</span>
+            </div>
+            <div className="quota-bar-track">
+              <div
+                className={`quota-bar ${row.quotaClass}`}
+                style={{ width: `${Math.min(row.remainingPercent, 100)}%` }}
+              />
+            </div>
+            <div
+              className={`windsurf-credit-meta-row ${variant === "table" ? "table" : ""}`}
+            >
+              <span className="windsurf-credit-left" title={row.remainingText}>
+                {row.remainingText}
+              </span>
+              <span className="windsurf-credit-used" title={row.resetText}>
+                {row.resetText}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderGridCards = (items: typeof filteredAccounts, groupKey?: string) =>
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authMethodText = resolveAuthMethodText(account);
-      const tierText = resolveTierRawText(account);
+      const updatedText = resolveUpdatedText(account);
       const planLabel = resolvePlanLabel(account);
       const planClass = getGeminiPlanBadgeClass(undefined, account);
       const accountTags = (account.tags || [])
@@ -700,6 +848,7 @@ export function GeminiAccountsPage() {
       const isBanned = isGeminiAccountBanned(account);
       const hasStatusError =
         !isBanned && (account.status || "").toLowerCase() === "error";
+      const quotaError = account.quota_query_last_error?.trim();
       const statusReason = account.status_reason ?? null;
       const bannedTitle =
         statusReason || t("accounts.status.forbidden_tooltip");
@@ -735,6 +884,12 @@ export function GeminiAccountsPage() {
                 {t("accounts.status.refreshFailed")}
               </span>
             )}
+            {quotaError && (
+              <span className="status-pill warning" title={quotaError}>
+                <CircleAlert size={12} />
+                {t("common.shared.quota.queryFailed", "配额查询失败")}
+              </span>
+            )}
             {isBanned && (
               <span className="status-pill forbidden" title={bannedTitle}>
                 <Lock size={12} />
@@ -744,12 +899,7 @@ export function GeminiAccountsPage() {
           </div>
 
           <div className="account-sub-line">
-            <span className="kiro-table-subline">
-              Auth Method: {authMethodText}
-            </span>
-          </div>
-          <div className="account-sub-line">
-            <span className="kiro-table-subline">Tier: {tierText}</span>
+            <span className="kiro-table-subline">{updatedText}</span>
           </div>
 
           {accountTags.length > 0 && (
@@ -765,7 +915,10 @@ export function GeminiAccountsPage() {
             </div>
           )}
 
+          {renderQuotaSection(account, "card")}
+
           <div className="card-footer">
+            <span className="card-date">{updatedText}</span>
             <div className="card-actions">
               <button
                 className="card-action-btn success"
@@ -809,7 +962,7 @@ export function GeminiAccountsPage() {
                     resolveSingleExportBaseName(account),
                   )
                 }
-                title={t("common.shared.export", "导出")}
+                title={t("common.shared.export.title", "导出")}
               >
                 <Upload size={14} />
               </button>
@@ -830,8 +983,7 @@ export function GeminiAccountsPage() {
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authMethodText = resolveAuthMethodText(account);
-      const tierText = resolveTierRawText(account);
+      const updatedText = resolveUpdatedText(account);
       const planLabel = resolvePlanLabel(account);
       const planClass = getGeminiPlanBadgeClass(undefined, account);
       const accountTags = (account.tags || [])
@@ -843,6 +995,7 @@ export function GeminiAccountsPage() {
       const isBanned = isGeminiAccountBanned(account);
       const hasStatusError =
         !isBanned && (account.status || "").toLowerCase() === "error";
+      const quotaError = account.quota_query_last_error?.trim();
       const statusReason = account.status_reason ?? null;
       const bannedTitle =
         statusReason || t("accounts.status.forbidden_tooltip");
@@ -894,13 +1047,16 @@ export function GeminiAccountsPage() {
                   )}
                 </div>
               )}
+              {quotaError && (
+                <div className="account-sub-line">
+                  <span className="status-pill warning" title={quotaError}>
+                    <CircleAlert size={12} />
+                    {t("common.shared.quota.queryFailed", "配额查询失败")}
+                  </span>
+                </div>
+              )}
               <div className="account-sub-line">
-                <span className="kiro-table-subline">
-                  Auth Method: {authMethodText}
-                </span>
-              </div>
-              <div className="account-sub-line">
-                <span className="kiro-table-subline">Tier: {tierText}</span>
+                <span className="kiro-table-subline">{updatedText}</span>
               </div>
               {accountTags.length > 0 && (
                 <div className="account-tags-inline">
@@ -918,6 +1074,9 @@ export function GeminiAccountsPage() {
                 </div>
               )}
             </div>
+          </td>
+          <td className="gemini-quota-table-cell">
+            {renderQuotaSection(account, "table")}
           </td>
           <td className="sticky-action-cell table-action-cell">
             <div className="action-buttons">
@@ -963,7 +1122,7 @@ export function GeminiAccountsPage() {
                     resolveSingleExportBaseName(account),
                   )
                 }
-                title={t("common.shared.export", "导出")}
+                title={t("common.shared.export.title", "导出")}
               >
                 <Upload size={14} />
               </button>
@@ -1101,13 +1260,19 @@ export function GeminiAccountsPage() {
                     : t("accounts.filterTags", "标签筛选")}
                 </button>
                 {showTagFilter && (
-                  <div className="tag-filter-panel">
+                  <div
+                    ref={page.tagFilterPanelRef}
+                    className={`tag-filter-panel ${page.tagFilterPanelPlacement === "top" ? "open-top" : ""}`}
+                  >
                     {availableTags.length === 0 ? (
                       <div className="tag-filter-empty">
                         {t("accounts.noAvailableTags", "暂无可用标签")}
                       </div>
                     ) : (
-                      <div className="tag-filter-options">
+                      <div
+                        className="tag-filter-options"
+                        style={page.tagFilterScrollContainerStyle}
+                      >
                         {availableTags.map((tag) => (
                           <label
                             key={tag}
@@ -1160,18 +1325,18 @@ export function GeminiAccountsPage() {
                 )}
               </div>
 
-              <div className="sort-select">
-                <ArrowDownWideNarrow size={14} className="sort-icon" />
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  aria-label={t("common.shared.sortLabel", "排序")}
-                >
-                  <option value="created_at">
-                    {t("common.shared.sort.createdAt", "按创建时间")}
-                  </option>
-                </select>
-              </div>
+              <SingleSelectFilterDropdown
+                value={sortBy}
+                options={[
+                  {
+                    value: "created_at",
+                    label: t("common.shared.sort.createdAt", "按创建时间"),
+                  },
+                ]}
+                ariaLabel={t("common.shared.sortLabel", "排序")}
+                icon={<ArrowDownWideNarrow size={14} />}
+                onChange={setSortBy}
+              />
 
               <button
                 className="sort-direction-btn"
@@ -1249,13 +1414,13 @@ export function GeminiAccountsPage() {
                 disabled={exporting || filteredIds.length === 0}
                 title={
                   exportSelectionCount > 0
-                    ? `${t("common.shared.export", "导出")} (${exportSelectionCount})`
-                    : t("common.shared.export", "导出")
+                    ? `${t("common.shared.export.title", "导出")} (${exportSelectionCount})`
+                    : t("common.shared.export.title", "导出")
                 }
                 aria-label={
                   exportSelectionCount > 0
-                    ? `${t("common.shared.export", "导出")} (${exportSelectionCount})`
-                    : t("common.shared.export", "导出")
+                    ? `${t("common.shared.export.title", "导出")} (${exportSelectionCount})`
+                    : t("common.shared.export.title", "导出")
                 }
               >
                 <Upload size={14} />
@@ -1328,7 +1493,7 @@ export function GeminiAccountsPage() {
             </div>
           ) : viewMode === "grid" ? (
             <div className="grid-view-container">
-              {filteredAccounts.length > 0 && (
+              {paginatedAccounts.length > 0 && (
                 <div
                   className="grid-view-header"
                   style={{ marginBottom: "12px", paddingLeft: "4px" }}
@@ -1345,13 +1510,8 @@ export function GeminiAccountsPage() {
                   >
                     <input
                       type="checkbox"
-                      checked={
-                        selected.size === filteredAccounts.length &&
-                        filteredAccounts.length > 0
-                      }
-                      onChange={() =>
-                        toggleSelectAll(filteredAccounts.map((a) => a.id))
-                      }
+                      checked={isAllPaginatedSelected}
+                      onChange={() => toggleSelectAll(paginatedIds)}
                     />
                     {t("common.selectAll", "全选")}
                   </label>
@@ -1359,25 +1519,25 @@ export function GeminiAccountsPage() {
               )}
               {groupByTag ? (
                 <div className="tag-group-list">
-                  {groupedAccounts.map(([groupKey, groupAccounts]) => (
-                    <div key={groupKey} className="tag-group-section">
-                      <div className="tag-group-header">
-                        <span className="tag-group-title">
-                          {resolveGroupLabel(groupKey)}
-                        </span>
-                        <span className="tag-group-count">
-                          {groupAccounts.length}
-                        </span>
+                  {paginatedGroupedAccounts.map(
+                    ({ groupKey, items, totalCount }) => (
+                      <div key={groupKey} className="tag-group-section">
+                        <div className="tag-group-header">
+                          <span className="tag-group-title">
+                            {resolveGroupLabel(groupKey)}
+                          </span>
+                          <span className="tag-group-count">{totalCount}</span>
+                        </div>
+                        <div className="tag-group-grid ghcp-accounts-grid">
+                          {renderGridCards(items, groupKey)}
+                        </div>
                       </div>
-                      <div className="tag-group-grid ghcp-accounts-grid">
-                        {renderGridCards(groupAccounts, groupKey)}
-                      </div>
-                    </div>
-                  ))}
+                    ),
+                  )}
                 </div>
               ) : (
                 <div className="ghcp-accounts-grid">
-                  {renderGridCards(filteredAccounts)}
+                  {renderGridCards(paginatedAccounts)}
                 </div>
               )}
             </div>
@@ -1389,17 +1549,15 @@ export function GeminiAccountsPage() {
                     <th style={{ width: 40 }}>
                       <input
                         type="checkbox"
-                        checked={
-                          selected.size === filteredAccounts.length &&
-                          filteredAccounts.length > 0
-                        }
-                        onChange={() =>
-                          toggleSelectAll(filteredAccounts.map((a) => a.id))
-                        }
+                        checked={isAllPaginatedSelected}
+                        onChange={() => toggleSelectAll(paginatedIds)}
                       />
                     </th>
                     <th style={{ width: 240 }}>
                       {t("common.shared.columns.email", "邮箱")}
+                    </th>
+                    <th style={{ width: 460 }}>
+                      {t("accounts.columns.quota", "配额状态")}
                     </th>
                     <th className="sticky-action-header table-action-header">
                       {t("common.shared.columns.actions", "操作")}
@@ -1407,23 +1565,25 @@ export function GeminiAccountsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedAccounts.map(([groupKey, groupAccounts]) => (
-                    <Fragment key={groupKey}>
-                      <tr className="tag-group-row">
-                        <td colSpan={3}>
-                          <div className="tag-group-header">
-                            <span className="tag-group-title">
-                              {resolveGroupLabel(groupKey)}
-                            </span>
-                            <span className="tag-group-count">
-                              {groupAccounts.length}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      {renderTableRows(groupAccounts, groupKey)}
-                    </Fragment>
-                  ))}
+                  {paginatedGroupedAccounts.map(
+                    ({ groupKey, items, totalCount }) => (
+                      <Fragment key={groupKey}>
+                        <tr className="tag-group-row">
+                          <td colSpan={4}>
+                            <div className="tag-group-header">
+                              <span className="tag-group-title">
+                                {resolveGroupLabel(groupKey)}
+                              </span>
+                              <span className="tag-group-count">
+                                {totalCount}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                        {renderTableRows(items, groupKey)}
+                      </Fragment>
+                    ),
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1435,27 +1595,40 @@ export function GeminiAccountsPage() {
                     <th style={{ width: 40 }}>
                       <input
                         type="checkbox"
-                        checked={
-                          selected.size === filteredAccounts.length &&
-                          filteredAccounts.length > 0
-                        }
-                        onChange={() =>
-                          toggleSelectAll(filteredAccounts.map((a) => a.id))
-                        }
+                        checked={isAllPaginatedSelected}
+                        onChange={() => toggleSelectAll(paginatedIds)}
                       />
                     </th>
                     <th style={{ width: 240 }}>
                       {t("common.shared.columns.email", "邮箱")}
+                    </th>
+                    <th style={{ width: 460 }}>
+                      {t("accounts.columns.quota", "配额状态")}
                     </th>
                     <th className="sticky-action-header table-action-header">
                       {t("common.shared.columns.actions", "操作")}
                     </th>
                   </tr>
                 </thead>
-                <tbody>{renderTableRows(filteredAccounts)}</tbody>
+                <tbody>{renderTableRows(paginatedAccounts)}</tbody>
               </table>
             </div>
           )}
+
+          <PaginationControls
+            totalItems={pagination.totalItems}
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            pageSize={pagination.pageSize}
+            pageSizeOptions={pagination.pageSizeOptions}
+            rangeStart={pagination.rangeStart}
+            rangeEnd={pagination.rangeEnd}
+            canGoPrevious={pagination.canGoPrevious}
+            canGoNext={pagination.canGoNext}
+            onPageSizeChange={pagination.setPageSize}
+            onPreviousPage={pagination.goToPreviousPage}
+            onNextPage={pagination.goToNextPage}
+          />
 
           {showAddModal && (
             <div className="modal-overlay" onClick={closeAddModal}>
@@ -1822,7 +1995,7 @@ export function GeminiAccountsPage() {
 
           <ExportJsonModal
             isOpen={showExportModal}
-            title={`${t("common.shared.export", "导出")} JSON`}
+            title={`${t("common.shared.export.title", "导出")} JSON`}
             jsonContent={exportJsonContent}
             hidden={exportJsonHidden}
             copied={exportJsonCopied}

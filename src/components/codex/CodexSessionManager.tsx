@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog';
-import { ChevronDown, ChevronRight, Eye, Folder, RefreshCw, Trash2 } from 'lucide-react';
-import type { CodexSessionRecord } from '../../types/codex';
+import { ChevronDown, ChevronRight, Eye, Folder, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react';
+import { ModalErrorMessage, useModalErrorState } from '../ModalErrorMessage';
+import type { CodexSessionRecord, CodexTrashedSessionRecord } from '../../types/codex';
 import { useCodexInstanceStore } from '../../stores/useCodexInstanceStore';
 
 type MessageState = { text: string; tone?: 'error' };
@@ -81,20 +82,37 @@ export function CodexSessionManager() {
   const moveSessionsToTrashAcrossInstances = useCodexInstanceStore(
     (state) => state.moveSessionsToTrashAcrossInstances,
   );
+  const listTrashedSessionsAcrossInstances = useCodexInstanceStore(
+    (state) => state.listTrashedSessionsAcrossInstances,
+  );
+  const restoreSessionsFromTrashAcrossInstances = useCodexInstanceStore(
+    (state) => state.restoreSessionsFromTrashAcrossInstances,
+  );
   const [sessions, setSessions] = useState<CodexSessionRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [trashedSessions, setTrashedSessions] = useState<CodexTrashedSessionRecord[]>([]);
+  const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [repairingVisibility, setRepairingVisibility] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loadingTrash, setLoadingTrash] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState<MessageState | null>(null);
+  const {
+    message: restoreModalError,
+    scrollKey: restoreModalErrorScrollKey,
+    set: setRestoreModalError,
+  } = useModalErrorState();
   const hasInitializedExpandedGroupsRef = useRef(false);
   const loadSessionsPromiseRef = useRef<Promise<void> | null>(null);
   const isZh = i18n.resolvedLanguage?.toLowerCase().startsWith('zh') ?? true;
 
   const groupedSessions = useMemo(() => buildGroups(sessions), [sessions]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedTrashIdSet = useMemo(() => new Set(selectedTrashIds), [selectedTrashIds]);
   const instanceCount = instances.length;
 
   const loadSessions = useCallback(async () => {
@@ -137,6 +155,23 @@ export function CodexSessionManager() {
     }
   }, [listSessionsAcrossInstances]);
 
+  const loadTrashedSessions = useCallback(async () => {
+    setLoadingTrash(true);
+    setRestoreModalError(null);
+    setTrashedSessions([]);
+    try {
+      const nextSessions = await listTrashedSessionsAcrossInstances();
+      setTrashedSessions(nextSessions);
+      setSelectedTrashIds((prev) => prev.filter((id) => nextSessions.some((item) => item.sessionId === id)));
+      return nextSessions;
+    } catch (error) {
+      setRestoreModalError(String(error));
+      return [];
+    } finally {
+      setLoadingTrash(false);
+    }
+  }, [listTrashedSessionsAcrossInstances, setRestoreModalError]);
+
   useEffect(() => {
     void loadSessions();
   }, [loadSessions]);
@@ -162,6 +197,25 @@ export function CodexSessionManager() {
 
   const toggleGroupExpanded = (cwd: string) => {
     setExpandedGroups((prev) => (prev.includes(cwd) ? prev.filter((item) => item !== cwd) : [...prev, cwd]));
+  };
+
+  const toggleTrashedSession = (sessionId: string) => {
+    setSelectedTrashIds((prev) =>
+      prev.includes(sessionId) ? prev.filter((id) => id !== sessionId) : [...prev, sessionId],
+    );
+  };
+
+  const handleOpenRestoreModal = async () => {
+    setShowRestoreModal(true);
+    setSelectedTrashIds([]);
+    await loadTrashedSessions();
+  };
+
+  const handleCloseRestoreModal = () => {
+    if (restoring) return;
+    setShowRestoreModal(false);
+    setSelectedTrashIds([]);
+    setRestoreModalError(null);
   };
 
   const handleSyncSessions = async () => {
@@ -205,6 +259,9 @@ export function CodexSessionManager() {
     try {
       await refreshInstances();
       await loadSessions();
+      if (showRestoreModal) {
+        await loadTrashedSessions();
+      }
     } catch (error) {
       setMessage({ text: String(error), tone: 'error' });
     }
@@ -264,10 +321,36 @@ export function CodexSessionManager() {
       setMessage({ text: summary.message });
       setSelectedIds([]);
       await loadSessions();
+      if (showRestoreModal) {
+        await loadTrashedSessions();
+      }
     } catch (error) {
       setMessage({ text: String(error), tone: 'error' });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleRestoreFromTrash = async () => {
+    if (selectedTrashIds.length === 0) {
+      setRestoreModalError(t('codex.sessionManager.messages.pickRestoreOne', '请至少选择一条待恢复会话'));
+      return;
+    }
+
+    setRestoring(true);
+    setRestoreModalError(null);
+    try {
+      const summary = await restoreSessionsFromTrashAcrossInstances(selectedTrashIds);
+      setMessage({ text: summary.message });
+      setSelectedTrashIds([]);
+      const [nextTrashedSessions] = await Promise.all([loadTrashedSessions(), loadSessions()]);
+      if (nextTrashedSessions.length === 0) {
+        setShowRestoreModal(false);
+      }
+    } catch (error) {
+      setRestoreModalError(String(error));
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -297,6 +380,15 @@ export function CodexSessionManager() {
           >
             <Eye size={14} />
             {t('codex.sessionManager.actions.repairVisibility', '修复可见性')}
+          </button>
+          <button
+            className="btn btn-secondary codex-session-manager__action-button"
+            type="button"
+            onClick={() => void handleOpenRestoreModal()}
+            disabled={loading || syncing || repairingVisibility || deleting || restoring}
+          >
+            <RotateCcw size={14} />
+            {t('codex.sessionManager.actions.restoreSessions', '恢复会话')}
           </button>
           <button
             className="btn btn-secondary codex-session-manager__action-button"
@@ -415,6 +507,97 @@ export function CodexSessionManager() {
               </section>
             );
           })}
+        </div>
+      ) : null}
+
+      {showRestoreModal ? (
+        <div className="modal-overlay" onClick={handleCloseRestoreModal}>
+          <div className="modal codex-session-restore-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('codex.sessionManager.restoreModal.title', '恢复会话')}</h2>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={handleCloseRestoreModal}
+                disabled={restoring}
+                aria-label={t('common.close', '关闭')}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <ModalErrorMessage message={restoreModalError} scrollKey={restoreModalErrorScrollKey} />
+              {loadingTrash ? (
+                <div className="codex-session-restore-modal__empty">
+                  <h3>{t('common.loading', '加载中...')}</h3>
+                </div>
+              ) : null}
+              {!loadingTrash && trashedSessions.length === 0 ? (
+                <div className="codex-session-restore-modal__empty">
+                  <Folder size={36} className="empty-icon" />
+                  <h3>{t('codex.sessionManager.restoreModal.emptyTitle', '废纸篓里还没有会话')}</h3>
+                  <p>{t('codex.sessionManager.restoreModal.emptyDesc', '已移到废纸篓的会话会显示在这里。')}</p>
+                </div>
+              ) : null}
+              {!loadingTrash && trashedSessions.length > 0 ? (
+                <>
+                  <p className="codex-session-restore-modal__hint">
+                    {t(
+                      'codex.sessionManager.restoreModal.hint',
+                      '恢复会把 rollout 文件、SQLite 线程记录和 session_index 条目一起放回原实例。',
+                    )}
+                  </p>
+                  <div className="codex-session-restore-list">
+                    {trashedSessions.map((session) => (
+                      <label className="codex-session-restore-row" key={session.sessionId}>
+                        <div className="codex-session-restore-row__left">
+                          <input
+                            className="codex-session-row__checkbox"
+                            type="checkbox"
+                            checked={selectedTrashIdSet.has(session.sessionId)}
+                            onChange={() => toggleTrashedSession(session.sessionId)}
+                          />
+                          <div className="codex-session-restore-row__content">
+                            <span className="codex-session-restore-row__title" title={session.title}>
+                              {session.title || t('codex.sessionManager.untitled', '未命名会话')}
+                            </span>
+                            <span className="codex-session-restore-row__meta">
+                              {session.locations.map((location) => location.instanceName).join(' / ')}
+                            </span>
+                            <span className="codex-session-restore-row__meta codex-session-restore-row__cwd">
+                              {session.cwd}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="codex-session-row__time">
+                          {formatRelativeTime(session.deletedAt, isZh)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={handleCloseRestoreModal}
+                disabled={restoring}
+              >
+                {t('common.cancel', '取消')}
+              </button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void handleRestoreFromTrash()}
+                disabled={restoring || loadingTrash || selectedTrashIds.length === 0}
+              >
+                <RotateCcw size={14} className={restoring ? 'icon-spin' : undefined} />
+                {t('codex.sessionManager.restoreModal.restoreAction', '恢复选中会话')} ({selectedTrashIds.length})
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </section>

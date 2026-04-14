@@ -7,6 +7,40 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.21.3] - 2026-04-13
+
+### Added
+- **Windsurf account onboarding now supports email/password sign-in again, including batch import**: the add-account dialog now supports single-account login plus batch import from JSON arrays or delimiter-based text, and failed rows return explicit line-level error feedback while successful logins immediately sync managed account data.
+- **Codex account groups now support in-group quick add, direct removal, and group deletion workflows**: users can enter a group as a scoped view, add more accounts from a picker, remove one or many accounts from that group, and delete the group with in-modal confirmation and error feedback.
+
+### Changed
+- **Shared Accounts and Codex account pages now expose faster group-entry actions around folder views**: group cards, table rows, and in-group breadcrumb toolbars now provide direct add-account actions, and moving Codex accounts between groups excludes the current source group to avoid no-op targets.
+- **Opening the live Codex `config.toml` now goes through the desktop backend instead of frontend path opening**: Quick Settings and the model-provider quick config card now resolve and open the active file through the Tauri opener command for more reliable desktop behavior.
+
+---
+## [0.21.2] - 2026-04-13
+
+### Added
+- **Settings now support data backup/import bundles for accounts and app config**: export or import accounts only, config only, or both together; config restore covers groups, instances, wakeup tasks, current-account refresh settings, and Codex model-provider data, while legacy account-only backups remain importable and report when some bindings need remapping or a restart is required.
+- **Settings now include a Backup Manager for scheduled local backups**: Cockpit can create one managed backup per day, keep backups in the app data `backups` directory with configurable retention, and let users run a backup immediately or import/delete existing backup files from the same dialog.
+- **Codex Session Manager now supports restoring trashed sessions back to their original instances**: restored sessions recover the rollout file, the `session_index.jsonl` entry, and the `state_5.sqlite` thread row together instead of requiring manual file repair.
+
+### Changed
+- **Provider account pages now share a unified pagination and filter experience**: page size is configurable per platform, selection and grouping stay consistent across table and grid views, and tag/sort dropdowns auto-flip to remain usable in small windows.
+- **Gemini account tables now surface Pro / Flash quota status directly in list view**: quota summaries are visible without switching back to card layout, making remaining capacity easier to scan.
+- **Instance account pickers now open in anchored floating menus that stay visible near window edges**: long account lists keep the active option in view, and Trae instance search now also matches display names in addition to email and plan text.
+- **Codex account switching now auto-repairs historical session visibility only when the effective provider changes**: after a successful switch, Cockpit compares the provider before and after the change and only then repairs rollout/session metadata together with `state_5.sqlite`.
+
+### Removed
+- **Windsurf account onboarding no longer includes email/password login**: the add-account dialog now focuses on OAuth, token, and local JSON import flows.
+
+### Fixed
+- **Quota refresh failures now surface explicit warning and empty states across provider account pages**: Cursor, Gemini, GitHub Copilot, Kiro, Qoder, Trae, Windsurf, Zed, and the aggregated Accounts page now persist the last quota-query error, show a visible failure badge/message, and fall back to a clear `No quota data` state instead of silently rendering blank or ambiguous quota panels.
+- **Codex account state now stays aligned with the live local OAuth session more reliably**: current-account detection, switch preparation, quota refresh, and wakeup runs reuse newer local auth data and write refreshed tokens back to managed homes, reducing stale-token mismatches.
+- **Background auto refresh now runs through a unified scheduler**: quota refresh and current-account refresh jobs across providers are less likely to overlap or double-trigger, improving refresh stability.
+- **Trae token refresh now preserves regional auth context when rewriting local auth state**: refreshed sessions keep the host, region, and refresh-expiry metadata needed for follow-up injection flows.
+
+---
 ## [0.21.1] - 2026-04-11
 
 ### Added

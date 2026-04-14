@@ -498,7 +498,11 @@ async fn fetch_remote_account_profile(
         .map_err(|e| format!("读取账号信息响应失败: {}", e))?;
 
     if !status.is_success() {
-        return Err(format!("账号信息接口返回错误 {}: {}", status, body));
+        return Err(format!(
+            "账号信息接口返回错误 {}，body_len={}",
+            status,
+            body.len()
+        ));
     }
 
     let payload: serde_json::Value =
@@ -1343,9 +1347,12 @@ async fn refresh_account_profile_once(account_id: &str) -> Result<CodexAccount, 
                     account.email, err
                 ));
 
-                account.tokens = codex_oauth::refresh_access_token(&refresh_token)
-                    .await
-                    .map_err(|e| format!("账号资料接口返回 Token 失效，刷新 Token 失败: {}", e))?;
+                account.tokens = codex_oauth::refresh_access_token_with_fallback(
+                    &refresh_token,
+                    Some(account.tokens.id_token.as_str()),
+                )
+                .await
+                .map_err(|e| format!("账号资料接口返回 Token 失效，刷新 Token 失败: {}", e))?;
                 save_account(&account)?;
 
                 fetch_remote_account_profile(&account).await?
@@ -1626,6 +1633,163 @@ pub fn remove_accounts(account_ids: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+struct LocalCodexOAuthSnapshot {
+    tokens: CodexTokens,
+    email: String,
+    account_id: Option<String>,
+    organization_id: Option<String>,
+}
+
+fn build_local_oauth_snapshot(tokens: CodexAuthTokens) -> Option<LocalCodexOAuthSnapshot> {
+    let (email, _, _, id_token_account_id, id_token_org_id) =
+        extract_user_info(&tokens.id_token).ok()?;
+    let account_id = normalize_optional_value(
+        tokens
+            .account_id
+            .clone()
+            .or_else(|| extract_chatgpt_account_id_from_access_token(&tokens.access_token))
+            .or(id_token_account_id),
+    );
+    let organization_id = normalize_optional_value(
+        extract_chatgpt_organization_id_from_access_token(&tokens.access_token).or(id_token_org_id),
+    );
+
+    Some(LocalCodexOAuthSnapshot {
+        tokens: CodexTokens {
+            id_token: tokens.id_token,
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+        },
+        email,
+        account_id,
+        organization_id,
+    })
+}
+
+fn load_local_oauth_snapshot_from_dir(base_dir: &Path) -> Option<LocalCodexOAuthSnapshot> {
+    let auth_path = base_dir.join("auth.json");
+    if !auth_path.exists() {
+        return None;
+    }
+
+    let content = fs::read_to_string(&auth_path).ok()?;
+    let auth_file: CodexAuthFile = serde_json::from_str(&content).ok()?;
+    if is_auth_mode_apikey(auth_file.auth_mode.as_deref()) {
+        return None;
+    }
+
+    build_local_oauth_snapshot(auth_file.tokens?)
+}
+
+fn local_oauth_snapshot_matches_account(
+    snapshot: &LocalCodexOAuthSnapshot,
+    account: &CodexAccount,
+) -> bool {
+    if !account.email.eq_ignore_ascii_case(&snapshot.email) {
+        return false;
+    }
+
+    let expected_id = build_account_storage_id(
+        &snapshot.email,
+        snapshot.account_id.as_deref(),
+        snapshot.organization_id.as_deref(),
+    );
+    if account.id == expected_id {
+        return true;
+    }
+
+    if let Some(account_id) = snapshot.account_id.as_deref() {
+        if normalize_optional_ref(account.account_id.as_deref()).as_deref() != Some(account_id) {
+            return false;
+        }
+    }
+
+    if let Some(organization_id) = snapshot.organization_id.as_deref() {
+        if normalize_optional_ref(account.organization_id.as_deref()).as_deref()
+            != Some(organization_id)
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn apply_local_oauth_snapshot(
+    account: &mut CodexAccount,
+    snapshot: &LocalCodexOAuthSnapshot,
+) -> bool {
+    let mut changed = false;
+
+    if account.tokens.id_token != snapshot.tokens.id_token {
+        account.tokens.id_token = snapshot.tokens.id_token.clone();
+        changed = true;
+    }
+
+    if account.tokens.access_token != snapshot.tokens.access_token {
+        account.tokens.access_token = snapshot.tokens.access_token.clone();
+        changed = true;
+    }
+
+    if let Some(refresh_token) = normalize_optional_ref(snapshot.tokens.refresh_token.as_deref()) {
+        if account.tokens.refresh_token.as_deref() != Some(refresh_token.as_str()) {
+            account.tokens.refresh_token = Some(refresh_token);
+            changed = true;
+        }
+    }
+
+    if normalize_optional_ref(account.account_id.as_deref()) != snapshot.account_id {
+        account.account_id = snapshot.account_id.clone();
+        changed = true;
+    }
+
+    if normalize_optional_ref(account.organization_id.as_deref()) != snapshot.organization_id {
+        account.organization_id = snapshot.organization_id.clone();
+        changed = true;
+    }
+
+    changed
+}
+
+fn sync_account_from_auth_dir_if_current(
+    account: &mut CodexAccount,
+    base_dir: &Path,
+) -> Result<bool, String> {
+    let Some(snapshot) = load_local_oauth_snapshot_from_dir(base_dir) else {
+        return Ok(false);
+    };
+
+    if !local_oauth_snapshot_matches_account(&snapshot, account) {
+        return Ok(false);
+    }
+
+    if apply_local_oauth_snapshot(account, &snapshot) {
+        save_account(account)?;
+        logger::log_info(&format!(
+            "Codex 账号已从本地 auth.json 同步最新 Token: account_id={}, source_dir={}",
+            account.id,
+            base_dir.display()
+        ));
+    }
+
+    Ok(true)
+}
+
+pub fn sync_account_from_auth_dir(
+    account_id: &str,
+    base_dir: &Path,
+) -> Result<CodexAccount, String> {
+    let mut account =
+        load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
+    if account.is_api_key_auth() {
+        return Ok(account);
+    }
+
+    let _ = sync_account_from_auth_dir_if_current(&mut account, base_dir)?;
+    Ok(account)
+}
+
 /// 获取当前激活的账号（基于 auth.json）
 pub fn get_current_account() -> Option<CodexAccount> {
     let auth_path = get_auth_json_path();
@@ -1675,50 +1839,50 @@ pub fn get_current_account() -> Option<CodexAccount> {
         return None;
     }
 
-    let tokens = auth_file.tokens?;
-
-    // 从 id_token 提取 email + 租户信息，优先精确匹配同邮箱下的账号
-    let (email, _, _, id_token_account_id, id_token_org_id) =
-        extract_user_info(&tokens.id_token).ok()?;
-    let current_account_id = normalize_optional_value(
-        tokens
-            .account_id
-            .clone()
-            .or_else(|| extract_chatgpt_account_id_from_access_token(&tokens.access_token))
-            .or(id_token_account_id),
-    );
-    let current_organization_id = normalize_optional_value(
-        extract_chatgpt_organization_id_from_access_token(&tokens.access_token).or(id_token_org_id),
-    );
+    let snapshot = build_local_oauth_snapshot(auth_file.tokens?)?;
 
     // 在我们的账号列表中查找
     let accounts = list_accounts();
-    if let Some(account_id) = current_account_id.as_deref() {
+    if let Some(account_id) = snapshot.account_id.as_deref() {
         if let Some(account) = accounts.iter().find(|account| {
-            account.email.eq_ignore_ascii_case(&email)
+            account.email.eq_ignore_ascii_case(&snapshot.email)
                 && normalize_optional_ref(account.account_id.as_deref())
                     == Some(account_id.to_string())
-                && (current_organization_id.is_none()
+                && (snapshot.organization_id.is_none()
                     || normalize_optional_ref(account.organization_id.as_deref())
-                        == current_organization_id.clone())
+                        == snapshot.organization_id.clone())
         }) {
-            return Some(account.clone());
+            let mut account = account.clone();
+            if apply_local_oauth_snapshot(&mut account, &snapshot) {
+                let _ = save_account(&account);
+            }
+            return Some(account);
         }
     }
 
-    if let Some(organization_id) = current_organization_id.as_deref() {
+    if let Some(organization_id) = snapshot.organization_id.as_deref() {
         if let Some(account) = accounts.iter().find(|account| {
-            account.email.eq_ignore_ascii_case(&email)
+            account.email.eq_ignore_ascii_case(&snapshot.email)
                 && normalize_optional_ref(account.organization_id.as_deref())
                     == Some(organization_id.to_string())
         }) {
-            return Some(account.clone());
+            let mut account = account.clone();
+            if apply_local_oauth_snapshot(&mut account, &snapshot) {
+                let _ = save_account(&account);
+            }
+            return Some(account);
         }
     }
 
-    accounts
-        .into_iter()
-        .find(|account| account.email.eq_ignore_ascii_case(&email))
+    accounts.into_iter().find_map(|mut account| {
+        if !account.email.eq_ignore_ascii_case(&snapshot.email) {
+            return None;
+        }
+        if apply_local_oauth_snapshot(&mut account, &snapshot) {
+            let _ = save_account(&account);
+        }
+        Some(account)
+    })
 }
 
 fn build_auth_file_value(account: &CodexAccount) -> Result<serde_json::Value, String> {
@@ -1962,22 +2126,55 @@ pub fn write_account_bundle_to_dir(base_dir: &Path, account: &CodexAccount) -> R
     Ok(())
 }
 
-/// 准备账号注入：如有必要刷新 Token 并写回存储
-pub async fn prepare_account_for_injection(account_id: &str) -> Result<CodexAccount, String> {
+/// 准备账号注入：优先同步本地 auth.json，再在必要时刷新 Token 并写回存储
+pub async fn prepare_account_for_injection_from_auth_dir(
+    account_id: &str,
+    auth_dir: Option<&Path>,
+) -> Result<CodexAccount, String> {
     let mut account =
         load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
     if account.is_api_key_auth() {
         return Ok(account);
     }
 
+    let mut matched_auth_dir: Option<PathBuf> = None;
+
+    if let Some(dir) = auth_dir {
+        if sync_account_from_auth_dir_if_current(&mut account, dir)? {
+            matched_auth_dir = Some(dir.to_path_buf());
+        }
+    }
+
+    if matched_auth_dir.is_none() {
+        let default_home = get_codex_home();
+        if sync_account_from_auth_dir_if_current(&mut account, &default_home)? {
+            matched_auth_dir = Some(default_home);
+        }
+    }
+
     if codex_oauth::is_token_expired(&account.tokens.access_token) {
         logger::log_info(&format!("账号 {} 的 Token 已过期，尝试刷新", account.email));
         if let Some(ref refresh_token) = account.tokens.refresh_token {
-            match codex_oauth::refresh_access_token(refresh_token).await {
+            match codex_oauth::refresh_access_token_with_fallback(
+                refresh_token,
+                Some(account.tokens.id_token.as_str()),
+            )
+            .await
+            {
                 Ok(new_tokens) => {
                     logger::log_info(&format!("账号 {} 的 Token 刷新成功", account.email));
                     account.tokens = new_tokens;
                     save_account(&account)?;
+                    if let Some(dir) = matched_auth_dir.as_deref() {
+                        if let Err(err) = write_account_bundle_to_dir(dir, &account) {
+                            logger::log_warn(&format!(
+                                "Codex 账号刷新后回写本地 auth.json 失败: account_id={}, target_dir={}, error={}",
+                                account.id,
+                                dir.display(),
+                                err
+                            ));
+                        }
+                    }
                 }
                 Err(e) => {
                     logger::log_error(&format!("账号 {} Token 刷新失败: {}", account.email, e));
@@ -1989,6 +2186,10 @@ pub async fn prepare_account_for_injection(account_id: &str) -> Result<CodexAcco
         }
     }
     Ok(account)
+}
+
+pub async fn prepare_account_for_injection(account_id: &str) -> Result<CodexAccount, String> {
+    prepare_account_for_injection_from_auth_dir(account_id, None).await
 }
 
 /// 切换账号（写入 auth.json）
@@ -2328,16 +2529,22 @@ fn extract_codex_tokens_from_value(
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_codex_tokens_from_value, get_accounts_dir, get_accounts_storage_path,
-        list_accounts_checked, load_account_index, read_api_provider_from_config_toml,
-        read_quick_config_from_config_toml, resolve_api_provider_config,
+        build_account_storage_id, extract_codex_tokens_from_value, get_accounts_dir,
+        get_accounts_storage_path, get_current_account, list_accounts_checked, load_account,
+        load_account_index, read_api_provider_from_config_toml, read_quick_config_from_config_toml,
+        resolve_api_provider_config, save_account, save_account_index, sync_account_from_auth_dir,
         validate_api_key_credentials, write_api_provider_to_config_toml,
-        write_quick_config_to_config_toml, ApiProviderConfig, CODEX_AUTO_COMPACT_DEFAULT_LIMIT,
+        write_quick_config_to_config_toml, ApiProviderConfig, CodexAccountIndex,
+        CodexAccountSummary, CodexAuthFile, CodexAuthTokens, CODEX_AUTO_COMPACT_DEFAULT_LIMIT,
         CODEX_CONTEXT_WINDOW_1M_VALUE,
     };
-    use crate::models::codex::CodexApiProviderMode;
+    use crate::models::codex::{CodexAccount, CodexApiProviderMode, CodexTokens};
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     use std::fs;
+    use std::sync::{LazyLock, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEST_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
@@ -2351,6 +2558,143 @@ mod tests {
         }
         fs::create_dir_all(&base_dir).expect("create temp dir");
         base_dir
+    }
+
+    struct TestEnvGuard {
+        home_dir: std::path::PathBuf,
+        previous_home: Option<String>,
+        previous_codex_home: Option<String>,
+    }
+
+    impl TestEnvGuard {
+        fn new(prefix: &str) -> Self {
+            let home_dir = make_temp_dir(prefix);
+            let codex_home = home_dir.join(".codex");
+            fs::create_dir_all(&codex_home).expect("create codex home");
+
+            let previous_home = std::env::var("HOME").ok();
+            let previous_codex_home = std::env::var("CODEX_HOME").ok();
+            std::env::set_var("HOME", &home_dir);
+            std::env::set_var("CODEX_HOME", &codex_home);
+
+            Self {
+                home_dir,
+                previous_home,
+                previous_codex_home,
+            }
+        }
+
+        fn codex_home(&self) -> std::path::PathBuf {
+            self.home_dir.join(".codex")
+        }
+    }
+
+    impl Drop for TestEnvGuard {
+        fn drop(&mut self) {
+            match self.previous_home.as_ref() {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+            match self.previous_codex_home.as_ref() {
+                Some(value) => std::env::set_var("CODEX_HOME", value),
+                None => std::env::remove_var("CODEX_HOME"),
+            }
+            let _ = fs::remove_dir_all(&self.home_dir);
+        }
+    }
+
+    fn make_jwt(payload: serde_json::Value) -> String {
+        let header = serde_json::json!({ "alg": "none", "typ": "JWT" });
+        format!(
+            "{}.{}.sig",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).expect("serialize header")),
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).expect("serialize payload"))
+        )
+    }
+
+    fn make_codex_tokens(
+        email: &str,
+        account_id: &str,
+        organization_id: &str,
+        suffix: &str,
+        refresh_token: &str,
+    ) -> CodexTokens {
+        let id_token = make_jwt(serde_json::json!({
+            "aud": ["codex-cli"],
+            "iss": "https://auth.openai.com",
+            "email": email,
+            "sub": format!("user-{}", suffix),
+            "https://api.openai.com/auth": {
+                "chatgpt_user_id": format!("user-{}", suffix),
+                "chatgpt_plan_type": "pro",
+                "account_id": account_id,
+                "organization_id": organization_id,
+            }
+        }));
+        let access_token = make_jwt(serde_json::json!({
+            "sub": format!("access-{}", suffix),
+            "https://api.openai.com/auth": {
+                "chatgpt_account_id": account_id,
+                "organization_id": organization_id,
+            }
+        }));
+
+        CodexTokens {
+            id_token,
+            access_token,
+            refresh_token: Some(refresh_token.to_string()),
+        }
+    }
+
+    fn seed_oauth_account(tokens: CodexTokens) -> CodexAccount {
+        let email = "demo@example.com";
+        let account_id = "acc-current";
+        let organization_id = "org-current";
+        let storage_id = build_account_storage_id(email, Some(account_id), Some(organization_id));
+
+        let mut account = CodexAccount::new(storage_id.clone(), email.to_string(), tokens);
+        account.user_id = Some("user-current".to_string());
+        account.plan_type = Some("pro".to_string());
+        account.account_id = Some(account_id.to_string());
+        account.organization_id = Some(organization_id.to_string());
+        save_account(&account).expect("save account");
+
+        let mut index = CodexAccountIndex::new();
+        index.accounts.push(CodexAccountSummary {
+            id: storage_id,
+            email: account.email.clone(),
+            plan_type: account.plan_type.clone(),
+            created_at: account.created_at,
+            last_used: account.last_used,
+        });
+        index.current_account_id = Some(account.id.clone());
+        save_account_index(&index).expect("save index");
+
+        account
+    }
+
+    fn write_oauth_auth_file(base_dir: &std::path::Path, tokens: &CodexTokens, account_id: &str) {
+        let auth_file = CodexAuthFile {
+            auth_mode: None,
+            openai_api_key: Some(serde_json::Value::Null),
+            base_url: None,
+            tokens: Some(CodexAuthTokens {
+                id_token: tokens.id_token.clone(),
+                access_token: tokens.access_token.clone(),
+                refresh_token: tokens.refresh_token.clone(),
+                account_id: Some(account_id.to_string()),
+            }),
+            last_refresh: Some(serde_json::Value::String(
+                "2026-04-13T00:00:00.000000Z".to_string(),
+            )),
+        };
+
+        fs::create_dir_all(base_dir).expect("create auth dir");
+        fs::write(
+            base_dir.join("auth.json"),
+            serde_json::to_string_pretty(&auth_file).expect("serialize auth file"),
+        )
+        .expect("write auth file");
     }
 
     #[test]
@@ -2391,6 +2735,80 @@ mod tests {
         assert_eq!(tokens.access_token, "access.jwt.token");
         assert_eq!(tokens.refresh_token.as_deref(), Some("rt_456"));
         assert_eq!(account_id_hint.as_deref(), Some("acc_2"));
+    }
+
+    #[test]
+    fn current_account_syncs_latest_tokens_from_local_auth_json() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let env = TestEnvGuard::new("codex-current-account-sync-test");
+
+        let stored = seed_oauth_account(make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "old",
+            "rt-old",
+        ));
+        let latest_tokens = make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "latest",
+            "rt-latest",
+        );
+        write_oauth_auth_file(&env.codex_home(), &latest_tokens, "acc-current");
+
+        let current = get_current_account().expect("current account");
+        assert_eq!(current.id, stored.id);
+        assert_eq!(current.tokens.access_token, latest_tokens.access_token);
+        assert_eq!(
+            current.tokens.refresh_token.as_deref(),
+            latest_tokens.refresh_token.as_deref()
+        );
+
+        let persisted = load_account(&stored.id).expect("persisted account");
+        assert_eq!(persisted.tokens.access_token, latest_tokens.access_token);
+        assert_eq!(
+            persisted.tokens.refresh_token.as_deref(),
+            latest_tokens.refresh_token.as_deref()
+        );
+    }
+
+    #[test]
+    fn sync_account_from_auth_dir_updates_store_for_managed_home() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let env = TestEnvGuard::new("codex-auth-dir-sync-test");
+
+        let stored = seed_oauth_account(make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "seed",
+            "rt-seed",
+        ));
+        let managed_home = env.home_dir.join("managed-homes").join(&stored.id);
+        let latest_tokens = make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "managed",
+            "rt-managed",
+        );
+        write_oauth_auth_file(&managed_home, &latest_tokens, "acc-current");
+
+        let synced = sync_account_from_auth_dir(&stored.id, &managed_home).expect("sync account");
+        assert_eq!(synced.tokens.access_token, latest_tokens.access_token);
+        assert_eq!(
+            synced.tokens.refresh_token.as_deref(),
+            latest_tokens.refresh_token.as_deref()
+        );
+
+        let persisted = load_account(&stored.id).expect("persisted account");
+        assert_eq!(persisted.tokens.access_token, latest_tokens.access_token);
+        assert_eq!(
+            persisted.tokens.refresh_token.as_deref(),
+            latest_tokens.refresh_token.as_deref()
+        );
     }
 
     #[test]

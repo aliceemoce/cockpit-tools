@@ -864,8 +864,11 @@
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
   padding: 6px;
-  max-height: 280px;
+  max-height: min(320px, calc(100vh - 24px));
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
   z-index: 30;
 }
 
@@ -875,7 +878,12 @@
   left: auto;
   right: auto;
   width: 100%;
+  max-height: var(--account-select-max-height, 320px);
   z-index: auto;
+}
+
+.account-select-portal-root.placement-top {
+  transform: translateY(-100%);
 }
 
 .instances-page .account-select-item {
