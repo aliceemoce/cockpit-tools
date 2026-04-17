@@ -499,21 +499,23 @@ async function fillSignupForm(page, firstName, lastName, email) {
     
     await page.waitForTimeout(randomDelay(800, 1500));
     
-    log('🖱️ 表单填写完成，请手动点击 Continue 按钮');
+    // 系统自动点击 Continue
+    log('🖱️ 表单填写完成，系统自动点击 Continue...');
     
-    const result = await waitForUserClick(
-      page,
-      'button[type="submit"], button:has-text("Continue")',
-      'Continue',
-      90000
-    );
-    
-    if (result.success) {
-      log('✓ 已提交注册表单');
-      return true;
+    try {
+      const continueButton = page.locator('button[type="submit"], button:has-text("Continue"), button:has-text("Sign up"]').first();
+      await continueButton.waitFor({ state: 'visible', timeout: 10000 });
+      await humanLikeClick(page, 'button[type="submit"], button:has-text("Continue")', 'Continue');
+      log('✓ 已自动点击 Continue');
+    } catch (e) {
+      log(`✗ 自动点击 Continue 失败: ${e.message}`);
+      return false;
     }
     
-    return false;
+    // 等待页面响应
+    await page.waitForTimeout(randomDelay(2000, 4000));
+    
+    return true;
   } catch (error) {
     log(`填写表单出错: ${error.message}`);
     return false;
@@ -554,21 +556,23 @@ async function fillPasswordForm(page, password) {
     
     await page.waitForTimeout(randomDelay(1000, 2000));
     
-    log('🖱️ 密码填写完成，请手动点击 Continue 按钮');
+    // 系统自动点击 Continue
+    log('🖱️ 密码填写完成，系统自动点击 Continue...');
     
-    const result = await waitForUserClick(
-      page,
-      'button[type="submit"], button:has-text("Continue")',
-      'Continue',
-      90000
-    );
-    
-    if (result.success) {
-      log('✓ 已提交密码表单');
-      return true;
+    try {
+      const continueButton = page.locator('button[type="submit"], button:has-text("Continue"), button:has-text("Create account")').first();
+      await continueButton.waitFor({ state: 'visible', timeout: 10000 });
+      await humanLikeClick(page, 'button[type="submit"], button:has-text("Continue")', 'Continue');
+      log('✓ 已自动点击 Continue');
+    } catch (e) {
+      log(`✗ 自动点击 Continue 失败: ${e.message}`);
+      return false;
     }
     
-    return false;
+    // 等待页面响应
+    await page.waitForTimeout(randomDelay(2000, 4000));
+    
+    return true;
   } catch (error) {
     log(`填写密码表单出错: ${error.message}`);
     return false;
@@ -733,63 +737,82 @@ async function main() {
     
     await page.waitForTimeout(randomDelay(2000, 3000));
     
-    await fillPasswordForm(page, passwordToUse);
+    const passwordResult = await fillPasswordForm(page, passwordToUse);
     
-    log('⏳ 等待人机验证完成...');
-    log('💡 提示：如果出现人机验证，请手动完成');
-    
-    await page.waitForTimeout(5000);
-    
-    log('🖱️ 完成验证后，请手动点击 Continue 按钮');
-    
-    const result = await waitForUserClick(
-      page,
-      'button:has-text("Continue"), button[type="submit"]',
-      'Continue',
-      120000
-    );
-    
-    if (result.success) {
-      log('等待授权结果...');
-      
-      const authResult = await new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          resolve({ success: false, error: '授权超时' });
-        }, 60000);
-        
-        serverInfo.server.once('request', (req, res) => {
-          clearTimeout(timeout);
-          const parsedUrl = url.parse(req.url, true);
-          if (parsedUrl.query.access_token) {
-            resolve({
-              success: true,
-              accessToken: parsedUrl.query.access_token,
-              tokenType: parsedUrl.query.token_type || 'Bearer',
-              expiresIn: parsedUrl.query.expires_in
-            });
-          } else {
-            resolve({ success: false, error: '未获取到 access_token' });
-          }
-        });
-      });
-      
+    if (!passwordResult) {
+      log('✗ 密码表单填写失败');
       await browser.close();
-      
-      if (authResult.success) {
-        log('✓ 授权成功');
-        console.log(JSON.stringify(authResult));
-        process.exit(0);
-      } else {
-        log(`✗ 授权失败: ${authResult.error}`);
-        console.log(JSON.stringify(authResult));
-        process.exit(1);
-      }
+      console.log(JSON.stringify({ success: false, error: '密码表单填写失败' }));
+      process.exit(1);
     }
     
+    // 检测是否在人机验证页面
+    log('⏳ 检测页面状态...');
+    await page.waitForTimeout(3000);
+    
+    const currentUrl = page.url();
+    const hasCaptcha = await page.locator('text=verify that you are human, .cf-turnstile, iframe[title*="challenge"], .captcha, [data-cf-turnstile]').isVisible().catch(() => false);
+    const isCaptchaPage = hasCaptcha || currentUrl.includes('captcha') || currentUrl.includes('challenge');
+    
+    if (isCaptchaPage) {
+      log('💡 检测到人机验证页面，请手动完成验证');
+      log('🖱️ 验证完成后请手动点击 Continue');
+      
+      const result = await waitForUserClick(
+        page,
+        'button:has-text("Continue"), button[type="submit"], .continue-btn, button.primary',
+        'Continue（验证完成后）',
+        120000
+      );
+      
+      if (!result.success) {
+        log('✗ 等待点击超时');
+        await browser.close();
+        console.log(JSON.stringify({ success: false, error: '等待点击超时' }));
+        process.exit(1);
+      }
+      
+      // 用户点击后等待30秒
+      log('⏳ 等待30秒让页面处理...');
+      await page.waitForTimeout(30000);
+    } else {
+      log('✓ 未检测到人机验证，继续等待授权结果...');
+    }
+    
+    log('⏳ 等待授权结果...');
+    
+    const authResult = await new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve({ success: false, error: '授权超时' });
+      }, 60000);
+      
+      serverInfo.server.once('request', (req, res) => {
+        clearTimeout(timeout);
+        const parsedUrl = url.parse(req.url, true);
+        if (parsedUrl.query.access_token) {
+          resolve({
+            success: true,
+            accessToken: parsedUrl.query.access_token,
+            tokenType: parsedUrl.query.token_type || 'Bearer',
+            expiresIn: parsedUrl.query.expires_in
+          });
+        } else {
+          resolve({ success: false, error: '未获取到 access_token' });
+        }
+      });
+    });
+    
     await browser.close();
-    log('✗ 等待点击超时');
-    console.log(JSON.stringify({ success: false, error: '等待点击超时' }));
-    process.exit(1);
+    
+    if (authResult.success) {
+      log('✓ 授权成功');
+      console.log(JSON.stringify(authResult));
+      process.exit(0);
+    } else {
+      log(`✗ 授权失败: ${authResult.error}`);
+      console.log(JSON.stringify(authResult));
+      process.exit(1);
+    }
     
   } catch (error) {
     log(`错误: ${error.message}`);

@@ -21,6 +21,7 @@ import {
   autoRegisterKiro,
   autoRegisterWindsurf,
   importFromSsoToken,
+  stopAutoRegister,
   type AutoRegisterResult,
 } from '../services/autoRegisterService';
 import './AutoRegisterPage.css';
@@ -496,9 +497,18 @@ export function AutoRegisterPage() {
     addLog(`${t('autoRegister.success')}: ${stats.success}, ${t('autoRegister.failed')}: ${stats.failed}`);
   };
 
-  const stopRegistration = () => {
+  const stopRegistration = async () => {
     requestStop();
     addLog(t('autoRegister.stopping'));
+    // 调用后端终止进程
+    try {
+      const stopped = await stopAutoRegister();
+      if (stopped) {
+        addLog(t('autoRegister.userStopped'));
+      }
+    } catch (error) {
+      addLog(`停止注册失败: ${error}`);
+    }
   };
 
   const getStatusBadge = (status: RegisterAccount['status']) => {

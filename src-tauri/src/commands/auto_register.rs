@@ -1,5 +1,46 @@
 use tauri::{AppHandle, Emitter, Manager};
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, LazyLock, Mutex};
+
+/// 全局运行的子进程 ID（用于停止注册）
+static RUNNING_PROCESS_ID: LazyLock<Arc<Mutex<Option<u32>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(None)));
+
+/// 设置当前运行的子进程 ID
+fn set_running_process_id(pid: u32) {
+    let mut guard = RUNNING_PROCESS_ID.lock().unwrap();
+    *guard = Some(pid);
+}
+
+/// 清除当前运行的子进程 ID
+fn clear_running_process_id() {
+    let mut guard = RUNNING_PROCESS_ID.lock().unwrap();
+    *guard = None;
+}
+
+/// 终止当前运行的注册进程
+pub fn stop_running_process() -> bool {
+    let guard = RUNNING_PROCESS_ID.lock().unwrap();
+    if let Some(pid) = *guard {
+        // 使用系统命令终止进程
+        #[cfg(target_os = "windows")]
+        let _ = std::process::Command::new("taskkill")
+            .args(&["/F", "/PID", &pid.to_string()])
+            .output();
+        #[cfg(not(target_os = "windows"))]
+        let _ = std::process::Command::new("kill")
+            .args(&["-9", &pid.to_string()])
+            .output();
+        return true;
+    }
+    false
+}
+
+/// 停止自动注册命令
+#[tauri::command]
+pub fn stop_auto_register() -> bool {
+    stop_running_process()
+}
 
 /// 自动注册参数
 #[derive(Debug, Clone, Deserialize)]
@@ -213,6 +254,11 @@ pub async fn auto_register_kiro(
             err
         })?;
     
+    // 保存子进程 ID 以便可以终止
+    if let Some(pid) = child.id() {
+        set_running_process_id(pid);
+    }
+    
     // 获取 stderr 用于实时日志流
     let stderr = child.stderr.take().ok_or("无法获取 stderr")?;
     let email_clone = params.email.clone();
@@ -262,6 +308,7 @@ pub async fn auto_register_kiro(
         .map_err(|e| format!("读取 stdout 失败: {}", e))?;
     
     if !status.success() {
+        clear_running_process_id();
         return Ok(AutoRegisterResult {
             success: false,
             sso_token: None,
@@ -290,6 +337,9 @@ pub async fn auto_register_kiro(
     let error = result["error"].as_str().map(|s| s.to_string());
     
     send_log(&params.email, &format!("解析结果: success={}, has_token={}, name={:?}", success, sso_token.is_some(), name));
+    
+    // 清除进程 ID
+    clear_running_process_id();
     
     Ok(AutoRegisterResult {
         success,

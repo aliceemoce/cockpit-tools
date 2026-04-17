@@ -14,6 +14,7 @@ const url = require('url');
 const WINDSURF_AUTH_URL = 'https://www.windsurf.com/windsurf/signin';
 const WINDSURF_CLIENT_ID = '3GUryQ7ldAeKEuD2obYnppsnmj58eP5u';
 const CALLBACK_PORT = 0; // 随机端口
+const DEFAULT_PASSWORD = 'admin123456aA!'; // 固定密码，参考 Kiro 实现
 
 // 日志输出到 stderr（这样 stdout 可以保留给 JSON 结果）
 function log(message) {
@@ -403,43 +404,35 @@ async function fillSignupForm(page, firstName, lastName, email) {
       log('未找到或无需勾选协议复选框');
     }
     
-    // 等待一下让按钮变为可点击状态，给用户时间看到填写完成
+    // 等待一下让按钮变为可点击状态
     await page.waitForTimeout(randomDelay(800, 1500));
     
-    // 提示用户手动点击 Continue
-    log('🖱️ 表单已填写完成，请手动点击 Continue 按钮');
+    // 系统自动点击 Continue
+    log('🖱️ 表单填写完成，系统自动点击 Continue...');
     
-    // 等待用户手动点击 Continue
-    const result = await waitForUserClick(
-      page,
-      'button[type="submit"], button:has-text("Continue"), button:has-text("Sign up"), button.continue-btn, button.primary',
-      'Continue',
-      90000
-    );
-    
-    if (result.success) {
-      log('✓ 已提交注册表单');
-      return true;
+    try {
+      const continueButton = page.locator('button[type="submit"], button:has-text("Continue"), button:has-text("Sign up")').first();
+      await continueButton.waitFor({ state: 'visible', timeout: 10000 });
+      await continueButton.click();
+      log('✓ 已自动点击 Continue');
+    } catch (e) {
+      log(`✗ 自动点击 Continue 失败: ${e.message}`);
+      return false;
     }
     
-    return false;
+    // 等待页面响应
+    await page.waitForTimeout(randomDelay(2000, 4000));
+    
+    return true;
   } catch (error) {
     log(`填写表单出错: ${error.message}`);
     return false;
   }
 }
 
-// 生成随机密码（8-64位，包含字母和数字）
-function generateRandomPassword() {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let password = '';
-  // 生成12位密码
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  // 确保至少有一个数字和一个字母
-  password += 'A' + '1';
-  return password;
+// 使用固定密码，参考 Kiro 实现
+function generateFixedPassword() {
+  return DEFAULT_PASSWORD;
 }
 
 async function fillPasswordForm(page, password) {
@@ -483,82 +476,140 @@ async function fillPasswordForm(page, password) {
     // 模拟人阅读密码要求的时间
     await page.waitForTimeout(randomDelay(1000, 2000));
     
-    // 提示用户手动点击 Continue
-    log('🖱️ 密码已填写完成，请手动点击 Continue 按钮');
+    // 系统自动点击 Continue
+    log('🖱️ 密码填写完成，系统自动点击 Continue...');
     
-    // 等待用户手动点击 Continue
-    const result = await waitForUserClick(
-      page,
-      'button[type="submit"], button:has-text("Continue"), button.continue-btn, button.primary, button:has-text("Create account")',
-      'Continue',
-      90000
-    );
-    
-    if (result.success) {
-      log('✓ 已提交密码表单');
-      return true;
+    try {
+      const continueButton = page.locator('button[type="submit"], button:has-text("Continue"), button:has-text("Create account")').first();
+      await continueButton.waitFor({ state: 'visible', timeout: 10000 });
+      await continueButton.click();
+      log('✓ 已自动点击 Continue');
+    } catch (e) {
+      log(`✗ 自动点击 Continue 失败: ${e.message}`);
+      return false;
     }
     
-    return false;
+    // 等待页面响应
+    await page.waitForTimeout(randomDelay(2000, 4000));
+    
+    return true;
   } catch (error) {
     log(`填写密码表单出错: ${error.message}`);
     return false;
   }
 }
 
-// 等待人机验证完成并提示用户手动点击 Continue
-async function waitForHumanVerification(page) {
-  log('等待人机验证完成（最长90秒）...');
+// 检测是否是邮箱验证码页面
+async function detectEmailVerificationPage(page) {
+  // 邮箱验证码页面特征
+  const emailCodeSelectors = [
+    // 验证码输入框
+    'input[name="code"]', 'input[name="verification_code"]', 'input[name="otp"]', 
+    'input[placeholder*="code" i]', 'input[placeholder*="verification" i]', 
+    'input[placeholder*="验证码" i]', 'input[type="number"]',
+    // 验证提示文本
+    'text=Check your email', 'text=Verification code', 'text=Enter code',
+    'text=验证码', 'text=Enter the code'
+  ];
   
-  const maxWaitTime = 90000; // 90秒
-  const checkInterval = 5000; // 每5秒检测一次
-  const startTime = Date.now();
-  let verificationCompleted = false;
-  
-  while (Date.now() - startTime < maxWaitTime) {
-    try {
-      // 检测成功标志：绿色的 ✓ 或 "成功" 文本，或 Cloudflare 验证成功的标志
-      const successIndicator = page.locator(
-        '.success-checkmark, .check-icon, .success-icon, [class*="success"], ' +
-        'text=成功, text=Success, text=✓, .cf-turnstile-success, ' +
-        '[style*="green"], [style*="#4CAF50"]'
-      ).first();
-      
-      const isSuccessVisible = await successIndicator.isVisible({ timeout: 1000 }).catch(() => false);
-      
-      if (isSuccessVisible) {
-        if (!verificationCompleted) {
-          log('✓ 人机验证已完成！请手动点击 Continue 按钮继续');
-          verificationCompleted = true;
-        }
-        
-        // 现在开始等待用户手动点击 Continue
-        const result = await waitForUserClick(
-          page,
-          'button:has-text("Continue"), button[type="submit"], .continue-btn, button.primary',
-          'Continue',
-          maxWaitTime - (Date.now() - startTime) // 剩余时间
-        );
-        
-        if (result.success) {
-          log('✓ 已点击 Continue，继续后续流程');
-          return true;
-        }
-        return false;
-      }
-    } catch (e) {
-      // 检测失败，继续等待
+  for (const selector of emailCodeSelectors) {
+    const isVisible = await page.locator(selector).isVisible({ timeout: 1000 }).catch(() => false);
+    if (isVisible) {
+      log(`检测到邮箱验证码元素: ${selector}`);
+      return true;
     }
-    
-    const remainingSeconds = Math.floor((maxWaitTime - (Date.now() - startTime)) / 1000);
-    const step = await detectCurrentStep(page);
-    log(`验证未完成 | 当前步骤: ${step || '验证中'} | 剩余${remainingSeconds}秒 | 请完成人机验证`);
-    
-    await page.waitForTimeout(checkInterval);
   }
   
-  log('人机验证等待超时（90秒）');
   return false;
+}
+
+// 检测是否是人机验证页面
+async function detectHumanVerificationPage(page) {
+  const currentUrl = page.url();
+  
+  // 人机验证元素
+  const humanVerificationSelectors = [
+    // Cloudflare Turnstile
+    '.cf-turnstile', '[data-cf-turnstile]',
+    // reCAPTCHA
+    '.g-recaptcha', '[data-sitekey]', 'iframe[src*="recaptcha"]', 'iframe[src*="google.com/recaptcha"]',
+    // hCaptcha
+    '.h-captcha', 'iframe[src*="hcaptcha"]',
+    // 人机验证文本
+    'text=verify that you are human', 'text=I\'m not a robot', 'text=人机验证',
+    'text=Security check', 'text=Verify you are human',
+    // 挑战 iframe
+    'iframe[title*="challenge"]', 'iframe[src*="challenge"]'
+  ];
+  
+  for (const selector of humanVerificationSelectors) {
+    const isVisible = await page.locator(selector).isVisible({ timeout: 1000 }).catch(() => false);
+    if (isVisible) {
+      log(`检测到人机验证元素: ${selector}`);
+      return true;
+    }
+  }
+  
+  // URL 检测
+  if (currentUrl.includes('captcha') || currentUrl.includes('challenge')) {
+    log('检测到验证相关URL');
+    return true;
+  }
+  
+  return false;
+}
+
+// 等待用户完成验证并点击 Continue（通用）
+async function waitForVerificationComplete(page, description) {
+  log(`💡 ${description}`);
+  log('🖱️ 完成验证后请手动点击 Continue');
+  
+  const result = await waitForUserClick(
+    page,
+    'button:has-text("Continue"), button[type="submit"], .continue-btn, button.primary, button:has-text("Verify"), button:has-text("验证")',
+    'Continue（验证完成后）',
+    120000
+  );
+  
+  if (!result.success) {
+    log('✗ 等待点击超时');
+    return false;
+  }
+  
+  // 用户点击后等待30秒让页面处理
+  log('⏳ 等待30秒让页面处理...');
+  await page.waitForTimeout(30000);
+  return true;
+}
+
+// 处理验证流程：邮箱验证码 → 人机验证
+async function waitForHumanVerification(page) {
+  log('⏳ 检测页面状态...');
+  await page.waitForTimeout(3000);
+  
+  // 第一步：检测邮箱验证码页面
+  const isEmailCodePage = await detectEmailVerificationPage(page);
+  if (isEmailCodePage) {
+    const result = await waitForVerificationComplete(page, '检测到邮箱验证码页面，请手动输入验证码');
+    if (!result) return false;
+    
+    // 验证码完成后，继续检测是否有人机验证
+    log('⏳ 继续检测是否有人机验证...');
+    await page.waitForTimeout(3000);
+  }
+  
+  // 第二步：检测人机验证页面
+  const isHumanVerificationPage = await detectHumanVerificationPage(page);
+  if (isHumanVerificationPage) {
+    const result = await waitForVerificationComplete(page, '检测到人机验证页面，请手动完成验证');
+    if (!result) return false;
+  }
+  
+  if (!isEmailCodePage && !isHumanVerificationPage) {
+    log('✓ 未检测到验证页面，继续等待授权结果...');
+  }
+  
+  return true;
 }
 
 // ==================== 主流程 ====================
@@ -773,7 +824,7 @@ async function main() {
     const emailToUse = email || generateRandomEmail();
     const firstNameToUse = firstName || generateRandomName();
     const lastNameToUse = lastName || generateRandomName();
-    const passwordToUse = generateRandomPassword();
+    const passwordToUse = generateFixedPassword();
     
     await fillSignupForm(page, firstNameToUse, lastNameToUse, emailToUse);
     

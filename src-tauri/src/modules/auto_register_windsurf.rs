@@ -5,7 +5,41 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::process::Stdio;
+use std::sync::{Arc, LazyLock, Mutex};
 use tauri::{Manager, Emitter};
+
+/// 全局运行的子进程 ID（用于停止注册）
+static RUNNING_PROCESS_ID: LazyLock<Arc<Mutex<Option<u32>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(None)));
+
+/// 设置当前运行的子进程 ID
+fn set_running_process_id(pid: u32) {
+    let mut guard = RUNNING_PROCESS_ID.lock().unwrap();
+    *guard = Some(pid);
+}
+
+/// 清除当前运行的子进程 ID
+fn clear_running_process_id() {
+    let mut guard = RUNNING_PROCESS_ID.lock().unwrap();
+    *guard = None;
+}
+
+/// 终止当前运行的 Windsurf 注册进程
+pub fn stop_running_process() -> bool {
+    let guard = RUNNING_PROCESS_ID.lock().unwrap();
+    if let Some(pid) = *guard {
+        #[cfg(target_os = "windows")]
+        let _ = std::process::Command::new("taskkill")
+            .args(&["/F", "/PID", &pid.to_string()])
+            .output();
+        #[cfg(not(target_os = "windows"))]
+        let _ = std::process::Command::new("kill")
+            .args(&["-9", &pid.to_string()])
+            .output();
+        return true;
+    }
+    false
+}
 
 /// Windsurf 自动注册脚本结果
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -151,6 +185,11 @@ pub async fn run_windsurf_oauth(
         .spawn()
         .map_err(|e| anyhow!("启动 Node.js 进程失败: {}", e))?;
 
+    // 保存子进程 ID 以便可以终止
+    if let Some(pid) = child.id() {
+        set_running_process_id(pid);
+    }
+
     // 获取 stderr 用于实时日志流和错误收集
     let stderr = child.stderr.take().ok_or_else(|| anyhow!("无法获取 stderr"))?;
     let app_clone = app.clone();
@@ -214,6 +253,9 @@ pub async fn run_windsurf_oauth(
     if !status.success() && !stderr_output.is_empty() {
         log_error(&format!("脚本 stderr 输出:\n{}", stderr_output));
     }
+
+    // 清除进程 ID
+    clear_running_process_id();
 
     // 解析结果
     if output.trim().is_empty() {

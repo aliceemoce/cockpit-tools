@@ -21,6 +21,8 @@
     "detail": "Details",
     "editable": "Editable",
     "preview": "Preview",
+    "stop": "Stop",
+    "clear": "Clear",
     "topRightAd": {
       "ariaLabel": "Global top-right ad slot",
       "badge": "AD",

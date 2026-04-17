@@ -107,6 +107,14 @@ export async function autoRegisterWindsurf(params: {
 }
 
 /**
+ * 停止自动注册
+ * 终止正在运行的注册进程
+ */
+export async function stopAutoRegister(): Promise<boolean> {
+  return await invoke('stop_auto_register');
+}
+
+/**
  * 监听自动注册日志
  * 通过 Tauri 的 event 系统接收实时日志
  */
