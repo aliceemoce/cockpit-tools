@@ -1575,6 +1575,12 @@
       "desc": "貼上 auth.json 內容或帳號 JSON 資料",
       "placeholder": "範例：{\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "匯出格式",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "sub2api 格式",
+      "cpa": "cpa 格式"
+    },
     "api": {
       "baseUrl": "基礎網址",
       "baseUrlPlaceholder": "未填寫則使用官方預設",

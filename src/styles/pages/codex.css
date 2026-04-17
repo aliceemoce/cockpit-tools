@@ -151,6 +151,9 @@
 
 .codex-account-card .tier-badge,
 .codex-accounts-page .account-table .tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   padding: 4px 10px;
   font-size: 11px;
@@ -158,6 +161,13 @@
   border-radius: var(--radius-full);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.codex-account-card .tier-badge::before,
+.codex-accounts-page .account-table .tier-badge::before {
+  display: none;
 }
 
 .codex-account-card .tier-badge.free,
@@ -904,10 +914,11 @@
 
 .codex-accounts-page .account-table th {
   background: rgba(15, 23, 42, 0.06);
+  white-space: nowrap;
 }
 
 .codex-accounts-page .account-table th.sticky-action-header.table-action-header {
-  background: var(--bg-tertiary);
+  background: var(--bg-card);
   z-index: 30;
   border-left: 1px solid var(--border-light);
 }
@@ -925,6 +936,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 140px;
+}
+
+.codex-accounts-page .account-table th:nth-child(3),
+.codex-accounts-page .account-table td:nth-child(3) {
+  min-width: 96px;
+}
+
+@media (min-width: 1800px) {
+  .codex-accounts-page .account-table th,
+  .codex-accounts-page .account-table td {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
 }
 
 .codex-accounts-page .codex-account-meta-inline {

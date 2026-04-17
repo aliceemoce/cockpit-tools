@@ -1626,6 +1626,12 @@
       "desc": "粘贴 auth.json 内容或账号 JSON 数据",
       "placeholder": "示例：{\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "导出格式",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "sub2api 格式",
+      "cpa": "cpa 格式"
+    },
     "api": {
       "baseUrl": "基础地址",
       "baseUrlPlaceholder": "不填写则是官方默认",

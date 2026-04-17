@@ -361,8 +361,8 @@ export function GitHubCopilotAccountsPage() {
     });
 
     return Array.from(groups.entries()).sort(([aKey], [bKey]) => {
-      if (aKey === untaggedKey) return 1;
-      if (bKey === untaggedKey) return -1;
+      if (aKey === untaggedKey) return -1;
+      if (bKey === untaggedKey) return 1;
       return aKey.localeCompare(bKey);
     });
   }, [filteredAccounts, groupByTag, tagFilter, untaggedKey]);

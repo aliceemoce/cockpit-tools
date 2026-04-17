@@ -1624,6 +1624,12 @@
       "desc": "Tempel konten auth.json atau data JSON akun",
       "placeholder": "Contoh: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "Format ekspor",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "Format sub2api",
+      "cpa": "Format cpa"
+    },
     "api": {
       "baseUrl": "URL Dasar",
       "baseUrlPlaceholder": "Biarkan kosong untuk menggunakan bawaan resmi",

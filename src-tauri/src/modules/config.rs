@@ -470,7 +470,7 @@ fn default_hide_dock_icon() -> bool {
     false
 }
 fn default_floating_card_show_on_startup() -> bool {
-    true
+    false
 }
 fn default_floating_card_always_on_top() -> bool {
     false

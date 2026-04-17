@@ -427,8 +427,8 @@ export function TraeAccountsPage() {
     });
 
     return Array.from(groups.entries()).sort(([left], [right]) => {
-      if (left === untaggedKey) return 1;
-      if (right === untaggedKey) return -1;
+      if (left === untaggedKey) return -1;
+      if (right === untaggedKey) return 1;
       return left.localeCompare(right);
     });
   }, [filteredAccounts, groupByTag, normalizeTag, tagFilter]);

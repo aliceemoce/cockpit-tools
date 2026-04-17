@@ -66,7 +66,7 @@ import { buildCodexAccountPresentation } from '../presentation/platformAccountPr
 
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { confirm as confirmDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { openPath, openUrl } from '@tauri-apps/plugin-opener';
 import { CodexOverviewTabsHeader, CodexTab } from '../components/CodexOverviewTabsHeader';
 import { CodexInstancesContent } from './CodexInstancesPage';
 import { CodexSessionManager } from '../components/codex/CodexSessionManager';
@@ -75,7 +75,10 @@ import { CodexModelProviderManager } from '../components/codex/CodexModelProvide
 import { QuickSettingsPopover } from '../components/QuickSettingsPopover';
 import { useProviderAccountsPage } from '../hooks/useProviderAccountsPage';
 import { MultiSelectFilterDropdown, type MultiSelectFilterOption } from '../components/MultiSelectFilterDropdown';
-import { SingleSelectFilterDropdown } from '../components/SingleSelectFilterDropdown';
+import {
+  SingleSelectFilterDropdown,
+  type SingleSelectFilterOption,
+} from '../components/SingleSelectFilterDropdown';
 import type { CodexAccount } from '../types/codex';
 import {
   CODEX_CODE_REVIEW_QUOTA_VISIBILITY_CHANGED_EVENT,
@@ -106,6 +109,11 @@ import {
   isEveryIdSelected,
   usePagination,
 } from '../hooks/usePagination';
+import {
+  buildCodexExportFileNameBase,
+  transformCodexExportJson,
+  type CodexExportFormat,
+} from '../utils/codexExportFormats';
 
 const CODEX_TOKEN_SINGLE_EXAMPLE = `{
   "tokens": {
@@ -180,10 +188,29 @@ function normalizeHttpBaseUrl(value: string): string | null {
   }
 }
 
+function buildExportFileName(baseName: string): string {
+  const date = new Date().toISOString().slice(0, 10);
+  return `${baseName}_${date}.json`;
+}
+
+function getDirectoryPath(filePath: string): string {
+  const slashIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  if (slashIndex <= 0) {
+    return filePath;
+  }
+  return filePath.slice(0, slashIndex);
+}
+
 export function CodexAccountsPage() {
   const [activeTab, setActiveTab] = useState<CodexTab>('overview');
   const untaggedKey = '__untagged__';
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
+  const [exportFormat, setExportFormat] = useState<CodexExportFormat>('cockpit_tools');
+  const [exportFileNameBase, setExportFileNameBase] = useState('codex_accounts');
+  const [formattedExportJsonCopied, setFormattedExportJsonCopied] = useState(false);
+  const [formattedSavingExportJson, setFormattedSavingExportJson] = useState(false);
+  const [formattedExportSavedPath, setFormattedExportSavedPath] = useState<string | null>(null);
+  const [formattedExportPathCopied, setFormattedExportPathCopied] = useState(false);
 
   // ─── Codex 账号分组 ────────────────────────────────────────────
   const [codexGroups, setCodexGroups] = useState<CodexAccountGroup[]>([]);
@@ -272,15 +299,157 @@ export function CodexAccountsPage() {
     handleRefresh, handleRefreshAll, handleDelete, handleBatchDelete,
     deleteConfirm, deleteConfirmError, deleteConfirmErrorScrollKey, setDeleteConfirm, deleting, confirmDelete,
     message, setMessage,
-    exporting, handleExport, handleExportByIds, getScopedSelectedCount,
+    exporting, handleExport: handleBaseExport, handleExportByIds: handleBaseExportByIds, getScopedSelectedCount,
     showExportModal, closeExportModal, exportJsonContent, exportJsonHidden,
-    toggleExportJsonHidden, exportJsonCopied, copyExportJson,
-    savingExportJson, saveExportJson, exportSavedPath,
-    canOpenExportSavedDirectory, openExportSavedDirectory, copyExportSavedPath, exportPathCopied,
+    toggleExportJsonHidden,
     showAddModal, addTab, addStatus, addMessage, tokenInput, setTokenInput,
     importing, openAddModal, closeAddModal,
-    formatDate, normalizeTag,
+    formatDate, normalizeTag, saveJsonFile,
   } = page;
+
+  const exportFormatOptions = useMemo<SingleSelectFilterOption[]>(
+    () => [
+      {
+        value: 'cockpit_tools',
+        label: t('codex.exportFormat.cockpitTools', 'Cockpit Tools'),
+      },
+      {
+        value: 'sub2api',
+        label: t('codex.exportFormat.sub2api', 'sub2api'),
+      },
+      {
+        value: 'cpa',
+        label: t('codex.exportFormat.cpa', 'cpa'),
+      },
+    ],
+    [t],
+  );
+
+  useEffect(() => {
+    if (!showExportModal) {
+      return;
+    }
+    setExportFormat('cockpit_tools');
+    setFormattedExportJsonCopied(false);
+    setFormattedSavingExportJson(false);
+    setFormattedExportSavedPath(null);
+    setFormattedExportPathCopied(false);
+  }, [exportJsonContent, showExportModal]);
+
+  useEffect(() => {
+    if (!showExportModal) {
+      return;
+    }
+    setFormattedExportJsonCopied(false);
+    setFormattedExportSavedPath(null);
+    setFormattedExportPathCopied(false);
+  }, [exportFormat, showExportModal]);
+
+  const formattedExportJsonContent = useMemo(() => {
+    if (!exportJsonContent) return '';
+    try {
+      return transformCodexExportJson(exportJsonContent, exportFormat);
+    } catch (error) {
+      console.error('[CodexExport] transform failed:', error);
+      return exportJsonContent;
+    }
+  }, [exportFormat, exportJsonContent]);
+
+  const handleExportByIds = useCallback(
+    async (ids: string[], fileNameBase?: string) => {
+      setExportFileNameBase(fileNameBase || 'codex_accounts');
+      await handleBaseExportByIds(ids, fileNameBase);
+    },
+    [handleBaseExportByIds],
+  );
+
+  const handleExport = useCallback(
+    async (scopeIds?: string[]) => {
+      setExportFileNameBase('codex_accounts');
+      await handleBaseExport(scopeIds);
+    },
+    [handleBaseExport],
+  );
+
+  const handleCloseExportModal = useCallback(() => {
+    closeExportModal();
+    setExportFormat('cockpit_tools');
+    setFormattedExportJsonCopied(false);
+    setFormattedSavingExportJson(false);
+    setFormattedExportSavedPath(null);
+    setFormattedExportPathCopied(false);
+  }, [closeExportModal]);
+
+  const copyFormattedExportJson = useCallback(async () => {
+    if (!formattedExportJsonContent) return;
+    try {
+      await navigator.clipboard.writeText(formattedExportJsonContent);
+      setFormattedExportJsonCopied(true);
+      window.setTimeout(() => setFormattedExportJsonCopied(false), 1200);
+    } catch (error) {
+      console.error('[CodexExport] copy failed:', error);
+      setMessage({
+        text: t('messages.exportFailed', { error: String(error) }),
+        tone: 'error',
+      });
+    }
+  }, [formattedExportJsonContent, setMessage, t]);
+
+  const saveFormattedExportJson = useCallback(async () => {
+    if (!formattedExportJsonContent || formattedSavingExportJson) return;
+    setFormattedSavingExportJson(true);
+    try {
+      const fileName = buildExportFileName(
+        buildCodexExportFileNameBase(exportFileNameBase, exportFormat),
+      );
+      const savedPath = await saveJsonFile(formattedExportJsonContent, fileName);
+      if (savedPath) {
+        setFormattedExportSavedPath(savedPath);
+        setFormattedExportPathCopied(false);
+      }
+    } catch (error) {
+      console.error('[CodexExport] save failed:', error);
+      setMessage({
+        text: t('messages.exportFailed', { error: String(error) }),
+        tone: 'error',
+      });
+    } finally {
+      setFormattedSavingExportJson(false);
+    }
+  }, [exportFileNameBase, exportFormat, formattedExportJsonContent, formattedSavingExportJson, saveJsonFile, setMessage, t]);
+
+  const canOpenFormattedExportSavedDirectory = useMemo(
+    () => Boolean(formattedExportSavedPath),
+    [formattedExportSavedPath],
+  );
+
+  const openFormattedExportSavedDirectory = useCallback(async () => {
+    if (!formattedExportSavedPath) return;
+    try {
+      await openPath(getDirectoryPath(formattedExportSavedPath));
+    } catch (error) {
+      console.error('[CodexExport] open directory failed:', error);
+      setMessage({
+        text: t('messages.exportFailed', { error: String(error) }),
+        tone: 'error',
+      });
+    }
+  }, [formattedExportSavedPath, setMessage, t]);
+
+  const copyFormattedExportSavedPath = useCallback(async () => {
+    if (!formattedExportSavedPath) return;
+    try {
+      await navigator.clipboard.writeText(formattedExportSavedPath);
+      setFormattedExportPathCopied(true);
+      window.setTimeout(() => setFormattedExportPathCopied(false), 1200);
+    } catch (error) {
+      console.error('[CodexExport] copy path failed:', error);
+      setMessage({
+        text: t('messages.exportFailed', { error: String(error) }),
+        tone: 'error',
+      });
+    }
+  }, [formattedExportSavedPath, setMessage, t]);
 
   useEffect(() => {
     try {
@@ -1945,7 +2114,7 @@ export function CodexAccountsPage() {
       if (matchedTags.length === 0) { if (!groups.has(untaggedKey)) groups.set(untaggedKey, []); groups.get(untaggedKey)?.push(a); return; }
       matchedTags.forEach((tag) => { if (!groups.has(tag)) groups.set(tag, []); groups.get(tag)?.push(a); });
     });
-    return Array.from(groups.entries()).sort(([a], [b]) => { if (a === untaggedKey) return 1; if (b === untaggedKey) return -1; return a.localeCompare(b); });
+    return Array.from(groups.entries()).sort(([a], [b]) => { if (a === untaggedKey) return -1; if (b === untaggedKey) return 1; return a.localeCompare(b); });
   }, [filteredAccounts, groupByTag, normalizeTag, tagFilter, untaggedKey]);
 
   const paginatedGroupedAccounts = useMemo(
@@ -3373,19 +3542,34 @@ export function CodexAccountsPage() {
         <ExportJsonModal
           isOpen={showExportModal}
           title={`${t('common.shared.export.title', '导出')} JSON`}
-          jsonContent={exportJsonContent}
+          jsonContent={formattedExportJsonContent}
           hidden={exportJsonHidden}
-          copied={exportJsonCopied}
-          saving={savingExportJson}
-          savedPath={exportSavedPath}
-          canOpenSavedDirectory={canOpenExportSavedDirectory}
-          pathCopied={exportPathCopied}
-          onClose={closeExportModal}
+          copied={formattedExportJsonCopied}
+          saving={formattedSavingExportJson}
+          savedPath={formattedExportSavedPath}
+          canOpenSavedDirectory={canOpenFormattedExportSavedDirectory}
+          pathCopied={formattedExportPathCopied}
+          toolbarContent={(
+            <>
+              <span className="export-json-toolbar-label">
+                {t('codex.exportFormat.label', '导出格式')}
+              </span>
+              <div className="export-json-toolbar-dropdown">
+                <SingleSelectFilterDropdown
+                  value={exportFormat}
+                  options={exportFormatOptions}
+                  ariaLabel={t('codex.exportFormat.label', '导出格式')}
+                  onChange={(value) => setExportFormat(value as CodexExportFormat)}
+                />
+              </div>
+            </>
+          )}
+          onClose={handleCloseExportModal}
           onToggleHidden={toggleExportJsonHidden}
-          onCopyJson={copyExportJson}
-          onSaveJson={saveExportJson}
-          onOpenSavedDirectory={openExportSavedDirectory}
-          onCopySavedPath={copyExportSavedPath}
+          onCopyJson={copyFormattedExportJson}
+          onSaveJson={saveFormattedExportJson}
+          onOpenSavedDirectory={openFormattedExportSavedDirectory}
+          onCopySavedPath={copyFormattedExportSavedPath}
         />
 
         {deleteConfirm && (<div className="modal-overlay" onClick={() => !deleting && setDeleteConfirm(null)}><div className="modal" onClick={(e) => e.stopPropagation()}>

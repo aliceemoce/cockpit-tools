@@ -1575,6 +1575,12 @@
       "desc": "auth.json の内容またはアカウント JSON を貼り付けてください",
       "placeholder": "例: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "エクスポート形式",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "sub2api 形式",
+      "cpa": "cpa 形式"
+    },
     "local": {
       "desc": "~/.codex/auth.json から現在ログイン中のアカウントをインポート",
       "import": "ローカルアカウント取得"

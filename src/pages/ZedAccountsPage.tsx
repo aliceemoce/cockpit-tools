@@ -517,8 +517,8 @@ export function ZedAccountsPage() {
     });
 
     return Array.from(groups.entries()).sort(([leftKey], [rightKey]) => {
-      if (leftKey === ZED_UNTAGGED_KEY) return 1;
-      if (rightKey === ZED_UNTAGGED_KEY) return -1;
+      if (leftKey === ZED_UNTAGGED_KEY) return -1;
+      if (rightKey === ZED_UNTAGGED_KEY) return 1;
       return leftKey.localeCompare(rightKey);
     });
   }, [filteredAccounts, groupByTag, normalizeTag, tagFilter]);

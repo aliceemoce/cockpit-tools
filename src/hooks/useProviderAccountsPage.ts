@@ -550,8 +550,14 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
   const handleSaveTags = useCallback(
     async (tags: string[]) => {
       if (!showTagModal) return;
+      const scrollY = window.scrollY;
       await updateAccountTags(showTagModal, tags);
       setShowTagModal(null);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'auto' });
+        });
+      });
     },
     [showTagModal, updateAccountTags],
   );

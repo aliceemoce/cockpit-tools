@@ -1575,6 +1575,12 @@
       "desc": "Dán nội dung auth.json hoặc dữ liệu JSON tài khoản",
       "placeholder": "Ví dụ: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "Định dạng xuất",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "Định dạng sub2api",
+      "cpa": "Định dạng cpa"
+    },
     "local": {
       "desc": "Nhập tài khoản hiện tại từ ~/.codex/auth.json",
       "import": "Lấy tài khoản cục bộ"

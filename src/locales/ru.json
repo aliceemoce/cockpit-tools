@@ -1575,6 +1575,12 @@
       "desc": "Вставьте содержимое auth.json или JSON данных аккаунта",
       "placeholder": "Пример: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "Формат экспорта",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "Формат sub2api",
+      "cpa": "Формат cpa"
+    },
     "local": {
       "desc": "Импортировать текущий аккаунт из ~/.codex/auth.json",
       "import": "Получить локальный аккаунт"

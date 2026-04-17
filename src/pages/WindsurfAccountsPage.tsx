@@ -1084,7 +1084,7 @@ export function WindsurfAccountsPage() {
       if (matchedTags.length === 0) { if (!groups.has(untaggedKey)) groups.set(untaggedKey, []); groups.get(untaggedKey)?.push(account); return; }
       matchedTags.forEach((tag) => { if (!groups.has(tag)) groups.set(tag, []); groups.get(tag)?.push(account); });
     });
-    return Array.from(groups.entries()).sort(([aKey], [bKey]) => { if (aKey === untaggedKey) return 1; if (bKey === untaggedKey) return -1; return aKey.localeCompare(bKey); });
+    return Array.from(groups.entries()).sort(([aKey], [bKey]) => { if (aKey === untaggedKey) return -1; if (bKey === untaggedKey) return 1; return aKey.localeCompare(bKey); });
   }, [filteredAccounts, groupByTag, normalizeTag, tagFilter, untaggedKey]);
 
   const paginatedGroupedAccounts = useMemo(

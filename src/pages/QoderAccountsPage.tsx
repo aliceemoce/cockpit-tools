@@ -594,8 +594,8 @@ export function QoderAccountsPage() {
     }
 
     return Array.from(groups.entries()).sort(([a], [b]) => {
-      if (a === UNTAGGED_KEY) return 1;
-      if (b === UNTAGGED_KEY) return -1;
+      if (a === UNTAGGED_KEY) return -1;
+      if (b === UNTAGGED_KEY) return 1;
       return a.localeCompare(b);
     });
   }, [filteredAccounts, groupByTag, tagFilter]);
@@ -737,8 +737,14 @@ export function QoderAccountsPage() {
 
   const handleSaveTags = useCallback(
     async (accountId: string, tags: string[]) => {
+      const scrollY = window.scrollY;
       await store.updateAccountTags(accountId, tags);
       setMessage({ text: t('accounts.tagUpdated', '标签已更新') });
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'auto' });
+        });
+      });
     },
     [store, t],
   );

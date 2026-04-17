@@ -1575,6 +1575,12 @@
       "desc": "auth.json içeriğini veya hesap JSON verisini yapıştırın",
       "placeholder": "Örnek: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "Dışa aktarma biçimi",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "sub2api biçimi",
+      "cpa": "cpa biçimi"
+    },
     "local": {
       "desc": "~/.codex/auth.json'dan mevcut hesabı içe aktar",
       "import": "Yerel hesabı al"

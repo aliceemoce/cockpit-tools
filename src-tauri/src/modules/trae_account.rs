@@ -1645,7 +1645,8 @@ fn write_storage_json(path: &Path, value: &Value) -> Result<(), String> {
     }
     let content = serde_json::to_string_pretty(value)
         .map_err(|e| format!("序列化 Trae storage.json 失败: {}", e))?;
-    fs::write(path, content).map_err(|e| format!("写入 Trae storage.json 失败: {}", e))
+    crate::modules::atomic_write::write_string_atomic(path, &content)
+        .map_err(|e| format!("写入 Trae storage.json 失败: {}", e))
 }
 
 fn to_json_string_value(value: &Value) -> Result<Value, String> {
@@ -1868,18 +1869,20 @@ fn ensure_auth_raw_for_inject(account: &TraeAccount, existing_auth_raw: Option<&
 
     let user_id = resolve_account_user_id_for_auth_object(account, &roots);
 
-    let username = pick_string_multi(
-        &roots,
-        &[
-            &["ScreenName"],
-            &["nickname"],
-            &["name"],
-            &["displayName"],
-            &["account", "username"],
-        ],
-    )
-    .or_else(|| normalize_non_empty(account.nickname.as_deref()))
-    .unwrap_or_else(|| account.email.clone());
+    let username = normalize_non_empty(account.nickname.as_deref())
+        .or_else(|| {
+            pick_string_multi(
+                &roots,
+                &[
+                    &["ScreenName"],
+                    &["nickname"],
+                    &["name"],
+                    &["displayName"],
+                    &["account", "username"],
+                ],
+            )
+        })
+        .unwrap_or_else(|| account.email.clone());
 
     let email = normalize_email(
         pick_string_multi(
@@ -1962,8 +1965,9 @@ fn ensure_auth_raw_for_inject(account: &TraeAccount, existing_auth_raw: Option<&
     .map(|value| to_store_region(value.as_str()))
     .unwrap_or_else(|| "UNKNOWN".to_string());
 
+    let ai_region_roots = [profile_root, server_raw, auth_raw];
     let ai_region = pick_string_multi(
-        &roots,
+        &ai_region_roots,
         &[
             &["AIRegion"],
             &["userRegion", "_aiRegion"],
@@ -2054,22 +2058,39 @@ fn ensure_auth_raw_for_inject(account: &TraeAccount, existing_auth_raw: Option<&
         })
         .unwrap_or_default();
 
-    let mut obj = Map::new();
-    let existing_obj = existing_auth_raw.and_then(|value| value.as_object());
-    let had_access_token_key = existing_obj
-        .map(|value| value.contains_key("accessToken"))
-        .unwrap_or(false);
-    let had_token_type_key = existing_obj
-        .map(|value| value.contains_key("tokenType") || value.contains_key("token_type"))
-        .unwrap_or(false);
-    let had_region_key = existing_obj
-        .map(|value| value.contains_key("region"))
-        .unwrap_or(false);
-    let had_ai_region_key = existing_obj
-        .map(|value| value.contains_key("aiRegion"))
-        .unwrap_or(false);
+    // Merge official auth payloads from both the imported account and current storage so we
+    // keep unknown fields across upgrades, switches, and previously "thinned" injections.
+    let mut obj = auth_raw
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(existing_obj) = existing_auth_raw.and_then(Value::as_object) {
+        for (key, value) in existing_obj {
+            obj.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+    }
+    let had_access_token_key = obj.contains_key("accessToken");
+    let had_token_type_key = obj.contains_key("tokenType") || obj.contains_key("token_type");
+    let had_region_key = obj.contains_key("region");
+    let had_ai_region_key = obj.contains_key("aiRegion");
 
-    let mut account_obj = Map::new();
+    let mut account_obj = auth_raw
+        .and_then(Value::as_object)
+        .and_then(|value| value.get("account"))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(existing_account_obj) = existing_auth_raw
+        .and_then(Value::as_object)
+        .and_then(|value| value.get("account"))
+        .and_then(Value::as_object)
+    {
+        for (key, value) in existing_account_obj {
+            account_obj
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
+        }
+    }
 
     account_obj.insert("username".to_string(), Value::String(username));
     account_obj.insert("iss".to_string(), Value::String(String::new()));
@@ -2095,7 +2116,23 @@ fn ensure_auth_raw_for_inject(account: &TraeAccount, existing_auth_raw: Option<&
     account_obj.insert("storeRegion".to_string(), Value::String(store_region));
     account_obj.insert("userTag".to_string(), Value::String(user_tag));
 
-    let mut user_region = Map::new();
+    let mut user_region = auth_raw
+        .and_then(Value::as_object)
+        .and_then(|value| value.get("userRegion"))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(existing_user_region) = existing_auth_raw
+        .and_then(Value::as_object)
+        .and_then(|value| value.get("userRegion"))
+        .and_then(Value::as_object)
+    {
+        for (key, value) in existing_user_region {
+            user_region
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
+        }
+    }
     user_region.insert("region".to_string(), Value::String(ai_region.clone()));
     user_region.insert("_aiRegion".to_string(), Value::String(ai_region.clone()));
 
@@ -3256,6 +3293,91 @@ mod tests {
                 .and_then(|value| value.get("username"))
                 .and_then(Value::as_str),
             Some("李杰")
+        );
+    }
+
+    #[test]
+    fn ensure_auth_raw_for_inject_preserves_unknown_fields_from_existing_payload() {
+        let mut account = sample_account();
+        account.nickname = Some("tester".to_string());
+        account.trae_auth_raw = Some(serde_json::json!({
+            "strictToken": "from-source",
+            "account": {
+                "sourceBadge": "raw",
+                "username": "raw-name"
+            },
+            "userRegion": {
+                "sourceRegionMeta": "raw",
+                "_aiRegion": "US",
+                "region": "US"
+            }
+        }));
+        let existing = serde_json::json!({
+            "existingOnly": "keep-me",
+            "tokenType": "Bearer",
+            "account": {
+                "tenantId": "tenant-123",
+                "username": "old-name"
+            },
+            "userRegion": {
+                "resolvedFrom": "storage",
+                "_aiRegion": "US",
+                "region": "US"
+            }
+        });
+
+        let auth_raw = ensure_auth_raw_for_inject(&account, Some(&existing));
+        let auth_obj = auth_raw.as_object().expect("auth raw should be object");
+
+        assert_eq!(
+            auth_obj.get("existingOnly").and_then(Value::as_str),
+            Some("keep-me")
+        );
+        assert_eq!(
+            auth_obj.get("strictToken").and_then(Value::as_str),
+            Some("from-source")
+        );
+        assert_eq!(
+            auth_obj
+                .get("account")
+                .and_then(|value| value.get("tenantId"))
+                .and_then(Value::as_str),
+            Some("tenant-123")
+        );
+        assert_eq!(
+            auth_obj
+                .get("account")
+                .and_then(|value| value.get("sourceBadge"))
+                .and_then(Value::as_str),
+            Some("raw")
+        );
+        assert_eq!(
+            auth_obj
+                .get("userRegion")
+                .and_then(|value| value.get("resolvedFrom"))
+                .and_then(Value::as_str),
+            Some("storage")
+        );
+        assert_eq!(
+            auth_obj
+                .get("userRegion")
+                .and_then(|value| value.get("sourceRegionMeta"))
+                .and_then(Value::as_str),
+            Some("raw")
+        );
+        assert_eq!(
+            auth_obj
+                .get("account")
+                .and_then(|value| value.get("username"))
+                .and_then(Value::as_str),
+            Some("tester")
+        );
+        assert_eq!(
+            auth_obj
+                .get("userRegion")
+                .and_then(|value| value.get("_aiRegion"))
+                .and_then(Value::as_str),
+            Some("SG")
         );
     }
 

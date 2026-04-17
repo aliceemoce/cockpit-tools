@@ -729,8 +729,8 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     })
 
     return Array.from(groups.entries()).sort(([aKey], [bKey]) => {
-      if (aKey === untaggedKey) return 1
-      if (bKey === untaggedKey) return -1
+      if (aKey === untaggedKey) return -1
+      if (bKey === untaggedKey) return 1
       return aKey.localeCompare(bKey)
     })
   }, [filteredAccounts, groupByTag, tagFilter, untaggedKey])
@@ -1847,10 +1847,16 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
 
   const handleSaveTags = async (tags: string[], notes?: string) => {
     if (!showTagModal) return;
+    const scrollY = window.scrollY
     const accountId = showTagModal
     await accountService.updateAccountNotes(accountId, notes ?? '')
     await updateAccountTags(accountId, tags);
     setShowTagModal(null);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, behavior: 'auto' })
+      })
+    })
   };
 
   const handleAssignAccountsToGroup = async (

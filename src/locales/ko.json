@@ -1575,6 +1575,12 @@
       "desc": "auth.json 내용 또는 계정 JSON 데이터를 붙여넣으세요",
       "placeholder": "예시: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "내보내기 형식",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "sub2api 형식",
+      "cpa": "cpa 형식"
+    },
     "local": {
       "desc": "~/.codex/auth.json에서 현재 로그인된 계정 가져오기",
       "import": "로컬 계정 가져오기"

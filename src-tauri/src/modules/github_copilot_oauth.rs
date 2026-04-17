@@ -194,13 +194,10 @@ async fn request_device_code() -> Result<DeviceCodeResponse, String> {
 
 pub async fn start_login() -> Result<GitHubCopilotOAuthStartResponse, String> {
     if let Some(existing) = get_pending_login() {
-        if existing.expires_at > now_timestamp() {
-            logger::log_info(&format!(
-                "GitHub Copilot OAuth 复用登录会话: login_id={}",
-                existing.login_id
-            ));
-            return Ok(to_start_response(&existing));
-        }
+        logger::log_info(&format!(
+            "GitHub Copilot OAuth 发现进行中的登录会话，将创建新会话并覆盖旧会话: login_id={}",
+            existing.login_id
+        ));
     }
 
     let payload = request_device_code().await?;

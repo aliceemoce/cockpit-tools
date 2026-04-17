@@ -7,6 +7,22 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.21.4] - 2026-04-16
+
+### Added
+- **Codex account export now supports Cockpit Tools, sub2api, and CPA formats**: the export dialog can switch formats before preview, copy, or save so Codex credentials can be moved directly into each target tool.
+- **Instance account pickers now support tag filtering while binding accounts**: instance dropdowns can search and narrow accounts by tags, making large account pools easier to bind without memorizing email addresses.
+- **Account pages now support keyboard refresh shortcuts**: `Cmd/Ctrl + R` and `F5` on Windows trigger the visible page refresh action without clicking the toolbar button.
+
+### Changed
+- **Tag-grouped account views now surface the default group first and keep scroll position after saving tags**: newly added untagged accounts are easier to find, and editing tags no longer jumps long lists back to the top.
+- **Codex and GitHub Copilot table layouts are refined for large screens**: subscription badges stay on one line, sticky action columns blend with row backgrounds, and 2K-width tables read more cleanly.
+- **Floating card startup is now disabled by default for new configs**: fresh installs no longer auto-open the floating card window on launch unless users opt in.
+
+### Fixed
+- **GitHub Copilot OAuth account import now always issues a fresh device code for each new attempt**: retrying after a failed authorization no longer reuses an expired 8-digit code or require an app restart.
+
+---
 ## [0.21.3] - 2026-04-13
 
 ### Added

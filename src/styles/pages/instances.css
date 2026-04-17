@@ -872,6 +872,83 @@
   z-index: 30;
 }
 
+.instances-page .account-select-menu-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 6px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.instances-page .account-select-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+.instances-page .account-select-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.instances-page .account-select-tag-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.instances-page .account-select-tag-filter-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.instances-page .account-select-tag-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.instances-page .account-select-tag-pill,
+.instances-page .account-select-tag-clear {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.instances-page .account-select-tag-pill:hover,
+.instances-page .account-select-tag-clear:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.instances-page .account-select-tag-pill.active {
+  border-color: rgba(29, 78, 216, 0.35);
+  background: rgba(29, 78, 216, 0.08);
+  color: var(--primary);
+}
+
+.instances-page .account-select-tag-clear {
+  border-style: dashed;
+}
+
 .account-select-portal-root .account-select-menu {
   position: static;
   top: auto;
@@ -908,6 +985,13 @@
 .instances-page .account-select-item.active {
   border-color: rgba(29, 78, 216, 0.35);
   background: rgba(29, 78, 216, 0.08);
+}
+
+.instances-page .account-select-empty {
+  padding: 12px 10px 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .instances-page .account-select-email-row {

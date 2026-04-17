@@ -1624,6 +1624,12 @@
       "desc": "Paste auth.json content or account JSON data",
       "placeholder": "Example: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "Export Format",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "sub2api",
+      "cpa": "cpa"
+    },
     "api": {
       "baseUrl": "Base URL",
       "baseUrlPlaceholder": "Leave blank to use official default",

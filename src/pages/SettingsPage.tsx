@@ -322,7 +322,7 @@ export function SettingsPage() {
   const [closeBehavior, setCloseBehavior] = useState<'ask' | 'minimize' | 'quit'>('ask');
   const [minimizeBehavior, setMinimizeBehavior] = useState<'dock_and_tray' | 'tray_only'>('dock_and_tray');
   const [hideDockIcon, setHideDockIcon] = useState(false);
-  const [floatingCardShowOnStartup, setFloatingCardShowOnStartup] = useState(true);
+  const [floatingCardShowOnStartup, setFloatingCardShowOnStartup] = useState(false);
   const [floatingCardAlwaysOnTop, setFloatingCardAlwaysOnTop] = useState(false);
   const [appAutoLaunchEnabled, setAppAutoLaunchEnabled] = useState(false);
   const [opencodeAppPath, setOpencodeAppPath] = useState('');
@@ -1134,7 +1134,7 @@ export function SettingsPage() {
       setCloseBehavior(config.close_behavior || 'ask');
       setMinimizeBehavior(config.minimize_behavior || 'dock_and_tray');
       setHideDockIcon(Boolean(config.hide_dock_icon));
-      setFloatingCardShowOnStartup(config.floating_card_show_on_startup ?? true);
+      setFloatingCardShowOnStartup(config.floating_card_show_on_startup ?? false);
       setFloatingCardAlwaysOnTop(config.floating_card_always_on_top ?? false);
       setAppAutoLaunchEnabled(config.app_auto_launch_enabled ?? false);
       setOpencodeAppPath(config.opencode_app_path || '');

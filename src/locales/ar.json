@@ -1621,6 +1621,12 @@
       "desc": "الصق محتوى auth.json أو بيانات JSON للحساب",
       "placeholder": "مثال: {\"tokens\":{\"id_token\":\"eyJ...\",\"access_token\":\"eyJ...\"}}"
     },
+    "exportFormat": {
+      "label": "تنسيق التصدير",
+      "cockpitTools": "Cockpit Tools",
+      "sub2api": "تنسيق sub2api",
+      "cpa": "تنسيق cpa"
+    },
     "local": {
       "desc": "استيراد الحساب الحالي من ~/.codex/auth.json",
       "import": "جلب الحساب المحلي"

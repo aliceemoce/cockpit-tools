@@ -46,7 +46,7 @@ import {
 } from "../utils/privacy";
 
 type MessageState = { text: string; tone?: "error" };
-type AccountLike = { id: string; email: string };
+type AccountLike = { id: string; email: string; tags?: string[] | null };
 type InstanceSortField = "createdAt" | "lastLaunchedAt";
 type SortDirection = "asc" | "desc";
 type StartInstanceOutcome =
@@ -92,6 +92,23 @@ const ACCOUNT_SELECT_PORTAL_SAFE_MARGIN = 12;
 const ACCOUNT_SELECT_PORTAL_MAX_HEIGHT = 320;
 const ACCOUNT_SELECT_PORTAL_MIN_HEIGHT = 140;
 const ACCOUNT_SELECT_PORTAL_Z_INDEX = 10020;
+
+const normalizeInstanceAccountTag = (tag: string) => tag.trim().toLowerCase();
+
+const collectInstanceAccountTags = <TAccount extends AccountLike>(
+  accounts: TAccount[],
+): string[] => {
+  const values = new Set<string>();
+  accounts.forEach((account) => {
+    (account.tags || []).forEach((tag) => {
+      const normalized = normalizeInstanceAccountTag(tag);
+      if (normalized) {
+        values.add(normalized);
+      }
+    });
+  });
+  return Array.from(values).sort((left, right) => left.localeCompare(right));
+};
 
 const resolveAccountSelectPortalPosition = (
   trigger: HTMLButtonElement | null,
@@ -1017,6 +1034,13 @@ export function InstancesManager<TAccount extends AccountLike>({
   };
 
   const renderAccountMenuItems = ({
+    visibleAccounts,
+    availableTags,
+    searchValue,
+    onSearchChange,
+    tagFilter,
+    onToggleTagFilter,
+    onClearTagFilter,
     value,
     isFollowingCurrent = false,
     allowFollowCurrent = false,
@@ -1026,6 +1050,13 @@ export function InstancesManager<TAccount extends AccountLike>({
     onClose,
     selectedAccount,
   }: {
+    visibleAccounts: TAccount[];
+    availableTags: string[];
+    searchValue: string;
+    onSearchChange: (value: string) => void;
+    tagFilter: string[];
+    onToggleTagFilter: (tag: string) => void;
+    onClearTagFilter: () => void;
     value: string | null;
     isFollowingCurrent?: boolean;
     allowFollowCurrent?: boolean;
@@ -1036,6 +1067,47 @@ export function InstancesManager<TAccount extends AccountLike>({
     selectedAccount: TAccount | null;
   }) => (
     <>
+      <div className="account-select-menu-toolbar">
+        <label className="account-select-search-box">
+          <Search size={14} />
+          <input
+            type="text"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={t("accounts.search", "搜索账号...")}
+          />
+        </label>
+        {availableTags.length > 0 ? (
+          <div className="account-select-tag-filter">
+            <span className="account-select-tag-filter-label">
+              {t("accounts.filterTags", "标签筛选")}
+            </span>
+            <div className="account-select-tag-filter-list">
+              {availableTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  className={`account-select-tag-pill ${
+                    tagFilter.includes(tag) ? "active" : ""
+                  }`}
+                  onClick={() => onToggleTagFilter(tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+              {tagFilter.length > 0 ? (
+                <button
+                  type="button"
+                  className="account-select-tag-clear"
+                  onClick={onClearTagFilter}
+                >
+                  {t("accounts.clearFilter", "清空筛选")}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
       {allowFollowCurrent && (
         <button
           type="button"
@@ -1076,7 +1148,7 @@ export function InstancesManager<TAccount extends AccountLike>({
           </span>
         </button>
       )}
-      {accounts.map((account) => (
+      {visibleAccounts.map((account) => (
         <button
           type="button"
           key={account.id}
@@ -1101,6 +1173,11 @@ export function InstancesManager<TAccount extends AccountLike>({
           {renderAccountQuotaPreview(account)}
         </button>
       ))}
+      {visibleAccounts.length === 0 ? (
+        <div className="account-select-empty">
+          {t("common.noData", "暂无数据")}
+        </div>
+      ) : null}
     </>
   );
 
@@ -1130,10 +1207,52 @@ export function InstancesManager<TAccount extends AccountLike>({
     const isOpen = instanceId ? currentOpenId === instanceId : false;
     const [portalPos, setPortalPos] =
       useState<AccountSelectPortalPosition | null>(null);
+    const [searchValue, setSearchValue] = useState("");
+    const [tagFilter, setTagFilter] = useState<string[]>([]);
+
+    const availableTags = useMemo(
+      () => collectInstanceAccountTags(accounts),
+      [accounts],
+    );
+    const visibleAccounts = useMemo(() => {
+      const normalizedQuery = searchValue.trim().toLowerCase();
+      const selectedTags = new Set(tagFilter.map(normalizeInstanceAccountTag));
+      return accounts.filter((account) => {
+        if (selectedTags.size > 0) {
+          const accountTags = (account.tags || [])
+            .map(normalizeInstanceAccountTag)
+            .filter(Boolean);
+          if (!accountTags.some((tag) => selectedTags.has(tag))) {
+            return false;
+          }
+        }
+        if (!normalizedQuery) return true;
+        const haystack = [
+          account.email,
+          getAccountSearchText ? getAccountSearchText(account) : "",
+          ...(account.tags || []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalizedQuery);
+      });
+    }, [accounts, getAccountSearchText, searchValue, tagFilter]);
+
+    const toggleTagFilter = useCallback((tag: string) => {
+      setTagFilter((prev) =>
+        prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag],
+      );
+    }, []);
 
     const updatePortalPos = useCallback(() => {
       setPortalPos(resolveAccountSelectPortalPosition(triggerRef.current));
     }, []);
+
+    useEffect(() => {
+      if (isOpen) return;
+      setSearchValue("");
+      setTagFilter([]);
+    }, [isOpen]);
 
     useEffect(() => {
       if (!isOpen) return;
@@ -1182,7 +1301,7 @@ export function InstancesManager<TAccount extends AccountLike>({
         window.cancelAnimationFrame(frameId);
       };
     }, [
-      accounts.length,
+      visibleAccounts.length,
       isFollowingCurrent,
       isOpen,
       portalPos?.placement,
@@ -1260,6 +1379,13 @@ export function InstancesManager<TAccount extends AccountLike>({
               >
                 <div ref={portalMenuRef} className="account-select-menu">
                   {renderAccountMenuItems({
+                    visibleAccounts,
+                    availableTags,
+                    searchValue,
+                    onSearchChange: setSearchValue,
+                    tagFilter,
+                    onToggleTagFilter: toggleTagFilter,
+                    onClearTagFilter: () => setTagFilter([]),
                     value,
                     isFollowingCurrent,
                     allowFollowCurrent,
@@ -1297,6 +1423,42 @@ export function InstancesManager<TAccount extends AccountLike>({
     const [open, setOpen] = useState(false);
     const [portalPos, setPortalPos] =
       useState<AccountSelectPortalPosition | null>(null);
+    const [searchValue, setSearchValue] = useState("");
+    const [tagFilter, setTagFilter] = useState<string[]>([]);
+
+    const availableTags = useMemo(
+      () => collectInstanceAccountTags(accounts),
+      [accounts],
+    );
+    const visibleAccounts = useMemo(() => {
+      const normalizedQuery = searchValue.trim().toLowerCase();
+      const selectedTags = new Set(tagFilter.map(normalizeInstanceAccountTag));
+      return accounts.filter((account) => {
+        if (selectedTags.size > 0) {
+          const accountTags = (account.tags || [])
+            .map(normalizeInstanceAccountTag)
+            .filter(Boolean);
+          if (!accountTags.some((tag) => selectedTags.has(tag))) {
+            return false;
+          }
+        }
+        if (!normalizedQuery) return true;
+        const haystack = [
+          account.email,
+          getAccountSearchText ? getAccountSearchText(account) : "",
+          ...(account.tags || []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalizedQuery);
+      });
+    }, [accounts, getAccountSearchText, searchValue, tagFilter]);
+
+    const toggleTagFilter = useCallback((tag: string) => {
+      setTagFilter((prev) =>
+        prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag],
+      );
+    }, []);
 
     const updatePortalPos = useCallback(() => {
       setPortalPos(resolveAccountSelectPortalPosition(triggerRef.current));
@@ -1346,13 +1508,19 @@ export function InstancesManager<TAccount extends AccountLike>({
       return () => {
         window.cancelAnimationFrame(frameId);
       };
-    }, [accounts.length, isFollowingCurrent, open, portalPos?.placement, value]);
+    }, [isFollowingCurrent, open, portalPos?.placement, value, visibleAccounts.length]);
 
     useEffect(() => {
       if (disabled && open) {
         setOpen(false);
       }
     }, [disabled, open]);
+
+    useEffect(() => {
+      if (open) return;
+      setSearchValue("");
+      setTagFilter([]);
+    }, [open]);
 
     const selectedAccount = accounts.find((item) => item.id === value) || null;
     const basePlaceholder =
@@ -1419,6 +1587,13 @@ export function InstancesManager<TAccount extends AccountLike>({
               >
                 <div ref={portalMenuRef} className="account-select-menu">
                   {renderAccountMenuItems({
+                    visibleAccounts,
+                    availableTags,
+                    searchValue,
+                    onSearchChange: setSearchValue,
+                    tagFilter,
+                    onToggleTagFilter: toggleTagFilter,
+                    onClearTagFilter: () => setTagFilter([]),
                     value,
                     isFollowingCurrent,
                     allowFollowCurrent,
