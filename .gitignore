@@ -45,3 +45,7 @@ reference/
 
 .history/
 .tmp/
+
+# Rust
+target/
+**/*.rs.bk

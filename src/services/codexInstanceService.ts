@@ -4,9 +4,11 @@ import type {
   CodexSessionVisibilityRepairSummary,
   CodexInstanceThreadSyncSummary,
   CodexSessionRecord,
+  CodexSessionTokenStats,
   CodexSessionTrashSummary,
   CodexTrashedSessionRecord,
   CodexSessionRestoreSummary,
+  CodexQuickConfig,
 } from "../types/codex";
 import type { InstanceLaunchMode, InstanceProfile } from "../types/instance";
 
@@ -75,6 +77,34 @@ export async function updateInstance(payload: {
   return await invoke("codex_update_instance", body);
 }
 
+export async function getCodexInstanceQuickConfig(
+  instanceId: string,
+): Promise<CodexQuickConfig> {
+  return await invoke("codex_get_instance_quick_config", {
+    instanceId,
+  });
+}
+
+export async function saveCodexInstanceQuickConfig(
+  instanceId: string,
+  modelContextWindow?: number,
+  autoCompactTokenLimit?: number,
+): Promise<CodexQuickConfig> {
+  return await invoke("codex_save_instance_quick_config", {
+    instanceId,
+    modelContextWindow: modelContextWindow ?? null,
+    autoCompactTokenLimit: autoCompactTokenLimit ?? null,
+  });
+}
+
+export async function openCodexInstanceConfigToml(
+  instanceId: string,
+): Promise<void> {
+  return await invoke("codex_open_instance_config_toml", {
+    instanceId,
+  });
+}
+
 export interface CodexInstanceLaunchInfo {
   instanceId: string;
   userDataDir: string;
@@ -109,6 +139,14 @@ export async function listSessionsAcrossInstances(): Promise<
   CodexSessionRecord[]
 > {
   return await invoke("codex_list_sessions_across_instances");
+}
+
+export async function getSessionTokenStatsAcrossInstances(
+  sessionIds: string[],
+): Promise<CodexSessionTokenStats[]> {
+  return await invoke("codex_get_session_token_stats_across_instances", {
+    sessionIds,
+  });
 }
 
 export async function moveSessionsToTrashAcrossInstances(

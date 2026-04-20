@@ -379,7 +379,34 @@
       "launchModeCli": "Režim CLI",
       "workingDir": "Pracovní adresář",
       "workingDirPlaceholder": "Výchozí je aktuální cesta",
-      "workingDirDesc": "Při spuštění se nejdřív přepne do tohoto adresáře"
+      "workingDirDesc": "Při spuštění se nejdřív přepne do tohoto adresáře",
+      "codexQuickConfig": {
+        "title": "Kontext a kompaktní limity",
+        "presetLabel": "Předvolba konfigurace",
+        "presetHint": "Vyberte předvolbu (Výchozí / 516K / 1M), nebo přepněte na Vlastní a vyplňte obě pole ručně.",
+        "presetDefaultShort": "Výchozí",
+        "presetDefaultDesc": "Odeberte obě pole a použijte oficiální výchozí hodnoty",
+        "preset516kShort": "516 tis",
+        "preset516kDesc": "kontext=516000 / kompaktní=460000",
+        "preset1mShort": "1 mil",
+        "preset1mDesc": "kontext=1000000 / kompaktní=900000",
+        "presetCustomShort": "Zvyk",
+        "presetCustomDesc": "Ručně nastavit kontext a kompaktní hodnoty",
+        "contextWindow": "Kontextové okno",
+        "contextWindowHint": "Zapíše model_context_window. Upravitelné pouze v uživatelském režimu.",
+        "autoCompactLimit": "Limit Auto-Compact",
+        "autoCompactLimitHint": "Zapíše model_auto_compact_token_limit. Upravitelné pouze v uživatelském režimu.",
+        "customDetected": "V souboru config.toml byly zjištěny vlastní hodnoty: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Uložením je přepíšete vámi vybranou předvolbou.",
+        "partialDetected": "Aktuálně je nastaveno pouze jedno spravované pole: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Uložením se přepíší obě pole podle aktuálního schématu.",
+        "notSet": "Nenastaveno",
+        "loadFailed": "Nepodařilo se načíst aktuální konfiguraci Codexu: {{error}}",
+        "openConfig": "Otevřete soubor config.toml",
+        "openFailed": "Nepodařilo se otevřít soubor config.toml: {{error}}",
+        "validation": {
+          "contextWindowInvalid": "Kontextové okno musí být celé číslo větší než 0.",
+          "autoCompactInvalid": "Limit automatického zhutnění musí být celé číslo větší než 0."
+        }
+      }
     },
     "quota": {
       "unbound": "Účet není propojen",
@@ -666,7 +693,12 @@
       "qoderAutoRefreshDesc": "Frekvence automatického obnovení na pozadí",
       "qoderPathSelect": "Vybrat",
       "workbuddyAutoRefresh": "Automatické obnovení kvóty WorkBuddy",
-      "workbuddyAutoRefreshDesc": "Frekvence automatického obnovení na pozadí"
+      "workbuddyAutoRefreshDesc": "Frekvence automatického obnovení na pozadí",
+      "codexLocalAccessEntryVisible": "Zobrazit položku služby API",
+      "codexLocalAccessEntryVisibleDesc": "Určuje pouze, zda se v přehledu Codex zobrazuje položka služby API. Místní službu API to nezastaví; můžete ji znovu zapnout zde nebo v rychlém nastavení.",
+      "codexLocalAccessEnabled": "Zapnout službu API",
+      "codexLocalAccessEnabledDesc": "Určuje, zda místní služba Codex API skutečně běží.",
+      "codexLocalAccessEnabledRequiresCollection": "Před zapnutím nebo vypnutím služby nejprve přidejte účty do kolekce služby API."
     },
     "network": {
       "apiTitle": "Antigravity Cockpit API",
@@ -725,7 +757,17 @@
       "upToDate": "Aktuální",
       "newVersion": "v{{version}} k dispozici",
       "download": "Stáhnout",
-      "checkFailed": "Kontrola aktualizací selhala"
+      "checkFailed": "Kontrola aktualizací selhala",
+      "viewReleaseHistory": "Poznámky k vydání",
+      "releaseHistoryTitle": "Poznámky k vydání",
+      "releaseHistoryLoading": "Načítání poznámek k vydání...",
+      "releaseHistoryEmpty": "Zatím žádné poznámky k vydání",
+      "releaseHistoryLoadFailed": "Nepodařilo se načíst: {{error}}",
+      "releaseHistorySectionAdded": "Přidáno",
+      "releaseHistorySectionChanged": "Změněno",
+      "releaseHistorySectionFixed": "Opraveno",
+      "releaseHistorySectionRemoved": "Odebráno",
+      "downloadThisVersion": "Stáhnout"
     },
     "saveSettings": "Uložit nastavení",
     "transfer": {
@@ -1016,11 +1058,13 @@
       "originPlugin": "Rozšíření",
       "originUnknown": "Neznámé",
       "autoReasonLabel": "Důvod automatiky: {{reason}}",
-      "autoReason": "Pravidlo: {{rule}}; práh: {{threshold}}%; rozsah: {{scope}}; sledované skupiny: {{selectedGroups}}; zasažené skupiny: {{hitGroups}}; kandidáti: {{candidates}}",
+      "autoReason": "Pravidlo: {{rule}}; práh kvóty: {{quotaThreshold}}%; práh kreditů: {{creditsThreshold}}; rozsah: {{scope}}; sledované skupiny: {{selectedGroups}}; zasažené skupiny: {{hitGroups}}; aktuální kredity: {{currentCredits}}; kandidáti: {{candidates}}",
       "autoReasonUnknown": "Bylo spuštěno automatické přepnutí, ale nebyl zaznamenán podrobný důvod",
       "autoReasonRuleCurrentDisabled": "Aktuální účet je zakázán",
       "autoReasonRuleQuotaForbidden": "Kvóta aktuálního účtu je omezená",
+      "autoReasonRuleGroupAndCreditsBelowThreshold": "Skupina modelů i kredity jsou pod prahem",
       "autoReasonRuleGroupBelowThreshold": "Skupina modelů pod prahem",
+      "autoReasonRuleCreditsBelowThreshold": "Zbývající kredity jsou pod prahem",
       "autoReasonScopeAnyGroup": "Libovolná skupina modelů",
       "autoReasonScopeSelectedGroups": "Vybrané skupiny modelů",
       "stageResult": "Lokálně: {{local}} / Plynule: {{seamless}}",
@@ -1581,6 +1625,118 @@
       "sub2api": "sub2api formát",
       "cpa": "cpa formát"
     },
+    "localAccess": {
+      "title": "API služba",
+      "accountCount": "{{count}} účtů",
+      "baseUrl": "Adresa",
+      "apiKey": "Klíč",
+      "statusRunning": "Běží",
+      "statusStopped": "Zastaveno",
+      "statusDisabled": "Vypnuto",
+      "emptyMembers": "Ve skupině zatím nejsou žádné účty",
+      "footerHint": "Naslouchá jen na 127.0.0.1",
+      "manageAccounts": "Spravovat účty",
+      "rotateKey": "Obnovit klíč",
+      "rotateConfirmMessage": "Po resetu přestane aktuální klíč API služby okamžitě fungovat a probíhající požadavky mohou být nedostupné. Pokračovat?",
+      "disableService": "Vypnout službu",
+      "enableService": "Zapnout službu",
+      "saveSuccess": "Kolekce API služby byla aktualizována",
+      "removeSuccess": "Účet byl odebrán z API služby",
+      "rotateSuccess": "Klíč API služby byl obnoven",
+      "enabledSuccess": "API služba byla povolena",
+      "disabledSuccess": "API služba byla vypnuta",
+      "removeMember": "Odebrat z API služby",
+      "toggleService": "Přepnout API službu",
+      "showKey": "Zobrazit klíč",
+      "hideKey": "Skrýt klíč",
+      "modal": {
+        "title": "Přidat do API služby",
+        "desc": "Vyberte účty OAuth, které chcete zahrnout do kolekce API služby. Přidané účty se skryjí z běžného přehledu a budou spravovány pouze z karty API služby.",
+        "empty": "Nejsou k dispozici žádné účty OAuth",
+        "selected": "V API službě",
+        "available": "Běžný přehled",
+        "save": "Uložit kolekci",
+        "freeNotice": "Bezplatné účty zatím nejsou podporovány. Nelze vybrat bezplatné účty.",
+        "freeUnsupported": "Bezplatné účty zatím nejsou podporovány"
+      },
+      "entryAction": "Přidat do API služby",
+      "testAction": "Otestovat API službu",
+      "testSuccess": "Test API služby byl úspěšný ({{count}} modelů)",
+      "testTimeout": "Test vypršel. Ověřte, že místní služba běží.",
+      "testUnavailable": "Aktuální adresa API služby není dostupná",
+      "activateAction": "Spustit API službu",
+      "activateSuccess": "Přepnuto na API službu",
+      "dashboardAction": "Panel služby",
+      "manageDesc": "Na jednom místě spravujte statistiky služby API, členy, port, klíč i test připojení.",
+      "memberOnlyLocal": "Jen Codex",
+      "configTitle": "Nastavení služby",
+      "configEmpty": "Nejprve uložte alespoň jeden účet do kolekce API služby, pak se vygeneruje adresa, klíč a port.",
+      "portLabel": "Port služby",
+      "portSave": "Uložit port",
+      "portSaveSuccess": "Port API služby byl aktualizován",
+      "portInvalid": "Zadejte port v rozsahu 1 až 65535",
+      "statsTitle": "Souhrn",
+      "accountStatsTitle": "Podle účtu",
+      "statsEmpty": "Zatím žádné statistiky",
+      "summaryMeta": "{{count}} účtů · Jen Codex",
+      "summaryMetaUnconfigured": "Nenastaveno · Jen Codex",
+      "memberTitle": "Členové kolekce",
+      "stats": {
+        "requests": "Požadavky",
+        "requestsDetail": "Úspěch {{success}} / Chyba {{failed}}",
+        "tokens": "Tokeny",
+        "tokensDetail": "Vstup {{input}} / Výstup {{output}}",
+        "specialTokens": "Cache / Přemýšlení",
+        "specialTokensDetail": "Cache {{cached}} / Přemýšlení {{reasoning}}",
+        "avgLatency": "Průměrná latence",
+        "successRate": "Úspěšnost {{rate}}%",
+        "accountRequests": "{{count}} požadavků",
+        "accountTokens": "{{count}} tokenů",
+        "accountResult": "Úspěch {{success}} / Chyba {{failed}}",
+        "accountTokensCompact": "{{value}}"
+      },
+      "routingLabel": "Směrování",
+      "routingSaveSuccess": "Směrování služby API bylo aktualizováno",
+      "routingDescriptionAuto": "Upřednostní účty s vyšším tarifem a větší zbývající kvótou, ve stejném tarifu pak střídá.",
+      "routingDescriptionQuotaHighFirst": "Upřednostní účty s vyšší zbývající kvótou.",
+      "routingDescriptionQuotaLowFirst": "Upřednostní účty s nižší zbývající kvótou.",
+      "routingDescriptionPlanHighFirst": "Upřednostní účty ve vyšších tarifech.",
+      "routingDescriptionPlanLowFirst": "Upřednostní účty v nižších tarifech.",
+      "clearStats": "Vymazat statistiky",
+      "clearStatsConfirm": "Vymazat všechny statistiky služby API?",
+      "clearStatsSuccess": "Statistiky služby API byly vymazány",
+      "refreshStats": "Obnovit statistiky",
+      "refreshStatsSuccess": "Statistiky služby API byly obnoveny",
+      "routingStrategy": {
+        "auto": "Automaticky (doporučeno)",
+        "quotaHighFirst": "Nejvyšší kvóta napřed",
+        "quotaLowFirst": "Nejnižší kvóta napřed",
+        "planHighFirst": "Nejvyšší tarif napřed",
+        "planLowFirst": "Nejnižší tarif napřed"
+      },
+      "statusUnconfigured": "Nenastaveno",
+      "expandDetails": "Rozbalit detail",
+      "collapseDetails": "Sbalit detail",
+      "hideEntryAction": "Skrýt položku služby API",
+      "hideEntryConfirm": "Tím se skryje položka služby API z přehledu a zároveň se vypne aktuální služba API. Později ji můžete znovu zapnout v nastavení Codex nebo v rychlém nastavení.",
+      "hideEntryEffectHide": "Skrýt položku služby API z přehledu",
+      "hideEntryEffectDisable": "Vypnout aktuální službu API",
+      "hideEntryEffectRestore": "Později ji lze znovu zapnout v nastavení Codex nebo v rychlém nastavení",
+      "riskNotice": {
+        "title": "Upozornění na riziko",
+        "message": "Současné funkce služby Codex API jsou v podstatě řešením s reverzní proxy. V tuto chvíli proti tomuto chování oficiální služba výslovně nezasahuje, ale budoucí pravidla, zásady nebo dostupnost se mohou změnit. Pokud budete tuto funkci dál používat, potvrzujete, že tomu rozumíte a přijímáte související rizika na vlastní odpovědnost.",
+        "remember": "Rozumím a příště už nezobrazovat",
+        "acknowledge": "Rozumím",
+        "continueStart": "Pokračovat",
+        "continueSwitch": "Pokračovat"
+      },
+      "statsRange": {
+        "label": "Rozsah statistik",
+        "daily": "Den",
+        "weekly": "Týden",
+        "monthly": "Měsíc"
+      }
+    },
     "local": {
       "desc": "Importovat aktuální účet z ~/.codex/auth.json",
       "import": "Načíst lokální účet"
@@ -1838,7 +1994,8 @@
         "expand": "Rozbalit",
         "collapse": "Sbalit",
         "repairVisibility": "Opravit viditelnost",
-        "restoreSessions": "Obnovit relace"
+        "restoreSessions": "Obnovit relace",
+        "copySessionId": "Kopírovat ID relace"
       },
       "confirm": {
         "title": "Přesunout do koše",
@@ -1857,6 +2014,10 @@
       },
       "groupCount": "{{count}} relací",
       "updatedAt": "Aktualizováno",
+      "labels": {
+        "sessionId": "ID relace",
+        "tokenUsage": "Využití tokenů"
+      },
       "locationRunning": " (spuštěno)",
       "untitled": "Nepojmenovaná relace",
       "restoreModal": {
@@ -2023,8 +2184,27 @@
         "customDetected": "V config.toml byl zjištěn vlastní model_context_window = {{context}}. Po uložení se přepíše podle rychlého nastavení níže.",
         "compactMissingDetected": "1M kontext je už zapnutý, ale chybí limit auto-compact. Po uložení se doplní výchozí hodnota {{limit}}.",
         "validation": {
-          "autoCompactInvalid": "Limit auto-compact musí být celé číslo větší než 0."
-        }
+          "autoCompactInvalid": "Limit auto-compact musí být celé číslo větší než 0.",
+          "contextWindowInvalid": "Kontextové okno musí být celé číslo větší než 0."
+        },
+        "presetLabel": "Předvolba konfigurace",
+        "presetHint": "Vyberte předvolbu (Výchozí / 516K / 1M), nebo přepněte na Vlastní a vyplňte obě pole ručně.",
+        "presetDefaultShort": "Výchozí",
+        "presetDefaultDesc": "Odeberte obě pole a použijte oficiální výchozí hodnoty",
+        "preset516kShort": "516 tis",
+        "preset516kDesc": "kontext=516000 / kompaktní=460000",
+        "preset1mShort": "1 mil",
+        "preset1mDesc": "kontext=1000000 / kompaktní=900000",
+        "presetCustomShort": "Zvyk",
+        "presetCustomDesc": "Ručně nastavit kontext a kompaktní hodnoty",
+        "presetDefault": "Výchozí (odstranit model_context_window / model_auto_compact_token_limit)",
+        "preset516k": "516 kB (model_context_window = 516000, auto_compact = 460000)",
+        "preset1m": "1 milion (model_context_window = 1000000, auto_compact = 900000)",
+        "presetCustom": "Zvyk",
+        "contextWindow": "Kontextové okno",
+        "contextWindowHint": "Zapíše model_context_window. Upravitelné pouze v uživatelském režimu.",
+        "partialDetected": "Aktuálně je nastaveno pouze jedno spravované pole: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Uložením se přepíší obě pole podle aktuálního schématu.",
+        "notSet": "Nenastaveno"
       }
     },
     "quickSwitch": {
@@ -2168,7 +2348,35 @@
       "appPath": "Cesta k aplikaci",
       "configToml": "Konfigurační soubor Codex",
       "openConfigToml": "Otevřít soubor",
-      "openConfigHint": "Rychle otevře aktivní soubor Codex config.toml."
+      "openConfigHint": "Rychle otevře aktivní soubor Codex config.toml.",
+      "localAccessEntryVisible": "Zobrazit položku služby API",
+      "quickConfig": {
+        "title": "Kontext a kompaktní limity",
+        "presetLabel": "Předvolba konfigurace",
+        "presetHint": "Vyberte předvolbu (Výchozí / 516K / 1M), nebo přepněte na Vlastní a vyplňte obě pole ručně.",
+        "presetDefaultShort": "Výchozí",
+        "presetDefaultDesc": "Odeberte obě pole a použijte oficiální výchozí hodnoty",
+        "preset516kShort": "516 tis",
+        "preset516kDesc": "kontext=516000 / kompaktní=460000",
+        "preset1mShort": "1 mil",
+        "preset1mDesc": "kontext=1000000 / kompaktní=900000",
+        "presetCustomShort": "Zvyk",
+        "presetCustomDesc": "Ručně nastavit kontext a kompaktní hodnoty",
+        "contextWindow": "Kontextové okno",
+        "contextWindowHint": "Zapíše model_context_window. Upravitelné pouze v uživatelském režimu.",
+        "autoCompactLimit": "Limit Auto-Compact",
+        "autoCompactLimitHint": "Zapíše model_auto_compact_token_limit. Upravitelné pouze v uživatelském režimu.",
+        "customDetected": "V souboru config.toml byly zjištěny vlastní hodnoty: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Uložením je přepíšete vámi vybranou předvolbou.",
+        "partialDetected": "Aktuálně je nastaveno pouze jedno spravované pole: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Uložením se přepíší obě pole podle aktuálního schématu.",
+        "notSet": "Nenastaveno",
+        "loadFailed": "Nepodařilo se načíst aktuální konfiguraci Codexu: {{error}}",
+        "saveSuccess": "Aktuální konfigurace Codexu uložena.",
+        "saveFailed": "Nepodařilo se uložit aktuální konfiguraci Codex: {{error}}",
+        "validation": {
+          "contextWindowInvalid": "Kontextové okno musí být celé číslo větší než 0.",
+          "autoCompactInvalid": "Limit automatického zhutnění musí být celé číslo větší než 0."
+        }
+      }
     },
     "githubCopilot": {
       "title": "Nastavení GitHub Copilot",
@@ -2182,7 +2390,10 @@
       "enable": "Automatické přepnutí",
       "threshold": "Práh přepnutí",
       "thresholdDesc": "Automatické přepnutí se spustí, když sledované skupiny modelů dosáhnou této procentní hranice",
-      "hint": "Automaticky přepne na účet s nejvyšší kvótou, když sledované skupiny modelů dosáhnou prahu.",
+      "hint": "Automaticky přepne, když sledované skupiny modelů dosáhnou prahu; při zapnutém sledování kreditů se spustí i při poklesu zbývajících kreditů pod práh.",
+      "creditsEnable": "Sledovat kredity",
+      "creditsThreshold": "Práh kreditů",
+      "creditsThresholdDesc": "Také automaticky přepnout, když zbývající kredity klesnou na tuto hodnotu nebo níže",
       "triggerModel": "Spouštěcí model",
       "scopeAnyGroup": "Libovolná skupina modelů",
       "scopeSelectedGroups": "Vybrané skupiny modelů",
@@ -2200,6 +2411,7 @@
     "apply": "Použít",
     "inputMinutes": "Zadejte minuty",
     "inputPercent": "Zadejte procento",
+    "inputCredits": "Zadejte kredity",
     "windsurf": {
       "title": "Nastavení Windsurf",
       "appPath": "Cesta k Windsurf"
@@ -2249,6 +2461,11 @@
     "zed": {
       "title": "Nastavení Zed",
       "appPath": "Cesta k Zed"
+    },
+    "filterPersistence": {
+      "title": "Paměť filtrů",
+      "enable": "Pamatovat filtry přehledu účtů (bez vyhledávání)",
+      "hint": "Ve výchozím stavu vypnuto. Po zapnutí se pro každou platformu uloží filtry, štítky a řazení."
     }
   },
   "quotaAlert": {
@@ -3099,11 +3316,11 @@
       "status": "Stav check-inu",
       "checkedIn": "Zaregistrováno",
       "notCheckedIn": "Nezaregistrováno",
-      "button": "Zaregistrovat",
+      "button": {},
       "button.loading": "Probíhá check-in...",
       "done": "Hotovo",
       "success": "Check-in úspěšný! Série {{days}} dní",
-      "failure": "Check-in selhal: {{message}}",
+      "failure": {},
       "failure.network": "Chyba sítě, zkuste to prosím později",
       "lastCheckin": "Poslední check-in: {{time}}",
       "streak": "{{days}}denní série",

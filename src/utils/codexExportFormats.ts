@@ -5,7 +5,11 @@ export type CodexExportFormat = 'cockpit_tools' | 'sub2api' | 'cpa';
 type JsonRecord = Record<string, unknown>;
 
 interface Sub2apiBatchCreatePayload {
+  exported_at: string;
+  proxies: [];
   accounts: Sub2apiCreateAccountItem[];
+  type: 'sub2api-data';
+  version: 1;
 }
 
 interface Sub2apiCreateAccountItem {
@@ -13,6 +17,8 @@ interface Sub2apiCreateAccountItem {
   platform: 'openai';
   type: 'oauth';
   credentials: JsonRecord;
+  concurrency: number;
+  priority: number;
 }
 
 interface CpaCodexTokenStorage {
@@ -114,6 +120,10 @@ function normalizeTimestampToIso(value: unknown): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+function formatSub2apiExportedAt(): string {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
 function resolveSubscriptionExpiresAt(account: CodexAccount): string | undefined {
   const authPayload = resolveAuthPayload(account);
   return normalizeTimestampToIso(authPayload?.chatgpt_subscription_active_until);
@@ -184,6 +194,8 @@ function toSub2apiAccount(account: CodexAccount): Sub2apiCreateAccountItem {
     platform: 'openai',
     type: 'oauth',
     credentials: buildSub2apiCredentials(account),
+    concurrency: 0,
+    priority: 0,
   };
 }
 
@@ -222,7 +234,11 @@ export function transformCodexExportJson(
   const accounts = parseCockpitToolsCodexExport(rawJson);
   if (format === 'sub2api') {
     const payload: Sub2apiBatchCreatePayload = {
+      exported_at: formatSub2apiExportedAt(),
+      proxies: [],
       accounts: accounts.map(toSub2apiAccount),
+      type: 'sub2api-data',
+      version: 1,
     };
     return JSON.stringify(payload, null, 2);
   }

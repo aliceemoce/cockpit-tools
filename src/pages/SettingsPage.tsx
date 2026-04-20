@@ -27,6 +27,7 @@ import {
   buildAccountTierCounts,
   buildAccountTierFilterOptions,
 } from '../utils/accountFilters';
+import { resolveUpdaterDownloadUrl } from '../utils/updaterReleaseNotes';
 import { getSubscriptionTier } from '../utils/account';
 import type { Account } from '../types/account';
 import type { CodexAccount } from '../types/codex';
@@ -49,7 +50,7 @@ import { SettingsAccountTransferSection } from '../components/SettingsAccountTra
 import './settings/Settings.css';
 import { 
   Github, User, Rocket, Save, FolderOpen,
-  AlertCircle, RefreshCw, Heart, MessageSquare
+  AlertCircle, RefreshCw, Heart, MessageSquare, FileText, Download, X
 } from 'lucide-react';
 
 
@@ -124,9 +125,12 @@ interface GeneralConfig {
   opencode_auth_overwrite_on_switch: boolean;
   openclaw_auth_overwrite_on_switch: boolean;
   codex_launch_on_switch: boolean;
+  codex_local_access_entry_visible: boolean;
   antigravity_dual_switch_no_restart_enabled: boolean;
   auto_switch_enabled: boolean;
   auto_switch_threshold: number;
+  auto_switch_credits_enabled?: boolean;
+  auto_switch_credits_threshold?: number;
   auto_switch_account_scope_mode?: string;
   auto_switch_selected_account_ids?: string[];
   codex_auto_switch_enabled?: boolean;
@@ -167,6 +171,7 @@ type AppPathTarget =
 const REFRESH_PRESET_VALUES = ['-1', '2', '5', '10', '15'];
 const CURRENT_ACCOUNT_REFRESH_PRESET_VALUES = ['1', '2', '5', '10', '15'];
 const THRESHOLD_PRESET_VALUES = ['0', '20', '40', '60'];
+const CREDITS_THRESHOLD_PRESET_VALUES = ['0', '5', '10', '20'];
 const UI_SCALE_OPTIONS = ['0.9', '1', '1.1', '1.25', '1.5'] as const;
 const ANTIGRAVITY_SEAMLESS_SWITCH_UNLOCK_REQUIRED_TAPS = 10;
 const UNLOCK_FIREWORKS_VISIBLE_MS = 6000;
@@ -195,6 +200,17 @@ type UpdateCheckFinishedDetail = {
   latestVersion?: string;
   error?: string;
 };
+
+type ReleaseHistorySectionKey = 'added' | 'changed' | 'fixed' | 'removed';
+
+interface ReleaseHistoryItem {
+  version: string;
+  date: string;
+  added: string[];
+  changed: string[];
+  fixed: string[];
+  removed: string[];
+}
 
 const generateReportToken = () => {
   const bytes = new Uint8Array(12);
@@ -381,9 +397,12 @@ export function SettingsPage() {
   const [opencodeAuthOverwriteOnSwitch, setOpencodeAuthOverwriteOnSwitch] = useState(false);
   const [openclawAuthOverwriteOnSwitch, setOpenclawAuthOverwriteOnSwitch] = useState(false);
   const [codexLaunchOnSwitch, setCodexLaunchOnSwitch] = useState(true);
+  const [codexLocalAccessEntryVisible, setCodexLocalAccessEntryVisible] = useState(true);
   const [antigravityDualSwitchNoRestartEnabled, setAntigravityDualSwitchNoRestartEnabled] = useState(false);
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState(false);
   const [autoSwitchThreshold, setAutoSwitchThreshold] = useState('20');
+  const [autoSwitchCreditsEnabled, setAutoSwitchCreditsEnabled] = useState(false);
+  const [autoSwitchCreditsThreshold, setAutoSwitchCreditsThreshold] = useState('5');
   const [autoSwitchAccountScopeMode, setAutoSwitchAccountScopeMode] =
     useState<AutoSwitchAccountScopeMode>(AUTO_SWITCH_SCOPE_ALL_ACCOUNTS);
   const [autoSwitchSelectedAccountIds, setAutoSwitchSelectedAccountIds] = useState<string[]>([]);
@@ -415,6 +434,7 @@ export function SettingsPage() {
   const [cursorAutoRefreshCustomMode, setCursorAutoRefreshCustomMode] = useState(false);
   const [geminiAutoRefreshCustomMode, setGeminiAutoRefreshCustomMode] = useState(false);
   const [autoSwitchThresholdCustomMode, setAutoSwitchThresholdCustomMode] = useState(false);
+  const [autoSwitchCreditsThresholdCustomMode, setAutoSwitchCreditsThresholdCustomMode] = useState(false);
   const [quotaAlertThresholdCustomMode, setQuotaAlertThresholdCustomMode] = useState(false);
   const [codexQuotaAlertThresholdCustomMode, setCodexQuotaAlertThresholdCustomMode] = useState(false);
   const [ghcpQuotaAlertThresholdCustomMode, setGhcpQuotaAlertThresholdCustomMode] = useState(false);
@@ -439,6 +459,10 @@ export function SettingsPage() {
     text: string;
     tone?: 'error' | 'success';
   } | null>(null);
+  const [releaseHistoryOpen, setReleaseHistoryOpen] = useState(false);
+  const [releaseHistoryLoading, setReleaseHistoryLoading] = useState(false);
+  const [releaseHistoryError, setReleaseHistoryError] = useState('');
+  const [releaseHistoryItems, setReleaseHistoryItems] = useState<ReleaseHistoryItem[]>([]);
   const [autoInstall, setAutoInstall] = useState(false);
   const [autoInstallLoaded, setAutoInstallLoaded] = useState(false);
   const autoInstallTouchedRef = useRef(false);
@@ -705,6 +729,7 @@ export function SettingsPage() {
       ? Math.min(2, Math.max(0.8, parsedUiScale))
       : 1;
     const parsedAutoSwitchThreshold = Number.parseInt(autoSwitchThreshold, 10);
+    const parsedAutoSwitchCreditsThreshold = Number.parseInt(autoSwitchCreditsThreshold, 10);
     const parsedQuotaAlertThreshold = Number.parseInt(quotaAlertThreshold, 10);
     const parsedCodexQuotaAlertThreshold = Number.parseInt(codexQuotaAlertThreshold, 10);
     const parsedGhcpQuotaAlertThreshold = Number.parseInt(ghcpQuotaAlertThreshold, 10);
@@ -766,9 +791,14 @@ export function SettingsPage() {
           opencodeAuthOverwriteOnSwitch,
           openclawAuthOverwriteOnSwitch,
           codexLaunchOnSwitch,
+          codexLocalAccessEntryVisible,
           antigravityDualSwitchNoRestartEnabled,
           autoSwitchEnabled,
           autoSwitchThreshold: Number.isNaN(parsedAutoSwitchThreshold) ? 20 : parsedAutoSwitchThreshold,
+          autoSwitchCreditsEnabled,
+          autoSwitchCreditsThreshold: Number.isNaN(parsedAutoSwitchCreditsThreshold)
+            ? 5
+            : parsedAutoSwitchCreditsThreshold,
           autoSwitchAccountScopeMode,
           autoSwitchSelectedAccountIds,
           codexAutoSwitchAccountScopeMode,
@@ -876,9 +906,12 @@ export function SettingsPage() {
     opencodeAuthOverwriteOnSwitch,
     openclawAuthOverwriteOnSwitch,
     codexLaunchOnSwitch,
+    codexLocalAccessEntryVisible,
     antigravityDualSwitchNoRestartEnabled,
     autoSwitchEnabled,
     autoSwitchThreshold,
+    autoSwitchCreditsEnabled,
+    autoSwitchCreditsThreshold,
     autoSwitchAccountScopeMode,
     autoSwitchSelectedAccountIds,
     codexAutoSwitchAccountScopeMode,
@@ -1175,11 +1208,14 @@ export function SettingsPage() {
       setOpencodeAuthOverwriteOnSwitch(config.opencode_auth_overwrite_on_switch ?? false);
       setOpenclawAuthOverwriteOnSwitch(config.openclaw_auth_overwrite_on_switch ?? false);
       setCodexLaunchOnSwitch(config.codex_launch_on_switch ?? true);
+      setCodexLocalAccessEntryVisible(config.codex_local_access_entry_visible ?? true);
       setAntigravityDualSwitchNoRestartEnabled(
         config.antigravity_dual_switch_no_restart_enabled ?? false
       );
       setAutoSwitchEnabled(config.auto_switch_enabled ?? false);
       setAutoSwitchThreshold(String(config.auto_switch_threshold ?? 20));
+      setAutoSwitchCreditsEnabled(config.auto_switch_credits_enabled ?? false);
+      setAutoSwitchCreditsThreshold(String(config.auto_switch_credits_threshold ?? 5));
       setAutoSwitchAccountScopeMode(
         normalizeAutoSwitchAccountScopeMode(config.auto_switch_account_scope_mode),
       );
@@ -1217,6 +1253,7 @@ export function SettingsPage() {
       setCursorAutoRefreshCustomMode(false);
       setGeminiAutoRefreshCustomMode(false);
       setAutoSwitchThresholdCustomMode(false);
+      setAutoSwitchCreditsThresholdCustomMode(false);
       setQuotaAlertThresholdCustomMode(false);
       setCodexQuotaAlertThresholdCustomMode(false);
       setGhcpQuotaAlertThresholdCustomMode(false);
@@ -1240,7 +1277,7 @@ export function SettingsPage() {
       console.error('加载通用配置失败:', err);
     }
   };
-  
+
   const loadNetworkConfig = async () => {
     try {
       const config = await invoke<NetworkConfig>('get_network_config');
@@ -1591,6 +1628,9 @@ export function SettingsPage() {
   const cursorAutoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(cursorAutoRefresh);
   const geminiAutoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(geminiAutoRefresh);
   const autoSwitchThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(autoSwitchThreshold);
+  const autoSwitchCreditsThresholdIsPreset = CREDITS_THRESHOLD_PRESET_VALUES.includes(
+    autoSwitchCreditsThreshold,
+  );
   const quotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(quotaAlertThreshold);
   const codexQuotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(codexQuotaAlertThreshold);
   const ghcpQuotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(ghcpQuotaAlertThreshold);
@@ -1614,6 +1654,72 @@ export function SettingsPage() {
       new CustomEvent('update-check-requested', {
         detail: { source: 'manual' as UpdateCheckSource },
       }),
+    );
+  };
+
+  const releaseHistorySections = useMemo<
+    Array<{ key: ReleaseHistorySectionKey; label: string }>
+  >(
+    () => [
+      { key: 'added', label: t('settings.about.releaseHistorySectionAdded', '新增') },
+      { key: 'changed', label: t('settings.about.releaseHistorySectionChanged', '变更') },
+      { key: 'fixed', label: t('settings.about.releaseHistorySectionFixed', '修复') },
+      { key: 'removed', label: t('settings.about.releaseHistorySectionRemoved', '移除') },
+    ],
+    [t],
+  );
+
+  const loadReleaseHistory = async () => {
+    setReleaseHistoryLoading(true);
+    setReleaseHistoryError('');
+    try {
+      const items = await invoke<ReleaseHistoryItem[]>('get_release_history', {
+        locale: language,
+        limit: 30,
+      });
+      setReleaseHistoryItems(Array.isArray(items) ? items : []);
+    } catch (error) {
+      console.error('加载更新记录失败:', error);
+      setReleaseHistoryItems([]);
+      setReleaseHistoryError(
+        error instanceof Error ? error.message : String(error || ''),
+      );
+    } finally {
+      setReleaseHistoryLoading(false);
+    }
+  };
+
+  const handleOpenReleaseHistory = () => {
+    setReleaseHistoryOpen(true);
+    void loadReleaseHistory();
+  };
+
+  const handleCloseReleaseHistory = () => {
+    setReleaseHistoryOpen(false);
+  };
+
+  const handleDownloadReleaseVersion = async (version: string) => {
+    const targetVersion = String(version || '').trim();
+    if (!targetVersion) {
+      return;
+    }
+
+    const releaseUrl = resolveUpdaterDownloadUrl(targetVersion);
+    try {
+      await openUrl(releaseUrl);
+    } catch {
+      window.open(releaseUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const renderReleaseHistoryLine = (line: string) => {
+    const parts = line.split(/\*\*(.*?)\*\*/g);
+    return parts.map((part, index) =>
+      index % 2 === 1 ? (
+        <strong key={index}>{part}</strong>
+      ) : (
+        <span key={index}>{part}</span>
+      ),
     );
   };
 
@@ -2103,7 +2209,7 @@ export function SettingsPage() {
               <div className="settings-row">
                 <div className="row-label">
                   <div className="row-title">{t('quickSettings.autoSwitch.enable', '自动切号')}</div>
-                  <div className="row-desc">{t('quickSettings.autoSwitch.hint', '当任意模型配额低于阈值时，自动切换到配额最高的账号。')}</div>
+                  <div className="row-desc">{t('quickSettings.autoSwitch.hint', '命中监控的模型分组阈值时会自动切号；启用 Credits 监控后，剩余 Credits 低于阈值时也会触发。')}</div>
                 </div>
                 <div className="row-control">
                   <label className="switch">
@@ -2171,6 +2277,95 @@ export function SettingsPage() {
                         <option value="20">20%</option>
                         <option value="40">40%</option>
                         <option value="60">60%</option>
+                        <option value="custom">{t('settings.general.autoRefreshCustom')}</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+              )}
+              {autoSwitchEnabled && (
+                <div className="settings-row">
+                  <div className="row-label">
+                    <div className="row-title">
+                      {t('quickSettings.autoSwitch.creditsEnable', '监控 Credits')}
+                    </div>
+                    <div className="row-desc">
+                      {t('quickSettings.autoSwitch.creditsThresholdDesc', '剩余 Credits 小于等于此值时也会触发自动切号')}
+                    </div>
+                  </div>
+                  <div className="row-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={autoSwitchCreditsEnabled}
+                        onChange={(e) => setAutoSwitchCreditsEnabled(e.target.checked)}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+              )}
+              {autoSwitchEnabled && autoSwitchCreditsEnabled && (
+                <div className="settings-row" style={{ animation: 'fadeUp 0.3s ease both' }}>
+                  <div className="row-label">
+                    <div className="row-title">
+                      {t('quickSettings.autoSwitch.creditsThreshold', 'Credits 阈值')}
+                    </div>
+                    <div className="row-desc">
+                      {t('quickSettings.autoSwitch.creditsThresholdDesc', '剩余 Credits 小于等于此值时也会触发自动切号')}
+                    </div>
+                  </div>
+                  <div className="row-control">
+                    {autoSwitchCreditsThresholdCustomMode ? (
+                      <div className="settings-inline-input">
+                        <input
+                          type="number"
+                          min={0}
+                          className="settings-select settings-select--input-mode"
+                          value={autoSwitchCreditsThreshold}
+                          placeholder={t('quickSettings.inputCredits', '输入 Credits')}
+                          onChange={(e) =>
+                            setAutoSwitchCreditsThreshold(sanitizeNumberInput(e.target.value))
+                          }
+                          onBlur={() => {
+                            const normalized = normalizeNumberInput(autoSwitchCreditsThreshold, 0);
+                            setAutoSwitchCreditsThreshold(normalized);
+                            setAutoSwitchCreditsThresholdCustomMode(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const normalized = normalizeNumberInput(autoSwitchCreditsThreshold, 0);
+                              setAutoSwitchCreditsThreshold(normalized);
+                              setAutoSwitchCreditsThresholdCustomMode(false);
+                            }
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <select
+                        className="settings-select"
+                        value={autoSwitchCreditsThreshold}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'custom') {
+                            setAutoSwitchCreditsThresholdCustomMode(true);
+                            setAutoSwitchCreditsThreshold(autoSwitchCreditsThreshold || '5');
+                            return;
+                          }
+                          setAutoSwitchCreditsThresholdCustomMode(false);
+                          setAutoSwitchCreditsThreshold(val);
+                        }}
+                      >
+                        {!autoSwitchCreditsThresholdIsPreset && (
+                          <option value={autoSwitchCreditsThreshold}>
+                            {autoSwitchCreditsThreshold}
+                          </option>
+                        )}
+                        <option value="0">0</option>
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                        <option value="20">20</option>
                         <option value="custom">{t('settings.general.autoRefreshCustom')}</option>
                       </select>
                     )}
@@ -2286,6 +2481,29 @@ export function SettingsPage() {
               <div style={{ order: platformSettingsOrder.codex }}>
                 <div className="group-title">{t('settings.general.codexSettingsTitle', 'Codex 设置')}</div>
                 <div className="settings-group">
+              <div className="settings-row">
+                <div className="row-label">
+                  <div className="row-title">
+                    {t('settings.general.codexLocalAccessEntryVisible', '显示 API 服务入口')}
+                  </div>
+                  <div className="row-desc">
+                    {t(
+                      'settings.general.codexLocalAccessEntryVisibleDesc',
+                      '仅控制 Codex 总览中的 API 服务入口显示，不会停止本地 API 服务；关闭后可在这里重新打开。',
+                    )}
+                  </div>
+                </div>
+                <div className="row-control">
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={codexLocalAccessEntryVisible}
+                      onChange={(e) => setCodexLocalAccessEntryVisible(e.target.checked)}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+              </div>
               <div className="settings-row">
                 <div className="row-label">
                   <div className="row-title">{t('settings.general.codexAutoRefresh')}</div>
@@ -4954,6 +5172,21 @@ export function SettingsPage() {
                       {updateChecking ? t('settings.about.checking') : t('settings.about.checkUpdate')}
                     </>
                   </button>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={handleOpenReleaseHistory}
+                    disabled={releaseHistoryLoading}
+                    style={{
+                      fontSize: '12px',
+                      padding: '4px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <FileText size={14} />
+                    {t('settings.about.viewReleaseHistory', '更新记录')}
+                  </button>
                 </div>
                 {updateCheckMessage && (
                   <div
@@ -4999,6 +5232,94 @@ export function SettingsPage() {
         )}
         </div>
       </div>
+      {releaseHistoryOpen && (
+        <div className="modal-overlay" onClick={handleCloseReleaseHistory}>
+          <div className="modal settings-release-history-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('settings.about.releaseHistoryTitle', '更新记录')}</h2>
+              <button
+                className="modal-close"
+                onClick={handleCloseReleaseHistory}
+                aria-label={t('common.close', '关闭')}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body settings-release-history-body">
+              {releaseHistoryLoading && (
+                <div className="settings-release-history-state">
+                  <RefreshCw size={14} className="spin" />
+                  <span>{t('settings.about.releaseHistoryLoading', '加载中...')}</span>
+                </div>
+              )}
+              {!releaseHistoryLoading && releaseHistoryError && (
+                <div className="settings-release-history-state settings-release-history-state-error">
+                  {t('settings.about.releaseHistoryLoadFailed', '加载失败：{{error}}', {
+                    error: releaseHistoryError,
+                  })}
+                </div>
+              )}
+              {!releaseHistoryLoading && !releaseHistoryError && releaseHistoryItems.length === 0 && (
+                <div className="settings-release-history-state">
+                  {t('settings.about.releaseHistoryEmpty', '暂无更新记录')}
+                </div>
+              )}
+              {!releaseHistoryLoading &&
+                !releaseHistoryError &&
+                releaseHistoryItems.map((item) => (
+                  <article
+                    key={`${item.version}-${item.date || 'unknown'}`}
+                    className="settings-release-history-item"
+                  >
+                    <div className="settings-release-history-item-head">
+                      <span className="settings-release-history-version">v{item.version}</span>
+                      <div className="settings-release-history-item-meta">
+                        {item.date ? (
+                          <span className="settings-release-history-date">{item.date}</span>
+                        ) : null}
+                        <button
+                          className="settings-release-history-download-btn"
+                          onClick={() => {
+                            void handleDownloadReleaseVersion(item.version);
+                          }}
+                          type="button"
+                        >
+                          <Download size={12} />
+                          {t('settings.about.downloadThisVersion', '下载此版本')}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="settings-release-history-sections">
+                      {releaseHistorySections.map((section) => {
+                        const lines = item[section.key];
+                        if (!Array.isArray(lines) || lines.length === 0) {
+                          return null;
+                        }
+                        return (
+                          <section key={`${item.version}-${section.key}`} className="settings-release-history-section">
+                            <h3>{section.label}</h3>
+                            <ul>
+                              {lines.map((line, index) => (
+                                <li key={`${item.version}-${section.key}-${index}`}>
+                                  {renderReleaseHistoryLine(line)}
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  </article>
+                ))}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={handleCloseReleaseHistory}>
+                {t('common.close', '关闭')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showUnlockFireworks && (
         <UnlockFireworksOverlay />
       )}

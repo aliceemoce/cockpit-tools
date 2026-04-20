@@ -7,6 +7,64 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.22.4] - 2026-04-19
+
+### Added
+- **Settings now include an in-app Release Notes viewer with per-version download actions**: the About section adds a `Release Notes` button, opens changelog history in a modal, and provides direct download actions for each listed version.
+
+### Changed
+- **Updater backend now exposes structured release history parsed from bundled changelog files**: the desktop command `get_release_history` reads `CHANGELOG.md` / `CHANGELOG.zh-CN.md`, parses `Added/Changed/Fixed/Removed` sections, and returns locale-aware results with list limits for frontend rendering.
+- **Codex Local API Service member eligibility now excludes Free-plan and API Key accounts end-to-end**: backend collection sanitization/request routing and frontend selection/save flows now enforce the same rule, while unsupported accounts are visibly marked and non-selectable.
+- **Codex Local API Service default/empty state is now stabilized for first-run and missing-collection scenarios**: runtime auto-seeds a disabled collection when absent, the overview card keeps deterministic base-url/API-key placeholders, and empty-state guidance is rewritten to the new start flow.
+
+---
+## [0.22.3] - 2026-04-19
+
+### Added
+- **Codex Session Manager now supports per-session Token usage stats on demand**: expanding a session group fetches input/output/total token counts from rollout `token_count` events, shows loading states in-row, and avoids full-file rescans via backend chunked tail parsing plus metadata cache.
+- **Codex local API Service actions now show a risk notice before first start/switch**: starting the service or switching into service mode now requires explicit acknowledgement, with an optional local `don't show again` choice.
+
+### Changed
+- **Codex quick config now uses unified presets across entry points**: Quick Settings, the Model Providers quick-config modal, and the instance editor all support `Default / 516K / 1M / Custom`, write `model_context_window` and `model_auto_compact_token_limit` directly, and validate both fields as positive integers.
+- **Codex instance quick-config now writes to the target instance's real `config.toml`**: backend commands can read/save/open the effective profile path for each instance instead of only targeting the default home.
+
+---
+## [0.22.2] - 2026-04-18
+
+### Changed
+- **Codex API Service now adds persisted overview controls and time-window stats**: the overview card can be collapsed in list mode, Settings and Quick Settings can hide or restore the entry, hiding the entry also disables the current local service, and the service panel now switches between daily, weekly, and monthly stats.
+- **Current-account resolution now follows Cockpit's explicit selection instead of fallback guessing**: provider injections persist the current-account mapping, GitHub Copilot is included in that flow, and account index repair/delete paths no longer silently repoint the current account to the first remaining record.
+- **Auto backup retention now defaults to 15 days with a one-time legacy migration**: existing configs using the historical default `3` are upgraded to `15` once, while later user-selected values (including `3`) are preserved and no longer auto-overwritten.
+
+---
+## [0.22.1] - 2026-04-18
+
+### Added
+- **Account overview pages now support platform-scoped filter persistence (disabled by default)**: Quick Settings adds a `Remember overview filters (except search)` toggle, and when enabled the app persists per-platform view mode, tag/group filters, and sort preferences.
+- **Backend OAuth token keeper is now enabled for long-running desktop sessions**: Cockpit starts a periodic token keepalive worker on app startup and refreshes near-expiry OAuth tokens across supported providers with backoff and tray-state refresh hooks.
+
+### Changed
+- **Antigravity auto-switch now supports Credits threshold triggers in addition to quota thresholds**: Settings and Quick Settings add Credits monitoring controls, trigger reasons now include credits context, and candidate ranking now prefers higher quota then higher remaining Credits.
+- **Codex API Service card now stays fixed as the first entry card across overview layouts**: the service card no longer gets split into a separate region, empty-state actions now use a centered `Add Account` CTA, and plan badges in the member picker are aligned with account-page badge styling.
+
+---
+## [0.22.0] - 2026-04-18
+
+### Added
+- **Merged upstream workspace/CLI changes from PR #490 (`dcdeda2`, based on `ca5aade`)**: the repository is migrated to a Cargo Workspace, introduces `cockpit-core` as shared Rust logic, and initializes `cockpit-cli` with the first account list/switch flow for Cursor and Gemini.
+- **Codex now includes full local API Service management on the account pages**: an inline service card plus a dedicated panel can manage collection members, API key visibility/reset, service port, direct activate/test actions, and account collection edits in one workflow.
+- **API Service now records and displays usage metrics for totals and per-account views**: request counts, token usage (input/output/cache/reasoning), average latency, and success rate are all visible in the service panel.
+
+### Changed
+- **Integrated Codex account/export adjustments from `5a2d970`**: Codex import now preserves `auth_file_plan_type` (`prolite`/`promax`) from file metadata and uses it in plan badges (`PRO 5x` / `PRO 20x`); `sub2api` export payload now includes `exported_at`, `type/version`, `proxies`, and per-account `concurrency/priority`.
+- **Codex instance binding now supports a dedicated API Service target (`__api_service__`)**: account pickers, instance search, and Codex instance labels now recognize and display API Service mode consistently.
+- **Starting a Codex instance in API Service mode now applies the switch on the real profile directory**: startup uses the same persisted on-disk path as normal instance switching, and triggers history-visibility repair when the effective provider changes.
+- **Activating API Service from Codex accounts now syncs default runtime pointers**: Cockpit clears the default current-account pointer and updates the default Codex instance binding to API Service mode.
+- **Cockpit startup now auto-restores saved local API gateway runtime state**: previously enabled API Service settings are resumed without manual reactivation.
+- **Codex quota error messaging for network failures is now normalized**: manual-refresh hints no longer expose raw backend error details.
+- **New API Service locale keys are now fully synchronized across all supported locales**: `zh-CN`, `en-US`, `en`, and the remaining non-English locale packs all ship with matching keys.
+
+---
 ## [0.21.4] - 2026-04-16
 
 ### Added

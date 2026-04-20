@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog';
-import { ChevronDown, ChevronRight, Eye, Folder, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Copy, Eye, Folder, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react';
 import { ModalErrorMessage, useModalErrorState } from '../ModalErrorMessage';
-import type { CodexSessionRecord, CodexTrashedSessionRecord } from '../../types/codex';
+import type { CodexSessionRecord, CodexSessionTokenStats, CodexTrashedSessionRecord } from '../../types/codex';
 import { useCodexInstanceStore } from '../../stores/useCodexInstanceStore';
 
 type MessageState = { text: string; tone?: 'error' };
+type SessionTokenStatsMap = Record<string, CodexSessionTokenStats>;
 
 type SessionGroup = {
   cwd: string;
@@ -70,6 +71,29 @@ function resolveGroupLabel(cwd: string): string {
   return parts[parts.length - 1] || cwd;
 }
 
+function formatSessionId(sessionId: string): string {
+  if (sessionId.length <= 18) return sessionId;
+  return `${sessionId.slice(0, 8)}...${sessionId.slice(-6)}`;
+}
+
+function formatLargeNumber(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  }
+  return value.toLocaleString();
+}
+
+function formatTokenStats(stats?: CodexSessionTokenStats): string {
+  if (stats) {
+    return `${formatLargeNumber(stats.inputTokens)} / ${formatLargeNumber(stats.outputTokens)} tokens`;
+  }
+
+  return '';
+}
+
 export function CodexSessionManager() {
   const { t, i18n } = useTranslation();
   const instances = useCodexInstanceStore((state) => state.instances);
@@ -79,6 +103,9 @@ export function CodexSessionManager() {
     (state) => state.repairSessionVisibilityAcrossInstances,
   );
   const listSessionsAcrossInstances = useCodexInstanceStore((state) => state.listSessionsAcrossInstances);
+  const getSessionTokenStatsAcrossInstances = useCodexInstanceStore(
+    (state) => state.getSessionTokenStatsAcrossInstances,
+  );
   const moveSessionsToTrashAcrossInstances = useCodexInstanceStore(
     (state) => state.moveSessionsToTrashAcrossInstances,
   );
@@ -101,6 +128,10 @@ export function CodexSessionManager() {
   const [loadingTrash, setLoadingTrash] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState<MessageState | null>(null);
+  const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
+  const [tokenStatsBySessionId, setTokenStatsBySessionId] = useState<SessionTokenStatsMap>({});
+  const [loadingTokenGroupCwds, setLoadingTokenGroupCwds] = useState<string[]>([]);
+  const [loadedTokenGroupCwds, setLoadedTokenGroupCwds] = useState<string[]>([]);
   const {
     message: restoreModalError,
     scrollKey: restoreModalErrorScrollKey,
@@ -108,11 +139,15 @@ export function CodexSessionManager() {
   } = useModalErrorState();
   const hasInitializedExpandedGroupsRef = useRef(false);
   const loadSessionsPromiseRef = useRef<Promise<void> | null>(null);
+  const copyResetTimerRef = useRef<number | null>(null);
+  const tokenStatsVersionRef = useRef(0);
   const isZh = i18n.resolvedLanguage?.toLowerCase().startsWith('zh') ?? true;
 
   const groupedSessions = useMemo(() => buildGroups(sessions), [sessions]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedTrashIdSet = useMemo(() => new Set(selectedTrashIds), [selectedTrashIds]);
+  const loadingTokenGroupSet = useMemo(() => new Set(loadingTokenGroupCwds), [loadingTokenGroupCwds]);
+  const loadedTokenGroupSet = useMemo(() => new Set(loadedTokenGroupCwds), [loadedTokenGroupCwds]);
   const instanceCount = instances.length;
 
   const loadSessions = useCallback(async () => {
@@ -126,7 +161,11 @@ export function CodexSessionManager() {
         const nextSessions = await listSessionsAcrossInstances();
         const nextGroups = buildGroups(nextSessions);
         const hasInitializedExpandedGroups = hasInitializedExpandedGroupsRef.current;
+        tokenStatsVersionRef.current += 1;
         setSessions(nextSessions);
+        setTokenStatsBySessionId({});
+        setLoadingTokenGroupCwds([]);
+        setLoadedTokenGroupCwds([]);
         setSelectedIds((prev) => prev.filter((id) => nextSessions.some((item) => item.sessionId === id)));
         setExpandedGroups((prev) => {
           const valid = prev.filter((cwd) => nextGroups.some((group) => group.cwd === cwd));
@@ -155,6 +194,50 @@ export function CodexSessionManager() {
     }
   }, [listSessionsAcrossInstances]);
 
+  const loadTokenStatsForGroups = useCallback(
+    async (groups: SessionGroup[]) => {
+      if (groups.length === 0) {
+        return;
+      }
+
+      const groupCwds = groups.map((group) => group.cwd);
+      const sessionIds = Array.from(new Set(groups.flatMap((group) => group.sessions.map((session) => session.sessionId))));
+      if (sessionIds.length === 0) {
+        setLoadedTokenGroupCwds((prev) => Array.from(new Set([...prev, ...groupCwds])));
+        return;
+      }
+
+      const requestVersion = tokenStatsVersionRef.current;
+      setLoadingTokenGroupCwds((prev) => Array.from(new Set([...prev, ...groupCwds])));
+
+      try {
+        const stats = await getSessionTokenStatsAcrossInstances(sessionIds);
+        if (tokenStatsVersionRef.current !== requestVersion) {
+          return;
+        }
+
+        setTokenStatsBySessionId((prev) => {
+          const next = { ...prev };
+          stats.forEach((item) => {
+            next[item.sessionId] = item;
+          });
+          return next;
+        });
+      } catch (error) {
+        if (tokenStatsVersionRef.current === requestVersion) {
+          console.error('Failed to load session token stats:', error);
+        }
+      } finally {
+        if (tokenStatsVersionRef.current !== requestVersion) {
+          return;
+        }
+        setLoadingTokenGroupCwds((prev) => prev.filter((cwd) => !groupCwds.includes(cwd)));
+        setLoadedTokenGroupCwds((prev) => Array.from(new Set([...prev, ...groupCwds])));
+      }
+    },
+    [getSessionTokenStatsAcrossInstances],
+  );
+
   const loadTrashedSessions = useCallback(async () => {
     setLoadingTrash(true);
     setRestoreModalError(null);
@@ -175,6 +258,28 @@ export function CodexSessionManager() {
   useEffect(() => {
     void loadSessions();
   }, [loadSessions]);
+
+  useEffect(() => {
+    const groupsToLoad = groupedSessions.filter(
+      (group) =>
+        expandedGroups.includes(group.cwd) &&
+        !loadingTokenGroupSet.has(group.cwd) &&
+        !loadedTokenGroupSet.has(group.cwd),
+    );
+    if (groupsToLoad.length === 0) {
+      return;
+    }
+
+    void loadTokenStatsForGroups(groupsToLoad);
+  }, [expandedGroups, groupedSessions, loadedTokenGroupSet, loadTokenStatsForGroups, loadingTokenGroupSet]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current !== null) {
+        window.clearTimeout(copyResetTimerRef.current);
+      }
+    };
+  }, []);
 
   const toggleSession = (sessionId: string) => {
     setSelectedIds((prev) =>
@@ -354,6 +459,29 @@ export function CodexSessionManager() {
     }
   };
 
+  const handleCopySessionId = async (event: MouseEvent<HTMLButtonElement>, sessionId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setCopiedSessionId(sessionId);
+      if (copyResetTimerRef.current !== null) {
+        window.clearTimeout(copyResetTimerRef.current);
+      }
+      copyResetTimerRef.current = window.setTimeout(() => {
+        setCopiedSessionId((current) => (current === sessionId ? null : current));
+        copyResetTimerRef.current = null;
+      }, 1200);
+    } catch (error) {
+      console.error('Failed to copy session id:', error);
+      setMessage({
+        text: t('common.shared.export.copyFailed', '复制失败，请手动复制'),
+        tone: 'error',
+      });
+    }
+  };
+
   return (
     <section className="codex-session-manager">
       <div className="codex-session-manager__header">
@@ -435,6 +563,7 @@ export function CodexSessionManager() {
             const groupSessionIds = group.sessions.map((item) => item.sessionId);
             const allSelected = groupSessionIds.every((id) => selectedIdSet.has(id));
             const isExpanded = expandedGroups.includes(group.cwd);
+            const isTokenStatsLoading = loadingTokenGroupSet.has(group.cwd);
             return (
               <section className="codex-session-folder" key={group.cwd}>
                 <div className="codex-session-folder__row">
@@ -475,9 +604,10 @@ export function CodexSessionManager() {
                   <div className="codex-session-folder__children">
                     {group.sessions.map((session) => {
                       const hasRunningLocation = session.locations.some((location) => location.running);
+                      const tokenText = formatTokenStats(tokenStatsBySessionId[session.sessionId]);
                       return (
-                        <label className="codex-session-row" key={session.sessionId}>
-                          <div className="codex-session-row__left">
+                        <div className="codex-session-row" key={session.sessionId}>
+                          <label className="codex-session-row__left">
                             <input
                               className="codex-session-row__checkbox"
                               type="checkbox"
@@ -494,12 +624,36 @@ export function CodexSessionManager() {
                                   ? t('codex.sessionManager.locationRunning', '（运行中）')
                                   : ''}
                               </span>
+                              <span className="codex-session-row__meta codex-session-row__session-id" title={session.sessionId}>
+                                {t('codex.sessionManager.labels.sessionId', '会话 ID')}: {formatSessionId(session.sessionId)}
+                              </span>
                             </div>
+                          </label>
+                          <div className="codex-session-row__right">
+                            <button
+                              className={`codex-session-row__copy-button${copiedSessionId === session.sessionId ? ' is-copied' : ''}`}
+                              type="button"
+                              onClick={(event) => void handleCopySessionId(event, session.sessionId)}
+                              title={t('codex.sessionManager.actions.copySessionId', '复制会话 ID')}
+                              aria-label={t('codex.sessionManager.actions.copySessionId', '复制会话 ID')}
+                            >
+                              {copiedSessionId === session.sessionId ? <Check size={14} /> : <Copy size={14} />}
+                            </button>
+                            {tokenText ? (
+                              <span className="codex-session-row__tokens" title={t('codex.sessionManager.labels.tokenUsage', 'Token使用')}>
+                                {tokenText}
+                              </span>
+                            ) : null}
+                            {!tokenText && isTokenStatsLoading ? (
+                              <span className="codex-session-row__tokens" title={t('common.loading', '加载中...')}>
+                                <RefreshCw size={12} className="icon-spin" />
+                              </span>
+                            ) : null}
+                            <span className="codex-session-row__time">
+                              {formatRelativeTime(session.updatedAt, isZh)}
+                            </span>
                           </div>
-                          <span className="codex-session-row__time">
-                            {formatRelativeTime(session.updatedAt, isZh)}
-                          </span>
-                        </label>
+                        </div>
                       );
                     })}
                   </div>

@@ -2232,32 +2232,10 @@ pub fn import_from_local() -> Result<Option<TraeAccount>, String> {
 }
 
 pub(crate) fn resolve_current_account_id(accounts: &[TraeAccount]) -> Option<String> {
-    let payload = read_local_trae_auth().ok()??;
-    let normalized_user_id = normalize_non_empty(payload.user_id.as_deref());
-    let normalized_email = normalize_email(Some(payload.email.as_str()));
-
-    accounts
-        .iter()
-        .find(|account| {
-            if let (Some(existing), Some(incoming)) = (
-                normalize_non_empty(account.user_id.as_deref()),
-                normalized_user_id.clone(),
-            ) {
-                if existing == incoming {
-                    return true;
-                }
-            }
-
-            if let (Some(existing), Some(incoming)) = (
-                normalize_email(Some(account.email.as_str())),
-                normalized_email.clone(),
-            ) {
-                return existing == incoming;
-            }
-
-            false
-        })
-        .map(|account| account.id.clone())
+    crate::modules::provider_current_state::resolve_existing_current_account_id(
+        "trae",
+        accounts.iter().map(|account| account.id.as_str()),
+    )
 }
 
 pub fn inject_to_trae(account_id: &str) -> Result<(), String> {

@@ -513,6 +513,7 @@ function MainApp() {
     if (!hasBreakoutSession) return;
     setShowBreakout(true);
   }, [hasBreakoutSession]);
+
   const {
     count: easterEggClickCount,
     registerClick: handleEasterEggTriggerClick,
@@ -1396,7 +1397,9 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
+    const AUTO_BACKUP_STARTUP_DELAY_MS = 5 * 60 * 1000;
     const AUTO_BACKUP_POLL_INTERVAL_MS = 60 * 60 * 1000;
+    let startupTimerId: number | undefined;
     let intervalId: number | undefined;
     let inFlight = false;
 
@@ -1414,12 +1417,17 @@ function MainApp() {
       }
     };
 
-    void checkAutoBackup();
-    intervalId = window.setInterval(() => {
+    startupTimerId = window.setTimeout(() => {
       void checkAutoBackup();
-    }, AUTO_BACKUP_POLL_INTERVAL_MS);
+      intervalId = window.setInterval(() => {
+        void checkAutoBackup();
+      }, AUTO_BACKUP_POLL_INTERVAL_MS);
+    }, AUTO_BACKUP_STARTUP_DELAY_MS);
 
     return () => {
+      if (startupTimerId !== undefined) {
+        window.clearTimeout(startupTimerId);
+      }
       if (intervalId !== undefined) {
         window.clearInterval(intervalId);
       }

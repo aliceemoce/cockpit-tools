@@ -379,7 +379,34 @@
       "launchModeCli": "CLI modu",
       "workingDir": "Çalışma dizini",
       "workingDirPlaceholder": "Varsayılan olarak mevcut yol",
-      "workingDirDesc": "Başlangıçta önce bu dizine geçer"
+      "workingDirDesc": "Başlangıçta önce bu dizine geçer",
+      "codexQuickConfig": {
+        "title": "Bağlam ve Kompakt Sınırlar",
+        "presetLabel": "Yapılandırma Ön Ayarı",
+        "presetHint": "Bir ön ayar seçin (Varsayılan / 516K / 1M) veya Özel'e geçin ve her iki alanı da manuel olarak doldurun.",
+        "presetDefaultShort": "Varsayılan",
+        "presetDefaultDesc": "Her iki alanı da kaldırın ve resmi varsayılanları kullanın",
+        "preset516kShort": "Ön ayarlı 516K",
+        "preset516kDesc": "bağlam=516000 / kompakt=460000",
+        "preset1mShort": "1 milyon",
+        "preset1mDesc": "bağlam=1000000 / kompakt=900000",
+        "presetCustomShort": "Gelenek",
+        "presetCustomDesc": "Bağlam ve kompakt değerleri manuel olarak ayarlayın",
+        "contextWindow": "Bağlam Penceresi",
+        "contextWindowHint": "model_context_window yazar. Yalnızca Özel modda düzenlenebilir.",
+        "autoCompactLimit": "Otomatik Sıkıştırma Limiti",
+        "autoCompactLimitHint": "model_auto_compact_token_limit yazar. Yalnızca Özel modda düzenlenebilir.",
+        "customDetected": "Config.toml'de özel değerler algılandı: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Kaydettiğinizde seçtiğiniz ön ayar bunların üzerine yazılacaktır.",
+        "partialDetected": "Şu anda yalnızca bir yönetilen alan ayarlanmıştır: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Kaydetme, mevcut şemayı kullanarak her iki alanı da yeniden yazacaktır.",
+        "notSet": "Ayarlanmadı",
+        "loadFailed": "Geçerli Codex yapılandırması yüklenemedi: {{error}}",
+        "openConfig": "Config.toml'u açın",
+        "openFailed": "config.toml açılamadı: {{error}}",
+        "validation": {
+          "contextWindowInvalid": "Bağlam penceresi 0'dan büyük bir tamsayı olmalıdır.",
+          "autoCompactInvalid": "Otomatik sıkıştırma sınırı 0'dan büyük bir tam sayı olmalıdır."
+        }
+      }
     },
     "quota": {
       "unbound": "Hesap bağlı değil",
@@ -666,7 +693,12 @@
       "qoderAutoRefreshDesc": "Arka planda otomatik yenileme sıklığı",
       "qoderPathSelect": "Seç",
       "workbuddyAutoRefresh": "WorkBuddy Otomatik Kota Yenileme",
-      "workbuddyAutoRefreshDesc": "Arka planda otomatik yenileme sıklığı"
+      "workbuddyAutoRefreshDesc": "Arka planda otomatik yenileme sıklığı",
+      "codexLocalAccessEntryVisible": "API Hizmeti girişini göster",
+      "codexLocalAccessEntryVisibleDesc": "Yalnızca API Hizmeti girişinin Codex genel görünümünde gösterilip gösterilmeyeceğini kontrol eder. Yerel API hizmetini durdurmaz; buradan veya Hızlı Ayarlar'dan yeniden açabilirsiniz.",
+      "codexLocalAccessEnabled": "API Hizmetini etkinleştir",
+      "codexLocalAccessEnabledDesc": "Yerel Codex API hizmetinin gerçekten çalışıp çalışmayacağını kontrol eder.",
+      "codexLocalAccessEnabledRequiresCollection": "Hizmeti etkinleştirmeden veya devre dışı bırakmadan önce hesapları API Hizmeti koleksiyonuna ekleyin."
     },
     "network": {
       "apiTitle": "Yerçekimine Karşı Kokpit API'si",
@@ -725,7 +757,17 @@
       "upToDate": "Güncel",
       "newVersion": "v{{version}} mevcut",
       "download": "İndir",
-      "checkFailed": "Güncelleme kontrolü başarısız oldu"
+      "checkFailed": "Güncelleme kontrolü başarısız oldu",
+      "viewReleaseHistory": "Sürüm Notları",
+      "releaseHistoryTitle": "Sürüm Notları",
+      "releaseHistoryLoading": "Sürüm notları yükleniyor...",
+      "releaseHistoryEmpty": "Henüz sürüm notu yok",
+      "releaseHistoryLoadFailed": "Yüklenemedi: {{error}}",
+      "releaseHistorySectionAdded": "Eklendi",
+      "releaseHistorySectionChanged": "Değiştirildi",
+      "releaseHistorySectionFixed": "Sabit",
+      "releaseHistorySectionRemoved": "Kaldırıldı",
+      "downloadThisVersion": "İndirmek"
     },
     "saveSettings": "Ayarları Kaydet",
     "transfer": {
@@ -1016,11 +1058,13 @@
       "originPlugin": "Eklenti",
       "originUnknown": "Bilinmiyor",
       "autoReasonLabel": "Otomatik neden: {{reason}}",
-      "autoReason": "Kural: {{rule}}; eşik: {{threshold}}%; kapsam: {{scope}}; izlenen gruplar: {{selectedGroups}}; eşik aşan gruplar: {{hitGroups}}; adaylar: {{candidates}}",
+      "autoReason": "Kural: {{rule}}; kota eşiği: {{quotaThreshold}}%; kredi eşiği: {{creditsThreshold}}; kapsam: {{scope}}; izlenen gruplar: {{selectedGroups}}; tetiklenen gruplar: {{hitGroups}}; mevcut krediler: {{currentCredits}}; adaylar: {{candidates}}",
       "autoReasonUnknown": "Otomatik geçiş tetiklendi ancak ayrıntılı neden kaydedilmedi",
       "autoReasonRuleCurrentDisabled": "Geçerli hesap devre dışı",
       "autoReasonRuleQuotaForbidden": "Geçerli hesabın kotası kısıtlı",
+      "autoReasonRuleGroupAndCreditsBelowThreshold": "Model grubu ve krediler birlikte eşik altında",
       "autoReasonRuleGroupBelowThreshold": "Model grubu eşiğin altında",
+      "autoReasonRuleCreditsBelowThreshold": "Kalan krediler eşik altında",
       "autoReasonScopeAnyGroup": "Herhangi bir model grubu",
       "autoReasonScopeSelectedGroups": "Seçili model grupları",
       "stageResult": "Yerel: {{local}} / Kesintisiz: {{seamless}}",
@@ -1581,6 +1625,118 @@
       "sub2api": "sub2api biçimi",
       "cpa": "cpa biçimi"
     },
+    "localAccess": {
+      "title": "API Hizmeti",
+      "accountCount": "{{count}} hesap",
+      "baseUrl": "Adres",
+      "apiKey": "Anahtar",
+      "statusRunning": "Çalışıyor",
+      "statusStopped": "Durduruldu",
+      "statusDisabled": "Devre dışı",
+      "emptyMembers": "Koleksiyonda henüz hesap yok",
+      "footerHint": "Yalnızca 127.0.0.1 üzerinde dinler",
+      "manageAccounts": "Hesapları yönet",
+      "rotateKey": "Anahtarı yenile",
+      "rotateConfirmMessage": "Sıfırlamadan sonra mevcut API hizmeti anahtarı hemen geçersiz olur ve devam eden istekler kullanılamaz hale gelebilir. Devam edilsin mi?",
+      "disableService": "Hizmeti kapat",
+      "enableService": "Hizmeti aç",
+      "saveSuccess": "API hizmeti koleksiyonu güncellendi",
+      "removeSuccess": "Hesap API hizmetinden çıkarıldı",
+      "rotateSuccess": "API hizmeti anahtarı yenilendi",
+      "enabledSuccess": "API hizmeti etkinleştirildi",
+      "disabledSuccess": "API hizmeti devre dışı bırakıldı",
+      "removeMember": "API hizmetinden çıkar",
+      "toggleService": "API hizmetini değiştir",
+      "showKey": "Anahtarı göster",
+      "hideKey": "Anahtarı gizle",
+      "modal": {
+        "title": "API hizmetine ekle",
+        "desc": "API hizmeti koleksiyonuna dahil etmek istediğiniz OAuth hesaplarını seçin. Eklenen hesaplar normal görünümden gizlenir ve yalnızca API hizmeti kartından yönetilir.",
+        "empty": "Kullanılabilir OAuth hesabı yok",
+        "selected": "API hizmetinde",
+        "available": "Normal görünüm",
+        "save": "Koleksiyonu kaydet",
+        "freeNotice": "Ücretsiz hesaplar henüz desteklenmemektedir. Free accounts cannot be selected.",
+        "freeUnsupported": "Ücretsiz hesaplar henüz desteklenmiyor"
+      },
+      "entryAction": "API hizmetine ekle",
+      "testAction": "API hizmetini test et",
+      "testSuccess": "API hizmeti testi başarılı ({{count}} model)",
+      "testTimeout": "Test zaman aşımına uğradı. Yerel hizmetin çalıştığını doğrulayın.",
+      "testUnavailable": "Mevcut API hizmeti URL’si kullanılamıyor",
+      "activateAction": "API hizmetini başlat",
+      "activateSuccess": "API hizmetine geçildi",
+      "dashboardAction": "Hizmet paneli",
+      "manageDesc": "API hizmeti istatistiklerini, üyeleri, portu, anahtarı ve bağlantı testini tek yerden yönetin.",
+      "memberOnlyLocal": "Yalnızca Codex",
+      "configTitle": "Hizmet yapılandırması",
+      "configEmpty": "URL, anahtar ve port oluşturulmadan önce en az bir hesabı API hizmeti koleksiyonuna kaydedin.",
+      "portLabel": "Hizmet portu",
+      "portSave": "Portu kaydet",
+      "portSaveSuccess": "API hizmeti portu güncellendi",
+      "portInvalid": "1 ile 65535 arasında bir port girin",
+      "statsTitle": "Toplam",
+      "accountStatsTitle": "Hesaba göre",
+      "statsEmpty": "Henüz istatistik yok",
+      "summaryMeta": "{{count}} hesap · Yalnızca Codex",
+      "summaryMetaUnconfigured": "Yapılandırılmadı · Yalnızca Codex",
+      "memberTitle": "Koleksiyon üyeleri",
+      "stats": {
+        "requests": "İstekler",
+        "requestsDetail": "Başarılı {{success}} / Hatalı {{failed}}",
+        "tokens": "Tokenlar",
+        "tokensDetail": "Girdi {{input}} / Çıktı {{output}}",
+        "specialTokens": "Önbellek / Akıl yürütme",
+        "specialTokensDetail": "Önbellek {{cached}} / Akıl yürütme {{reasoning}}",
+        "avgLatency": "Ort. gecikme",
+        "successRate": "Başarı oranı {{rate}}%",
+        "accountRequests": "{{count}} istek",
+        "accountTokens": "{{count}} token",
+        "accountResult": "Başarılı {{success}} / Hatalı {{failed}}",
+        "accountTokensCompact": "{{value}}"
+      },
+      "routingLabel": "Yönlendirme",
+      "routingSaveSuccess": "API hizmeti yönlendirmesi güncellendi",
+      "routingDescriptionAuto": "Önce daha yüksek planlı ve daha fazla kalan kotası olan hesapları seçer, sonra aynı planda dönüşümlü devam eder.",
+      "routingDescriptionQuotaHighFirst": "Kalan kotası daha yüksek hesapları tercih eder.",
+      "routingDescriptionQuotaLowFirst": "Kalan kotası daha düşük hesapları tercih eder.",
+      "routingDescriptionPlanHighFirst": "Daha yüksek abonelik planındaki hesapları tercih eder.",
+      "routingDescriptionPlanLowFirst": "Daha düşük abonelik planındaki hesapları tercih eder.",
+      "clearStats": "İstatistikleri Temizle",
+      "clearStatsConfirm": "API hizmeti istatistiklerinin tümü temizlensin mi?",
+      "clearStatsSuccess": "API hizmeti istatistikleri temizlendi",
+      "refreshStats": "İstatistikleri Yenile",
+      "refreshStatsSuccess": "API hizmeti istatistikleri yenilendi",
+      "routingStrategy": {
+        "auto": "Otomatik (Önerilen)",
+        "quotaHighFirst": "Önce yüksek kota",
+        "quotaLowFirst": "Önce düşük kota",
+        "planHighFirst": "Önce yüksek plan",
+        "planLowFirst": "Önce düşük plan"
+      },
+      "statusUnconfigured": "Yapılandırılmadı",
+      "expandDetails": "Ayrıntıları aç",
+      "collapseDetails": "Ayrıntıları kapat",
+      "hideEntryAction": "API Hizmeti girişini gizle",
+      "hideEntryConfirm": "Bu işlem API Hizmeti girişini genel görünümden gizler ve mevcut API hizmetini de devre dışı bırakır. Daha sonra Codex Ayarları veya Hızlı Ayarlar'dan yeniden açabilirsiniz.",
+      "hideEntryEffectHide": "API Hizmeti girişini genel görünümden gizle",
+      "hideEntryEffectDisable": "Mevcut API hizmetini devre dışı bırak",
+      "hideEntryEffectRestore": "Codex Ayarları veya Hızlı Ayarlar'dan yeniden açabilirsiniz",
+      "riskNotice": {
+        "title": "Risk Uyarısı",
+        "message": "Mevcut Codex API hizmetiyle ilgili özellikler, özünde ters proxy kullanımına dayanır. Şu anda resmi taraf bu davranışı açıkça kısıtlamıyor, ancak ileride politika, kurallar veya kullanılabilirlik değişebilir. Bu özelliği kullanmaya devam ederek durumu anladığınızı ve ilgili riskleri kendiniz üstlendiğinizi kabul etmiş olursunuz.",
+        "remember": "Anladım, bir daha gösterme",
+        "acknowledge": "Anladım",
+        "continueStart": "Devam",
+        "continueSwitch": "Devam"
+      },
+      "statsRange": {
+        "label": "İstatistik aralığı",
+        "daily": "Gün",
+        "weekly": "Hafta",
+        "monthly": "Ay"
+      }
+    },
     "local": {
       "desc": "~/.codex/auth.json'dan mevcut hesabı içe aktar",
       "import": "Yerel hesabı al"
@@ -1838,7 +1994,8 @@
         "expand": "Genişlet",
         "collapse": "Daralt",
         "repairVisibility": "Görünürlüğü düzelt",
-        "restoreSessions": "Oturumları geri yükle"
+        "restoreSessions": "Oturumları geri yükle",
+        "copySessionId": "Oturum kimliğini kopyala"
       },
       "confirm": {
         "title": "Çöp kutusuna taşı",
@@ -1857,6 +2014,10 @@
       },
       "groupCount": "{{count}} oturum",
       "updatedAt": "Güncellendi",
+      "labels": {
+        "sessionId": "Oturum kimliği",
+        "tokenUsage": "Token kullanımı"
+      },
       "locationRunning": " (çalışıyor)",
       "untitled": "Adsız oturum",
       "restoreModal": {
@@ -2023,8 +2184,27 @@
         "customDetected": "config.toml içinde özel bir model_context_window = {{context}} algılandı. Kaydetme işlemi bunu aşağıdaki hızlı ayarla yeniden yazar.",
         "compactMissingDetected": "1M bağlam zaten açık, ancak auto-compact sınırı eksik. Kaydedildiğinde varsayılan {{limit}} değeri yazılacak.",
         "validation": {
-          "autoCompactInvalid": "Auto-compact sınırı 0'dan büyük bir tam sayı olmalıdır."
-        }
+          "autoCompactInvalid": "Auto-compact sınırı 0'dan büyük bir tam sayı olmalıdır.",
+          "contextWindowInvalid": "Bağlam penceresi 0'dan büyük bir tamsayı olmalıdır."
+        },
+        "presetLabel": "Yapılandırma Ön Ayarı",
+        "presetHint": "Bir ön ayar seçin (Varsayılan / 516K / 1M) veya Özel'e geçin ve her iki alanı da manuel olarak doldurun.",
+        "presetDefaultShort": "Varsayılan",
+        "presetDefaultDesc": "Her iki alanı da kaldırın ve resmi varsayılanları kullanın",
+        "preset516kShort": "Ön ayarlı 516K",
+        "preset516kDesc": "bağlam=516000 / kompakt=460000",
+        "preset1mShort": "1 milyon",
+        "preset1mDesc": "bağlam=1000000 / kompakt=900000",
+        "presetCustomShort": "Gelenek",
+        "presetCustomDesc": "Bağlam ve kompakt değerleri manuel olarak ayarlayın",
+        "presetDefault": "Varsayılan (model_context_window / model_auto_compact_token_limit'i kaldır)",
+        "preset516k": "Ön ayar 516K (model_context_window = 516000, auto_compact = 460000)",
+        "preset1m": "1 milyon (model_context_window = 1000000, auto_compact = 900000)",
+        "presetCustom": "Gelenek",
+        "contextWindow": "Bağlam Penceresi",
+        "contextWindowHint": "model_context_window yazar. Yalnızca Özel modda düzenlenebilir.",
+        "partialDetected": "Şu anda yalnızca bir yönetilen alan ayarlanmıştır: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Kaydetme, mevcut şemayı kullanarak her iki alanı da yeniden yazacaktır.",
+        "notSet": "Ayarlanmadı"
       }
     },
     "quickSwitch": {
@@ -2168,7 +2348,35 @@
       "appPath": "Uygulama Yolu",
       "configToml": "Codex yapılandırma dosyası",
       "openConfigToml": "Dosyayı aç",
-      "openConfigHint": "Etkin Codex config.toml dosyasını hızla açın."
+      "openConfigHint": "Etkin Codex config.toml dosyasını hızla açın.",
+      "localAccessEntryVisible": "API Hizmeti girişini göster",
+      "quickConfig": {
+        "title": "Bağlam ve Kompakt Sınırlar",
+        "presetLabel": "Yapılandırma Ön Ayarı",
+        "presetHint": "Bir ön ayar seçin (Varsayılan / 516K / 1M) veya Özel'e geçin ve her iki alanı da manuel olarak doldurun.",
+        "presetDefaultShort": "Varsayılan",
+        "presetDefaultDesc": "Her iki alanı da kaldırın ve resmi varsayılanları kullanın",
+        "preset516kShort": "Ön ayarlı 516K",
+        "preset516kDesc": "bağlam=516000 / kompakt=460000",
+        "preset1mShort": "1 milyon",
+        "preset1mDesc": "bağlam=1000000 / kompakt=900000",
+        "presetCustomShort": "Gelenek",
+        "presetCustomDesc": "Bağlam ve kompakt değerleri manuel olarak ayarlayın",
+        "contextWindow": "Bağlam Penceresi",
+        "contextWindowHint": "model_context_window yazar. Yalnızca Özel modda düzenlenebilir.",
+        "autoCompactLimit": "Otomatik Sıkıştırma Limiti",
+        "autoCompactLimitHint": "model_auto_compact_token_limit yazar. Yalnızca Özel modda düzenlenebilir.",
+        "customDetected": "Config.toml'de özel değerler algılandı: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Kaydettiğinizde seçtiğiniz ön ayar bunların üzerine yazılacaktır.",
+        "partialDetected": "Şu anda yalnızca bir yönetilen alan ayarlanmıştır: model_context_window={{context}}, model_auto_compact_token_limit={{compact}}. Kaydetme, mevcut şemayı kullanarak her iki alanı da yeniden yazacaktır.",
+        "notSet": "Ayarlanmadı",
+        "loadFailed": "Geçerli Codex yapılandırması yüklenemedi: {{error}}",
+        "saveSuccess": "Mevcut Codex yapılandırması kaydedildi.",
+        "saveFailed": "Geçerli Codex yapılandırması kaydedilemedi: {{error}}",
+        "validation": {
+          "contextWindowInvalid": "Bağlam penceresi 0'dan büyük bir tamsayı olmalıdır.",
+          "autoCompactInvalid": "Otomatik sıkıştırma sınırı 0'dan büyük bir tam sayı olmalıdır."
+        }
+      }
     },
     "githubCopilot": {
       "title": "GitHub Copilot Ayarları",
@@ -2182,7 +2390,10 @@
       "enable": "Otomatik Geçiş",
       "threshold": "Geçiş Eşiği",
       "thresholdDesc": "İzlenen model grupları bu yüzde eşiğe ulaştığında otomatik geçiş tetiklenir",
-      "hint": "İzlenen model grupları eşiğe ulaştığında otomatik olarak en yüksek kotaya sahip hesaba geçer.",
+      "hint": "İzlenen model grupları eşiğe ulaştığında otomatik geçiş yapar; kredi izleme açıksa kalan krediler eşik altına düştüğünde de tetiklenir.",
+      "creditsEnable": "Kredileri izle",
+      "creditsThreshold": "Kredi eşiği",
+      "creditsThresholdDesc": "Kalan krediler bu değere veya altına düştüğünde de otomatik geçiş yap",
       "triggerModel": "Tetik model",
       "scopeAnyGroup": "Herhangi bir model grubu",
       "scopeSelectedGroups": "Seçili model grupları",
@@ -2200,6 +2411,7 @@
     "apply": "Uygula",
     "inputMinutes": "Dakika girin",
     "inputPercent": "Yüzde girin",
+    "inputCredits": "Kredi girin",
     "windsurf": {
       "title": "Windsurf Ayarları",
       "appPath": "Windsurf Yolu"
@@ -2249,6 +2461,11 @@
     "zed": {
       "title": "Zed Ayarları",
       "appPath": "Zed Yolu"
+    },
+    "filterPersistence": {
+      "title": "Filtre hafızası",
+      "enable": "Hesap genel görünüm filtrelerini hatırla (arama hariç)",
+      "hint": "Varsayılan olarak kapalıdır. Açıldığında her platform için filtreler, etiketler ve sıralama korunur."
     }
   },
   "quotaAlert": {
@@ -3099,11 +3316,11 @@
       "status": "Check-in durumu",
       "checkedIn": "Check-in yapıldı",
       "notCheckedIn": "Check-in yapılmadı",
-      "button": "Check-in yap",
+      "button": {},
       "button.loading": "Check-in yapılıyor...",
       "done": "Tamam",
       "success": "Check-in başarılı! {{days}} günlük seri",
-      "failure": "Check-in başarısız: {{message}}",
+      "failure": {},
       "failure.network": "Ağ hatası, lütfen daha sonra tekrar deneyin",
       "lastCheckin": "Son check-in: {{time}}",
       "streak": "{{days}} günlük seri",
