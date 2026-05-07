@@ -1,4 +1,5 @@
 pub mod account;
+pub mod account_backup_mirror;
 pub mod account_index_repair;
 pub mod announcement;
 pub mod antigravity_switch_history;

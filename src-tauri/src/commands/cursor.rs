@@ -194,6 +194,11 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
     let account = cursor_account::load_account(&account_id)
         .ok_or_else(|| format!("Cursor account not found: {}", account_id))?;
 
+    let default_user_data_dir = crate::modules::cursor_instance::get_default_cursor_user_data_dir()?;
+    let default_user_data_dir_str = default_user_data_dir.to_string_lossy().to_string();
+    crate::modules::cursor_instance::close_cursor(&[default_user_data_dir_str], 20)?;
+    cursor_account::hard_reset_cursor_fingerprint_state()?;
+
     cursor_account::inject_to_cursor(&account_id)?;
     crate::modules::provider_current_state::set_current_account_id(
         "cursor",

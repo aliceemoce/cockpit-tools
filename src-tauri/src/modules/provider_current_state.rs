@@ -69,7 +69,11 @@ fn save_state(state: &ProviderCurrentState) -> Result<(), String> {
     let content = serde_json::to_string_pretty(state)
         .map_err(|e| format!("序列化当前账号映射失败: {}", e))?;
     crate::modules::atomic_write::write_string_atomic(&path, &content)
-        .map_err(|e| format!("保存当前账号映射失败: path={}, error={}", path.display(), e))
+        .map_err(|e| format!("保存当前账号映射失败: path={}, error={}", path.display(), e))?;
+    crate::modules::account_backup_mirror::try_mirror_shared_state_file(
+        PROVIDER_CURRENT_STATE_FILE,
+    );
+    Ok(())
 }
 
 pub fn get_current_account_id(platform: &str) -> Result<Option<String>, String> {

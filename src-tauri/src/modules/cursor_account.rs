@@ -1,11 +1,14 @@
 use base64::Engine as _;
+use rand::RngCore;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256, Sha512};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use uuid::Uuid;
 
 use crate::models::cursor::{CursorAccount, CursorAccountIndex, CursorImportPayload};
 use crate::modules::{account, logger};
@@ -127,7 +130,9 @@ fn save_account_file(account: &CursorAccount) -> Result<(), String> {
     let content =
         serde_json::to_string_pretty(account).map_err(|e| format!("序列化账号失败: {}", e))?;
     crate::modules::atomic_write::write_string_atomic(&path, &content)
-        .map_err(|e| format!("保存账号失败: {}", e))
+        .map_err(|e| format!("保存账号失败: {}", e))?;
+    crate::modules::account_backup_mirror::try_mirror_provider_account_file("cursor", &account.id);
+    Ok(())
 }
 
 fn delete_account_file(account_id: &str) -> Result<(), String> {
@@ -230,7 +235,9 @@ fn save_account_index(index: &CursorAccountIndex) -> Result<(), String> {
     let content =
         serde_json::to_string_pretty(index).map_err(|e| format!("序列化账号索引失败: {}", e))?;
     crate::modules::atomic_write::write_string_atomic(&path, &content)
-        .map_err(|e| format!("写入账号索引失败: {}", e))
+        .map_err(|e| format!("写入账号索引失败: {}", e))?;
+    crate::modules::account_backup_mirror::try_mirror_provider_index_file("cursor");
+    Ok(())
 }
 
 fn refresh_summary(index: &mut CursorAccountIndex, account: &CursorAccount) {
@@ -1099,6 +1106,17 @@ pub fn get_default_cursor_state_db_path() -> Result<PathBuf, String> {
         .join("state.vscdb"))
 }
 
+pub fn get_default_cursor_storage_json_path() -> Result<PathBuf, String> {
+    Ok(get_default_cursor_data_dir()?
+        .join("User")
+        .join("globalStorage")
+        .join("storage.json"))
+}
+
+pub fn get_default_cursor_machine_id_path() -> Result<PathBuf, String> {
+    Ok(get_default_cursor_data_dir()?.join("machineId"))
+}
+
 fn read_vscdb_item(conn: &Connection, key: &str) -> Option<String> {
     conn.query_row("SELECT value FROM ItemTable WHERE key = ?1", [key], |row| {
         row.get::<_, String>(0)
@@ -1209,6 +1227,122 @@ fn upsert_vscdb_item(conn: &Connection, key: &str, value: &str) -> Result<(), St
         (key, value),
     )
     .map_err(|e| format!("写入 {} 失败: {}", key, e))?;
+    Ok(())
+}
+
+fn random_sha256_hex() -> String {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let hash = Sha256::digest(bytes);
+    format!("{:x}", hash)
+}
+
+fn random_sha512_hex() -> String {
+    let mut bytes = [0u8; 64];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let hash = Sha512::digest(bytes);
+    format!("{:x}", hash)
+}
+
+fn random_dev_device_id() -> String {
+    Uuid::new_v4().to_string().to_lowercase()
+}
+
+fn random_sqm_id() -> String {
+    format!("{{{}}}", Uuid::new_v4().to_string().to_uppercase())
+}
+
+fn upsert_storage_json_ids(
+    storage_json_path: &PathBuf,
+    ids: &HashMap<&str, String>,
+) -> Result<(), String> {
+    let parent = storage_json_path
+        .parent()
+        .ok_or_else(|| "storage.json 路径无效".to_string())?;
+    if !parent.exists() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建 storage.json 目录失败: {}", e))?;
+    }
+
+    let mut obj = serde_json::Map::<String, Value>::new();
+    if storage_json_path.exists() {
+        let raw = fs::read_to_string(storage_json_path)
+            .map_err(|e| format!("读取 storage.json 失败({}): {}", storage_json_path.display(), e))?;
+        if !raw.trim().is_empty() {
+            if let Ok(Value::Object(parsed)) = serde_json::from_str::<Value>(&raw) {
+                obj = parsed;
+            }
+        }
+    }
+
+    obj.insert(
+        "telemetry.machineId".to_string(),
+        Value::String(ids["telemetry.machineId"].clone()),
+    );
+    obj.insert(
+        "telemetry.macMachineId".to_string(),
+        Value::String(ids["telemetry.macMachineId"].clone()),
+    );
+    obj.insert(
+        "telemetry.devDeviceId".to_string(),
+        Value::String(ids["telemetry.devDeviceId"].clone()),
+    );
+    obj.insert(
+        "telemetry.sqmId".to_string(),
+        Value::String(ids["telemetry.sqmId"].clone()),
+    );
+
+    let content = serde_json::to_string_pretty(&Value::Object(obj))
+        .map_err(|e| format!("序列化 storage.json 失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(storage_json_path, &content)
+        .map_err(|e| format!("写入 storage.json 失败: {}", e))?;
+    Ok(())
+}
+
+fn upsert_state_vscdb_ids(state_db_path: &PathBuf, ids: &HashMap<&str, String>) -> Result<(), String> {
+    if !state_db_path.exists() {
+        return Ok(());
+    }
+
+    let conn = Connection::open(state_db_path).map_err(|e| {
+        format!(
+            "打开 Cursor state.vscdb 失败({}): {}",
+            state_db_path.display(),
+            e
+        )
+    })?;
+    upsert_vscdb_item(&conn, "storage.serviceMachineId", &ids["storage.serviceMachineId"])?;
+    upsert_vscdb_item(&conn, "telemetry.machineId", &ids["telemetry.machineId"])?;
+    upsert_vscdb_item(&conn, "telemetry.macMachineId", &ids["telemetry.macMachineId"])?;
+    upsert_vscdb_item(&conn, "telemetry.devDeviceId", &ids["telemetry.devDeviceId"])?;
+    upsert_vscdb_item(&conn, "telemetry.sqmId", &ids["telemetry.sqmId"])?;
+    Ok(())
+}
+
+pub fn hard_reset_cursor_fingerprint_state() -> Result<(), String> {
+    let storage_json = get_default_cursor_storage_json_path()?;
+    let machine_id_path = get_default_cursor_machine_id_path()?;
+    let state_db = get_default_cursor_state_db_path()?;
+
+    let mut ids = HashMap::<&str, String>::new();
+    ids.insert("storage.serviceMachineId", Uuid::new_v4().to_string());
+    ids.insert("telemetry.machineId", random_sha256_hex());
+    ids.insert("telemetry.macMachineId", random_sha512_hex());
+    ids.insert("telemetry.devDeviceId", random_dev_device_id());
+    ids.insert("telemetry.sqmId", random_sqm_id());
+
+    upsert_storage_json_ids(&storage_json, &ids)?;
+
+    let machine_parent = machine_id_path
+        .parent()
+        .ok_or_else(|| "machineId 路径无效".to_string())?;
+    if !machine_parent.exists() {
+        fs::create_dir_all(machine_parent).map_err(|e| format!("创建 machineId 目录失败: {}", e))?;
+    }
+    crate::modules::atomic_write::write_string_atomic(&machine_id_path, &ids["telemetry.devDeviceId"])
+        .map_err(|e| format!("写入 machineId 失败: {}", e))?;
+
+    upsert_state_vscdb_ids(&state_db, &ids)?;
+    logger::log_info("[Cursor Switch] 已执行 n 风格本地指纹重置（state.vscdb/storage.json/machineId）");
     Ok(())
 }
 
