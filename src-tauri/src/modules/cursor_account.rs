@@ -1077,6 +1077,33 @@ fn payload_from_import_value(raw: Value) -> Result<CursorImportPayload, String> 
     })
 }
 
+fn payload_from_cursor_account(account: CursorAccount) -> Result<CursorImportPayload, String> {
+    let email = account.email.trim().to_string();
+    if email.is_empty() {
+        return Err("缺少 email 字段".to_string());
+    }
+
+    let access_token = account.access_token.trim().to_string();
+    if access_token.is_empty() {
+        return Err("缺少 access_token 字段".to_string());
+    }
+
+    Ok(CursorImportPayload {
+        email,
+        auth_id: account.auth_id,
+        name: account.name,
+        access_token,
+        refresh_token: account.refresh_token,
+        membership_type: account.membership_type,
+        subscription_status: account.subscription_status,
+        sign_up_type: account.sign_up_type,
+        cursor_auth_raw: account.cursor_auth_raw,
+        cursor_usage_raw: account.cursor_usage_raw,
+        status: account.status,
+        status_reason: account.status_reason,
+    })
+}
+
 fn payloads_from_import_json_value(value: Value) -> Result<Vec<CursorImportPayload>, String> {
     match value {
         Value::Array(items) => {
@@ -1122,14 +1149,18 @@ fn payloads_from_import_json_value(value: Value) -> Result<Vec<CursorImportPaylo
 
 pub fn import_from_json(json_content: &str) -> Result<Vec<CursorAccount>, String> {
     if let Ok(account) = serde_json::from_str::<CursorAccount>(json_content) {
-        let saved = upsert_account_record(account)?;
+        let payload = payload_from_cursor_account(account)
+            .map_err(|e| format!("Cursor 账号解析失败: {}", e))?;
+        let saved = upsert_account(payload)?;
         return Ok(vec![saved]);
     }
 
     if let Ok(accounts) = serde_json::from_str::<Vec<CursorAccount>>(json_content) {
         let mut result = Vec::new();
-        for account in accounts {
-            let saved = upsert_account_record(account)?;
+        for (idx, account) in accounts.into_iter().enumerate() {
+            let payload = payload_from_cursor_account(account)
+                .map_err(|e| format!("第 {} 条 Cursor 账号解析失败: {}", idx + 1, e))?;
+            let saved = upsert_account(payload)?;
             result.push(saved);
         }
         return Ok(result);
