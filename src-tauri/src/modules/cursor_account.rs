@@ -79,6 +79,12 @@ fn get_accounts_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn get_backup_accounts_dir() -> Result<PathBuf, String> {
+    Ok(get_data_dir()?
+        .join("account_backups")
+        .join("cursor_accounts"))
+}
+
 fn get_accounts_index_path() -> Result<PathBuf, String> {
     Ok(get_data_dir()?.join(ACCOUNTS_INDEX_FILE))
 }
@@ -121,8 +127,12 @@ pub fn load_account(account_id: &str) -> Option<CursorAccount> {
     if !account_path.exists() {
         return None;
     }
-    let content = fs::read_to_string(&account_path).ok()?;
-    crate::modules::atomic_write::parse_json_with_auto_restore(&account_path, &content).ok()
+    load_account_from_path(&account_path)
+}
+
+fn load_account_from_path(path: &PathBuf) -> Option<CursorAccount> {
+    let content = fs::read_to_string(path).ok()?;
+    crate::modules::atomic_write::parse_json_with_auto_restore(path, &content).ok()
 }
 
 fn save_account_file(account: &CursorAccount) -> Result<(), String> {
@@ -399,38 +409,12 @@ fn normalize_cursor_sign_up_type(value: Option<&str>) -> Option<String> {
 }
 
 fn accounts_are_duplicates(left: &CursorAccount, right: &CursorAccount) -> bool {
-    let left_auth_id = resolve_account_auth_id(left);
-    let right_auth_id = resolve_account_auth_id(right);
-    if let (Some(left_auth), Some(right_auth)) = (left_auth_id.as_ref(), right_auth_id.as_ref()) {
-        return left_auth == right_auth;
-    }
-    if left_auth_id.is_some() || right_auth_id.is_some() {
-        return false;
-    }
-
     let left_email = normalize_email_identity(Some(left.email.as_str()));
     let right_email = normalize_email_identity(Some(right.email.as_str()));
-    let left_token = normalize_token_identity(Some(left.access_token.as_str()));
-    let right_token = normalize_token_identity(Some(right.access_token.as_str()));
-
-    let email_conflict = matches!(
+    matches!(
         (left_email.as_ref(), right_email.as_ref()),
-        (Some(l), Some(r)) if l != r
-    );
-    if email_conflict {
-        return false;
-    }
-
-    let email_match = matches!(
-        (left_email.as_ref(), right_email.as_ref()),
-        (Some(l), Some(r)) if l == r
-    );
-    let token_match = matches!(
-        (left_token.as_ref(), right_token.as_ref()),
-        (Some(l), Some(r)) if l == r
-    );
-
-    email_match || token_match
+        (Some(le), Some(re)) if le == re
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +564,95 @@ fn collect_account_ids_from_directory() -> Vec<String> {
     ids
 }
 
+fn collect_account_ids_from_backup_directory() -> Vec<String> {
+    let backup_dir = match get_backup_accounts_dir() {
+        Ok(dir) => dir,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Account] 获取备份账号目录失败，跳过备份补扫: {}",
+                err
+            ));
+            return Vec::new();
+        }
+    };
+
+    if !backup_dir.exists() {
+        return Vec::new();
+    }
+
+    let entries = match fs::read_dir(&backup_dir) {
+        Ok(value) => value,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Account] 读取备份账号目录失败，跳过备份补扫: path={}, error={}",
+                backup_dir.display(),
+                err
+            ));
+            return Vec::new();
+        }
+    };
+
+    let mut ids = Vec::new();
+    for entry in entries {
+        let Ok(item) = entry else {
+            continue;
+        };
+        let path = item.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let is_json = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
+        if !is_json {
+            continue;
+        }
+
+        let Some(stem) = path.file_stem().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Ok(account_id) = normalize_account_id(stem) else {
+            continue;
+        };
+        ids.push(account_id);
+    }
+
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn restore_account_from_backup_if_needed(account_id: &str) -> Option<CursorAccount> {
+    if let Some(existing) = load_account(account_id) {
+        return Some(existing);
+    }
+
+    let backup_path = get_backup_accounts_dir()
+        .ok()?
+        .join(format!("{}.json", account_id));
+    if !backup_path.exists() {
+        return None;
+    }
+
+    let mut restored = load_account_from_path(&backup_path)?;
+    restored.id = account_id.to_string();
+
+    if let Err(err) = save_account_file(&restored) {
+        logger::log_warn(&format!(
+            "[Cursor Account] 从备份回填账号文件失败: id={}, backup={}, error={}",
+            account_id,
+            backup_path.display(),
+            err
+        ));
+        return None;
+    }
+
+    Some(restored)
+}
+
 fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount> {
     let mut loaded_accounts = Vec::new();
     let mut seen_account_ids = HashSet::new();
@@ -614,6 +687,27 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
         logger::log_warn(&format!(
             "[Cursor Account] 检测到索引缺失，已从账号目录恢复 {} 个账号",
             recovered_count
+        ));
+    }
+
+    let mut backup_recovered_count = 0usize;
+    for account_id in collect_account_ids_from_backup_directory() {
+        if seen_account_ids.contains(&account_id) {
+            continue;
+        }
+        if let Some(account) = restore_account_from_backup_if_needed(&account_id) {
+            if seen_account_ids.insert(account.id.clone()) {
+                if !seen_summary_ids.contains(&account.id) {
+                    backup_recovered_count += 1;
+                }
+                loaded_accounts.push(account);
+            }
+        }
+    }
+    if backup_recovered_count > 0 {
+        logger::log_warn(&format!(
+            "[Cursor Account] 检测到主目录账号缺失，已从备份目录回填 {} 个账号",
+            backup_recovered_count
         ));
     }
 
@@ -785,47 +879,39 @@ pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, Str
     let mut index = load_account_index();
     let incoming_auth_id = resolve_payload_auth_id(&payload);
     let incoming_email = normalize_email_identity(Some(payload.email.as_str()));
-    let incoming_token = normalize_token_identity(Some(payload.access_token.as_str()));
 
-    let identity_seed = incoming_auth_id
+    // Email-first identity seed: avoids cross-email ID collision during import.
+    let identity_seed = incoming_email
         .clone()
-        .or_else(|| incoming_email.clone())
-        .or_else(|| incoming_token.clone())
+        .or_else(|| incoming_auth_id.clone())
+        .or_else(|| normalize_token_identity(Some(payload.access_token.as_str())))
         .unwrap_or_else(|| "cursor_user".to_string())
         .to_lowercase();
-    let generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
+    let mut generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
 
     let account_id = index
         .accounts
         .iter()
         .filter_map(|item| load_account(&item.id))
         .find(|account| {
-            let existing_auth_id = resolve_account_auth_id(account);
-            if let (Some(existing), Some(incoming)) =
-                (existing_auth_id.as_ref(), incoming_auth_id.as_ref())
-            {
-                return existing == incoming;
-            }
-            if existing_auth_id.is_some() || incoming_auth_id.is_some() {
-                return false;
-            }
-
             let existing_email = normalize_email_identity(Some(account.email.as_str()));
-            let existing_token = normalize_token_identity(Some(account.access_token.as_str()));
-            if let (Some(ex), Some(inc)) = (existing_email.as_ref(), incoming_email.as_ref()) {
-                if ex == inc {
-                    return true;
-                }
-            }
-            if let (Some(ex), Some(inc)) = (existing_token.as_ref(), incoming_token.as_ref()) {
-                if ex == inc {
-                    return true;
-                }
-            }
-            false
+            matches!(
+                (existing_email.as_ref(), incoming_email.as_ref()),
+                (Some(ex_email), Some(in_email)) if ex_email == in_email
+            )
         })
         .map(|account| account.id)
-        .unwrap_or(generated_id);
+        .unwrap_or_else(|| {
+            // Safety: if a different-email account already occupies generated_id,
+            // derive a non-conflicting ID to prevent unintended overwrite.
+            if let Some(existing) = load_account(&generated_id) {
+                let existing_email = normalize_email_identity(Some(existing.email.as_str()));
+                if existing_email != incoming_email {
+                    generated_id = format!("cursor_{:x}", md5::compute(format!("{}::{}", identity_seed, Uuid::new_v4()).as_bytes()));
+                }
+            }
+            generated_id
+        });
 
     let existing = load_account(&account_id);
     let tags = existing.as_ref().and_then(|acc| acc.tags.clone());
