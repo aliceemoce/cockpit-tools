@@ -50,6 +50,7 @@ type ProviderStoreOptions = {
   resolveCurrentAccountId?: () => Promise<string | null>;
   persistCurrentAccountId?: boolean;
   hydrateCurrentAccountId?: boolean;
+  enableAccountsCache?: boolean;
 };
 
 export interface ProviderAccountStoreState<TAccount> {
@@ -81,10 +82,15 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
     options?.persistCurrentAccountId ?? !hasCurrentAccountResolver;
   const shouldHydrateCurrentAccountId =
     options?.hydrateCurrentAccountId ?? shouldPersistCurrentAccountId;
+  const shouldUseAccountsCache = options?.enableAccountsCache ?? true;
   let allowNextEmptyAccountList = false;
   let allowNextEmptyCurrentAccountId = false;
 
   const loadCachedAccounts = (): TAccount[] => {
+    if (!shouldUseAccountsCache) {
+      return [];
+    }
+
     try {
       const raw = localStorage.getItem(cacheKey);
       if (!raw) return [];
@@ -97,6 +103,10 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
   };
 
   const persistAccountsCache = (accounts: TAccount[]) => {
+    if (!shouldUseAccountsCache) {
+      return;
+    }
+
     try {
       const serialized = JSON.stringify(accounts);
       localStorage.setItem(cacheKey, serialized);
