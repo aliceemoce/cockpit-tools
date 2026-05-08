@@ -126,6 +126,9 @@ const TwoFactorAuthPage = lazy(() =>
 const ManualPage = lazy(() =>
   import('./pages/ManualPage').then((module) => ({ default: module.ManualPage })),
 );
+const TokenMonitorPage = lazy(() =>
+  import('./pages/TokenMonitorPage').then((module) => ({ default: module.TokenMonitorPage })),
+);
 const InstancesPage = lazy(() =>
   import('./pages/InstancesPage').then((module) => ({ default: module.InstancesPage })),
 );
@@ -3094,6 +3097,7 @@ function MainApp() {
               onOpenPlatformLayout={openPlatformLayoutModal}
             />
           )}
+          {page === 'token-monitor' && <TokenMonitorPage />}
           {page === 'settings' && <SettingsPage />}
         </Suspense>
       </div>
