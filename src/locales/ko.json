@@ -70,6 +70,34 @@
           "statusPending": "가져오기 대기"
         }
       },
+      "externalImport": {
+        "bundleInvalidJson": "가져오기 패키지가 유효한 JSON이 아닙니다",
+        "bundleEmpty": "가져오기 패키지가 비어 있습니다",
+        "bundleProviderMismatch": "가져오기 패키지의 공급자가 일치하지 않습니다",
+        "bundleNoItems": "가져올 수 있는 항목이 없습니다",
+        "titleCodex": "Codex 일괄 가져오기",
+        "statusReceiving": "가져오기 요청을 받는 중...",
+        "statusFetching": "가져오기 패키지를 가져오는 중...",
+        "statusParsing": "Codex JSON을 분석하는 중...",
+        "statusImporting": "{{current}} / {{total}}번째 계정 가져오는 중",
+        "statusRefreshing": "계정 목록 새로 고치는 중...",
+        "statusSuccess": "가져오기 완료",
+        "statusPartial": "일부 가져오기 완료",
+        "statusFailed": "가져오기 실패",
+        "total": "전체",
+        "success": "성공",
+        "failed": "실패",
+        "stepReceive": "요청 받기",
+        "stepFetch": "패키지 가져오기",
+        "stepParse": "Codex JSON 분석",
+        "stepImport": "계정 가져오기",
+        "stepRefresh": "목록 새로 고침",
+        "errorsTitle": "실패 항목",
+        "viewAccounts": "Codex 계정 보기",
+        "copyErrors": "오류 복사",
+        "copied": "복사됨",
+        "unknownItem": "{{index}}번째 JSON"
+      },
       "instances": {
         "unsupported": {
           "title": "이 시스템에서 지원되지 않음"
@@ -107,7 +135,10 @@
         "descTooltip": "내림차순 (클릭하여 오름차순으로 전환)",
         "toggleDirection": "정렬 방향 전환",
         "credits": "남은 크레딧으로",
-        "planEnd": "사이클 종료 시간별"
+        "planEnd": "사이클 종료 시간별",
+        "recommended": "추천순",
+        "recommendedAscTooltip": "추천순(전환 우선도 낮은 항목 먼저)",
+        "recommendedDescTooltip": "추천순(전환 우선도 높은 항목 먼저)"
       },
       "sortLabel": "정렬",
       "token": {
@@ -823,11 +854,23 @@
           "saveSettingsFailed": "백업 설정을 저장하지 못했습니다: {{error}}",
           "cleanupDone": "만료된 백업 {{count}}개를 정리했습니다",
           "cleanupFailed": "만료된 백업 정리에 실패했습니다: {{error}}",
-          "openFolderFailed": "백업 폴더를 열지 못했습니다: {{error}}"
+          "openFolderFailed": "백업 폴더를 열지 못했습니다: {{error}}",
+          "downloadSuccess": "백업을 {{path}}에 다운로드했습니다",
+          "downloadFailed": "백업 다운로드 실패: {{error}}"
         },
         "errors": {
           "invalidRetention": "보관 기간은 1일에서 365일 사이여야 합니다"
-        }
+        },
+        "platformFilterLabel": "플랫폼",
+        "platformFilterAll": "모든 플랫폼",
+        "platformEmptyTitle": "일치하는 백업 없음",
+        "platformEmptyDesc": "이 플랫폼에는 다운로드 가능한 계정 백업이 없습니다.",
+        "archiveTag": "압축본",
+        "archiveSize": "압축본: {{size}}",
+        "platformsTitle": "플랫폼 계정",
+        "platformDownloadAction": "플랫폼 JSON 다운로드",
+        "downloadJsonAction": "JSON 파일",
+        "downloadZipAction": "ZIP 압축본"
       },
       "exportTitle": "데이터 내보내기",
       "exportDesc": "필요에 따라 계정 데이터, 설정 데이터 또는 전체 마이그레이션 묶음을 내보낼 수 있습니다.",
@@ -1545,6 +1588,7 @@
     "authorizing": "시스템 권한 승인을 기다리는 중...",
     "installFailed": "시스템 설치에 실패했습니다. 나중에 다시 시도하거나 수동으로 다운로드하세요.",
     "restartRequiredAfterInstall": "업데이트는 설치되었습니다. 전환을 완료하려면 앱을 수동으로 다시 시작하세요.",
+    "stoppingApiService": "API 서비스 중지 중...",
     "skipThisVersion": "이 버전 건너뛰기",
     "skipFailed": "이 업데이트를 건너뛰지 못했습니다: {{error}}"
   },
@@ -1598,6 +1642,14 @@
     "switch": "전환",
     "switched": "{{email}}(으)로 전환했습니다",
     "switchFailed": "전환 실패: {{error}}",
+    "authError": {
+      "badge": "인증 문제",
+      "refreshTokenReused": "Codex 인증이 유효하지 않습니다. refresh_token이 다른 클라이언트나 인스턴스에서 이미 사용되었습니다. 다시 로그인하고, 공식 Codex, 다른 인스턴스 또는 외부 도구가 같은 계정을 동시에 새로고침하지 않도록 하세요.",
+      "refreshTokenExpired": "Codex 로그인 인증이 만료되어 자동으로 새로고침할 수 없습니다. Codex 계정에 다시 로그인하세요.",
+      "refreshTokenInvalidated": "Codex 로그인 인증이 서비스에서 취소되어 자동으로 새로고침할 수 없습니다. Codex 계정에 다시 로그인하세요.",
+      "invalidGrant": "Codex 로그인 인증이 유효하지 않아 자동으로 새로고침할 수 없습니다. Codex 계정에 다시 로그인하세요.",
+      "unsupportedCountryRegion": "현재 네트워크 지역에서는 Codex 인증을 새로고침할 수 없습니다. OpenAI 인증 서비스가 이 네트워크 출구를 거부했습니다. 지원되는 지역으로 전환한 뒤 다시 시도하세요."
+    },
     "current": "현재",
     "empty": {
       "description": "\"계정 추가\"를 눌러 Codex 계정을 관리하세요"
@@ -1644,7 +1696,7 @@
       "statusStopped": "중지됨",
       "statusDisabled": "비활성화됨",
       "emptyMembers": "컬렉션에 계정이 없습니다",
-      "footerHint": "127.0.0.1 에서만 수신합니다",
+      "footerHint": "로컬 및 LAN에서 수신합니다",
       "manageAccounts": "계정 관리",
       "rotateKey": "키 재발급",
       "rotateConfirmMessage": "재설정하면 현재 API 서비스 키가 즉시 무효화되며, 진행 중인 요청이 더 이상 사용되지 않을 수 있습니다. 계속할까요?",
@@ -1672,7 +1724,8 @@
         "freeNoticeRestricted": "Free 계정은 제한됩니다. 선택하려면 이 옵션을 끄세요.",
         "freeNoticeUnstable": "Free 계정 프록시는 불안정할 수 있습니다. 주의해서 사용하세요.",
         "restrictFreeDisableConfirmTitle": "Free 계정 허용",
-        "restrictFreeDisableConfirmMessage": "Free 계정 프록시는 불안정할 수 있습니다. 정말 사용하시겠습니까?"
+        "restrictFreeDisableConfirmMessage": "Free 계정 프록시는 불안정할 수 있습니다. 정말 사용하시겠습니까?",
+        "manageMembers": "멤버 관리"
       },
       "entryAction": "API 서비스에 추가",
       "testAction": "API 서비스 테스트",
@@ -1683,7 +1736,7 @@
       "activateSuccess": "API 서비스로 전환했습니다",
       "dashboardAction": "서비스 패널",
       "manageDesc": "API 서비스 통계, 멤버, 포트, 키, 연결 테스트를 한곳에서 관리합니다.",
-      "memberOnlyLocal": "Codex 전용",
+      "memberOnlyLocal": "로컬/LAN",
       "configTitle": "서비스 설정",
       "configEmpty": "URL, 키, 포트를 생성하려면 먼저 하나 이상의 계정을 API 서비스 컬렉션에 저장하세요.",
       "portLabel": "서비스 포트",
@@ -1693,8 +1746,8 @@
       "statsTitle": "전체",
       "accountStatsTitle": "계정별",
       "statsEmpty": "아직 통계가 없습니다",
-      "summaryMeta": "{{count}}개 계정 · Codex 전용",
-      "summaryMetaUnconfigured": "미설정 · Codex 전용",
+      "summaryMeta": "{{count}}개 계정 · 로컬/LAN",
+      "summaryMetaUnconfigured": "미설정 · 로컬/LAN",
       "memberTitle": "컬렉션 멤버",
       "stats": {
         "requests": "요청",
@@ -1717,9 +1770,16 @@
       "routingDescriptionQuotaLowFirst": "남은 할당량이 적은 계정을 우선합니다.",
       "routingDescriptionPlanHighFirst": "상위 구독 요금제 계정을 우선합니다.",
       "routingDescriptionPlanLowFirst": "하위 구독 요금제 계정을 우선합니다.",
+      "routingDescriptionExpirySoonFirst": "구독 만료일이 더 이른 계정을 우선합니다.",
       "clearStats": "통계 지우기",
       "clearStatsConfirm": "API 서비스 통계를 모두 지울까요?",
       "clearStatsSuccess": "API 서비스 통계를 지웠습니다",
+      "killPortAction": "포트 정리",
+      "killPortTitle": "API 서비스 포트 정리",
+      "killPortConfirmMessage": "로컬 포트 {{port}}를 사용하는 다른 프로세스를 강제로 종료한 뒤 API 서비스를 다시 시작합니다. 계속할까요?",
+      "killPortSuccess": "포트를 정리했습니다({{count}}개 프로세스 종료)",
+      "killPortSuccessNone": "포트를 확인했습니다. 외부 프로세스가 사용 중이지 않습니다.",
+      "killPortSuccessUnknown": "API 서비스 포트를 정리했습니다",
       "refreshStats": "통계 새로고침",
       "refreshStatsSuccess": "API 서비스 통계를 새로고침했습니다",
       "routingStrategy": {
@@ -1727,7 +1787,8 @@
         "quotaHighFirst": "높은 할당량 우선",
         "quotaLowFirst": "낮은 할당량 우선",
         "planHighFirst": "상위 요금제 우선",
-        "planLowFirst": "하위 요금제 우선"
+        "planLowFirst": "하위 요금제 우선",
+        "expirySoonFirst": "만료 임박 우선"
       },
       "statusUnconfigured": "미설정",
       "expandDetails": "세부 정보 펼치기",
@@ -1757,7 +1818,15 @@
       "apiPortUrl": "API 포트 URL",
       "modelId": "모델 ID",
       "modelIdPlaceholder": "모델 ID 선택",
-      "modelIdViewOnly": "보기 전용"
+      "modelIdViewOnly": "보기 전용",
+      "quotaPool": {
+        "title": "할당량 풀",
+        "hourlyShort": "5h",
+        "weeklyShort": "주",
+        "viewFull": "전체 통계 보기",
+        "modalTitle": "API 서비스 할당량 풀",
+        "empty": "할당량 통계가 아직 없습니다"
+      }
     },
     "local": {
       "desc": "~/.codex/auth.json에서 현재 로그인된 계정 가져오기",
@@ -1771,7 +1840,8 @@
     "quota": {
       "hourly": "5시간 쿼터",
       "weekly": "주간 쿼터",
-      "reset": "재설정"
+      "reset": "재설정",
+      "weeklyBlocksHourly": "주간 할당량이 0이라 5시간 할당량을 사용할 수 없습니다"
     },
     "quotaError": {
       "badge": "할당량 오류",
@@ -1805,7 +1875,15 @@
       "weekly": "주간 할당량",
       "hourly": "5시간 할당량",
       "weeklyReset": "주간 할당량 재설정 시간",
-      "hourlyReset": "5시간 할당량 재설정 시간"
+      "hourlyReset": "5시간 할당량 재설정 시간",
+      "subscriptionExpiry": "구독 만료",
+      "custom": "사용자 순서",
+      "customModalTitle": "계정 순서 설정",
+      "customModalDesc": "계정을 끌거나 위/아래 버튼으로 표시 순서를 조정하세요.",
+      "customDragHandle": "끌어서 정렬",
+      "customMoveUp": "위로",
+      "customMoveDown": "아래로",
+      "customReset": "순서 초기화"
     },
     "opencodeSwitch": "OpenCode 전환 스위치",
     "opencodeSwitchDesc": "OpenCode에서 Codex 계정 정보를 동기화하여 전환",
@@ -2032,7 +2110,9 @@
       "messages": {
         "pickOne": "세션을 하나 이상 선택해 주세요",
         "syncNeedTwo": "세션을 동기화하려면 인스턴스가 두 개 이상 필요합니다",
-        "pickRestoreOne": "복원할 세션을 하나 이상 선택하세요"
+        "pickRestoreOne": "복원할 세션을 하나 이상 선택하세요",
+        "repairVisibilitySkippedOnly": "쓸 수 있는 provider 차이가 발견되지 않았습니다. 유효하지 않거나 손상된 state_5.sqlite 파일 {{count}}개를 건너뛰었습니다. 해당 SQLite 레코드를 복구하려면 먼저 Codex가 이 파일들을 다시 생성해야 합니다.",
+        "repairVisibilitySkippedWithBase": "{{message}}; 유효하지 않거나 손상된 state_5.sqlite 파일 {{count}}개를 건너뛰었습니다. 해당 SQLite 레코드를 복구하려면 먼저 Codex가 이 파일들을 다시 생성해야 합니다."
       },
       "groupCount": "{{count}}개 세션",
       "updatedAt": "업데이트됨",
@@ -2067,6 +2147,7 @@
       },
       "provider": {
         "label": "공급자",
+        "inlineLabel": "공급자: {{provider}}",
         "custom": "사용자 지정",
         "endpoint": "공급자 엔드포인트",
         "hint": "호환되는 Base URL이 자동으로 입력되었습니다. 필요하면 수동으로 수정할 수 있습니다.",
@@ -2252,6 +2333,36 @@
     },
     "groups": {
       "addToGroup": "그룹에 추가"
+    },
+    "subscription": {
+      "label": "구독 만료",
+      "column": "만료",
+      "unknown": "재인증",
+      "missingDetail": "재인증 후 가져오기",
+      "expired": "만료됨",
+      "hoursLeft": "{{count}}시간",
+      "daysLeft": "{{count}}일",
+      "over99Days": "99일+",
+      "titleWithDate": "구독 만료: {{date}}",
+      "titleUnknown": "재인증 후 구독 만료 가져오기",
+      "filterLabel": "만료 필터",
+      "filterAll": "전체 ({{count}})",
+      "filterExpired": "만료됨 ({{count}})",
+      "filterWithin24h": "24시간 ({{count}})",
+      "filterWithin7d": "7일 ({{count}})",
+      "filterWithin30d": "30일 ({{count}})",
+      "filterMissing": "알 수 없음 ({{count}})"
+    },
+    "apiSwitchNotice": {
+      "title": "Codex 세션이 보이지 않음",
+      "message": "Codex가 {{from}}에서 {{to}}(으)로 전환된 것을 감지했습니다. 공식 동작 때문에 API와 계정을 직접 전환한 뒤 기존 세션이 자동으로 표시되지 않을 수 있습니다. 지금 세션 표시를 자동으로 복구하고 있으며, 나중에 세션 관리 > 표시 복구에서도 복구할 수 있습니다.",
+      "repairing": "Codex 세션 표시를 복구하는 중...",
+      "repairFailed": "자동 복구에 실패했습니다. 나중에 세션 관리 > 표시 복구에서 다시 시도할 수 있습니다.",
+      "type": {
+        "apiKey": "API 키",
+        "apiService": "API 서비스",
+        "account": "계정"
+      }
     }
   },
   "githubCopilot": {
@@ -2274,7 +2385,8 @@
       "desc": "GitHub Copilot 액세스 토큰 또는 내보낸 JSON 데이터를 붙여넣으세요."
     },
     "import": {
-      "localDesc": "로컬에 로그인된 세션에서 GitHub Copilot 계정을 가져오기."
+      "localDesc": "로컬 VS Code 또는 JSON 파일에서 GitHub Copilot 계정 데이터를 가져옵니다.",
+      "localClient": "로컬 VS Code에서 가져오기"
     },
     "sort": {
       "weekly": "주간 할당량",
@@ -2289,7 +2401,8 @@
       "premium": "프리미엄 요청"
     },
     "usage": {
-      "included": "포함됨"
+      "included": "포함됨",
+      "usedOfTotal": "{{used}} / {{total}} 사용"
     },
     "injectToVSCode": "VS Code로 전환",
     "injectSuccess": "토큰을 VS Code에 성공적으로 주입했습니다. VS Code를 실행하는 중입니다.",
@@ -2299,7 +2412,7 @@
       "desc": "계정 전환 시 VS Code 로컬 인증 저장소를 읽고 시스템 자격 증명 서비스를 사용해 복호화 및 재기록이 필요하며, 데이터는 로컬에서만 처리됩니다.",
       "inject": "원클릭 전환: 이 도구는 로컬 VS Code 암호화 자료(DPAPI/Keychain/Secret Service)를 읽어 state.vscdb의 인증 세션을 복호화한 뒤 GitHub Copilot 토큰을 교체하고 다시 암호화합니다. 모든 처리는 로컬 장치에서만 수행됩니다.",
       "reason": "권한 범위: VS Code 인증 데이터베이스(state.vscdb)를 읽고 시스템 암호화 기능(Windows DPAPI / macOS Keychain / Linux Secret Service)을 호출해 복호화 및 재기록을 수행합니다.",
-      "storage": "읽기 범위: GitHub 로그인 세션 관련 데이터만 처리하며, 모든 과정은 로컬에서 실행됩니다."
+      "storage": "데이터 범위: 로컬 가져오기는 VS Code의 GitHub 로그인 세션을 읽고, 계정 전환은 같은 항목을 업데이트합니다. OAuth, 토큰 가져오기, 로컬 가져오기 검증, 할당량 새로고침은 필요한 인증 필드만 GitHub 공식 API로 전송합니다. state.vscdb와 시스템 키는 업로드하지 않습니다."
     }
   },
   "dashboard": {
@@ -3342,11 +3455,11 @@
       "status": "체크인 상태",
       "checkedIn": "체크인 완료",
       "notCheckedIn": "미체크인",
-      "button": {},
+      "button": "출석",
       "button.loading": "체크인 중...",
       "done": "완료",
       "success": "체크인 성공! {{days}}일 연속",
-      "failure": {},
+      "failure": "출석 실패: {{message}}",
       "failure.network": "네트워크 오류입니다. 잠시 후 다시 시도해 주세요",
       "lastCheckin": "마지막 체크인: {{time}}",
       "streak": "{{days}}일 연속",
@@ -3377,9 +3490,9 @@
     "addAccount": "WorkBuddy 계정 추가",
     "flowNotice": {
       "title": "WorkBuddy 계정 관리 안내 (클릭하여 펼치기/접기)",
-      "desc": "계정 전환 시 WorkBuddy 로컬 인증 저장소를 읽고 시스템 자격 증명 서비스를 호출해 복호화 및 재암호화를 수행해야 합니다. 데이터는 로컬에서만 처리됩니다.",
-      "permission": "권한 범위: WorkBuddy 인증 데이터베이스(state.vscdb)를 읽고, 시스템 자격 증명 기능(macOS Keychain / Windows DPAPI / Linux Secret Service)을 호출하여 복호화 및 다시 쓰기를 수행합니다.",
-      "network": "네트워크 범위: OAuth 로그인과 Token 갱신은 WorkBuddy 요청이 필요하고, 할당량 조회는 과금 API를 호출합니다. 로컬 키나 자격 증명은 업로드되지 않습니다."
+      "desc": "계정 전환은 최신 WorkBuddy 공식 클라이언트 구조에 맞춰 로컬 로그인 파일을 씁니다. 로컬 가져오기도 같은 파일을 읽습니다. 데이터는 로컬에서만 처리됩니다.",
+      "permission": "권한 범위: 로컬 가져오기와 계정 전환을 위해 WorkBuddy 로그인 파일(CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info)을 읽고 씁니다. 기존 state.vscdb는 더 이상 읽거나 수정하지 않습니다.",
+      "network": "네트워크 범위: OAuth 로그인과 Token 갱신은 WorkBuddy 요청이 필요하고, 할당량 조회는 과금 API를 호출합니다. 로컬 로그인 파일이나 원본 자격 증명은 업로드되지 않습니다."
     },
     "nickname": "닉네임",
     "enterprise": "기업",

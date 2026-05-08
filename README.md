@@ -18,6 +18,8 @@
 
 🇺🇸 English · 🇨🇳 简体中文 · 繁體中文 · 🇯🇵 日本語 · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇮🇹 Italiano · 🇰🇷 한국어 · 🇧🇷 Português · 🇷🇺 Русский · 🇹🇷 Türkçe · 🇵🇱 Polski · 🇨🇿 Čeština · 🇸🇦 العربية · 🇻🇳 Tiếng Việt · 🇮🇩 Bahasa Indonesia
 
+**官方支持平台**：macOS、Windows。后续版本不再提供 Linux/Ubuntu 官方安装包，也不承诺 Linux/Ubuntu 兼容性维护。
+
 ---
 
 ## 功能概览
@@ -290,7 +292,8 @@ Codex 同样支持多账号多实例并行运行。比如同时打开两个 Code
 
 *   **macOS**: `.dmg` (Apple Silicon & Intel)
 *   **Windows**: `.msi` (推荐) 或 `.exe`
-*   **Linux**: `.deb` (Debian/Ubuntu) 或 `.AppImage` (通用)
+
+> Linux/Ubuntu 不再作为官方发布目标；Release 页面不会再提供 `.deb`、`.rpm` 或 `.AppImage` 安装包。
 
 ### 选项 B: Homebrew 安装 (macOS)
 
@@ -318,18 +321,6 @@ brew install --cask cockpit-tools
 
 ```bash
 brew install --cask --force cockpit-tools
-```
-
-### 选项 C: Arch Linux (AUR)
-
-可通过 AUR 助手（如 `yay` 或 `paru`）安装：
-
-```bash
-# 源码构建包
-yay -S cockpit-tools
-
-# 预编译二进制包
-yay -S cockpit-tools-bin
 ```
 
 ### 🛠️ 常见问题排查 (Troubleshooting)

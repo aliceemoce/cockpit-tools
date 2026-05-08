@@ -70,6 +70,34 @@
           "statusPending": "待匯入"
         }
       },
+      "externalImport": {
+        "bundleInvalidJson": "匯入包不是有效 JSON",
+        "bundleEmpty": "匯入包內容為空",
+        "bundleProviderMismatch": "匯入包平台不符",
+        "bundleNoItems": "匯入包沒有可匯入內容",
+        "titleCodex": "Codex 批次匯入",
+        "statusReceiving": "正在接收匯入請求...",
+        "statusFetching": "正在取得匯入包...",
+        "statusParsing": "正在解析 Codex JSON...",
+        "statusImporting": "正在匯入第 {{current}} / {{total}} 個帳號",
+        "statusRefreshing": "正在重新整理帳號列表...",
+        "statusSuccess": "匯入完成",
+        "statusPartial": "部分匯入完成",
+        "statusFailed": "匯入失敗",
+        "total": "總數",
+        "success": "成功",
+        "failed": "失敗",
+        "stepReceive": "接收匯入請求",
+        "stepFetch": "取得匯入包",
+        "stepParse": "解析 Codex JSON",
+        "stepImport": "匯入帳號",
+        "stepRefresh": "重新整理帳號列表",
+        "errorsTitle": "失敗項",
+        "viewAccounts": "查看 Codex 帳號",
+        "copyErrors": "複製錯誤",
+        "copied": "已複製",
+        "unknownItem": "第 {{index}} 個 JSON"
+      },
       "instances": {
         "unsupported": {
           "title": "暫不支援目前系統"
@@ -107,7 +135,10 @@
         "descTooltip": "目前：降序，點擊切換為升序",
         "toggleDirection": "切換排序方向",
         "credits": "按剩餘學分",
-        "planEnd": "按週期結束時間"
+        "planEnd": "按週期結束時間",
+        "recommended": "依推薦",
+        "recommendedAscTooltip": "依推薦度升冪（較不值得切換的在前）",
+        "recommendedDescTooltip": "依推薦度降冪（最值得切換的在前）"
       },
       "sortLabel": "排序",
       "token": {
@@ -823,11 +854,23 @@
           "saveSettingsFailed": "儲存備份設定失敗：{{error}}",
           "cleanupDone": "已清理 {{count}} 個過期備份",
           "cleanupFailed": "清理過期備份失敗：{{error}}",
-          "openFolderFailed": "開啟備份資料夾失敗：{{error}}"
+          "openFolderFailed": "開啟備份資料夾失敗：{{error}}",
+          "downloadSuccess": "備份已下載到 {{path}}",
+          "downloadFailed": "下載備份失敗：{{error}}"
         },
         "errors": {
           "invalidRetention": "保留天數必須介於 1 到 365 天之間"
-        }
+        },
+        "platformFilterLabel": "平台",
+        "platformFilterAll": "全部平台",
+        "platformEmptyTitle": "沒有符合的備份",
+        "platformEmptyDesc": "目前平台沒有可下載的帳號備份。",
+        "archiveTag": "壓縮檔",
+        "archiveSize": "壓縮檔：{{size}}",
+        "platformsTitle": "平台帳號",
+        "platformDownloadAction": "下載平台 JSON",
+        "downloadJsonAction": "JSON 檔",
+        "downloadZipAction": "ZIP 檔"
       },
       "exportTitle": "資料匯出",
       "exportDesc": "可依需求匯出帳號資料、設定資料，或一次匯出完整遷移包。",
@@ -1545,6 +1588,7 @@
     "authorizing": "等待系統授權安裝...",
     "installFailed": "系統安裝失敗，請稍後重試或手動下載安裝。",
     "restartRequiredAfterInstall": "更新已安裝，請手動重新啟動應用程式完成切換。",
+    "stoppingApiService": "正在關閉 API 服務...",
     "skipThisVersion": "跳過此版本",
     "skipFailed": "跳過此更新失敗：{{error}}"
   },
@@ -1598,6 +1642,14 @@
     "switch": "切換",
     "switched": "已切換至 {{email}}",
     "switchFailed": "切換失敗: {{error}}",
+    "authError": {
+      "badge": "授權異常",
+      "refreshTokenReused": "Codex 授權已失效：refresh_token 已被其他客戶端或實例使用過。請重新登入，並避免官方 Codex、其他實例或外部工具同時刷新同一帳號。",
+      "refreshTokenExpired": "Codex 登入授權已過期，無法自動刷新。請重新登入 Codex 帳號。",
+      "refreshTokenInvalidated": "Codex 登入授權已被服務端撤銷，無法自動刷新。請重新登入 Codex 帳號。",
+      "invalidGrant": "Codex 登入授權無效，無法自動刷新。請重新登入 Codex 帳號。",
+      "unsupportedCountryRegion": "目前網路地區不支援刷新 Codex 授權。OpenAI 授權服務拒絕了目前網路出口的刷新請求，請切換到支援的網路地區後重試。"
+    },
     "current": "目前",
     "empty": {
       "description": "點擊「新增帳號」開始管理您的 Codex 帳號"
@@ -1644,7 +1696,7 @@
       "statusStopped": "未執行",
       "statusDisabled": "已停用",
       "emptyMembers": "目前集合沒有帳號",
-      "footerHint": "僅監聽 127.0.0.1",
+      "footerHint": "監聽本機與區域網路",
       "manageAccounts": "管理帳號",
       "rotateKey": "重設金鑰",
       "rotateConfirmMessage": "重設後目前的 API 服務金鑰會立即失效，進行中的請求可能無法使用。確認繼續嗎？",
@@ -1672,7 +1724,8 @@
         "freeNoticeRestricted": "已限制 Free 帳號，關閉後才可勾選。",
         "freeNoticeUnstable": "Free 帳號反代可能不穩定，請謹慎使用。",
         "restrictFreeDisableConfirmTitle": "確認允許 Free 帳號",
-        "restrictFreeDisableConfirmMessage": "Free 帳號反代可能不穩定，確定要使用嗎？"
+        "restrictFreeDisableConfirmMessage": "Free 帳號反代可能不穩定，確定要使用嗎？",
+        "manageMembers": "管理成員"
       },
       "entryAction": "加入 API 服務",
       "testAction": "測試 API 服務",
@@ -1683,7 +1736,7 @@
       "activateSuccess": "已切換到 API 服務",
       "dashboardAction": "服務面板",
       "manageDesc": "在這裡統一管理 API 服務的統計、成員、連接埠、密鑰與連通性測試。",
-      "memberOnlyLocal": "僅 Codex 存取",
+      "memberOnlyLocal": "本機/區網",
       "configTitle": "服務設定",
       "configEmpty": "先將至少一個帳號儲存到 API 服務集合，之後才會產生位址、密鑰與連接埠。",
       "portLabel": "服務連接埠",
@@ -1693,8 +1746,8 @@
       "statsTitle": "總量統計",
       "accountStatsTitle": "依帳號統計",
       "statsEmpty": "目前還沒有統計資料",
-      "summaryMeta": "{{count}} 個帳號 · 僅 Codex 存取",
-      "summaryMetaUnconfigured": "未設定 · 僅 Codex 存取",
+      "summaryMeta": "{{count}} 個帳號 · 本機/區網",
+      "summaryMetaUnconfigured": "未設定 · 本機/區網",
       "memberTitle": "集合成員",
       "stats": {
         "requests": "總請求數",
@@ -1717,9 +1770,16 @@
       "routingDescriptionQuotaLowFirst": "優先選擇剩餘配額較低的帳號。",
       "routingDescriptionPlanHighFirst": "優先選擇較高訂閱檔位的帳號。",
       "routingDescriptionPlanLowFirst": "優先選擇較低訂閱檔位的帳號。",
+      "routingDescriptionExpirySoonFirst": "優先選擇訂閱有效期較早到期的帳號。",
       "clearStats": "清除統計",
       "clearStatsConfirm": "確定要清空 API 服務統計嗎？",
       "clearStatsSuccess": "API 服務統計已清空",
+      "killPortAction": "清理連接埠",
+      "killPortTitle": "清理 API 服務連接埠",
+      "killPortConfirmMessage": "將強制結束占用本機 {{port}} 連接埠的其他處理程序，然後重新啟動 API 服務。確認繼續嗎？",
+      "killPortSuccess": "連接埠已清理（已結束 {{count}} 個處理程序）",
+      "killPortSuccessNone": "連接埠已檢查，未發現外部占用程序",
+      "killPortSuccessUnknown": "API 服務連接埠已清理",
       "refreshStats": "刷新統計",
       "refreshStatsSuccess": "API 服務統計已刷新",
       "routingStrategy": {
@@ -1727,7 +1787,8 @@
         "quotaHighFirst": "優先高配額",
         "quotaLowFirst": "優先低配額",
         "planHighFirst": "優先高訂閱",
-        "planLowFirst": "優先低訂閱"
+        "planLowFirst": "優先低訂閱",
+        "expirySoonFirst": "優先近到期"
       },
       "statusUnconfigured": "未設定",
       "expandDetails": "展開詳情",
@@ -1757,7 +1818,15 @@
       "apiPortUrl": "API 連接埠 URL",
       "modelId": "模型 ID",
       "modelIdPlaceholder": "選擇模型 ID",
-      "modelIdViewOnly": "僅查看，無切換"
+      "modelIdViewOnly": "僅查看，無切換",
+      "quotaPool": {
+        "title": "額度池",
+        "hourlyShort": "5h",
+        "weeklyShort": "週",
+        "viewFull": "查看完整統計",
+        "modalTitle": "API 服務額度池",
+        "empty": "尚無額度統計"
+      }
     },
     "api": {
       "baseUrl": "基礎網址",
@@ -1776,6 +1845,7 @@
       },
       "provider": {
         "label": "供應商",
+        "inlineLabel": "供應商：{{provider}}",
         "custom": "自訂",
         "endpoint": "供應商端點",
         "hint": "已自動填入相容的 Base URL，你仍可手動編輯。",
@@ -1857,7 +1927,8 @@
     "quota": {
       "hourly": "5 小時配額",
       "weekly": "週配額",
-      "reset": "重置"
+      "reset": "重置",
+      "weeklyBlocksHourly": "週額度為 0，因此 5 小時額度已不可用"
     },
     "quotaError": {
       "badge": "配額異常",
@@ -1891,7 +1962,15 @@
       "weekly": "按週配額",
       "hourly": "按5小時配額",
       "weeklyReset": "按週配額重置時間",
-      "hourlyReset": "按5小時配額重置時間"
+      "hourlyReset": "按5小時配額重置時間",
+      "subscriptionExpiry": "按訂閱到期",
+      "custom": "自訂順序",
+      "customModalTitle": "自訂帳號排序",
+      "customModalDesc": "拖曳帳號或使用上下按鈕調整顯示順序。",
+      "customDragHandle": "拖曳排序",
+      "customMoveUp": "上移",
+      "customMoveDown": "下移",
+      "customReset": "重設自訂順序"
     },
     "opencodeSwitch": "OpenCode 切換開關",
     "opencodeSwitchDesc": "同步切換 OpenCode 裡的 Codex 帳號資訊",
@@ -2118,7 +2197,9 @@
       "messages": {
         "pickOne": "請至少選擇一條會話",
         "syncNeedTwo": "至少需要兩個實例才能同步會話",
-        "pickRestoreOne": "請至少選擇一個要還原的工作階段"
+        "pickRestoreOne": "請至少選擇一個要還原的工作階段",
+        "repairVisibilitySkippedOnly": "未發現需要寫入的 provider 差異；已略過 {{count}} 個無效或損毀的 state_5.sqlite，需由 Codex 重新產生後才能修復其中的 SQLite 記錄。",
+        "repairVisibilitySkippedWithBase": "{{message}}；已略過 {{count}} 個無效或損毀的 state_5.sqlite，需由 Codex 重新產生後才能修復其中的 SQLite 記錄。"
       },
       "groupCount": "{{count}} 條會話",
       "updatedAt": "最近更新",
@@ -2252,6 +2333,36 @@
     },
     "groups": {
       "addToGroup": "加入群組"
+    },
+    "subscription": {
+      "label": "訂閱到期",
+      "column": "訂閱到期",
+      "unknown": "重新授權",
+      "missingDetail": "重新授權後取得",
+      "expired": "已到期",
+      "hoursLeft": "{{count}} 小時",
+      "daysLeft": "{{count}} 天",
+      "over99Days": "99+ 天",
+      "titleWithDate": "訂閱到期：{{date}}",
+      "titleUnknown": "重新授權以取得訂閱到期時間",
+      "filterLabel": "到期篩選",
+      "filterAll": "全部到期 ({{count}})",
+      "filterExpired": "已到期 ({{count}})",
+      "filterWithin24h": "24 小時 ({{count}})",
+      "filterWithin7d": "7 天 ({{count}})",
+      "filterWithin30d": "30 天 ({{count}})",
+      "filterMissing": "未知 ({{count}})"
+    },
+    "apiSwitchNotice": {
+      "title": "Codex 工作階段不可見",
+      "message": "偵測到 Codex 已從 {{from}} 切換到 {{to}}。由於官方機制，API 與帳號直接切換後，原有工作階段可能不會自動顯示。正在自動修復工作階段可見性，後續也可以透過「工作階段管理」中的「修復可見性」功能修復。",
+      "repairing": "正在修復 Codex 工作階段可見性...",
+      "repairFailed": "自動修復失敗。你仍可稍後在「工作階段管理」中使用「修復可見性」重試。",
+      "type": {
+        "apiKey": "API 金鑰",
+        "apiService": "API 服務",
+        "account": "帳號"
+      }
     }
   },
   "githubCopilot": {
@@ -2274,7 +2385,8 @@
       "desc": "貼上 GitHub Copilot 存取權杖或匯出的 JSON 資料。"
     },
     "import": {
-      "localDesc": "從本機已登入的會話匯入 GitHub Copilot 帳號。"
+      "localDesc": "支援從本機 VS Code 或 JSON 檔案匯入 GitHub Copilot 帳號資料。",
+      "localClient": "從本機 VS Code 匯入"
     },
     "sort": {
       "weekly": "按週配額",
@@ -2289,7 +2401,8 @@
       "premium": "進階請求"
     },
     "usage": {
-      "included": "已包含"
+      "included": "已包含",
+      "usedOfTotal": "{{used}} / {{total}} 已用"
     },
     "injectToVSCode": "切換到 VS Code",
     "injectSuccess": "已成功將權杖注入 VS Code，VS Code 正在啟動。",
@@ -2299,7 +2412,7 @@
       "desc": "切換帳號時需要讀取 VS Code 本機認證儲存，並呼叫系統憑證服務完成解密與回寫；資料僅在本機處理。",
       "inject": "一鍵切換：本工具會讀取本機 VS Code 加密材料（DPAPI/Keychain/Secret Service），解密 state.vscdb 中的驗證工作階段，替換 GitHub Copilot 權杖後再加密，全部流程都在本機完成。",
       "reason": "權限需求：讀取 VS Code 認證資料庫（state.vscdb），並呼叫系統加密能力（Windows DPAPI / macOS Keychain / Linux Secret Service）進行解密與寫回。",
-      "storage": "讀取範圍：僅處理 GitHub 登入工作階段相關資料，所有流程均在本機執行。"
+      "storage": "資料範圍：本機匯入會讀取 VS Code 中的 GitHub 登入會話，切換帳號會更新同類會話；OAuth、Token 匯入、本機匯入校驗與配額刷新會呼叫 GitHub 官方 API，只傳送必要認證欄位，不會上傳 state.vscdb 或系統金鑰。"
     }
   },
   "dashboard": {
@@ -3342,11 +3455,11 @@
       "status": "簽到狀態",
       "checkedIn": "已簽到",
       "notCheckedIn": "未簽到",
-      "button": {},
+      "button": "簽到",
       "button.loading": "簽到中...",
       "done": "已完成",
       "success": "簽到成功！連續簽到 {{days}} 天",
-      "failure": {},
+      "failure": "簽到失敗：{{message}}",
       "failure.network": "網路異常，請稍後重試",
       "lastCheckin": "最後簽到：{{time}}",
       "streak": "連續簽到 {{days}} 天",
@@ -3377,9 +3490,9 @@
     "addAccount": "新增 WorkBuddy 帳號",
     "flowNotice": {
       "title": "WorkBuddy 帳號管理說明（點擊展開/收起）",
-      "desc": "切換帳號需讀取 WorkBuddy 本地認證儲存並呼叫系統憑證服務進行解密與重新加密，資料僅在本地處理。",
-      "permission": "權限範圍：讀取 WorkBuddy 認證資料庫（state.vscdb），呼叫系統憑證能力（macOS Keychain / Windows DPAPI / Linux Secret Service）進行解密與回寫。",
-      "network": "網路範圍：OAuth 登入與 Token 刷新需連線請求 WorkBuddy；配額查詢需呼叫計費 API。不會上傳本地金鑰或憑證。"
+      "desc": "切換帳號會依新版 WorkBuddy 官方用戶端規則寫入本機登入檔；本機匯入讀取同一檔案，資料僅在本機處理。",
+      "permission": "權限範圍：讀取並寫入 WorkBuddy 登入檔（CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info），用於本機匯入與帳號切換；不再讀取或修改舊版 state.vscdb。",
+      "network": "網路範圍：OAuth 登入與 Token 刷新需連線請求 WorkBuddy；配額查詢需呼叫計費 API。不會上傳本機登入檔或憑證原文。"
     },
     "nickname": "暱稱",
     "enterprise": "企業",

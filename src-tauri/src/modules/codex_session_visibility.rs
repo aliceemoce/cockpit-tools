@@ -17,6 +17,9 @@ const DEFAULT_PROVIDER_ID: &str = "openai";
 const STATE_DB_FILE: &str = "state_5.sqlite";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const SESSION_DIRS: [&str; 2] = ["sessions", "archived_sessions"];
+const SESSION_VISIBILITY_REPAIR_BACKUP_PREFIX: &str = "backup-";
+const SESSION_VISIBILITY_REPAIR_BACKUP_SUFFIX: &str = "-session-visibility-repair";
+const MAX_SESSION_VISIBILITY_REPAIR_BACKUPS: usize = 1;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +29,7 @@ pub struct CodexSessionVisibilityRepairItem {
     pub target_provider: String,
     pub changed_rollout_file_count: usize,
     pub updated_sqlite_row_count: usize,
+    pub skipped_sqlite_file: bool,
     pub backup_dir: Option<String>,
     pub running: bool,
 }
@@ -37,6 +41,7 @@ pub struct CodexSessionVisibilityRepairSummary {
     pub mutated_instance_count: usize,
     pub changed_rollout_file_count: usize,
     pub updated_sqlite_row_count: usize,
+    pub skipped_sqlite_file_count: usize,
     pub items: Vec<CodexSessionVisibilityRepairItem>,
     pub backup_dirs: Vec<String>,
     pub message: String,
@@ -57,6 +62,12 @@ struct RolloutProviderChange {
     updated_first_line: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SqliteProviderScan {
+    rows_to_update: usize,
+    skipped_unusable_database: bool,
+}
+
 pub fn repair_session_visibility_across_instances(
 ) -> Result<CodexSessionVisibilityRepairSummary, String> {
     let instances = collect_instances()?;
@@ -66,6 +77,7 @@ pub fn repair_session_visibility_across_instances(
     let mut mutated_instance_count = 0usize;
     let mut changed_rollout_file_count = 0usize;
     let mut updated_sqlite_row_count = 0usize;
+    let mut skipped_sqlite_file_count = 0usize;
     let mut mutated_running_instance_count = 0usize;
 
     for instance in &instances {
@@ -73,8 +85,11 @@ pub fn repair_session_visibility_across_instances(
         let target_provider = read_target_provider(&instance.data_dir)?;
         let rollout_changes =
             collect_rollout_provider_changes(&instance.data_dir, &target_provider)?;
-        let sqlite_rows_to_update =
-            count_sqlite_rows_to_update(&instance.data_dir, &target_provider)?;
+        let sqlite_scan = count_sqlite_rows_to_update(&instance.data_dir, &target_provider)?;
+        let sqlite_rows_to_update = sqlite_scan.rows_to_update;
+        if sqlite_scan.skipped_unusable_database {
+            skipped_sqlite_file_count += 1;
+        }
 
         if rollout_changes.is_empty() && sqlite_rows_to_update == 0 {
             items.push(CodexSessionVisibilityRepairItem {
@@ -83,6 +98,7 @@ pub fn repair_session_visibility_across_instances(
                 target_provider,
                 changed_rollout_file_count: 0,
                 updated_sqlite_row_count: 0,
+                skipped_sqlite_file: sqlite_scan.skipped_unusable_database,
                 backup_dir: None,
                 running,
             });
@@ -98,8 +114,12 @@ pub fn repair_session_visibility_across_instances(
         )?;
         let backup_dir_string = backup_dir.to_string_lossy().to_string();
 
-        let repaired =
-            repair_single_instance(&instance.data_dir, &target_provider, &rollout_changes);
+        let repaired = repair_single_instance(
+            &instance.data_dir,
+            &target_provider,
+            &rollout_changes,
+            sqlite_rows_to_update > 0,
+        );
         let sqlite_rows_updated = match repaired {
             Ok(value) => value,
             Err(error) => {
@@ -139,16 +159,20 @@ pub fn repair_session_visibility_across_instances(
             target_provider,
             changed_rollout_file_count: rollout_changes.len(),
             updated_sqlite_row_count: sqlite_rows_updated,
+            skipped_sqlite_file: sqlite_scan.skipped_unusable_database,
             backup_dir: Some(backup_dir_string),
             running,
         });
     }
+
+    prune_session_visibility_repair_backups(&instances);
 
     let message = build_summary_message(
         mutated_instance_count,
         changed_rollout_file_count,
         updated_sqlite_row_count,
         mutated_running_instance_count,
+        skipped_sqlite_file_count,
     );
 
     Ok(CodexSessionVisibilityRepairSummary {
@@ -156,6 +180,7 @@ pub fn repair_session_visibility_across_instances(
         mutated_instance_count,
         changed_rollout_file_count,
         updated_sqlite_row_count,
+        skipped_sqlite_file_count,
         items,
         backup_dirs,
         message,
@@ -170,8 +195,13 @@ fn repair_single_instance(
     data_dir: &Path,
     target_provider: &str,
     rollout_changes: &[RolloutProviderChange],
+    update_sqlite: bool,
 ) -> Result<usize, String> {
-    let sqlite_rows_updated = update_sqlite_provider(data_dir, target_provider)?;
+    let sqlite_rows_updated = if update_sqlite {
+        update_sqlite_provider(data_dir, target_provider)?
+    } else {
+        0
+    };
     for change in rollout_changes {
         rewrite_rollout_provider(change)?;
     }
@@ -183,6 +213,7 @@ fn build_summary_message(
     changed_rollout_file_count: usize,
     updated_sqlite_row_count: usize,
     mutated_running_instance_count: usize,
+    _skipped_sqlite_file_count: usize,
 ) -> String {
     if mutated_instance_count == 0 {
         return "所有 Codex 实例的历史会话 provider 元数据已与当前 provider 一致，无需修复"
@@ -401,28 +432,81 @@ fn parse_session_meta_record(first_line: &str) -> Option<JsonValue> {
     Some(parsed)
 }
 
-fn count_sqlite_rows_to_update(data_dir: &Path, target_provider: &str) -> Result<usize, String> {
+fn is_missing_threads_table_error(error: &rusqlite::Error) -> bool {
+    error
+        .to_string()
+        .to_ascii_lowercase()
+        .contains("no such table: threads")
+}
+
+fn log_skipped_sqlite_database(path: &Path, reason: &str) {
+    modules::logger::log_warn(&format!(
+        "跳过无效或损坏的 Codex state_5.sqlite ({}): {}",
+        path.display(),
+        reason
+    ));
+}
+
+fn count_sqlite_rows_to_update(
+    data_dir: &Path,
+    target_provider: &str,
+) -> Result<SqliteProviderScan, String> {
     let db_path = data_dir.join(STATE_DB_FILE);
     if !db_path.exists() {
-        return Ok(0);
+        return Ok(SqliteProviderScan {
+            rows_to_update: 0,
+            skipped_unusable_database: false,
+        });
     }
 
-    let connection = Connection::open(&db_path)
-        .map_err(|error| format!("打开实例数据库失败 ({}): {}", db_path.display(), error))?;
-    let count = connection
-        .query_row(
-            "SELECT COUNT(*) FROM threads WHERE COALESCE(model_provider, '') <> ?1",
-            [target_provider],
-            |row| row.get::<usize, i64>(0),
-        )
-        .map_err(|error| {
-            format!(
+    let connection = match Connection::open(&db_path) {
+        Ok(connection) => connection,
+        Err(error) if modules::db::is_unusable_sqlite_database_error(&error) => {
+            log_skipped_sqlite_database(&db_path, &error.to_string());
+            return Ok(SqliteProviderScan {
+                rows_to_update: 0,
+                skipped_unusable_database: true,
+            });
+        }
+        Err(error) => {
+            return Err(format!(
+                "打开实例数据库失败 ({}): {}",
+                db_path.display(),
+                error
+            ));
+        }
+    };
+    let count = match connection.query_row(
+        "SELECT COUNT(*) FROM threads WHERE COALESCE(model_provider, '') <> ?1",
+        [target_provider],
+        |row| row.get::<usize, i64>(0),
+    ) {
+        Ok(count) => count,
+        Err(error) if modules::db::is_unusable_sqlite_database_error(&error) => {
+            log_skipped_sqlite_database(&db_path, &error.to_string());
+            return Ok(SqliteProviderScan {
+                rows_to_update: 0,
+                skipped_unusable_database: true,
+            });
+        }
+        Err(error) if is_missing_threads_table_error(&error) => {
+            return Ok(SqliteProviderScan {
+                rows_to_update: 0,
+                skipped_unusable_database: false,
+            });
+        }
+        Err(error) => {
+            return Err(format!(
                 "统计 SQLite provider 差异失败 ({}): {}",
                 db_path.display(),
                 error
-            )
-        })?;
-    Ok(count.max(0) as usize)
+            ));
+        }
+    };
+    Ok(SqliteProviderScan {
+        rows_to_update: count.max(0) as usize,
+        skipped_unusable_database: false,
+    })
 }
 
 fn update_sqlite_provider(data_dir: &Path, target_provider: &str) -> Result<usize, String> {
@@ -431,8 +515,20 @@ fn update_sqlite_provider(data_dir: &Path, target_provider: &str) -> Result<usiz
         return Ok(0);
     }
 
-    let mut connection = Connection::open(&db_path)
-        .map_err(|error| format!("打开实例数据库失败 ({}): {}", db_path.display(), error))?;
+    let mut connection = match Connection::open(&db_path) {
+        Ok(connection) => connection,
+        Err(error) if modules::db::is_unusable_sqlite_database_error(&error) => {
+            log_skipped_sqlite_database(&db_path, &error.to_string());
+            return Ok(0);
+        }
+        Err(error) => {
+            return Err(format!(
+                "打开实例数据库失败 ({}): {}",
+                db_path.display(),
+                error
+            ));
+        }
+    };
     connection
         .busy_timeout(Duration::from_secs(3))
         .map_err(|error| {
@@ -445,15 +541,27 @@ fn update_sqlite_provider(data_dir: &Path, target_provider: &str) -> Result<usiz
     let transaction = connection
         .transaction()
         .map_err(|error| format_sqlite_write_error(&db_path, &error))?;
-    let updated_rows = transaction
-        .execute(
-            "UPDATE threads SET model_provider = ?1 WHERE COALESCE(model_provider, '') <> ?1",
-            [target_provider],
-        )
-        .map_err(|error| format_sqlite_write_error(&db_path, &error))?;
-    transaction
-        .commit()
-        .map_err(|error| format_sqlite_write_error(&db_path, &error))?;
+    let updated_rows = match transaction.execute(
+        "UPDATE threads SET model_provider = ?1 WHERE COALESCE(model_provider, '') <> ?1",
+        [target_provider],
+    ) {
+        Ok(updated_rows) => updated_rows,
+        Err(error) if modules::db::is_unusable_sqlite_database_error(&error) => {
+            log_skipped_sqlite_database(&db_path, &error.to_string());
+            return Ok(0);
+        }
+        Err(error) if is_missing_threads_table_error(&error) => {
+            return Ok(0);
+        }
+        Err(error) => return Err(format_sqlite_write_error(&db_path, &error)),
+    };
+    if let Err(error) = transaction.commit() {
+        if modules::db::is_unusable_sqlite_database_error(&error) {
+            log_skipped_sqlite_database(&db_path, &error.to_string());
+            return Ok(0);
+        }
+        return Err(format_sqlite_write_error(&db_path, &error));
+    }
     Ok(updated_rows)
 }
 
@@ -533,10 +641,13 @@ fn backup_instance_files(
     instance_id: &str,
     target_provider: &str,
 ) -> Result<PathBuf, String> {
-    let backup_dir = data_dir.join(format!(
-        "backup-{}-session-visibility-repair",
-        Utc::now().format("%Y%m%d-%H%M%S")
-    ));
+    let backup_dir_name = format!(
+        "{}{}{}",
+        SESSION_VISIBILITY_REPAIR_BACKUP_PREFIX,
+        Utc::now().format("%Y%m%d-%H%M%S"),
+        SESSION_VISIBILITY_REPAIR_BACKUP_SUFFIX
+    );
+    let backup_dir = data_dir.join(backup_dir_name);
     fs::create_dir_all(&backup_dir)
         .map_err(|error| format!("创建备份目录失败 ({}): {}", backup_dir.display(), error))?;
 
@@ -603,6 +714,91 @@ fn backup_instance_files(
     })?;
 
     Ok(backup_dir)
+}
+
+fn parse_session_visibility_repair_backup_timestamp(name: &str) -> Option<&str> {
+    let timestamp = name
+        .strip_prefix(SESSION_VISIBILITY_REPAIR_BACKUP_PREFIX)?
+        .strip_suffix(SESSION_VISIBILITY_REPAIR_BACKUP_SUFFIX)?;
+    if timestamp.len() != 15 {
+        return None;
+    }
+    if !timestamp.chars().enumerate().all(|(index, value)| {
+        if index == 8 {
+            value == '-'
+        } else {
+            value.is_ascii_digit()
+        }
+    }) {
+        return None;
+    }
+    Some(timestamp)
+}
+
+fn prune_session_visibility_repair_backups(instances: &[CodexSyncInstance]) {
+    for instance in instances {
+        if let Err(error) = prune_instance_session_visibility_repair_backups(&instance.data_dir) {
+            modules::logger::log_warn(&format!(
+                "清理 Codex 会话可见性修复旧备份失败 ({}): {}",
+                instance.data_dir.display(),
+                error
+            ));
+        }
+    }
+}
+
+fn prune_instance_session_visibility_repair_backups(data_dir: &Path) -> Result<(), String> {
+    let entries = match fs::read_dir(data_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "读取实例目录失败 ({}): {}",
+                data_dir.display(),
+                error
+            ));
+        }
+    };
+    let mut backups: Vec<(String, PathBuf)> = Vec::new();
+
+    for entry in entries {
+        let entry = entry
+            .map_err(|error| format!("读取实例目录项失败 ({}): {}", data_dir.display(), error))?;
+        let file_type = entry.file_type().map_err(|error| {
+            format!(
+                "读取实例目录项类型失败 ({}): {}",
+                entry.path().display(),
+                error
+            )
+        })?;
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        let Some(timestamp) = parse_session_visibility_repair_backup_timestamp(file_name) else {
+            continue;
+        };
+        backups.push((timestamp.to_string(), entry.path()));
+    }
+
+    if backups.len() <= MAX_SESSION_VISIBILITY_REPAIR_BACKUPS {
+        return Ok(());
+    }
+
+    backups.sort_by(|left, right| right.0.cmp(&left.0));
+    for (_, path) in backups
+        .into_iter()
+        .skip(MAX_SESSION_VISIBILITY_REPAIR_BACKUPS)
+    {
+        fs::remove_dir_all(&path)
+            .map_err(|error| format!("删除旧备份失败 ({}): {}", path.display(), error))?;
+    }
+
+    Ok(())
 }
 
 fn restore_instance_files_from_backup(

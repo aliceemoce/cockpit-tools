@@ -553,6 +553,13 @@
   border: 1px solid var(--plan-pro-border);
 }
 
+.ghcp-account-card .tier-badge.pro-plus,
+.ghcp-accounts-page .account-table .tier-badge.pro-plus {
+  background: var(--plan-ultra-bg);
+  color: var(--plan-ultra-color);
+  border: 1px solid var(--plan-ultra-border);
+}
+
 .ghcp-account-card .tier-badge.trial,
 .ghcp-accounts-page .account-table .tier-badge.trial {
   background: var(--plan-trial-bg);

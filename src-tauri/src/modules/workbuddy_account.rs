@@ -1,7 +1,7 @@
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::Emitter;
@@ -14,8 +14,7 @@ use crate::modules::{account, logger, workbuddy_oauth};
 const ACCOUNTS_INDEX_FILE: &str = "workbuddy_accounts.json";
 const ACCOUNTS_DIR: &str = "workbuddy_accounts";
 const WORKBUDDY_QUOTA_ALERT_COOLDOWN_SECONDS: i64 = 10 * 60;
-const WORKBUDDY_SECRET_EXTENSION_ID: &str = "tencent-cloud.coding-copilot";
-const WORKBUDDY_SECRET_KEY: &str = "planning-genie.new.accessTokencn";
+const WORKBUDDY_AUTH_FILE_NAME: &str = "workbuddy-desktop.info";
 
 lazy_static::lazy_static! {
     static ref WORKBUDDY_ACCOUNT_INDEX_LOCK: Mutex<()> = Mutex::new(());
@@ -517,7 +516,14 @@ fn normalize_account_index(index: &mut WorkbuddyAccountIndex) -> Vec<WorkbuddyAc
 
 pub fn list_accounts() -> Vec<WorkbuddyAccount> {
     let mut index = load_account_index();
+    let had_index_accounts = !index.accounts.is_empty();
     let accounts = normalize_account_index(&mut index);
+    if had_index_accounts && accounts.is_empty() {
+        logger::log_warn(
+            "[WorkBuddy Account] 账号索引中存在账号，但详情文件均无法读取，已跳过空索引写回",
+        );
+        return accounts;
+    }
     if let Err(err) = save_account_index(&index) {
         logger::log_warn(&format!("[WorkBuddy Account] 保存账号索引失败:{}", err));
     }
@@ -526,7 +532,11 @@ pub fn list_accounts() -> Vec<WorkbuddyAccount> {
 
 pub fn list_accounts_checked() -> Result<Vec<WorkbuddyAccount>, String> {
     let mut index = load_account_index_checked()?;
+    let had_index_accounts = !index.accounts.is_empty();
     let accounts = normalize_account_index(&mut index);
+    if had_index_accounts && accounts.is_empty() {
+        return Err("WorkBuddy 账号索引中存在账号，但详情文件均无法读取；已保留前端缓存，请从账号备份或本地账号文件恢复。".to_string());
+    }
     if let Err(err) = save_account_index(&index) {
         logger::log_warn(&format!("[WorkBuddy Account] 保存账号索引失败:{}", err));
     }
@@ -707,12 +717,7 @@ async fn refresh_account_token_once(account_id: &str) -> Result<WorkbuddyAccount
 }
 
 pub async fn refresh_account_token(account_id: &str) -> Result<WorkbuddyAccount, String> {
-    crate::modules::refresh_retry::retry_once_with_delay(
-        "WorkBuddy Refresh",
-        account_id,
-        || async { refresh_account_token_once(account_id).await },
-    )
-    .await
+    refresh_account_token_once(account_id).await
 }
 
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<WorkbuddyAccount, String>)>, String>
@@ -990,26 +995,57 @@ pub fn export_accounts(account_ids: &[String]) -> Result<String, String> {
 }
 
 pub fn get_default_workbuddy_data_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".workbuddy").join("app"))
+}
+
+fn get_workbuddy_shared_auth_dir() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
     #[cfg(target_os = "macos")]
     {
-        let home = dirs::home_dir()?;
-        Some(home.join("Library/Application Support/WorkBuddy"))
+        return Some(
+            home.join("Library")
+                .join("Application Support")
+                .join("CodeBuddyExtension")
+                .join("Data")
+                .join("Public")
+                .join("auth"),
+        );
     }
 
     #[cfg(target_os = "windows")]
     {
-        dirs::data_dir().map(|d| d.join("WorkBuddy"))
+        return Some(
+            home.join("AppData")
+                .join("Local")
+                .join("CodeBuddyExtension")
+                .join("Data")
+                .join("Public")
+                .join("auth"),
+        );
     }
 
     #[cfg(target_os = "linux")]
     {
-        dirs::config_dir().map(|d| d.join("WorkBuddy"))
+        return Some(
+            home.join(".local")
+                .join("share")
+                .join("CodeBuddyExtension")
+                .join("Data")
+                .join("Public")
+                .join("auth"),
+        );
     }
+
+    #[allow(unreachable_code)]
+    None
 }
 
-pub fn get_default_workbuddy_state_db_path() -> Option<PathBuf> {
-    get_default_workbuddy_data_dir()
-        .map(|d| d.join("User").join("globalStorage").join("state.vscdb"))
+pub fn get_default_workbuddy_auth_file_path() -> Option<PathBuf> {
+    get_workbuddy_shared_auth_dir().map(|dir| dir.join(WORKBUDDY_AUTH_FILE_NAME))
+}
+
+fn workbuddy_logout_marker_path(auth_file: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.logged-out", auth_file.to_string_lossy()))
 }
 
 fn parse_local_access_token(value: &Value) -> Option<String> {
@@ -1222,29 +1258,189 @@ fn build_local_import_payload(
     }
 }
 
-pub fn import_payload_from_local() -> Result<Option<WorkbuddyOAuthCompletePayload>, String> {
-    let data_root = match get_default_workbuddy_data_dir() {
-        Some(path) => path,
-        None => return Ok(None),
-    };
+fn build_default_auth_account_value(account: &WorkbuddyAccount) -> Value {
+    let mut account_obj = account
+        .profile_raw
+        .as_ref()
+        .and_then(|value| value.as_object())
+        .cloned()
+        .or_else(|| {
+            account
+                .auth_raw
+                .as_ref()
+                .and_then(|value| value.as_object())
+                .and_then(|obj| obj.get("account").and_then(|value| value.as_object()))
+                .cloned()
+        })
+        .unwrap_or_else(serde_json::Map::new);
 
-    let state_db = match get_default_workbuddy_state_db_path() {
+    if let Some(uid) = account
+        .uid
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        account_obj.insert("uid".to_string(), Value::String(uid.to_string()));
+    }
+    if let Some(nickname) = account
+        .nickname
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        account_obj.insert("nickname".to_string(), Value::String(nickname.to_string()));
+    }
+
+    account_obj
+        .entry("type".to_string())
+        .or_insert_with(|| Value::String("personal".to_string()));
+    account_obj
+        .entry("accountType".to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    account_obj
+        .entry("idp".to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    account_obj
+        .entry("oneidAccountId".to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    account_obj
+        .entry("areaInfoComplete".to_string())
+        .or_insert_with(|| Value::Bool(false));
+    account_obj
+        .entry("isCurrentOneIdEnterprise".to_string())
+        .or_insert_with(|| Value::Bool(false));
+    account_obj
+        .entry("isFirstLogin".to_string())
+        .or_insert_with(|| Value::Bool(false));
+    account_obj.insert("lastLogin".to_string(), Value::Bool(true));
+    account_obj.insert("pluginEnabled".to_string(), Value::Bool(true));
+    account_obj
+        .entry("deployStatus".to_string())
+        .or_insert_with(|| {
+            serde_json::json!({
+                "statusCode": 0,
+                "statusMsg": "",
+                "detailMsg": ""
+            })
+        });
+    account_obj.entry("sso".to_string()).or_insert_with(|| {
+        serde_json::json!({
+            "domain": "",
+            "domainModifiedTimes": 0
+        })
+    });
+
+    Value::Object(account_obj)
+}
+
+fn seconds_until_ms(timestamp_ms: i64, now_ms: i64) -> i64 {
+    if timestamp_ms > now_ms {
+        (timestamp_ms - now_ms) / 1000
+    } else {
+        0
+    }
+}
+
+fn build_default_auth_value(account: &WorkbuddyAccount) -> Value {
+    let root_obj = account
+        .auth_raw
+        .as_ref()
+        .and_then(|value| value.as_object());
+    let raw_auth_obj = root_obj.and_then(|obj| obj.get("auth").and_then(|value| value.as_object()));
+    let mut auth_obj = raw_auth_obj
+        .cloned()
+        .or_else(|| {
+            root_obj
+                .filter(|obj| obj.contains_key("accessToken") || obj.contains_key("refreshToken"))
+                .cloned()
+        })
+        .unwrap_or_else(serde_json::Map::new);
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let refresh_token = account.refresh_token.as_deref().unwrap_or("");
+    let token_type = account.token_type.as_deref().unwrap_or("Bearer");
+    let domain = account.domain.as_deref().unwrap_or("");
+
+    auth_obj.insert(
+        "accessToken".to_string(),
+        Value::String(account.access_token.clone()),
+    );
+    auth_obj.insert(
+        "refreshToken".to_string(),
+        Value::String(refresh_token.to_string()),
+    );
+    auth_obj.insert(
+        "tokenType".to_string(),
+        Value::String(token_type.to_string()),
+    );
+    auth_obj.insert("domain".to_string(), Value::String(domain.to_string()));
+    auth_obj.insert(
+        "lastRefreshTime".to_string(),
+        Value::Number(serde_json::Number::from(now_ms)),
+    );
+
+    if let Some(expires_at) = account.expires_at {
+        auth_obj.insert(
+            "expiresAt".to_string(),
+            Value::Number(serde_json::Number::from(expires_at)),
+        );
+        auth_obj.insert(
+            "expiresIn".to_string(),
+            Value::Number(serde_json::Number::from(seconds_until_ms(
+                expires_at, now_ms,
+            ))),
+        );
+
+        let refresh_expires_at = raw_auth_obj
+            .and_then(|obj| json_object_i64_field(obj, &["refreshExpiresAt", "refresh_expires_at"]))
+            .unwrap_or(expires_at);
+        auth_obj.insert(
+            "refreshExpiresAt".to_string(),
+            Value::Number(serde_json::Number::from(refresh_expires_at)),
+        );
+        auth_obj.insert(
+            "refreshExpiresIn".to_string(),
+            Value::Number(serde_json::Number::from(seconds_until_ms(
+                refresh_expires_at,
+                now_ms,
+            ))),
+        );
+    } else {
+        auth_obj
+            .entry("expiresIn".to_string())
+            .or_insert_with(|| Value::Number(serde_json::Number::from(0)));
+        auth_obj
+            .entry("refreshExpiresIn".to_string())
+            .or_insert_with(|| Value::Number(serde_json::Number::from(0)));
+    }
+
+    auth_obj
+        .entry("scope".to_string())
+        .or_insert_with(|| Value::String("openid profile offline_access email".to_string()));
+
+    Value::Object(auth_obj)
+}
+
+fn build_default_client_auth_session(account: &WorkbuddyAccount) -> Value {
+    let account_value = build_default_auth_account_value(account);
+    serde_json::json!({
+        "account": account_value.clone(),
+        "auth": build_default_auth_value(account),
+        "accounts": [account_value],
+    })
+}
+
+pub fn import_payload_from_local() -> Result<Option<WorkbuddyOAuthCompletePayload>, String> {
+    let auth_file = match get_default_workbuddy_auth_file_path() {
         Some(path) => path,
         None => return Ok(None),
     };
-    if !state_db.exists() {
+    if !auth_file.exists() || workbuddy_logout_marker_path(&auth_file).exists() {
         return Ok(None);
     }
 
-    let raw_secret = crate::modules::vscode_inject::read_workbuddy_secret_storage_value(
-        WORKBUDDY_SECRET_EXTENSION_ID,
-        WORKBUDDY_SECRET_KEY,
-        Some(data_root.to_string_lossy().as_ref()),
-    )?;
-
-    let Some(secret) = raw_secret else {
-        return Ok(None);
-    };
+    let secret = fs::read_to_string(&auth_file)
+        .map_err(|e| format!("读取本机 WorkBuddy 登录信息失败: {}", e))?;
 
     let parsed_json = serde_json::from_str::<Value>(&secret).ok();
     let token_candidate = parsed_json
@@ -1275,69 +1471,42 @@ pub fn import_payload_from_local() -> Result<Option<WorkbuddyOAuthCompletePayloa
     Ok(Some(payload))
 }
 
-fn build_default_client_session_json(account: &WorkbuddyAccount) -> String {
-    let uid = account.uid.as_deref().unwrap_or("");
-    let nickname = account.nickname.as_deref().unwrap_or("");
-    let enterprise_id = account.enterprise_id.as_deref().unwrap_or("");
-    let enterprise_name = account.enterprise_name.as_deref().unwrap_or("");
-    let domain = account.domain.as_deref().unwrap_or("");
-    let refresh_token = account.refresh_token.as_deref().unwrap_or("");
-    let expires_at = account.expires_at.unwrap_or(0);
+pub fn write_account_to_default_client(account: &WorkbuddyAccount) -> Result<(), String> {
+    let auth_file = get_default_workbuddy_auth_file_path()
+        .ok_or_else(|| "无法定位默认 WorkBuddy 登录信息路径".to_string())?;
+    let marker_path = workbuddy_logout_marker_path(&auth_file);
+    if marker_path.exists() {
+        fs::remove_file(&marker_path).map_err(|e| format!("清理 WorkBuddy 登出标记失败: {}", e))?;
+    }
 
-    serde_json::json!({
-        "id": "Tencent-Cloud.genie-ide-cn",
-        "token": account.access_token,
-        "refreshToken": refresh_token,
-        "expiresAt": expires_at,
-        "domain": domain,
-        "accessToken": format!("{}+{}", uid, account.access_token),
-        "converted": true,
-        "account": {
-            "id": uid,
-            "uid": uid,
-            "label": nickname,
-            "nickname": nickname,
-            "enterpriseId": enterprise_id,
-            "enterpriseName": enterprise_name,
-            "pluginEnabled": true,
-            "lastLogin": true,
-        },
-        "auth": {
-            "accessToken": account.access_token,
-            "refreshToken": refresh_token,
-            "tokenType": account.token_type.as_deref().unwrap_or("Bearer"),
-            "domain": domain,
-            "expiresAt": expires_at,
-            "expiresIn": expires_at,
-            "refreshExpiresIn": 0,
-            "refreshExpiresAt": 0,
-            "lastRefreshTime": chrono::Utc::now().timestamp_millis(),
-        }
-    })
-    .to_string()
+    let session = build_default_client_auth_session(account);
+    let content =
+        serde_json::to_string_pretty(&session).map_err(|e| format!("序列化登录信息失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(&auth_file, &content)
+        .map_err(|e| format!("写入 WorkBuddy 登录信息失败: {}", e))?;
+
+    let written = fs::read_to_string(&auth_file)
+        .map_err(|e| format!("校验 WorkBuddy 登录信息失败: {}", e))?;
+    let written_json: Value = serde_json::from_str(&written)
+        .map_err(|e| format!("校验 WorkBuddy 登录信息 JSON 失败: {}", e))?;
+    let written_token = written_json
+        .get("auth")
+        .and_then(|auth| auth.get("accessToken"))
+        .and_then(|value| value.as_str());
+    if written_token != Some(account.access_token.as_str()) {
+        return Err(format!(
+            "校验 WorkBuddy 登录信息失败，未写入目标账号: {}",
+            auth_file.display()
+        ));
+    }
+
+    Ok(())
 }
 
 pub fn sync_account_to_default_client(account_id: &str) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("WorkBuddy 账号不存在: {}", account_id))?;
-    let state_db = get_default_workbuddy_state_db_path()
-        .ok_or_else(|| "无法定位默认 WorkBuddy state.vscdb 路径".to_string())?;
-    if !state_db.exists() {
-        return Err(format!(
-            "未找到默认 WorkBuddy state.vscdb: {}",
-            state_db.display()
-        ));
-    }
-
-    let secret_key = r#"{"extensionId":"tencent-cloud.coding-copilot","key":"planning-genie.new.accessTokencn"}"#;
-    let db_key = format!("secret://{}", secret_key);
-    let session_json = build_default_client_session_json(&account);
-    crate::modules::vscode_inject::inject_secret_to_state_db_for_workbuddy(
-        &state_db,
-        &db_key,
-        &session_json,
-    )?;
-    Ok(())
+    write_account_to_default_client(&account)
 }
 
 pub(crate) fn resolve_current_account_id(accounts: &[WorkbuddyAccount]) -> Option<String> {

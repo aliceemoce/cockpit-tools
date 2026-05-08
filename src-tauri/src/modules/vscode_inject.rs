@@ -899,6 +899,30 @@ pub fn read_workbuddy_secret_storage_value(
     )
 }
 
+pub fn read_github_auth_sessions(
+    user_data_dir: Option<&str>,
+) -> Result<Option<Vec<serde_json::Value>>, String> {
+    let data_root = resolve_vscode_data_root(user_data_dir)?;
+    let Some(raw_value) = read_secret_storage_value_with_data_root_and_mode(
+        &data_root,
+        "vscode.github-authentication",
+        "github.auth",
+        SafeStorageReadMode::Default,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let sessions: Vec<serde_json::Value> = serde_json::from_str(&raw_value)
+        .map_err(|e| format!("解析 VS Code GitHub 登录会话失败: {}", e))?;
+
+    if sessions.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(sessions))
+}
+
 fn resolve_data_root_from_state_db_path(db_path: &Path) -> Result<&Path, String> {
     db_path
         .parent()

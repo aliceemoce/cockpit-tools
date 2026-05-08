@@ -7,6 +7,7 @@ export type ExternalProviderImportPayload = {
   providerId: PlatformId;
   page: Page;
   token: string;
+  importUrl?: string | null;
   autoImport: boolean;
   source?: string | null;
   rawUrl?: string | null;
@@ -22,6 +23,8 @@ type RawExternalProviderImportPayload = {
   importToken?: unknown;
   payload?: unknown;
   importPayload?: unknown;
+  importUrl?: unknown;
+  import_url?: unknown;
   autoImport?: unknown;
   autoSubmit?: unknown;
   source?: unknown;
@@ -143,10 +146,12 @@ export function normalizeExternalProviderImportPayload(
   );
   if (!providerId) return null;
 
-  const token = readString(
-    payload.token ?? payload.importToken ?? payload.payload ?? payload.importPayload,
-  );
-  if (!token) return null;
+  const token =
+    readString(
+      payload.token ?? payload.importToken ?? payload.payload ?? payload.importPayload,
+    ) ?? '';
+  const importUrl = readString(payload.importUrl ?? payload.import_url);
+  if (!token && !importUrl) return null;
 
   const page =
     providerId === 'antigravity' ? 'overview' : resolvePage(providerId, payload.page);
@@ -156,12 +161,14 @@ export function normalizeExternalProviderImportPayload(
     page,
     autoImport: parseBooleanLike(payload.autoImport ?? payload.autoSubmit),
     tokenLength: token.length,
+    hasImportUrl: Boolean(importUrl),
   });
 
   return {
     providerId,
     page,
     token,
+    importUrl,
     autoImport: parseBooleanLike(payload.autoImport ?? payload.autoSubmit),
     source: readString(payload.source),
     rawUrl: readString(payload.rawUrl ?? payload.url),

@@ -8,6 +8,7 @@ pub enum CodexLocalAccessRoutingStrategy {
     QuotaLowFirst,
     PlanHighFirst,
     PlanLowFirst,
+    ExpirySoonFirst,
 }
 
 impl Default for CodexLocalAccessRoutingStrategy {
@@ -139,4 +140,11 @@ pub struct CodexLocalAccessState {
     pub last_error: Option<String>,
     pub member_count: usize,
     pub stats: CodexLocalAccessStats,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessPortCleanupResult {
+    pub killed_count: u32,
+    pub state: CodexLocalAccessState,
 }

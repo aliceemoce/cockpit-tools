@@ -22,6 +22,7 @@ const CALLBACK_PATH: &str = "/authorize";
 const TRAE_AUTHORIZATION_PATH: &str = "/authorization";
 const TRAE_AUTH_CLIENT_ID: &str = "ono9krqynydwx5";
 const TRAE_DEFAULT_PLUGIN_VERSION: &str = "local";
+const TRAE_MIN_AUTH_APP_VERSION: &str = "3.5.54";
 const TRAE_DEFAULT_DEVICE_ID: &str = "0";
 const TRAE_DEFAULT_APP_TYPE: &str = "stable";
 
@@ -233,6 +234,16 @@ fn parse_json_file(path: &Path) -> Option<Value> {
     serde_json::from_str::<Value>(&content).ok()
 }
 
+fn is_probable_executable_path(path: &Path) -> bool {
+    if path.is_file() {
+        return true;
+    }
+    path.extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case("exe"))
+        .unwrap_or(false)
+}
+
 fn build_trae_product_file_candidates(base_path: &Path) -> Vec<PathBuf> {
     let mut app_roots: Vec<PathBuf> = Vec::new();
     let base_path_string = base_path.to_string_lossy().to_string();
@@ -248,6 +259,16 @@ fn build_trae_product_file_candidates(base_path: &Path) -> Vec<PathBuf> {
         .unwrap_or(false)
     {
         app_roots.push(base_path.to_path_buf());
+    }
+
+    if base_path.is_dir() {
+        app_roots.push(base_path.to_path_buf());
+    }
+
+    if is_probable_executable_path(base_path) {
+        if let Some(parent) = base_path.parent() {
+            app_roots.push(parent.to_path_buf());
+        }
     }
 
     if app_roots.is_empty() {
@@ -372,6 +393,45 @@ fn detect_trae_product_info() -> TraeProductInfo {
         }
     }
     TraeProductInfo::default()
+}
+
+fn parse_version_components(value: &str) -> Option<Vec<u64>> {
+    let mut components = Vec::new();
+    for part in value.trim().split('.') {
+        let digits: String = part.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            return None;
+        }
+        components.push(digits.parse::<u64>().ok()?);
+    }
+    if components.is_empty() {
+        return None;
+    }
+    Some(components)
+}
+
+fn is_version_less_than(left: &str, right: &str) -> Option<bool> {
+    let left_parts = parse_version_components(left)?;
+    let right_parts = parse_version_components(right)?;
+    let max_len = left_parts.len().max(right_parts.len());
+    for idx in 0..max_len {
+        let left_value = left_parts.get(idx).copied().unwrap_or(0);
+        let right_value = right_parts.get(idx).copied().unwrap_or(0);
+        if left_value != right_value {
+            return Some(left_value < right_value);
+        }
+    }
+    Some(false)
+}
+
+fn normalize_auth_app_version(value: Option<String>) -> String {
+    let Some(version) = value.and_then(|raw| normalize_non_empty(Some(raw.as_str()))) else {
+        return TRAE_MIN_AUTH_APP_VERSION.to_string();
+    };
+    match is_version_less_than(version.as_str(), TRAE_MIN_AUTH_APP_VERSION) {
+        Some(true) | None => TRAE_MIN_AUTH_APP_VERSION.to_string(),
+        Some(false) => version,
+    }
 }
 
 fn read_trae_storage_root() -> Option<Value> {
@@ -580,10 +640,11 @@ fn collect_trae_login_context() -> TraeLoginContext {
         .or_else(|| pick_storage_string(storage_root.as_ref(), &["iCubeLastVersion"]))
         .unwrap_or_else(|| TRAE_DEFAULT_PLUGIN_VERSION.to_string());
 
-    let app_version = product_info
-        .app_version
-        .or_else(|| pick_storage_string(storage_root.as_ref(), &["appVersion", "iCubeLastVersion"]))
-        .unwrap_or_else(|| plugin_version.clone());
+    let app_version = normalize_auth_app_version(
+        product_info
+            .app_version
+            .or_else(|| pick_storage_string(storage_root.as_ref(), &["appVersion"])),
+    );
 
     let app_type = product_info
         .app_type

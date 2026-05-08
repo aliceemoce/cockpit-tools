@@ -47,6 +47,20 @@ pub fn import_github_copilot_from_json(
     github_copilot_account::import_from_json(&json_content)
 }
 
+/// 从本机 VS Code 导入当前 GitHub Copilot 登录账号
+#[tauri::command]
+pub async fn import_github_copilot_from_local(
+    app: AppHandle,
+) -> Result<Vec<GitHubCopilotAccount>, String> {
+    match github_copilot_account::import_from_local().await? {
+        Some(account) => {
+            let _ = crate::modules::tray::update_tray_menu(&app);
+            Ok(vec![account])
+        }
+        None => Err("未找到本机 VS Code GitHub Copilot 登录信息".to_string()),
+    }
+}
+
 /// 导出 GitHub Copilot 账号为 JSON
 #[tauri::command]
 pub fn export_github_copilot_accounts(account_ids: Vec<String>) -> Result<String, String> {

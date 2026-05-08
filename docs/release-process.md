@@ -29,9 +29,9 @@ npm run release:preflight
 node scripts/release/preflight.cjs --skip-locales --skip-typecheck --skip-build --skip-cargo
 ```
 
-## 3. 打包产物（macOS / Homebrew 推荐）
+## 3. 打包产物（macOS / Windows；Homebrew 推荐）
 
-当前推荐使用 `universal` 安装包（同时兼容 Apple Silicon / Intel），并在上传 GitHub Release 后同步更新 Homebrew cask。
+官方发布目标仅包含 macOS 与 Windows，不再构建或上传 Linux/Ubuntu 安装包。macOS 当前推荐使用 `universal` 安装包（同时兼容 Apple Silicon / Intel），并在上传 GitHub Release 后同步更新 Homebrew cask。
 
 推荐一键脚本（会执行 `universal.dmg` 构建、上传 GitHub Release 资产、更新 `Casks/cockpit-tools.rb`）：
 
@@ -84,7 +84,7 @@ node scripts/release/gen_checksums.cjs \
 
 每次发布建议至少包含：
 
-1. 下载文件列表（按平台；macOS/Homebrew 场景建议包含 `*_universal.dmg`）
+1. 下载文件列表（macOS / Windows；macOS/Homebrew 场景建议包含 `*_universal.dmg`）
 2. `SHA256SUMS.txt`
 3. 更新日志（中英文）
 4. VirusTotal 链接（可选但推荐）

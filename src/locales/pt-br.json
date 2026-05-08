@@ -70,6 +70,34 @@
           "statusPending": "Importação pendente"
         }
       },
+      "externalImport": {
+        "bundleInvalidJson": "O pacote de importação não é um JSON válido",
+        "bundleEmpty": "O pacote de importação está vazio",
+        "bundleProviderMismatch": "O provedor do pacote de importação não corresponde",
+        "bundleNoItems": "O pacote de importação não tem itens importáveis",
+        "titleCodex": "Importação em lote do Codex",
+        "statusReceiving": "Recebendo solicitação de importação...",
+        "statusFetching": "Obtendo pacote de importação...",
+        "statusParsing": "Analisando JSON do Codex...",
+        "statusImporting": "Importando conta {{current}} / {{total}}",
+        "statusRefreshing": "Atualizando lista de contas...",
+        "statusSuccess": "Importação concluída",
+        "statusPartial": "Importação parcial concluída",
+        "statusFailed": "Falha na importação",
+        "total": "Ao todo",
+        "success": "Sucesso",
+        "failed": "Falhas",
+        "stepReceive": "Receber solicitação",
+        "stepFetch": "Obter pacote",
+        "stepParse": "Analisar JSON do Codex",
+        "stepImport": "Importar contas",
+        "stepRefresh": "Atualizar lista",
+        "errorsTitle": "Itens com falha",
+        "viewAccounts": "Ver contas do Codex",
+        "copyErrors": "Copiar erros",
+        "copied": "Copiado",
+        "unknownItem": "JSON nº {{index}}"
+      },
       "instances": {
         "unsupported": {
           "title": "Não suportado neste sistema"
@@ -107,7 +135,10 @@
         "descTooltip": "Decrescente (clique para Ascendente)",
         "toggleDirection": "Alternar direção",
         "credits": "Por créditos restantes",
-        "planEnd": "Por horário de término do ciclo"
+        "planEnd": "Por horário de término do ciclo",
+        "recommended": "Recomendado",
+        "recommendedAscTooltip": "Recomendado (menos vantajoso primeiro)",
+        "recommendedDescTooltip": "Recomendado (mais vantajoso primeiro)"
       },
       "sortLabel": "Ordenar",
       "token": {
@@ -823,11 +854,23 @@
           "saveSettingsFailed": "Falha ao salvar as configurações de backup: {{error}}",
           "cleanupDone": "{{count}} backup(s) expirado(s) limpos",
           "cleanupFailed": "Falha ao limpar backups expirados: {{error}}",
-          "openFolderFailed": "Falha ao abrir a pasta de backup: {{error}}"
+          "openFolderFailed": "Falha ao abrir a pasta de backup: {{error}}",
+          "downloadSuccess": "Backup baixado em {{path}}",
+          "downloadFailed": "Falha ao baixar backup: {{error}}"
         },
         "errors": {
           "invalidRetention": "A retenção deve ficar entre 1 e 365 dias"
-        }
+        },
+        "platformFilterLabel": "Plataforma",
+        "platformFilterAll": "Todas as plataformas",
+        "platformEmptyTitle": "Nenhum backup correspondente",
+        "platformEmptyDesc": "Esta plataforma não tem backup de contas disponível para download.",
+        "archiveTag": "Arquivo",
+        "archiveSize": "Arquivo: {{size}}",
+        "platformsTitle": "Contas da plataforma",
+        "platformDownloadAction": "Baixar JSON da plataforma",
+        "downloadJsonAction": "Arquivo JSON",
+        "downloadZipAction": "Arquivo ZIP"
       },
       "exportTitle": "Exportação de dados",
       "exportDesc": "Exporte dados de contas, dados de configuração ou um pacote completo de migração conforme necessário.",
@@ -1545,6 +1588,7 @@
     "authorizing": "Aguardando autorização do sistema...",
     "installFailed": "A instalação do sistema falhou. Tente novamente mais tarde ou baixe o pacote manualmente.",
     "restartRequiredAfterInstall": "A atualização foi instalada. Reinicie o app manualmente para concluir a troca.",
+    "stoppingApiService": "Parando serviço de API...",
     "skipThisVersion": "Ignorar esta versão",
     "skipFailed": "Não foi possível ignorar esta atualização: {{error}}"
   },
@@ -1598,6 +1642,14 @@
     "switch": "Alternar",
     "switched": "Alternado para {{email}}",
     "switchFailed": "Falha ao alternar: {{error}}",
+    "authError": {
+      "badge": "Problema de autorização",
+      "refreshTokenReused": "A autorização do Codex é inválida: o refresh_token já foi usado por outro cliente ou instância. Entre novamente e evite atualizar a mesma conta ao mesmo tempo pelo Codex oficial, outras instâncias ou ferramentas externas.",
+      "refreshTokenExpired": "A autorização de login do Codex expirou e não pode ser atualizada automaticamente. Entre novamente na conta Codex.",
+      "refreshTokenInvalidated": "A autorização de login do Codex foi revogada pelo serviço e não pode ser atualizada automaticamente. Entre novamente na conta Codex.",
+      "invalidGrant": "A autorização de login do Codex é inválida e não pode ser atualizada automaticamente. Entre novamente na conta Codex.",
+      "unsupportedCountryRegion": "A região de rede atual não permite atualizar a autorização do Codex. O serviço de autorização da OpenAI recusou esta saída de rede. Mude para uma região compatível e tente novamente."
+    },
     "current": "Atual",
     "empty": {
       "description": "Clique em \"Adicionar conta\" para começar"
@@ -1644,7 +1696,7 @@
       "statusStopped": "Parado",
       "statusDisabled": "Desativado",
       "emptyMembers": "Não há contas na coleção",
-      "footerHint": "Escuta somente em 127.0.0.1",
+      "footerHint": "Escuta localmente e na LAN",
       "manageAccounts": "Gerenciar contas",
       "rotateKey": "Girar chave",
       "rotateConfirmMessage": "Após a redefinição, a chave atual do serviço de API deixará de funcionar imediatamente, e as solicitações em andamento podem ficar indisponíveis. Continuar?",
@@ -1672,7 +1724,8 @@
         "freeNoticeRestricted": "Contas Free são limitadas. Desative isso para selecioná-las.",
         "freeNoticeUnstable": "O proxy de contas Free pode ser instável. Use com cautela.",
         "restrictFreeDisableConfirmTitle": "Permitir contas Free",
-        "restrictFreeDisableConfirmMessage": "O proxy de contas Free pode ser instável. Tem certeza de que deseja usá-las?"
+        "restrictFreeDisableConfirmMessage": "O proxy de contas Free pode ser instável. Tem certeza de que deseja usá-las?",
+        "manageMembers": "Gerenciar membros"
       },
       "entryAction": "Adicionar ao serviço de API",
       "testAction": "Testar serviço de API",
@@ -1683,7 +1736,7 @@
       "activateSuccess": "Alternado para o serviço de API",
       "dashboardAction": "Painel do serviço",
       "manageDesc": "Gerencie em um só lugar as estatísticas do serviço API, membros, porta, chave e teste de conexão.",
-      "memberOnlyLocal": "Somente Codex",
+      "memberOnlyLocal": "Local/rede LAN",
       "configTitle": "Configuração do serviço",
       "configEmpty": "Salve primeiro pelo menos uma conta na coleção do serviço API para gerar URL, chave e porta.",
       "portLabel": "Porta do serviço",
@@ -1693,8 +1746,8 @@
       "statsTitle": "Totais",
       "accountStatsTitle": "Por conta",
       "statsEmpty": "Ainda não há estatísticas",
-      "summaryMeta": "{{count}} contas · Somente Codex",
-      "summaryMetaUnconfigured": "Não configurado · Somente Codex",
+      "summaryMeta": "{{count}} contas · Local/LAN",
+      "summaryMetaUnconfigured": "Não configurado · Local/LAN",
       "memberTitle": "Membros da coleção",
       "stats": {
         "requests": "Requisições",
@@ -1717,9 +1770,16 @@
       "routingDescriptionQuotaLowFirst": "Prioriza contas com menos cota restante.",
       "routingDescriptionPlanHighFirst": "Prioriza contas em planos de assinatura mais altos.",
       "routingDescriptionPlanLowFirst": "Prioriza contas em planos de assinatura mais baixos.",
+      "routingDescriptionExpirySoonFirst": "Prioriza contas cuja assinatura vence mais cedo.",
       "clearStats": "Limpar estatísticas",
       "clearStatsConfirm": "Limpar todas as estatísticas do serviço API?",
       "clearStatsSuccess": "As estatísticas do serviço API foram limpas",
+      "killPortAction": "Limpar porta",
+      "killPortTitle": "Limpar porta do serviço de API",
+      "killPortConfirmMessage": "Outros processos que usam a porta local {{port}} serão encerrados à força, e o serviço de API será reiniciado. Continuar?",
+      "killPortSuccess": "Porta limpa ({{count}} processo(s) encerrado(s))",
+      "killPortSuccessNone": "Porta verificada. Nenhum processo externo a está usando.",
+      "killPortSuccessUnknown": "Porta do serviço de API limpa",
       "refreshStats": "Atualizar estatísticas",
       "refreshStatsSuccess": "As estatísticas do serviço API foram atualizadas",
       "routingStrategy": {
@@ -1727,7 +1787,8 @@
         "quotaHighFirst": "Cota alta primeiro",
         "quotaLowFirst": "Cota baixa primeiro",
         "planHighFirst": "Plano alto primeiro",
-        "planLowFirst": "Plano baixo primeiro"
+        "planLowFirst": "Plano baixo primeiro",
+        "expirySoonFirst": "Vence antes primeiro"
       },
       "statusUnconfigured": "Não configurado",
       "expandDetails": "Expandir detalhes",
@@ -1757,7 +1818,15 @@
       "apiPortUrl": "URL da porta API",
       "modelId": "ID do modelo",
       "modelIdPlaceholder": "Selecione o ID do modelo",
-      "modelIdViewOnly": "Só visualizar"
+      "modelIdViewOnly": "Só visualizar",
+      "quotaPool": {
+        "title": "Pool de cota",
+        "hourlyShort": "5h",
+        "weeklyShort": "Semana",
+        "viewFull": "Ver estatísticas completas",
+        "modalTitle": "Pool de cota do serviço API",
+        "empty": "Ainda sem estatísticas de cota"
+      }
     },
     "local": {
       "desc": "Importe a conta atual de ~/.codex/auth.json",
@@ -1771,7 +1840,8 @@
     "quota": {
       "hourly": "Cota de 5 horas",
       "weekly": "Cota semanal",
-      "reset": "Redefinir"
+      "reset": "Redefinir",
+      "weeklyBlocksHourly": "A cota semanal é 0, então a cota de 5 horas está indisponível"
     },
     "quotaError": {
       "badge": "Erro de cota",
@@ -1805,7 +1875,15 @@
       "weekly": "Cota semanal",
       "hourly": "Cota de 5 horas",
       "weeklyReset": "Horário de redefinição semanal",
-      "hourlyReset": "Horário de redefinição de 5 horas"
+      "hourlyReset": "Horário de redefinição de 5 horas",
+      "subscriptionExpiry": "Expiração da assinatura",
+      "custom": "Ordem personalizada",
+      "customModalTitle": "Ordem das contas",
+      "customModalDesc": "Arraste contas ou use os botões para cima/baixo para ajustar a ordem.",
+      "customDragHandle": "Arraste para ordenar",
+      "customMoveUp": "Subir",
+      "customMoveDown": "Descer",
+      "customReset": "Redefinir ordem"
     },
     "opencodeSwitch": "Alternador do OpenCode",
     "opencodeSwitchDesc": "Sincronizar a troca de conta do Codex no OpenCode",
@@ -2032,7 +2110,9 @@
       "messages": {
         "pickOne": "Selecione pelo menos uma sessão",
         "syncNeedTwo": "Pelo menos duas instâncias são necessárias para sincronizar sessões",
-        "pickRestoreOne": "Selecione pelo menos uma sessão para restaurar"
+        "pickRestoreOne": "Selecione pelo menos uma sessão para restaurar",
+        "repairVisibilitySkippedOnly": "Nenhuma diferença de provider gravável foi encontrada; {{count}} arquivo(s) state_5.sqlite inválidos ou corrompidos foram ignorados. O Codex precisa recriá-los antes que seus registros SQLite possam ser reparados.",
+        "repairVisibilitySkippedWithBase": "{{message}}; {{count}} arquivo(s) state_5.sqlite inválidos ou corrompidos foram ignorados. O Codex precisa recriá-los antes que seus registros SQLite possam ser reparados."
       },
       "groupCount": "{{count}} sessões",
       "updatedAt": "Atualizado",
@@ -2067,6 +2147,7 @@
       },
       "provider": {
         "label": "Provedor",
+        "inlineLabel": "Provedor: {{provider}}",
         "custom": "Personalizado",
         "endpoint": "Endpoint do provedor",
         "hint": "Uma Base URL compatível foi preenchida automaticamente. Você ainda pode editá-la manualmente.",
@@ -2252,6 +2333,36 @@
     },
     "groups": {
       "addToGroup": "Adicionar ao grupo"
+    },
+    "subscription": {
+      "label": "Fim da assinatura",
+      "column": "Expira",
+      "unknown": "Reautorizar",
+      "missingDetail": "Reautorize para buscar",
+      "expired": "Expirada",
+      "hoursLeft": "{{count}} h",
+      "daysLeft": "{{count}} d",
+      "over99Days": "99+ d",
+      "titleWithDate": "Assinatura expira em: {{date}}",
+      "titleUnknown": "Reautorize para buscar a expiração",
+      "filterLabel": "Filtro de expiracao",
+      "filterAll": "Todas ({{count}})",
+      "filterExpired": "Expiradas ({{count}})",
+      "filterWithin24h": "24 h ({{count}})",
+      "filterWithin7d": "7 d ({{count}})",
+      "filterWithin30d": "30 d ({{count}})",
+      "filterMissing": "Desconhecidas ({{count}})"
+    },
+    "apiSwitchNotice": {
+      "title": "Sessões do Codex ocultas",
+      "message": "Foi detectado que o Codex mudou de {{from}} para {{to}}. Pelo comportamento oficial, sessões existentes podem não aparecer automaticamente após alternar diretamente entre API e contas. A visibilidade das sessões está sendo reparada automaticamente; você também pode usar Gerenciamento de sessões > Reparar visibilidade depois.",
+      "repairing": "Reparando a visibilidade das sessões do Codex...",
+      "repairFailed": "O reparo automático falhou. Você pode tentar novamente depois em Gerenciamento de sessões > Reparar visibilidade.",
+      "type": {
+        "apiKey": "Chave API",
+        "apiService": "Serviço API",
+        "account": "Conta"
+      }
     }
   },
   "githubCopilot": {
@@ -2274,7 +2385,8 @@
       "desc": "Cole seu token de acesso do GitHub Copilot ou dados JSON exportados."
     },
     "import": {
-      "localDesc": "Importe dados de contas do GitHub Copilot de um arquivo JSON."
+      "localDesc": "Importe dados de contas do GitHub Copilot do VS Code local ou de um arquivo JSON.",
+      "localClient": "Importar do VS Code local"
     },
     "sort": {
       "weekly": "Por uso de mensagens de chat",
@@ -2289,7 +2401,8 @@
       "premium": "Solicitações premium"
     },
     "usage": {
-      "included": "Incluído"
+      "included": "Incluído",
+      "usedOfTotal": "{{used}} de {{total}}"
     },
     "injectToVSCode": "Alternar para VS Code",
     "injectSuccess": "O token foi injetado no VS Code com sucesso. O VS Code está sendo iniciado.",
@@ -2299,7 +2412,7 @@
       "desc": "A troca de conta exige ler o armazenamento local de autenticação do VS Code e usar o serviço de credenciais do sistema para descriptografar e gravar de volta; os dados são processados apenas localmente.",
       "inject": "Troca com um clique: esta ferramenta lê o material de criptografia local do VS Code (DPAPI/Keychain/Secret Service), descriptografa a sessão de autenticação em state.vscdb, substitui o token do GitHub Copilot e criptografa novamente — tudo localmente na sua máquina.",
       "reason": "Escopo de permissões: ler o banco de autenticação do VS Code (state.vscdb) e chamar a criptografia do sistema (Windows DPAPI / macOS Keychain / Linux Secret Service) para descriptografar e gravar de volta.",
-      "storage": "Escopo de leitura: apenas dados relacionados à sessão de login do GitHub são processados; todos os processos são executados localmente."
+      "storage": "Escopo de dados: a importação local lê as sessões de login do GitHub no VS Code, e a troca atualiza essas entradas; OAuth, importação de token, validação da importação local e atualização de cotas chamam as APIs oficiais do GitHub com os campos de autenticação necessários. state.vscdb e chaves do sistema não são enviados."
     }
   },
   "dashboard": {
@@ -3342,11 +3455,11 @@
       "status": "Status do check-in",
       "checkedIn": "Check-in concluído",
       "notCheckedIn": "Sem check-in",
-      "button": {},
+      "button": "Registrar presença",
       "button.loading": "Fazendo check-in...",
       "done": "Concluído",
       "success": "Check-in realizado com sucesso! Sequência de {{days}} dias",
-      "failure": {},
+      "failure": "Falha ao registrar presença: {{message}}",
       "failure.network": "Erro de rede, tente novamente mais tarde",
       "lastCheckin": "Último check-in: {{time}}",
       "streak": "Sequência de {{days}} dias",
@@ -3377,9 +3490,9 @@
     "addAccount": "Adicionar conta WorkBuddy",
     "flowNotice": {
       "title": "Informacoes de gerenciamento de conta do WorkBuddy (clique para expandir/recolher)",
-      "desc": "A troca de conta requer leitura do armazenamento local de autenticacao do WorkBuddy e chamada dos servicos de credenciais do sistema para descriptografar e recriptografar. Os dados sao processados somente localmente.",
-      "permission": "Escopo de permissao: ler o banco de autenticacao do WorkBuddy (state.vscdb), chamar recursos de credenciais do sistema (Keychain do macOS / DPAPI do Windows / Secret Service do Linux) para descriptografar e regravar.",
-      "network": "Escopo de rede: login OAuth e renovacao de token exigem requisicoes para WorkBuddy; consultas de cota chamam APIs de cobranca. Nenhuma chave local ou credencial e enviada."
+      "desc": "A troca de conta grava o arquivo local de login seguindo o layout mais recente do cliente oficial do WorkBuddy; a importação local lê o mesmo arquivo. Os dados são processados somente localmente.",
+      "permission": "Escopo de permissão: ler e gravar o arquivo de login do WorkBuddy (CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info) para importação local e troca de conta; o state.vscdb legado não é mais lido nem modificado.",
+      "network": "Escopo de rede: login OAuth e renovação de token exigem requisições para WorkBuddy; consultas de cota chamam APIs de cobrança. Arquivos locais de login e credenciais brutas não são enviados."
     },
     "nickname": "Apelido",
     "enterprise": "Empresa",

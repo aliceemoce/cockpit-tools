@@ -8,9 +8,9 @@ use serde_json::Value;
 use tauri::AppHandle;
 
 use crate::modules::{
-    codebuddy_account, codebuddy_cn_account, codex_account, codex_oauth, cursor_account,
-    gemini_account, github_copilot_account, kiro_account, kiro_instance, logger, process,
-    trae_account, windsurf_account, windsurf_instance, workbuddy_account,
+    codebuddy_account, codebuddy_cn_account, codex_account, cursor_account, gemini_account,
+    github_copilot_account, kiro_account, kiro_instance, logger, process, trae_account,
+    windsurf_account, windsurf_instance, workbuddy_account,
 };
 
 const TOKEN_KEEPER_TICK_SECONDS: u64 = 60;
@@ -148,7 +148,7 @@ async fn refresh_due_codex_accounts() -> bool {
         .into_iter()
         .filter(|account| !account.is_api_key_auth())
     {
-        if !codex_oauth::is_token_expired(&account.tokens.access_token) {
+        if !account.requires_reauth && !codex_account::is_managed_auth_refresh_due(&account) {
             continue;
         }
 
@@ -157,7 +157,8 @@ async fn refresh_due_codex_accounts() -> bool {
             continue;
         }
 
-        match codex_account::prepare_account_for_injection(&account.id).await {
+        match codex_account::keepalive_managed_account(&account.id, "TokenKeeper 授权保活").await
+        {
             Ok(updated) => {
                 clear_attempt_backoff(&key);
                 refreshed_any = true;

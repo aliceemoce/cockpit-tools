@@ -30,6 +30,11 @@ export async function importGitHubCopilotFromJson(jsonContent: string): Promise<
   return await invoke('import_github_copilot_from_json', { jsonContent });
 }
 
+/** 从本机 VS Code 导入当前 GitHub Copilot 登录账号 */
+export async function importGitHubCopilotFromLocal(): Promise<GitHubCopilotAccount[]> {
+  return await invoke('import_github_copilot_from_local');
+}
+
 /** 导出 GitHub Copilot 账号 */
 export async function exportGitHubCopilotAccounts(accountIds: string[]): Promise<string> {
   return await invoke('export_github_copilot_accounts', { accountIds });

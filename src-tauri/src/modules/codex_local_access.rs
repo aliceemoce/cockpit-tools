@@ -1,11 +1,12 @@
 use crate::models::codex::{CodexAccount, CodexApiProviderMode};
 use crate::models::codex_local_access::{
-    CodexLocalAccessAccountStats, CodexLocalAccessCollection, CodexLocalAccessRoutingStrategy,
-    CodexLocalAccessState, CodexLocalAccessStats, CodexLocalAccessStatsWindow,
-    CodexLocalAccessUsageEvent, CodexLocalAccessUsageStats,
+    CodexLocalAccessAccountStats, CodexLocalAccessCollection, CodexLocalAccessPortCleanupResult,
+    CodexLocalAccessRoutingStrategy, CodexLocalAccessState, CodexLocalAccessStats,
+    CodexLocalAccessStatsWindow, CodexLocalAccessUsageEvent, CodexLocalAccessUsageStats,
 };
 use crate::modules::atomic_write::write_string_atomic;
-use crate::modules::{codex_account, codex_oauth, codex_wakeup, logger};
+use crate::modules::{codex_account, codex_oauth, codex_wakeup, logger, process};
+use base64::{engine::general_purpose, Engine as _};
 use futures_util::StreamExt;
 use rand::{distributions::Alphanumeric, Rng};
 use reqwest::header::{HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
@@ -24,7 +25,9 @@ use tokio::time::{timeout, Duration};
 
 const CODEX_LOCAL_ACCESS_FILE: &str = "codex_local_access.json";
 const CODEX_LOCAL_ACCESS_STATS_FILE: &str = "codex_local_access_stats.json";
-const MAX_HTTP_REQUEST_BYTES: usize = 8 * 1024 * 1024;
+const CODEX_LOCAL_ACCESS_BIND_HOST: &str = "0.0.0.0";
+const CODEX_LOCAL_ACCESS_URL_HOST: &str = "127.0.0.1";
+const MAX_HTTP_REQUEST_BYTES: usize = 64 * 1024 * 1024;
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_REQUEST_RETRY_WAIT: Duration = Duration::from_secs(3);
 const MAX_REQUEST_RETRY_ATTEMPTS: usize = 1;
@@ -43,6 +46,7 @@ const DAY_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 const WEEK_WINDOW_MS: i64 = 7 * DAY_WINDOW_MS;
 const MONTH_WINDOW_MS: i64 = 30 * DAY_WINDOW_MS;
 const MAX_RECENT_USAGE_EVENTS: usize = 5_000;
+const GATEWAY_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const UPSTREAM_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_CODEX_USER_AGENT: &str =
     "codex-tui/0.118.0 (Mac OS 26.3.1; arm64) iTerm.app/3.6.9 (codex-tui; 0.118.0)";
@@ -60,8 +64,12 @@ const DEFAULT_CODEX_MODELS: &[&str] = &[
     "gpt-5.1-codex-max",
     "gpt-5.1-codex-mini",
 ];
+const CODEX_IMAGE_MODEL_ID: &str = "gpt-image-2";
+const DEFAULT_IMAGES_MAIN_MODEL: &str = "gpt-5.4-mini";
 const CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 const RESPONSES_PATH: &str = "/v1/responses";
+const IMAGES_GENERATIONS_PATH: &str = "/v1/images/generations";
+const IMAGES_EDITS_PATH: &str = "/v1/images/edits";
 static GATEWAY_RUNTIME: OnceLock<TokioMutex<GatewayRuntime>> = OnceLock::new();
 static GATEWAY_ROUND_ROBIN_CURSOR: AtomicUsize = AtomicUsize::new(0);
 static UPSTREAM_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -96,6 +104,29 @@ struct UsageCapture {
 struct ResponseCapture {
     usage: Option<UsageCapture>,
     response_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ImageCallResult {
+    result: String,
+    revised_prompt: String,
+    output_format: String,
+    size: String,
+    background: String,
+    quality: String,
+}
+
+#[derive(Debug, Clone)]
+struct MultipartFilePart {
+    name: String,
+    content_type: String,
+    data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MultipartFormData {
+    fields: HashMap<String, String>,
+    files: Vec<MultipartFilePart>,
 }
 
 #[derive(Debug, Clone)]
@@ -156,6 +187,11 @@ enum GatewayResponseAdapter {
         requested_model: String,
         original_request_body: Vec<u8>,
     },
+    Images {
+        stream: bool,
+        response_format: String,
+        stream_prefix: String,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -169,6 +205,7 @@ struct RoutingCandidate {
     account_id: String,
     plan_rank: Option<i32>,
     remaining_quota: Option<i32>,
+    subscription_expiry_ms: Option<i64>,
 }
 
 fn gateway_runtime() -> &'static TokioMutex<GatewayRuntime> {
@@ -336,7 +373,7 @@ fn has_date_snapshot_suffix(value: &str) -> bool {
 
 fn supported_codex_model_ids() -> Vec<String> {
     let mut seen = HashSet::new();
-    let model_ids: Vec<String> = codex_wakeup::load_state_for_scheduler()
+    let mut model_ids: Vec<String> = codex_wakeup::load_state_for_scheduler()
         .ok()
         .map(|state| {
             state
@@ -350,13 +387,22 @@ fn supported_codex_model_ids() -> Vec<String> {
         .unwrap_or_default();
 
     if model_ids.is_empty() {
-        DEFAULT_CODEX_MODELS
+        model_ids = DEFAULT_CODEX_MODELS
             .iter()
             .map(|model| (*model).to_string())
-            .collect()
-    } else {
-        model_ids
+            .collect();
     }
+
+    let mut seen_model_ids: HashSet<String> = model_ids
+        .iter()
+        .map(|model| model.trim().to_ascii_lowercase())
+        .filter(|model| !model.is_empty())
+        .collect();
+    if seen_model_ids.insert(CODEX_IMAGE_MODEL_ID.to_string()) {
+        model_ids.push(CODEX_IMAGE_MODEL_ID.to_string());
+    }
+
+    model_ids
 }
 
 fn resolve_supported_model_alias(model: &str) -> String {
@@ -406,6 +452,549 @@ fn parse_request_body_json(body: &[u8]) -> Option<Value> {
         return None;
     }
     serde_json::from_slice::<Value>(body).ok()
+}
+
+fn proxy_target_path(target: &str) -> &str {
+    target.split('?').next().unwrap_or(target).trim()
+}
+
+fn is_images_generations_request(target: &str) -> bool {
+    let path = proxy_target_path(target);
+    path == IMAGES_GENERATIONS_PATH || path.ends_with("/images/generations")
+}
+
+fn is_images_edits_request(target: &str) -> bool {
+    let path = proxy_target_path(target);
+    path == IMAGES_EDITS_PATH || path.ends_with("/images/edits")
+}
+
+fn is_responses_request(target: &str) -> bool {
+    let path = proxy_target_path(target);
+    path == RESPONSES_PATH || path.ends_with("/responses")
+}
+
+fn normalize_image_model_base(model: &str) -> String {
+    let mut base_model = model.trim();
+    if let Some(index) = base_model.rfind('/') {
+        if index < base_model.len().saturating_sub(1) {
+            base_model = base_model[index + 1..].trim();
+        }
+    }
+    base_model.to_string()
+}
+
+fn normalize_image_response_format(value: Option<&Value>) -> String {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .unwrap_or("b64_json")
+        .to_ascii_lowercase()
+}
+
+fn validate_image_model(model: &str) -> Result<String, String> {
+    let trimmed = model.trim();
+    let base_model = normalize_image_model_base(trimmed);
+    if base_model == CODEX_IMAGE_MODEL_ID {
+        return Ok(CODEX_IMAGE_MODEL_ID.to_string());
+    }
+
+    Err(format!(
+        "Model {} is not supported on {} or {}. Use {}.",
+        if trimmed.is_empty() {
+            "<empty>"
+        } else {
+            trimmed
+        },
+        IMAGES_GENERATIONS_PATH,
+        IMAGES_EDITS_PATH,
+        CODEX_IMAGE_MODEL_ID
+    ))
+}
+
+fn json_string_field<'a>(object: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn insert_json_string_field(
+    target: &mut Map<String, Value>,
+    source: &Map<String, Value>,
+    key: &str,
+) {
+    if let Some(value) = json_string_field(source, key) {
+        target.insert(key.to_string(), Value::String(value.to_string()));
+    }
+}
+
+fn insert_json_number_field(
+    target: &mut Map<String, Value>,
+    source: &Map<String, Value>,
+    key: &str,
+) {
+    if let Some(value) = source.get(key).filter(|item| item.is_number()) {
+        target.insert(key.to_string(), value.clone());
+    }
+}
+
+fn build_image_generation_tool(
+    source: &Map<String, Value>,
+    action: &str,
+    include_edit_fields: bool,
+) -> Result<Value, String> {
+    let image_model = json_string_field(source, "model").unwrap_or(CODEX_IMAGE_MODEL_ID);
+    let canonical_model = validate_image_model(image_model)?;
+
+    let mut tool = Map::new();
+    tool.insert(
+        "type".to_string(),
+        Value::String("image_generation".to_string()),
+    );
+    tool.insert("action".to_string(), Value::String(action.to_string()));
+    tool.insert("model".to_string(), Value::String(canonical_model));
+
+    for key in [
+        "size",
+        "quality",
+        "background",
+        "output_format",
+        "moderation",
+    ] {
+        insert_json_string_field(&mut tool, source, key);
+    }
+    if include_edit_fields {
+        insert_json_string_field(&mut tool, source, "input_fidelity");
+    }
+    for key in ["output_compression", "partial_images"] {
+        insert_json_number_field(&mut tool, source, key);
+    }
+
+    Ok(Value::Object(tool))
+}
+
+fn should_inject_image_generation_tool(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase();
+    !normalized.is_empty() && !normalized.ends_with("spark")
+}
+
+fn ensure_image_generation_tool_in_object(object: &mut Map<String, Value>) -> bool {
+    let model = object.get("model").and_then(Value::as_str).unwrap_or("");
+    if !should_inject_image_generation_tool(model) {
+        return false;
+    }
+
+    let tool = json!({
+        "type": "image_generation",
+        "output_format": "png",
+    });
+
+    match object.get_mut("tools") {
+        Some(Value::Array(tools)) => {
+            if tools
+                .iter()
+                .any(|item| item.get("type").and_then(Value::as_str) == Some("image_generation"))
+            {
+                false
+            } else {
+                tools.push(tool);
+                true
+            }
+        }
+        _ => {
+            object.insert("tools".to_string(), Value::Array(vec![tool]));
+            true
+        }
+    }
+}
+
+fn build_images_responses_body(prompt: &str, images: &[String], tool: Value) -> Value {
+    let mut content = vec![json!({
+        "type": "input_text",
+        "text": prompt,
+    })];
+    for image in images {
+        let image_url = image.trim();
+        if image_url.is_empty() {
+            continue;
+        }
+        content.push(json!({
+            "type": "input_image",
+            "image_url": image_url,
+        }));
+    }
+
+    json!({
+        "instructions": "",
+        "stream": true,
+        "reasoning": {
+            "effort": "medium",
+            "summary": "auto",
+        },
+        "parallel_tool_calls": true,
+        "include": ["reasoning.encrypted_content"],
+        "model": DEFAULT_IMAGES_MAIN_MODEL,
+        "store": false,
+        "tool_choice": {
+            "type": "image_generation",
+        },
+        "input": [{
+            "type": "message",
+            "role": "user",
+            "content": content,
+        }],
+        "tools": [tool],
+    })
+}
+
+fn build_images_generation_request(body: &Value) -> Result<(Value, bool, String), String> {
+    let request_obj = body
+        .as_object()
+        .ok_or("images/generations 请求体必须是 JSON 对象".to_string())?;
+    let prompt = json_string_field(request_obj, "prompt")
+        .ok_or("images/generations 请求缺少 prompt".to_string())?;
+    let response_format = normalize_image_response_format(request_obj.get("response_format"));
+    let stream = request_obj
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let tool = build_image_generation_tool(request_obj, "generate", false)?;
+
+    Ok((
+        build_images_responses_body(prompt, &[], tool),
+        stream,
+        response_format,
+    ))
+}
+
+fn extract_json_edit_images(request_obj: &Map<String, Value>) -> Vec<String> {
+    let mut images = Vec::new();
+
+    if let Some(image) = request_obj.get("image").and_then(Value::as_str) {
+        let trimmed = image.trim();
+        if !trimmed.is_empty() {
+            images.push(trimmed.to_string());
+        }
+    }
+
+    if let Some(image_array) = request_obj.get("images").and_then(Value::as_array) {
+        for image in image_array {
+            if let Some(url) = image
+                .get("image_url")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                images.push(url.to_string());
+            } else if let Some(url) = image
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                images.push(url.to_string());
+            }
+        }
+    }
+
+    images
+}
+
+fn build_images_edit_request_from_json(body: &Value) -> Result<(Value, bool, String), String> {
+    let request_obj = body
+        .as_object()
+        .ok_or("images/edits 请求体必须是 JSON 对象".to_string())?;
+    let prompt = json_string_field(request_obj, "prompt")
+        .ok_or("images/edits 请求缺少 prompt".to_string())?;
+    let images = extract_json_edit_images(request_obj);
+    if images.is_empty() {
+        return Err("images/edits 请求缺少 images[].image_url".to_string());
+    }
+
+    let response_format = normalize_image_response_format(request_obj.get("response_format"));
+    let stream = request_obj
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let mut tool = build_image_generation_tool(request_obj, "edit", true)?;
+    if let Some(mask_url) = request_obj
+        .get("mask")
+        .and_then(|mask| mask.get("image_url"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(tool_obj) = tool.as_object_mut() {
+            tool_obj.insert(
+                "input_image_mask".to_string(),
+                json!({ "image_url": mask_url }),
+            );
+        }
+    }
+
+    Ok((
+        build_images_responses_body(prompt, &images, tool),
+        stream,
+        response_format,
+    ))
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn extract_multipart_boundary(content_type: &str) -> Option<String> {
+    content_type.split(';').find_map(|part| {
+        let trimmed = part.trim();
+        let (name, value) = trimmed.split_once('=')?;
+        if !name.trim().eq_ignore_ascii_case("boundary") {
+            return None;
+        }
+        let boundary = value.trim().trim_matches('"').to_string();
+        if boundary.is_empty() {
+            None
+        } else {
+            Some(boundary)
+        }
+    })
+}
+
+fn parse_content_disposition_params(value: &str) -> HashMap<String, String> {
+    let mut params = HashMap::new();
+    for part in value.split(';').skip(1) {
+        let Some((name, raw_value)) = part.trim().split_once('=') else {
+            continue;
+        };
+        let key = name.trim().to_ascii_lowercase();
+        let value = raw_value.trim().trim_matches('"').to_string();
+        if !key.is_empty() {
+            params.insert(key, value);
+        }
+    }
+    params
+}
+
+fn trim_part_trailing_newline(mut data: &[u8]) -> &[u8] {
+    if data.ends_with(b"\r\n") {
+        data = &data[..data.len().saturating_sub(2)];
+    } else if data.ends_with(b"\n") {
+        data = &data[..data.len().saturating_sub(1)];
+    }
+    data
+}
+
+fn parse_multipart_form_data(content_type: &str, body: &[u8]) -> Result<MultipartFormData, String> {
+    let boundary = extract_multipart_boundary(content_type)
+        .ok_or("multipart/form-data 缺少 boundary".to_string())?;
+    let marker = format!("--{}", boundary).into_bytes();
+    let mut form = MultipartFormData::default();
+    let mut search_from = 0usize;
+
+    loop {
+        let Some(marker_index) = find_subslice(&body[search_from..], &marker) else {
+            break;
+        };
+        let marker_start = search_from + marker_index;
+        let mut part_start = marker_start + marker.len();
+
+        if body
+            .get(part_start..part_start + 2)
+            .map(|bytes| bytes == b"--")
+            .unwrap_or(false)
+        {
+            break;
+        }
+        if body
+            .get(part_start..part_start + 2)
+            .map(|bytes| bytes == b"\r\n")
+            .unwrap_or(false)
+        {
+            part_start += 2;
+        } else if body
+            .get(part_start..part_start + 1)
+            .map(|bytes| bytes == b"\n")
+            .unwrap_or(false)
+        {
+            part_start += 1;
+        }
+
+        let Some(next_marker_offset) = find_subslice(&body[part_start..], &marker) else {
+            break;
+        };
+        let next_marker_start = part_start + next_marker_offset;
+        let part = trim_part_trailing_newline(&body[part_start..next_marker_start]);
+        search_from = next_marker_start;
+
+        let Some(header_end) = find_header_end(part) else {
+            continue;
+        };
+        let header_text = String::from_utf8_lossy(&part[..header_end]);
+        let part_body = &part[header_end..];
+        let mut part_name = String::new();
+        let mut part_filename = String::new();
+        let mut part_content_type = String::new();
+
+        for line in header_text.lines() {
+            let Some((name, value)) = line.split_once(':') else {
+                continue;
+            };
+            if name.trim().eq_ignore_ascii_case("content-disposition") {
+                let params = parse_content_disposition_params(value);
+                part_name = params.get("name").cloned().unwrap_or_default();
+                part_filename = params.get("filename").cloned().unwrap_or_default();
+            } else if name.trim().eq_ignore_ascii_case("content-type") {
+                part_content_type = value.trim().to_string();
+            }
+        }
+
+        if part_name.is_empty() {
+            continue;
+        }
+        if part_filename.is_empty() {
+            let text = String::from_utf8_lossy(part_body).trim().to_string();
+            form.fields.insert(part_name, text);
+        } else {
+            form.files.push(MultipartFilePart {
+                name: part_name,
+                content_type: part_content_type,
+                data: part_body.to_vec(),
+            });
+        }
+    }
+
+    Ok(form)
+}
+
+fn detect_image_mime_type(data: &[u8], fallback: &str) -> String {
+    let fallback = fallback.trim();
+    if !fallback.is_empty() && fallback != "application/octet-stream" {
+        return fallback.to_string();
+    }
+    if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "image/png".to_string()
+    } else if data.starts_with(b"\xff\xd8\xff") {
+        "image/jpeg".to_string()
+    } else if data.starts_with(b"RIFF")
+        && data
+            .get(8..12)
+            .map(|bytes| bytes == b"WEBP")
+            .unwrap_or(false)
+    {
+        "image/webp".to_string()
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        "image/gif".to_string()
+    } else {
+        "application/octet-stream".to_string()
+    }
+}
+
+fn multipart_file_to_data_url(file: &MultipartFilePart) -> String {
+    let mime_type = detect_image_mime_type(&file.data, &file.content_type);
+    format!(
+        "data:{};base64,{}",
+        mime_type,
+        general_purpose::STANDARD.encode(&file.data)
+    )
+}
+
+fn multipart_field_value<'a>(form: &'a MultipartFormData, key: &str) -> Option<&'a str> {
+    form.fields
+        .get(key)
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn multipart_field_bool(form: &MultipartFormData, key: &str, fallback: bool) -> bool {
+    match multipart_field_value(form, key)
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "1" | "true" | "yes" | "on" => true,
+        "0" | "false" | "no" | "off" => false,
+        _ => fallback,
+    }
+}
+
+fn multipart_field_number(form: &MultipartFormData, key: &str) -> Option<Value> {
+    let raw = multipart_field_value(form, key)?;
+    raw.parse::<i64>().ok().map(|value| json!(value))
+}
+
+fn build_images_edit_request_from_multipart(
+    content_type: &str,
+    body: &[u8],
+) -> Result<(Value, bool, String), String> {
+    let form = parse_multipart_form_data(content_type, body)?;
+    let prompt =
+        multipart_field_value(&form, "prompt").ok_or("images/edits 请求缺少 prompt".to_string())?;
+    let image_files: Vec<&MultipartFilePart> = form
+        .files
+        .iter()
+        .filter(|file| file.name == "image" || file.name == "image[]")
+        .collect();
+    if image_files.is_empty() {
+        return Err("images/edits 请求缺少 image".to_string());
+    }
+
+    let mut request_obj = Map::new();
+    request_obj.insert(
+        "model".to_string(),
+        Value::String(
+            multipart_field_value(&form, "model")
+                .unwrap_or(CODEX_IMAGE_MODEL_ID)
+                .to_string(),
+        ),
+    );
+    for key in [
+        "size",
+        "quality",
+        "background",
+        "output_format",
+        "input_fidelity",
+        "moderation",
+    ] {
+        if let Some(value) = multipart_field_value(&form, key) {
+            request_obj.insert(key.to_string(), Value::String(value.to_string()));
+        }
+    }
+    for key in ["output_compression", "partial_images"] {
+        if let Some(value) = multipart_field_number(&form, key) {
+            request_obj.insert(key.to_string(), value);
+        }
+    }
+
+    let response_format = multipart_field_value(&form, "response_format")
+        .unwrap_or("b64_json")
+        .to_ascii_lowercase();
+    let stream = multipart_field_bool(&form, "stream", false);
+    let mut tool = build_image_generation_tool(&request_obj, "edit", true)?;
+    if let Some(mask_file) = form.files.iter().find(|file| file.name == "mask") {
+        if let Some(tool_obj) = tool.as_object_mut() {
+            tool_obj.insert(
+                "input_image_mask".to_string(),
+                json!({ "image_url": multipart_file_to_data_url(mask_file) }),
+            );
+        }
+    }
+
+    let images: Vec<String> = image_files
+        .into_iter()
+        .map(multipart_file_to_data_url)
+        .collect();
+
+    Ok((
+        build_images_responses_body(prompt, &images, tool),
+        stream,
+        response_format,
+    ))
 }
 
 fn build_request_routing_hint(request: &ParsedRequest) -> RequestRoutingHint {
@@ -967,15 +1556,91 @@ fn build_responses_body_from_chat_completions(
         responses_obj.insert("text".to_string(), Value::Object(text_obj));
     }
 
+    ensure_image_generation_tool_in_object(&mut responses_obj);
+
     Ok((Value::Object(responses_obj), stream, model))
 }
 
 fn prepare_gateway_request(
     mut request: ParsedRequest,
 ) -> Result<(ParsedRequest, GatewayResponseAdapter), String> {
+    if is_images_generations_request(&request.target) {
+        if !request.method.eq_ignore_ascii_case("POST") {
+            return Err("images/generations 仅支持 POST".to_string());
+        }
+        let body_value = parse_request_body_json(&request.body)
+            .ok_or("images/generations 请求体必须是合法 JSON".to_string())?;
+        let (responses_body, stream, response_format) =
+            build_images_generation_request(&body_value)?;
+        request.target = RESPONSES_PATH.to_string();
+        request.body = serde_json::to_vec(&responses_body)
+            .map_err(|e| format!("序列化 images/generations 请求体失败: {}", e))?;
+        request
+            .headers
+            .insert("accept".to_string(), "text/event-stream".to_string());
+        request
+            .headers
+            .insert("content-type".to_string(), "application/json".to_string());
+        return Ok((
+            request,
+            GatewayResponseAdapter::Images {
+                stream,
+                response_format,
+                stream_prefix: "image_generation".to_string(),
+            },
+        ));
+    }
+
+    if is_images_edits_request(&request.target) {
+        if !request.method.eq_ignore_ascii_case("POST") {
+            return Err("images/edits 仅支持 POST".to_string());
+        }
+        let content_type = request
+            .headers
+            .get("content-type")
+            .map(String::as_str)
+            .unwrap_or("");
+        let content_type_lower = content_type.to_ascii_lowercase();
+        let (responses_body, stream, response_format) =
+            if content_type_lower.starts_with("multipart/form-data") {
+                build_images_edit_request_from_multipart(&content_type, &request.body)?
+            } else {
+                let body_value = parse_request_body_json(&request.body)
+                    .ok_or("images/edits 请求体必须是合法 JSON".to_string())?;
+                build_images_edit_request_from_json(&body_value)?
+            };
+        request.target = RESPONSES_PATH.to_string();
+        request.body = serde_json::to_vec(&responses_body)
+            .map_err(|e| format!("序列化 images/edits 请求体失败: {}", e))?;
+        request
+            .headers
+            .insert("accept".to_string(), "text/event-stream".to_string());
+        request
+            .headers
+            .insert("content-type".to_string(), "application/json".to_string());
+        return Ok((
+            request,
+            GatewayResponseAdapter::Images {
+                stream,
+                response_format,
+                stream_prefix: "image_edit".to_string(),
+            },
+        ));
+    }
+
     if !is_chat_completions_request(&request.target) {
         if let Some(rewritten_body) = rewrite_request_model_alias(&request.body)? {
             request.body = rewritten_body;
+        }
+        if is_responses_request(&request.target) {
+            if let Some(mut body_value) = parse_request_body_json(&request.body) {
+                if let Some(body_obj) = body_value.as_object_mut() {
+                    if ensure_image_generation_tool_in_object(body_obj) {
+                        request.body = serde_json::to_vec(&body_value)
+                            .map_err(|e| format!("序列化 responses 请求体失败: {}", e))?;
+                    }
+                }
+            }
         }
         let request_is_stream = is_stream_request(&request.headers, &request.body);
         return Ok((
@@ -1672,10 +2337,11 @@ fn resolve_plan_rank(account: &CodexAccount) -> Option<i32> {
         "business" => 650,
         "team" => 640,
         "edu" => 630,
+        // CPA 对齐：plan_type='pro' 默认视为 promax (20x)，
+        // 只有显式声明 prolite 时才降级
         "pro" => match auth_file_plan_type {
-            Some("promax") => 560,
             Some("prolite") => 520,
-            _ => 540,
+            _ => 560, // pro / promax 均为 20x 级别
         },
         "plus" => 420,
         "go" => 360,
@@ -1698,6 +2364,25 @@ fn resolve_remaining_quota(account: &CodexAccount) -> Option<i32> {
     percentages.into_iter().min()
 }
 
+fn resolve_subscription_expiry_ms(account: &CodexAccount) -> Option<i64> {
+    let raw = account.subscription_active_until.as_deref()?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    if raw.chars().all(|ch| ch.is_ascii_digit()) {
+        let mut timestamp = raw.parse::<i64>().ok()?;
+        if timestamp < 1_000_000_000_000 {
+            timestamp *= 1000;
+        }
+        return Some(timestamp);
+    }
+
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .ok()
+        .map(|parsed| parsed.timestamp_millis())
+}
+
 fn build_routing_candidates(ordered_account_ids: &[String]) -> Vec<RoutingCandidate> {
     ordered_account_ids
         .iter()
@@ -1708,6 +2393,7 @@ fn build_routing_candidates(ordered_account_ids: &[String]) -> Vec<RoutingCandid
                 account_id: account_id.clone(),
                 plan_rank: account.as_ref().and_then(resolve_plan_rank),
                 remaining_quota: account.as_ref().and_then(resolve_remaining_quota),
+                subscription_expiry_ms: account.as_ref().and_then(resolve_subscription_expiry_ms),
             }
         })
         .collect()
@@ -1733,6 +2419,12 @@ fn compare_routing_candidates(
         (None, Some(_)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
     };
+    let compare_option_i64_asc = |a: Option<i64>, b: Option<i64>| match (a, b) {
+        (Some(left), Some(right)) => left.cmp(&right),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    };
 
     let ordering = match strategy {
         CodexLocalAccessRoutingStrategy::Auto => {
@@ -1753,6 +2445,11 @@ fn compare_routing_candidates(
         }
         CodexLocalAccessRoutingStrategy::PlanLowFirst => {
             compare_option_asc(left.plan_rank, right.plan_rank)
+                .then_with(|| compare_option_desc(left.remaining_quota, right.remaining_quota))
+        }
+        CodexLocalAccessRoutingStrategy::ExpirySoonFirst => {
+            compare_option_i64_asc(left.subscription_expiry_ms, right.subscription_expiry_ms)
+                .then_with(|| compare_option_desc(left.plan_rank, right.plan_rank))
                 .then_with(|| compare_option_desc(left.remaining_quota, right.remaining_quota))
         }
     };
@@ -2008,11 +2705,11 @@ fn recompute_time_windows(stats: &mut CodexLocalAccessStats, now: i64) {
 }
 
 fn build_api_port_url(port: u16) -> String {
-    format!("http://127.0.0.1:{port}{CHAT_COMPLETIONS_PATH}")
+    format!("http://{CODEX_LOCAL_ACCESS_URL_HOST}:{port}{CHAT_COMPLETIONS_PATH}")
 }
 
 fn build_base_url(port: u16) -> String {
-    format!("http://127.0.0.1:{port}/v1")
+    format!("http://{CODEX_LOCAL_ACCESS_URL_HOST}:{port}/v1")
 }
 
 fn build_runtime_account(base_url: String, api_key: String) -> CodexAccount {
@@ -2039,7 +2736,7 @@ fn generate_local_api_key() -> String {
 }
 
 fn allocate_random_local_port() -> Result<u16, String> {
-    let listener = StdTcpListener::bind(("127.0.0.1", 0))
+    let listener = StdTcpListener::bind((CODEX_LOCAL_ACCESS_BIND_HOST, 0))
         .map_err(|e| format!("分配本地接入端口失败: {}", e))?;
     listener
         .local_addr()
@@ -2209,10 +2906,20 @@ fn ensure_local_port_available(port: u16, current_port: Option<u16>) -> Result<(
     if current_port == Some(port) {
         return Ok(());
     }
-    let listener = StdTcpListener::bind(("127.0.0.1", port))
+    let listener = StdTcpListener::bind((CODEX_LOCAL_ACCESS_BIND_HOST, port))
         .map_err(|e| format!("端口 {} 不可用: {}", port, e))?;
     drop(listener);
     Ok(())
+}
+
+fn format_gateway_bind_error(port: u16, error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::AddrInUse {
+        return format!(
+            "启动本地接入服务失败: 端口 {} 已被占用，请先清理端口或改用其他端口（{}）",
+            port, error
+        );
+    }
+    format!("启动本地接入服务失败: {}", error)
 }
 
 fn is_free_plan_type(plan_type: Option<&str>) -> bool {
@@ -2284,7 +2991,7 @@ fn sanitize_collection(
     Ok((changed, valid_account_ids))
 }
 
-async fn ensure_runtime_loaded() -> Result<(), String> {
+async fn ensure_runtime_loaded_without_start() -> Result<(), String> {
     {
         let runtime = gateway_runtime().lock().await;
         if runtime.loaded {
@@ -2322,11 +3029,6 @@ async fn ensure_runtime_loaded() -> Result<(), String> {
         }
     }
 
-    let should_start = next_collection
-        .as_ref()
-        .map(|collection| collection.enabled)
-        .unwrap_or(false);
-
     {
         let mut runtime = gateway_runtime().lock().await;
         normalize_stats(&mut loaded_stats);
@@ -2342,6 +3044,21 @@ async fn ensure_runtime_loaded() -> Result<(), String> {
             prune_prepared_account_cache(&mut runtime, now_ms());
         }
     }
+
+    Ok(())
+}
+
+async fn ensure_runtime_loaded() -> Result<(), String> {
+    ensure_runtime_loaded_without_start().await?;
+
+    let should_start = {
+        let runtime = gateway_runtime().lock().await;
+        runtime
+            .collection
+            .as_ref()
+            .map(|collection| collection.enabled)
+            .unwrap_or(false)
+    };
 
     if should_start {
         ensure_gateway_matches_runtime().await?;
@@ -2386,9 +3103,17 @@ async fn ensure_gateway_matches_runtime() -> Result<(), String> {
 
     stop_gateway().await;
 
-    let listener = TcpListener::bind(("127.0.0.1", collection.port))
-        .await
-        .map_err(|e| format!("启动本地接入服务失败: {}", e))?;
+    let listener = match TcpListener::bind((CODEX_LOCAL_ACCESS_BIND_HOST, collection.port)).await {
+        Ok(listener) => listener,
+        Err(error) => {
+            let message = format_gateway_bind_error(collection.port, &error);
+            let mut runtime = gateway_runtime().lock().await;
+            runtime.running = false;
+            runtime.actual_port = None;
+            runtime.last_error = Some(message.clone());
+            return Err(message);
+        }
+    };
     let (shutdown_sender, mut shutdown_receiver) = watch::channel(false);
     let port = collection.port;
 
@@ -2457,8 +3182,17 @@ async fn stop_gateway() {
     if let Some(sender) = shutdown_sender {
         let _ = sender.send(true);
     }
-    if let Some(task) = task {
-        let _ = task.await;
+    if let Some(mut task) = task {
+        tokio::select! {
+            result = &mut task => {
+                let _ = result;
+            }
+            _ = tokio::time::sleep(GATEWAY_SHUTDOWN_TIMEOUT) => {
+                logger::log_codex_api_warn("[CodexLocalAccess] 停止本地接入服务超时，已强制中止监听任务");
+                task.abort();
+                let _ = task.await;
+            }
+        }
     }
 }
 
@@ -2597,8 +3331,12 @@ fn build_state_snapshot(runtime: &GatewayRuntime) -> CodexLocalAccessState {
 }
 
 async fn snapshot_state() -> Result<CodexLocalAccessState, String> {
-    ensure_runtime_loaded().await?;
-    ensure_gateway_matches_runtime().await?;
+    ensure_runtime_loaded_without_start().await?;
+    if let Err(err) = ensure_gateway_matches_runtime().await {
+        let mut runtime = gateway_runtime().lock().await;
+        runtime.last_error = Some(err);
+        return Ok(build_state_snapshot(&runtime));
+    }
     let runtime = gateway_runtime().lock().await;
     Ok(build_state_snapshot(&runtime))
 }
@@ -2780,6 +3518,45 @@ pub async fn clear_local_access_stats() -> Result<CodexLocalAccessState, String>
     schedule_stats_flush_if_needed().await;
 
     snapshot_state().await
+}
+
+pub async fn prepare_local_access_gateway_for_restart() -> Result<CodexLocalAccessState, String> {
+    ensure_runtime_loaded_without_start().await?;
+    stop_gateway().await;
+
+    let runtime = gateway_runtime().lock().await;
+    Ok(build_state_snapshot(&runtime))
+}
+
+pub async fn kill_local_access_port_processes() -> Result<CodexLocalAccessPortCleanupResult, String>
+{
+    if let Err(err) = ensure_runtime_loaded_without_start().await {
+        logger::log_codex_api_warn(&format!(
+            "[CodexLocalAccess] 清理端口前加载配置失败: {}",
+            err
+        ));
+        return Err(err);
+    }
+
+    let collection = {
+        let runtime = gateway_runtime().lock().await;
+        runtime.collection.clone()
+    }
+    .ok_or_else(|| "API 服务集合尚未创建".to_string())?;
+
+    stop_gateway().await;
+
+    let killed_count = process::kill_port_processes(collection.port)? as u32;
+
+    if collection.enabled {
+        ensure_gateway_matches_runtime().await?;
+    }
+
+    let state = snapshot_state().await?;
+    Ok(CodexLocalAccessPortCleanupResult {
+        killed_count,
+        state,
+    })
 }
 
 pub async fn update_local_access_port(port: u16) -> Result<CodexLocalAccessState, String> {
@@ -3679,6 +4456,335 @@ fn parse_responses_payload_from_upstream(body_bytes: &[u8]) -> Result<Value, Str
     Ok(Value::Object(root))
 }
 
+fn mime_type_from_output_format(output_format: &str) -> String {
+    let output_format = output_format.trim();
+    if output_format.contains('/') {
+        return output_format.to_string();
+    }
+    match output_format.to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" => "image/jpeg".to_string(),
+        "webp" => "image/webp".to_string(),
+        _ => "image/png".to_string(),
+    }
+}
+
+fn extract_images_from_responses_payload(
+    response_body: &Value,
+) -> (
+    Vec<ImageCallResult>,
+    i64,
+    Option<Value>,
+    Option<ImageCallResult>,
+) {
+    let root = response_payload_root(response_body);
+    let created = root
+        .get("created_at")
+        .or_else(|| root.get("created"))
+        .and_then(Value::as_i64)
+        .unwrap_or_else(|| chrono::Utc::now().timestamp());
+    let mut results = Vec::new();
+    let mut first_meta = None;
+
+    if let Some(output_items) = root.get("output").and_then(Value::as_array) {
+        for item in output_items {
+            if item.get("type").and_then(Value::as_str) != Some("image_generation_call") {
+                continue;
+            }
+            let result = item
+                .get("result")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let Some(result) = result else {
+                continue;
+            };
+            let entry = ImageCallResult {
+                result: result.to_string(),
+                revised_prompt: item
+                    .get("revised_prompt")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                output_format: item
+                    .get("output_format")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                size: item
+                    .get("size")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                background: item
+                    .get("background")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                quality: item
+                    .get("quality")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+            };
+            if first_meta.is_none() {
+                first_meta = Some(entry.clone());
+            }
+            results.push(entry);
+        }
+    }
+
+    let usage = root
+        .get("tool_usage")
+        .and_then(|tool_usage| tool_usage.get("image_gen"))
+        .filter(|value| value.is_object())
+        .cloned();
+
+    (results, created, usage, first_meta)
+}
+
+fn build_images_api_payload(response_body: &Value, response_format: &str) -> Result<Value, String> {
+    let (results, created, usage, first_meta) =
+        extract_images_from_responses_payload(response_body);
+    if results.is_empty() {
+        return Err("upstream did not return image output".to_string());
+    }
+
+    let response_format = if response_format.trim().is_empty() {
+        "b64_json"
+    } else {
+        response_format.trim()
+    };
+    let mut data = Vec::new();
+    for image in results {
+        let mut item = Map::new();
+        if response_format.eq_ignore_ascii_case("url") {
+            let mime_type = mime_type_from_output_format(&image.output_format);
+            item.insert(
+                "url".to_string(),
+                Value::String(format!("data:{};base64,{}", mime_type, image.result)),
+            );
+        } else {
+            item.insert("b64_json".to_string(), Value::String(image.result));
+        }
+        if !image.revised_prompt.is_empty() {
+            item.insert(
+                "revised_prompt".to_string(),
+                Value::String(image.revised_prompt),
+            );
+        }
+        data.push(Value::Object(item));
+    }
+
+    let mut out = Map::new();
+    out.insert("created".to_string(), json!(created));
+    out.insert("data".to_string(), Value::Array(data));
+
+    if let Some(meta) = first_meta {
+        if !meta.background.is_empty() {
+            out.insert("background".to_string(), Value::String(meta.background));
+        }
+        if !meta.output_format.is_empty() {
+            out.insert(
+                "output_format".to_string(),
+                Value::String(meta.output_format),
+            );
+        }
+        if !meta.quality.is_empty() {
+            out.insert("quality".to_string(), Value::String(meta.quality));
+        }
+        if !meta.size.is_empty() {
+            out.insert("size".to_string(), Value::String(meta.size));
+        }
+    }
+    if let Some(usage) = usage {
+        out.insert("usage".to_string(), usage);
+    }
+
+    Ok(Value::Object(out))
+}
+
+fn push_named_sse_payload(stream_body: &mut String, event_name: &str, payload: Value) {
+    let event_name = event_name.trim();
+    if !event_name.is_empty() {
+        stream_body.push_str("event: ");
+        stream_body.push_str(event_name);
+        stream_body.push('\n');
+    }
+    push_sse_payload(stream_body, payload);
+}
+
+#[derive(Debug)]
+struct ImageStreamTransformer {
+    response_format: String,
+    stream_prefix: String,
+    stream_buffer: Vec<u8>,
+    response_capture: ResponseCapture,
+}
+
+impl ImageStreamTransformer {
+    fn new(response_format: &str, stream_prefix: &str) -> Self {
+        Self {
+            response_format: if response_format.trim().is_empty() {
+                "b64_json".to_string()
+            } else {
+                response_format.trim().to_ascii_lowercase()
+            },
+            stream_prefix: stream_prefix.to_string(),
+            stream_buffer: Vec::new(),
+            response_capture: ResponseCapture::default(),
+        }
+    }
+
+    fn feed(&mut self, chunk: &[u8]) -> Vec<u8> {
+        if chunk.is_empty() {
+            return Vec::new();
+        }
+        self.stream_buffer.extend_from_slice(chunk);
+        self.process_buffer(false)
+    }
+
+    fn finish(mut self) -> (Vec<u8>, ResponseCapture) {
+        let output = self.process_buffer(true);
+        (output, self.response_capture)
+    }
+
+    fn process_buffer(&mut self, flush_tail: bool) -> Vec<u8> {
+        let mut stream_body = String::new();
+
+        loop {
+            let Some((boundary_index, separator_len)) =
+                find_sse_frame_boundary(&self.stream_buffer)
+            else {
+                break;
+            };
+            let frame = self.stream_buffer[..boundary_index].to_vec();
+            self.stream_buffer.drain(..boundary_index + separator_len);
+            self.process_frame(&frame, &mut stream_body);
+        }
+
+        if flush_tail && !self.stream_buffer.is_empty() {
+            let frame = std::mem::take(&mut self.stream_buffer);
+            self.process_frame(&frame, &mut stream_body);
+        }
+
+        stream_body.into_bytes()
+    }
+
+    fn process_frame(&mut self, frame: &[u8], stream_body: &mut String) {
+        if frame.is_empty() {
+            return;
+        }
+
+        let text = String::from_utf8_lossy(frame);
+        let mut data_lines = Vec::new();
+        for raw_line in text.lines() {
+            let line = raw_line.trim();
+            if let Some(rest) = line.strip_prefix("data:") {
+                let payload = rest.trim();
+                if !payload.is_empty() {
+                    data_lines.push(payload.to_string());
+                }
+            }
+        }
+
+        let payload = if data_lines.is_empty() {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                return;
+            }
+            trimmed.to_string()
+        } else {
+            data_lines.join("\n")
+        };
+
+        if payload == "[DONE]" {
+            return;
+        }
+
+        let Ok(event) = serde_json::from_str::<Value>(&payload) else {
+            return;
+        };
+        if let Some(usage) = extract_usage_capture(&event) {
+            self.response_capture.usage = Some(usage);
+        }
+        if self.response_capture.response_id.is_none() {
+            self.response_capture.response_id = extract_response_id(&event);
+        }
+
+        match event.get("type").and_then(Value::as_str).unwrap_or("") {
+            "response.image_generation_call.partial_image" => {
+                let Some(b64) = event
+                    .get("partial_image_b64")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                else {
+                    return;
+                };
+                let output_format = event
+                    .get("output_format")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let event_name = format!("{}.partial_image", self.stream_prefix);
+                let mut data = Map::new();
+                data.insert("type".to_string(), Value::String(event_name.clone()));
+                data.insert(
+                    "partial_image_index".to_string(),
+                    json!(event
+                        .get("partial_image_index")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)),
+                );
+                if self.response_format == "url" {
+                    let mime_type = mime_type_from_output_format(output_format);
+                    data.insert(
+                        "url".to_string(),
+                        Value::String(format!("data:{};base64,{}", mime_type, b64)),
+                    );
+                } else {
+                    data.insert("b64_json".to_string(), Value::String(b64.to_string()));
+                }
+                push_named_sse_payload(stream_body, &event_name, Value::Object(data));
+            }
+            "response.completed" => {
+                let (results, _, usage, _) = extract_images_from_responses_payload(&event);
+                if results.is_empty() {
+                    push_named_sse_payload(
+                        stream_body,
+                        "error",
+                        json!({ "error": "upstream did not return image output" }),
+                    );
+                    return;
+                }
+                let event_name = format!("{}.completed", self.stream_prefix);
+                for image in results {
+                    let mut data = Map::new();
+                    data.insert("type".to_string(), Value::String(event_name.clone()));
+                    if self.response_format == "url" {
+                        let mime_type = mime_type_from_output_format(&image.output_format);
+                        data.insert(
+                            "url".to_string(),
+                            Value::String(format!("data:{};base64,{}", mime_type, image.result)),
+                        );
+                    } else {
+                        data.insert("b64_json".to_string(), Value::String(image.result));
+                    }
+                    if let Some(usage) = usage.clone() {
+                        data.insert("usage".to_string(), usage);
+                    }
+                    push_named_sse_payload(stream_body, &event_name, Value::Object(data));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 async fn write_chat_completions_compatible_response(
     stream: &mut TcpStream,
     upstream: reqwest::Response,
@@ -3741,6 +4847,66 @@ async fn write_chat_completions_compatible_response(
     Ok(response_capture)
 }
 
+async fn write_images_compatible_response(
+    stream: &mut TcpStream,
+    upstream: reqwest::Response,
+    stream_mode: bool,
+    response_format: &str,
+    stream_prefix: &str,
+) -> Result<ResponseCapture, String> {
+    let status = upstream.status();
+    let status_text = status.canonical_reason().unwrap_or("OK");
+    let upstream_headers = upstream.headers().clone();
+
+    if stream_mode {
+        write_chunked_response_headers(
+            stream,
+            status,
+            status_text,
+            "text/event-stream; charset=utf-8",
+            &upstream_headers,
+        )
+        .await?;
+
+        let mut transformer = ImageStreamTransformer::new(response_format, stream_prefix);
+        let mut body_stream = upstream.bytes_stream();
+        while let Some(chunk_result) = body_stream.next().await {
+            let chunk = chunk_result.map_err(|e| format!("读取上游图片响应失败: {}", e))?;
+            let transformed = transformer.feed(&chunk);
+            write_chunked_response_chunk(stream, &transformed).await?;
+        }
+
+        let (tail, response_capture) = transformer.finish();
+        write_chunked_response_chunk(stream, &tail).await?;
+        finish_chunked_response(stream).await?;
+        return Ok(response_capture);
+    }
+
+    let body_bytes = upstream
+        .bytes()
+        .await
+        .map_err(|e| format!("读取上游图片响应失败: {}", e))?;
+    let parsed = parse_responses_payload_from_upstream(&body_bytes)?;
+    let response_capture = ResponseCapture {
+        usage: extract_usage_capture(&parsed),
+        response_id: extract_response_id(&parsed),
+    };
+    let images_payload = build_images_api_payload(&parsed, response_format)?;
+    let payload_bytes = serde_json::to_vec(&images_payload)
+        .map_err(|e| format!("序列化 images 响应失败: {}", e))?;
+
+    write_http_response(
+        stream,
+        status.as_u16(),
+        status_text,
+        "application/json; charset=utf-8",
+        &payload_bytes,
+    )
+    .await?;
+
+    Ok(response_capture)
+}
+
 async fn write_gateway_response(
     stream: &mut TcpStream,
     upstream: reqwest::Response,
@@ -3761,6 +4927,20 @@ async fn write_gateway_response(
                 stream_mode,
                 requested_model.as_str(),
                 original_request_body.as_slice(),
+            )
+            .await
+        }
+        GatewayResponseAdapter::Images {
+            stream: stream_mode,
+            response_format,
+            stream_prefix,
+        } => {
+            write_images_compatible_response(
+                stream,
+                upstream,
+                stream_mode,
+                response_format.as_str(),
+                stream_prefix.as_str(),
             )
             .await
         }
@@ -4471,12 +5651,12 @@ async fn handle_connection(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_chat_completion_payload, build_chat_completion_stream_body,
-        build_ordered_account_ids, build_request_routing_hint, extract_usage_capture,
-        parse_codex_retry_after, parse_responses_payload_from_upstream, prepare_gateway_request,
-        resolve_supported_model_alias, should_retry_single_account_upstream_status,
-        should_treat_response_as_stream, should_try_next_account, GatewayResponseAdapter,
-        ParsedRequest, ResponseUsageCollector,
+        build_chat_completion_payload, build_chat_completion_stream_body, build_images_api_payload,
+        build_local_models_response, build_ordered_account_ids, build_request_routing_hint,
+        extract_usage_capture, parse_codex_retry_after, parse_responses_payload_from_upstream,
+        prepare_gateway_request, resolve_supported_model_alias,
+        should_retry_single_account_upstream_status, should_treat_response_as_stream,
+        should_try_next_account, GatewayResponseAdapter, ParsedRequest, ResponseUsageCollector,
     };
     use reqwest::StatusCode;
     use serde_json::{json, Value};
@@ -4649,6 +5829,22 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
     }
 
     #[test]
+    fn local_models_include_codex_image_model() {
+        let response = build_local_models_response();
+        let has_image_model = response
+            .get("data")
+            .and_then(Value::as_array)
+            .map(|models| {
+                models
+                    .iter()
+                    .any(|model| model.get("id").and_then(Value::as_str) == Some("gpt-image-2"))
+            })
+            .unwrap_or(false);
+
+        assert!(has_image_model);
+    }
+
+    #[test]
     fn prepares_chat_completions_request_for_responses_proxy() {
         let request = ParsedRequest {
             method: "POST".to_string(),
@@ -4686,6 +5882,13 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
                 .and_then(Value::as_str),
             Some("medium")
         );
+        assert!(mapped_body
+            .get("tools")
+            .and_then(Value::as_array)
+            .map(|tools| tools.iter().any(|tool| {
+                tool.get("type").and_then(Value::as_str) == Some("image_generation")
+            }))
+            .unwrap_or(false));
 
         match adapter {
             GatewayResponseAdapter::ChatCompletions {
@@ -4698,6 +5901,188 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
             }
             _ => panic!("expected chat completions adapter"),
         }
+    }
+
+    #[test]
+    fn prepares_images_generation_request_for_responses_proxy() {
+        let request = ParsedRequest {
+            method: "POST".to_string(),
+            target: "/v1/images/generations".to_string(),
+            headers: HashMap::new(),
+            body: br#"{"model":"gpt-image-2","prompt":"draw a clean icon","size":"1024x1024","response_format":"b64_json"}"#.to_vec(),
+        };
+
+        let (prepared, adapter) = prepare_gateway_request(request).expect("request should map");
+        assert_eq!(prepared.target, "/v1/responses");
+        let mapped_body: Value =
+            serde_json::from_slice(&prepared.body).expect("mapped body should be json");
+        assert_eq!(
+            mapped_body.get("model").and_then(Value::as_str),
+            Some("gpt-5.4-mini")
+        );
+        assert_eq!(
+            mapped_body
+                .get("tool_choice")
+                .and_then(|choice| choice.get("type"))
+                .and_then(Value::as_str),
+            Some("image_generation")
+        );
+        assert_eq!(
+            mapped_body
+                .get("tools")
+                .and_then(Value::as_array)
+                .and_then(|tools| tools.first())
+                .and_then(|tool| tool.get("model"))
+                .and_then(Value::as_str),
+            Some("gpt-image-2")
+        );
+        assert_eq!(
+            mapped_body
+                .get("tools")
+                .and_then(Value::as_array)
+                .and_then(|tools| tools.first())
+                .and_then(|tool| tool.get("size"))
+                .and_then(Value::as_str),
+            Some("1024x1024")
+        );
+
+        match adapter {
+            GatewayResponseAdapter::Images {
+                stream,
+                response_format,
+                stream_prefix,
+            } => {
+                assert!(!stream);
+                assert_eq!(response_format, "b64_json");
+                assert_eq!(stream_prefix, "image_generation");
+            }
+            _ => panic!("expected images adapter"),
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_images_model() {
+        let request = ParsedRequest {
+            method: "POST".to_string(),
+            target: "/v1/images/generations".to_string(),
+            headers: HashMap::new(),
+            body: br#"{"model":"gpt-image-1.5","prompt":"draw"}"#.to_vec(),
+        };
+
+        let err = prepare_gateway_request(request).expect_err("model should be rejected");
+        assert!(err.contains("Use gpt-image-2"));
+    }
+
+    #[test]
+    fn prepares_multipart_images_edit_request_for_responses_proxy() {
+        let boundary = "test-boundary";
+        let mut body = Vec::new();
+        body.extend_from_slice(b"--test-boundary\r\n");
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"model\"\r\n\r\n");
+        body.extend_from_slice(b"gpt-image-2\r\n");
+        body.extend_from_slice(b"--test-boundary\r\n");
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"prompt\"\r\n\r\n");
+        body.extend_from_slice(b"make it brighter\r\n");
+        body.extend_from_slice(b"--test-boundary\r\n");
+        body.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"image\"; filename=\"a.png\"\r\n",
+        );
+        body.extend_from_slice(b"Content-Type: image/png\r\n\r\n");
+        body.extend_from_slice(b"\x89PNG\r\n\x1a\nabc\r\n");
+        body.extend_from_slice(b"--test-boundary--\r\n");
+        let mut headers = HashMap::new();
+        headers.insert(
+            "content-type".to_string(),
+            format!("multipart/form-data; boundary={}", boundary),
+        );
+        let request = ParsedRequest {
+            method: "POST".to_string(),
+            target: "/v1/images/edits".to_string(),
+            headers,
+            body,
+        };
+
+        let (prepared, adapter) = prepare_gateway_request(request).expect("request should map");
+        assert_eq!(prepared.target, "/v1/responses");
+        let mapped_body: Value =
+            serde_json::from_slice(&prepared.body).expect("mapped body should be json");
+        assert_eq!(
+            mapped_body
+                .get("tools")
+                .and_then(Value::as_array)
+                .and_then(|tools| tools.first())
+                .and_then(|tool| tool.get("action"))
+                .and_then(Value::as_str),
+            Some("edit")
+        );
+        let has_input_image = mapped_body
+            .get("input")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("content"))
+            .and_then(Value::as_array)
+            .map(|content| {
+                content.iter().any(|part| {
+                    part.get("type").and_then(Value::as_str) == Some("input_image")
+                        && part
+                            .get("image_url")
+                            .and_then(Value::as_str)
+                            .map(|url| url.starts_with("data:image/png;base64,"))
+                            .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        assert!(has_input_image);
+
+        match adapter {
+            GatewayResponseAdapter::Images { stream_prefix, .. } => {
+                assert_eq!(stream_prefix, "image_edit");
+            }
+            _ => panic!("expected images adapter"),
+        }
+    }
+
+    #[test]
+    fn builds_images_api_payload_from_responses_output() {
+        let response = json!({
+            "response": {
+                "created_at": 123,
+                "output": [{
+                    "type": "image_generation_call",
+                    "result": "aGVsbG8=",
+                    "output_format": "png",
+                    "revised_prompt": "draw a clean icon"
+                }],
+                "tool_usage": {
+                    "image_gen": {
+                        "input_images": 0,
+                        "output_images": 1
+                    }
+                }
+            }
+        });
+
+        let payload =
+            build_images_api_payload(&response, "b64_json").expect("payload should build");
+        assert_eq!(payload.get("created").and_then(Value::as_i64), Some(123));
+        assert_eq!(
+            payload
+                .get("data")
+                .and_then(Value::as_array)
+                .and_then(|items| items.first())
+                .and_then(|item| item.get("b64_json"))
+                .and_then(Value::as_str),
+            Some("aGVsbG8=")
+        );
+        assert_eq!(
+            payload
+                .get("data")
+                .and_then(Value::as_array)
+                .and_then(|items| items.first())
+                .and_then(|item| item.get("revised_prompt"))
+                .and_then(Value::as_str),
+            Some("draw a clean icon")
+        );
     }
 
     #[test]
@@ -4716,6 +6101,35 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
             mapped_body.get("model").and_then(Value::as_str),
             Some("gpt-5.4")
         );
+
+        match adapter {
+            GatewayResponseAdapter::Passthrough { request_is_stream } => {
+                assert!(!request_is_stream);
+            }
+            _ => panic!("expected passthrough adapter"),
+        }
+    }
+
+    #[test]
+    fn injects_image_generation_tool_for_responses_requests() {
+        let request = ParsedRequest {
+            method: "POST".to_string(),
+            target: "/v1/responses".to_string(),
+            headers: HashMap::new(),
+            body: br#"{"model":"gpt-5.4","input":"draw an icon"}"#.to_vec(),
+        };
+
+        let (prepared, adapter) = prepare_gateway_request(request).expect("request should map");
+        let mapped_body: Value =
+            serde_json::from_slice(&prepared.body).expect("mapped body should be json");
+        assert!(mapped_body
+            .get("tools")
+            .and_then(Value::as_array)
+            .map(|tools| tools.iter().any(|tool| {
+                tool.get("type").and_then(Value::as_str) == Some("image_generation")
+                    && tool.get("output_format").and_then(Value::as_str) == Some("png")
+            }))
+            .unwrap_or(false));
 
         match adapter {
             GatewayResponseAdapter::Passthrough { request_is_stream } => {

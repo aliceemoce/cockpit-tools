@@ -70,6 +70,34 @@
           "statusPending": "بانتظار الاستيراد"
         }
       },
+      "externalImport": {
+        "bundleInvalidJson": "حزمة الاستيراد ليست JSON صالحا",
+        "bundleEmpty": "حزمة الاستيراد فارغة",
+        "bundleProviderMismatch": "موفر حزمة الاستيراد غير مطابق",
+        "bundleNoItems": "لا تحتوي حزمة الاستيراد على عناصر قابلة للاستيراد",
+        "titleCodex": "استيراد Codex دفعة واحدة",
+        "statusReceiving": "جارٍ استلام طلب الاستيراد...",
+        "statusFetching": "جارٍ جلب حزمة الاستيراد...",
+        "statusParsing": "جارٍ تحليل JSON الخاص بـ Codex...",
+        "statusImporting": "جارٍ استيراد الحساب {{current}} / {{total}}",
+        "statusRefreshing": "جارٍ تحديث قائمة الحسابات...",
+        "statusSuccess": "اكتمل الاستيراد",
+        "statusPartial": "اكتمل الاستيراد جزئيا",
+        "statusFailed": "فشل الاستيراد",
+        "total": "الإجمالي",
+        "success": "نجح",
+        "failed": "فشل",
+        "stepReceive": "استلام الطلب",
+        "stepFetch": "جلب الحزمة",
+        "stepParse": "تحليل JSON الخاص بـ Codex",
+        "stepImport": "استيراد الحسابات",
+        "stepRefresh": "تحديث القائمة",
+        "errorsTitle": "العناصر الفاشلة",
+        "viewAccounts": "عرض حسابات Codex",
+        "copyErrors": "نسخ الأخطاء",
+        "copied": "تم النسخ",
+        "unknownItem": "JSON رقم {{index}}"
+      },
       "instances": {
         "unsupported": {
           "title": "غير مدعوم على هذا النظام"
@@ -107,7 +135,10 @@
         "descTooltip": "تنازلي (انقر للتبديل إلى تصاعدي)",
         "toggleDirection": "تبديل اتجاه الترتيب",
         "credits": "حسب الأرصدة المتبقية",
-        "planEnd": "حسب نهاية الدورة"
+        "planEnd": "حسب نهاية الدورة",
+        "recommended": "موصى به",
+        "recommendedAscTooltip": "موصى به (الأقل جدوى أولا)",
+        "recommendedDescTooltip": "موصى به (الأكثر جدوى أولا)"
       },
       "sortLabel": "ترتيب",
       "token": {
@@ -869,11 +900,23 @@
           "saveSettingsFailed": "فشل حفظ إعدادات النسخ الاحتياطي: {{error}}",
           "cleanupDone": "تم تنظيف {{count}} نسخة احتياطية منتهية",
           "cleanupFailed": "فشل تنظيف النسخ الاحتياطية المنتهية: {{error}}",
-          "openFolderFailed": "فشل فتح مجلد النسخ الاحتياطي: {{error}}"
+          "openFolderFailed": "فشل فتح مجلد النسخ الاحتياطي: {{error}}",
+          "downloadSuccess": "تم تنزيل النسخة الاحتياطية إلى {{path}}",
+          "downloadFailed": "فشل تنزيل النسخة الاحتياطية: {{error}}"
         },
         "errors": {
           "invalidRetention": "يجب أن تكون مدة الاحتفاظ بين 1 و365 يومًا"
-        }
+        },
+        "platformFilterLabel": "المنصة",
+        "platformFilterAll": "كل المنصات",
+        "platformEmptyTitle": "لا توجد نسخ مطابقة",
+        "platformEmptyDesc": "لا تحتوي هذه المنصة على نسخة حسابات قابلة للتنزيل.",
+        "archiveTag": "أرشيف",
+        "archiveSize": "الأرشيف: {{size}}",
+        "platformsTitle": "حسابات المنصة",
+        "platformDownloadAction": "تنزيل JSON للمنصة",
+        "downloadJsonAction": "ملف JSON",
+        "downloadZipAction": "أرشيف ZIP"
       },
       "exportTitle": "تصدير البيانات",
       "exportDesc": "صدّر بيانات الحسابات أو بيانات الإعدادات أو حزمة ترحيل كاملة حسب الحاجة.",
@@ -1591,6 +1634,7 @@
     "authorizing": "بانتظار تفويض النظام...",
     "installFailed": "فشل التثبيت على النظام. حاول لاحقًا أو نزّل الحزمة يدويًا.",
     "restartRequiredAfterInstall": "تم تثبيت التحديث. أعد تشغيل التطبيق يدويًا لإكمال التبديل.",
+    "stoppingApiService": "جارٍ إيقاف خدمة API...",
     "skipThisVersion": "تخطي هذا الإصدار",
     "skipFailed": "تعذر تخطي هذا التحديث: {{error}}"
   },
@@ -1644,6 +1688,14 @@
     "switch": "تبديل",
     "switched": "تم التبديل إلى {{email}}",
     "switchFailed": "فشل التبديل: {{error}}",
+    "authError": {
+      "badge": "مشكلة تفويض",
+      "refreshTokenReused": "تفويض Codex غير صالح: تم استخدام refresh_token من عميل أو مثيل آخر. سجّل الدخول مجدداً وتجنب تحديث الحساب نفسه من Codex الرسمي أو مثيلات أخرى أو أدوات خارجية في الوقت نفسه.",
+      "refreshTokenExpired": "انتهى تفويض تسجيل الدخول إلى Codex ولا يمكن تحديثه تلقائياً. سجّل الدخول إلى حساب Codex مجدداً.",
+      "refreshTokenInvalidated": "تم إلغاء تفويض تسجيل الدخول إلى Codex من الخدمة ولا يمكن تحديثه تلقائياً. سجّل الدخول إلى حساب Codex مجدداً.",
+      "invalidGrant": "تفويض تسجيل الدخول إلى Codex غير صالح ولا يمكن تحديثه تلقائياً. سجّل الدخول إلى حساب Codex مجدداً.",
+      "unsupportedCountryRegion": "منطقة الشبكة الحالية لا تدعم تحديث تفويض Codex. رفضت خدمة تفويض OpenAI هذا منفذ الشبكة. انتقل إلى منطقة مدعومة ثم أعد المحاولة."
+    },
     "current": "الحالي",
     "empty": {
       "description": "انقر على \"إضافة حساب\" للبدء"
@@ -1690,7 +1742,7 @@
       "statusStopped": "متوقف",
       "statusDisabled": "معطل",
       "emptyMembers": "لا توجد حسابات في المجموعة",
-      "footerHint": "يستمع فقط على 127.0.0.1",
+      "footerHint": "يستمع محليًا وعلى LAN",
       "manageAccounts": "إدارة الحسابات",
       "rotateKey": "تبديل المفتاح",
       "rotateConfirmMessage": "بعد إعادة التعيين سيتوقف مفتاح خدمة API الحالي عن العمل فورًا، وقد تصبح الطلبات الجارية غير متاحة. هل تريد المتابعة؟",
@@ -1718,7 +1770,8 @@
         "freeNoticeRestricted": "الحسابات المجانية مقيّدة. عطّل هذا الخيار لتحديدها.",
         "freeNoticeUnstable": "قد يكون وكيل الحسابات المجانية غير مستقر. استخدمه بحذر.",
         "restrictFreeDisableConfirmTitle": "السماح بالحسابات المجانية",
-        "restrictFreeDisableConfirmMessage": "قد يكون وكيل الحسابات المجانية غير مستقر. هل تريد المتابعة؟"
+        "restrictFreeDisableConfirmMessage": "قد يكون وكيل الحسابات المجانية غير مستقر. هل تريد المتابعة؟",
+        "manageMembers": "إدارة الأعضاء"
       },
       "entryAction": "إضافة إلى خدمة API",
       "testAction": "اختبار خدمة API",
@@ -1729,7 +1782,7 @@
       "activateSuccess": "تم التبديل إلى خدمة API",
       "dashboardAction": "لوحة الخدمة",
       "manageDesc": "أدر إحصاءات خدمة API والأعضاء والمنفذ والمفتاح واختبار الاتصال من مكان واحد.",
-      "memberOnlyLocal": "Codex فقط",
+      "memberOnlyLocal": "محلي/LAN",
       "configTitle": "إعدادات الخدمة",
       "configEmpty": "احفظ حساباً واحداً على الأقل في مجموعة خدمة API ليتم إنشاء العنوان والمفتاح والمنفذ.",
       "portLabel": "منفذ الخدمة",
@@ -1739,8 +1792,8 @@
       "statsTitle": "الإجمالي",
       "accountStatsTitle": "حسب الحساب",
       "statsEmpty": "لا توجد إحصاءات بعد",
-      "summaryMeta": "{{count}} حسابًا · Codex فقط",
-      "summaryMetaUnconfigured": "غير مُعدّ · Codex فقط",
+      "summaryMeta": "{{count}} حسابًا · محلي/LAN",
+      "summaryMetaUnconfigured": "غير مُعدّ · محلي/LAN",
       "memberTitle": "أعضاء المجموعة",
       "stats": {
         "requests": "الطلبات",
@@ -1763,9 +1816,16 @@
       "routingDescriptionQuotaLowFirst": "يفضّل الحسابات ذات الحصة المتبقية الأقل.",
       "routingDescriptionPlanHighFirst": "يفضّل الحسابات ذات باقات الاشتراك الأعلى.",
       "routingDescriptionPlanLowFirst": "يفضّل الحسابات ذات باقات الاشتراك الأقل.",
+      "routingDescriptionExpirySoonFirst": "يفضّل الحسابات التي ينتهي اشتراكها أقرب.",
       "clearStats": "مسح الإحصاءات",
       "clearStatsConfirm": "هل تريد مسح كل إحصاءات خدمة API؟",
       "clearStatsSuccess": "تم مسح إحصاءات خدمة API",
+      "killPortAction": "تنظيف المنفذ",
+      "killPortTitle": "تنظيف منفذ خدمة API",
+      "killPortConfirmMessage": "سيتم إنهاء العمليات الأخرى التي تستخدم المنفذ المحلي {{port}} بالقوة، ثم إعادة تشغيل خدمة API. هل تريد المتابعة؟",
+      "killPortSuccess": "تم تنظيف المنفذ (تم إنهاء {{count}} عملية)",
+      "killPortSuccessNone": "تم فحص المنفذ. لا توجد عملية خارجية تستخدمه.",
+      "killPortSuccessUnknown": "تم تنظيف منفذ خدمة API",
       "refreshStats": "تحديث الإحصاءات",
       "refreshStatsSuccess": "تم تحديث إحصاءات خدمة API",
       "routingStrategy": {
@@ -1773,7 +1833,8 @@
         "quotaHighFirst": "الأعلى حصة أولاً",
         "quotaLowFirst": "الأقل حصة أولاً",
         "planHighFirst": "الأعلى باقة أولاً",
-        "planLowFirst": "الأقل باقة أولاً"
+        "planLowFirst": "الأقل باقة أولاً",
+        "expirySoonFirst": "الأقرب انتهاءً أولاً"
       },
       "statusUnconfigured": "غير مُعدّ",
       "expandDetails": "توسيع التفاصيل",
@@ -1803,7 +1864,15 @@
       "apiPortUrl": "عنوان منفذ API",
       "modelId": "معرّف النموذج",
       "modelIdPlaceholder": "اختر معرّف النموذج",
-      "modelIdViewOnly": "عرض فقط"
+      "modelIdViewOnly": "عرض فقط",
+      "quotaPool": {
+        "title": "مجمع الحصة",
+        "hourlyShort": "5h",
+        "weeklyShort": "أسبوع",
+        "viewFull": "عرض الإحصاء الكامل",
+        "modalTitle": "مجمع حصة خدمة API",
+        "empty": "لا توجد إحصاءات حصة بعد"
+      }
     },
     "local": {
       "desc": "استيراد الحساب الحالي من ~/.codex/auth.json",
@@ -1817,7 +1886,8 @@
     "quota": {
       "hourly": "حصة 5 ساعات",
       "weekly": "الحصة الأسبوعية",
-      "reset": "إعادة ضبط"
+      "reset": "إعادة ضبط",
+      "weeklyBlocksHourly": "الحصة الأسبوعية 0، لذا حصة 5 ساعات غير متاحة"
     },
     "quotaError": {
       "badge": "خطأ في الحصة",
@@ -1851,7 +1921,15 @@
       "weekly": "الحصة الأسبوعية",
       "hourly": "حصة 5 ساعات",
       "weeklyReset": "وقت إعادة الضبط الأسبوعي",
-      "hourlyReset": "وقت إعادة الضبط لمدة 5 ساعات"
+      "hourlyReset": "وقت إعادة الضبط لمدة 5 ساعات",
+      "subscriptionExpiry": "انتهاء الاشتراك",
+      "custom": "ترتيب مخصص",
+      "customModalTitle": "ترتيب الحسابات",
+      "customModalDesc": "اسحب الحسابات أو استخدم أزرار أعلى/أسفل لتعديل ترتيب العرض.",
+      "customDragHandle": "اسحب للترتيب",
+      "customMoveUp": "أعلى",
+      "customMoveDown": "أسفل",
+      "customReset": "إعادة ضبط الترتيب"
     },
     "opencodeSwitch": "مفتاح تبديل OpenCode",
     "opencodeSwitchDesc": "مزامنة تبديل معلومات حساب Codex في OpenCode",
@@ -2078,7 +2156,9 @@
       "messages": {
         "pickOne": "يرجى تحديد جلسة واحدة على الأقل",
         "syncNeedTwo": "يلزم وجود مثيلين على الأقل لمزامنة الجلسات",
-        "pickRestoreOne": "يرجى تحديد جلسة واحدة على الأقل لاستعادتها"
+        "pickRestoreOne": "يرجى تحديد جلسة واحدة على الأقل لاستعادتها",
+        "repairVisibilitySkippedOnly": "لم يتم العثور على اختلافات provider قابلة للكتابة؛ تم تخطي {{count}} ملف state_5.sqlite غير صالح أو تالف. يجب أن يعيد Codex إنشاءها قبل إصلاح سجلات SQLite فيها.",
+        "repairVisibilitySkippedWithBase": "{{message}}؛ تم تخطي {{count}} ملف state_5.sqlite غير صالح أو تالف. يجب أن يعيد Codex إنشاءها قبل إصلاح سجلات SQLite فيها."
       },
       "groupCount": "{{count}} جلسة",
       "updatedAt": "تم التحديث",
@@ -2113,6 +2193,7 @@
       },
       "provider": {
         "label": "المزوّد",
+        "inlineLabel": "المزوّد: {{provider}}",
         "custom": "مخصّص",
         "endpoint": "نقطة نهاية المزوّد",
         "hint": "تم ملء Base URL متوافق تلقائيًا، وما زال بإمكانك تعديله يدويًا.",
@@ -2298,6 +2379,36 @@
     },
     "groups": {
       "addToGroup": "إضافة إلى المجموعة"
+    },
+    "subscription": {
+      "label": "انتهاء الاشتراك",
+      "column": "ينتهي",
+      "unknown": "أعد التفويض",
+      "missingDetail": "أعد التفويض للجلب",
+      "expired": "منتهي",
+      "hoursLeft": "{{count}}س",
+      "daysLeft": "{{count}}ي",
+      "over99Days": "99+ي",
+      "titleWithDate": "ينتهي الاشتراك: {{date}}",
+      "titleUnknown": "أعد التفويض لجلب انتهاء الاشتراك",
+      "filterLabel": "تصفية الانتهاء",
+      "filterAll": "كلها ({{count}})",
+      "filterExpired": "منتهية ({{count}})",
+      "filterWithin24h": "24س ({{count}})",
+      "filterWithin7d": "7أيام ({{count}})",
+      "filterWithin30d": "30يوم ({{count}})",
+      "filterMissing": "غير معروف ({{count}})"
+    },
+    "apiSwitchNotice": {
+      "title": "جلسات Codex مخفية",
+      "message": "تم اكتشاف أن Codex تبدّل من {{from}} إلى {{to}}. بسبب الآلية الرسمية، قد لا تظهر الجلسات الحالية تلقائيًا بعد التبديل المباشر بين API والحسابات. يجري الآن إصلاح ظهور الجلسات تلقائيًا، ويمكنك أيضًا استخدام إدارة الجلسات > إصلاح الظهور لاحقًا.",
+      "repairing": "جارٍ إصلاح ظهور جلسات Codex...",
+      "repairFailed": "فشل الإصلاح التلقائي. يمكنك إعادة المحاولة لاحقًا من إدارة الجلسات > إصلاح الظهور.",
+      "type": {
+        "apiKey": "مفتاح API",
+        "apiService": "خدمة API",
+        "account": "حساب"
+      }
     }
   },
   "githubCopilot": {
@@ -2320,7 +2431,8 @@
       "desc": "الصق رمز وصول GitHub Copilot أو بيانات JSON المصدّرة."
     },
     "import": {
-      "localDesc": "استيراد بيانات حسابات GitHub Copilot من ملف JSON."
+      "localDesc": "استيراد بيانات حساب GitHub Copilot من VS Code المحلي أو ملف JSON.",
+      "localClient": "استيراد من VS Code المحلي"
     },
     "sort": {
       "weekly": "حسب استخدام رسائل الدردشة",
@@ -2335,7 +2447,8 @@
       "premium": "الطلبات المميزة"
     },
     "usage": {
-      "included": "مضمّن"
+      "included": "مضمّن",
+      "usedOfTotal": "{{used}} من {{total}}"
     },
     "injectToVSCode": "التبديل إلى VS Code",
     "injectSuccess": "تم حقن الرمز في VS Code بنجاح. يتم الآن تشغيل VS Code.",
@@ -2345,7 +2458,7 @@
       "desc": "يتطلب تبديل الحساب قراءة مخزن المصادقة المحلي في VS Code واستخدام خدمة بيانات الاعتماد في النظام لفك التشفير وإعادة الكتابة؛ وتتم معالجة البيانات محليًا فقط.",
       "inject": "تبديل بنقرة واحدة: تقرأ هذه الأداة مواد التشفير المحلية في VS Code (DPAPI/Keychain/Secret Service)، وتفك تشفير جلسة المصادقة في state.vscdb، وتستبدل رمز GitHub Copilot ثم تعيد التشفير — وكل ذلك محليًا على جهازك.",
       "reason": "نطاق الأذونات: قراءة قاعدة بيانات مصادقة VS Code ‏(state.vscdb) واستدعاء قدرات التشفير في النظام (Windows DPAPI / macOS Keychain / Linux Secret Service) لفك التشفير وإعادة الكتابة.",
-      "storage": "نطاق القراءة: تتم معالجة بيانات جلسات تسجيل الدخول المرتبطة بـ GitHub فقط، وجميع العمليات تُنفّذ محليًا."
+      "storage": "نطاق البيانات: يقرأ الاستيراد المحلي جلسات تسجيل الدخول إلى GitHub في VS Code، ويحدّث تبديل الحساب الإدخالات نفسها؛ تستدعي OAuth واستيراد الرمز والتحقق من الاستيراد المحلي وتحديث الحصص واجهات GitHub الرسمية مع حقول المصادقة اللازمة فقط. لا يتم رفع state.vscdb أو مفاتيح النظام."
     }
   },
   "dashboard": {
@@ -3388,11 +3501,11 @@
       "status": "حالة التسجيل",
       "checkedIn": "تم التسجيل",
       "notCheckedIn": "لم يتم التسجيل",
-      "button": {},
+      "button": "تسجيل الحضور",
       "button.loading": "جاري التسجيل...",
       "done": "تم",
       "success": "تم التسجيل بنجاح! {{days}} يوم متتالي",
-      "failure": {},
+      "failure": "فشل تسجيل الحضور: {{message}}",
       "failure.network": "خطأ في الشبكة، يرجى المحاولة لاحقًا",
       "lastCheckin": "آخر تسجيل: {{time}}",
       "streak": "{{days}} يوم متتالي",
@@ -3423,9 +3536,9 @@
     "addAccount": "إضافة حساب WorkBuddy",
     "flowNotice": {
       "title": "معلومات إدارة حسابات WorkBuddy (انقر للتوسيع/الطي)",
-      "desc": "يتطلب تبديل الحسابات قراءة تخزين مصادقة WorkBuddy المحلي واستدعاء خدمات بيانات الاعتماد في النظام لفك التشفير/إعادة التشفير. تتم معالجة البيانات محليًا فقط.",
-      "permission": "نطاق الأذونات: قراءة قاعدة بيانات مصادقة WorkBuddy (state.vscdb)، واستدعاء قدرات بيانات الاعتماد بالنظام (macOS Keychain / Windows DPAPI / Linux Secret Service) لفك التشفير/إعادة الكتابة.",
-      "network": "نطاق الشبكة: تسجيل دخول OAuth وتحديث الرمز يتطلبان طلبات شبكة إلى WorkBuddy؛ واستعلامات الحصة تستدعي واجهات فوترة API. لا يتم رفع أي مفاتيح أو بيانات اعتماد محلية."
+      "desc": "يكتب تبديل الحسابات ملف تسجيل الدخول المحلي وفق بنية أحدث عميل WorkBuddy الرسمي؛ ويقرأ الاستيراد المحلي الملف نفسه. تتم معالجة البيانات محليًا فقط.",
+      "permission": "نطاق الأذونات: قراءة ملف تسجيل دخول WorkBuddy وكتابته (CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info) للاستيراد المحلي وتبديل الحسابات؛ لم يعد يتم قراءة state.vscdb القديم أو تعديله.",
+      "network": "نطاق الشبكة: يتطلب تسجيل دخول OAuth وتحديث الرمز طلبات شبكة إلى WorkBuddy؛ وتستدعي استعلامات الحصة واجهات فوترة API. لا يتم رفع ملفات تسجيل الدخول المحلية أو بيانات الاعتماد الخام."
     },
     "nickname": "الاسم المستعار",
     "enterprise": "المؤسسة",

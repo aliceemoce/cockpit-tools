@@ -665,6 +665,7 @@
   border-color: var(--plan-pro-border);
 }
 
+.accounts-page .tier-badge.pro-plus,
 .accounts-page .tier-badge.ultra {
   background: var(--plan-ultra-bg);
   color: var(--plan-ultra-color);

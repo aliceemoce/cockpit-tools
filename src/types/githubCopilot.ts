@@ -35,13 +35,28 @@ export interface GitHubCopilotAccount {
 }
 
 export type GitHubCopilotQuotaClass = 'high' | 'medium' | 'low' | 'critical';
-export type GitHubCopilotPlanBadge = 'FREE' | 'INDIVIDUAL' | 'PRO' | 'BUSINESS' | 'ENTERPRISE' | 'UNKNOWN';
+export type GitHubCopilotPlanBadge =
+  | 'FREE'
+  | 'INDIVIDUAL'
+  | 'PRO'
+  | 'PRO_PLUS'
+  | 'BUSINESS'
+  | 'ENTERPRISE'
+  | 'UNKNOWN';
 
 export function getGitHubCopilotPlanDisplayName(planType?: string | null): string {
   if (!planType) return 'UNKNOWN';
   const upper = planType.toUpperCase();
+  const compact = upper.replace(/[\s-]+/g, '_');
   if (upper.includes('FREE')) return 'FREE';
-  if (upper.includes('INDIVIDUAL_PRO')) return 'PRO';
+  if (
+    upper.includes('PRO+') ||
+    compact.includes('PRO_PLUS') ||
+    compact.includes('PROPLUS') ||
+    upper.includes('INDIVIDUAL_PRO')
+  ) {
+    return 'PRO+';
+  }
   if (upper === 'PRO') return 'PRO';
   // 与 VS Code 对齐：copilot_plan=individual 归为 Pro。
   if (upper.includes('INDIVIDUAL')) return 'PRO';
@@ -50,28 +65,83 @@ export function getGitHubCopilotPlanDisplayName(planType?: string | null): strin
   return upper;
 }
 
+export function getGitHubCopilotPlanBadgeLabel(badge: GitHubCopilotPlanBadge): string {
+  if (badge === 'PRO_PLUS') return 'PRO+';
+  return badge;
+}
+
+export function getGitHubCopilotPlanBadgeClass(badge: GitHubCopilotPlanBadge): string {
+  if (badge === 'PRO_PLUS') return 'pro-plus';
+  return badge.toLowerCase();
+}
+
 function resolvePlanFromSku(sku: string): GitHubCopilotPlanBadge | null {
   const lower = sku.toLowerCase();
   if (!lower) return null;
   if (lower.includes('free_limited') || lower.includes('no_auth_limited')) return 'FREE';
   if (lower.includes('enterprise')) return 'ENTERPRISE';
   if (lower.includes('business')) return 'BUSINESS';
-  if (lower.includes('individual_pro') || lower === 'pro' || lower.includes('_pro')) return 'PRO';
+  if (
+    lower.includes('individual_pro') ||
+    lower.includes('pro_plus') ||
+    lower.includes('pro-plus') ||
+    lower.includes('proplus')
+  ) {
+    return 'PRO_PLUS';
+  }
+  if (lower === 'pro' || lower.includes('_pro')) return 'PRO';
   if (lower.includes('individual')) return 'PRO';
   return null;
+}
+
+function getPremiumSnapshot(account: GitHubCopilotAccount): Record<string, unknown> | null {
+  const raw = account.copilot_quota_snapshots as unknown;
+  if (!raw || typeof raw !== 'object') return null;
+  const snapshots = raw as Record<string, unknown>;
+  const snapshot = snapshots['premium_interactions'] ?? snapshots['premium_models'];
+  return snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null;
+}
+
+function getPremiumEntitlement(account: GitHubCopilotAccount): number | null {
+  const snapshot = getPremiumSnapshot(account);
+  if (!snapshot) return null;
+  const entitlement = getNumber(snapshot['entitlement']);
+  return entitlement != null && entitlement > 0 ? entitlement : null;
+}
+
+function isIndividualLikePlan(account: GitHubCopilotAccount, tokenMap: Record<string, string>): boolean {
+  const raw = [
+    account.copilot_plan,
+    account.plan_type,
+    tokenMap['sku'],
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ')
+    .toLowerCase();
+
+  if (!raw) return false;
+  if (raw.includes('business') || raw.includes('enterprise') || raw.includes('free')) return false;
+  return raw.includes('individual') || raw.includes('pro');
 }
 
 export function getGitHubCopilotPlanBadge(account: GitHubCopilotAccount): GitHubCopilotPlanBadge {
   const tokenMap = parseTokenMap(account.copilot_token || '');
   const skuBadge = resolvePlanFromSku(tokenMap['sku'] || '');
+  const premiumEntitlement = getPremiumEntitlement(account);
+  if (skuBadge && skuBadge !== 'PRO') return skuBadge;
+  if (isIndividualLikePlan(account, tokenMap) && premiumEntitlement != null && premiumEntitlement >= 1500) {
+    return 'PRO_PLUS';
+  }
   if (skuBadge) return skuBadge;
 
-  const normalizedPlan = getGitHubCopilotPlanDisplayName(account.copilot_plan);
+  const normalizedPlan = getGitHubCopilotPlanDisplayName(account.copilot_plan || account.plan_type);
   switch (normalizedPlan) {
     case 'FREE':
       return 'FREE';
     case 'PRO':
       return 'PRO';
+    case 'PRO+':
+      return 'PRO_PLUS';
     case 'INDIVIDUAL':
       return 'PRO';
     case 'BUSINESS':
@@ -79,8 +149,14 @@ export function getGitHubCopilotPlanBadge(account: GitHubCopilotAccount): GitHub
     case 'ENTERPRISE':
       return 'ENTERPRISE';
     default:
-      return 'UNKNOWN';
+      break;
   }
+
+  if (isIndividualLikePlan(account, tokenMap) && premiumEntitlement != null) {
+    return 'PRO';
+  }
+
+  return 'UNKNOWN';
 }
 
 export function getGitHubCopilotQuotaClass(percentage: number): GitHubCopilotQuotaClass {
@@ -107,8 +183,11 @@ export type GitHubCopilotUsage = {
   allowanceResetAt?: number | null; // unix seconds
   remainingCompletions?: number | null;
   remainingChat?: number | null;
+  remainingPremiumRequests?: number | null;
   totalCompletions?: number | null;
   totalChat?: number | null;
+  totalPremiumRequests?: number | null;
+  usedPremiumRequests?: number | null;
 };
 
 /** 兼容 Codex 风格的 quota 结构（用于复用 UI 组件/样式） */
@@ -236,13 +315,18 @@ function calcRemainingFromSnapshot(snapshot: Record<string, unknown>): number | 
   return Math.max(0, Math.round((entitlement * percentRemaining) / 100));
 }
 
+function calcUsedFromExactRemaining(total: number | null, remaining: number | null): number | null {
+  if (total == null || remaining == null || total <= 0) return null;
+  return Math.max(0, total - remaining);
+}
+
 export function getGitHubCopilotUsage(account: GitHubCopilotAccount): GitHubCopilotUsage {
   const tokenMap = parseTokenMap(account.copilot_token || '');
   const freeLimited = isFreeLimitedSku(account, tokenMap);
 
   const completionsSnapshot = getQuotaSnapshot(account, 'completions');
   const chatSnapshot = getQuotaSnapshot(account, 'chat');
-  const premiumSnapshot = getQuotaSnapshot(account, 'premium_interactions');
+  const premiumSnapshot = getPremiumSnapshot(account);
 
   const snapshotInlineUsed =
     completionsSnapshot ? calcUsedPercentFromSnapshot(completionsSnapshot) : null;
@@ -263,6 +347,9 @@ export function getGitHubCopilotUsage(account: GitHubCopilotAccount): GitHubCopi
     : null;
   const remainingPremiumFromSnapshot = premiumSnapshot
     ? calcRemainingFromSnapshot(premiumSnapshot)
+    : null;
+  const exactRemainingPremiumFromSnapshot = premiumSnapshot
+    ? getNumber(premiumSnapshot['remaining'])
     : null;
 
   const remainingCompletions = remainingCompletionsFromSnapshot ?? getLimitedQuota(account, 'completions');
@@ -296,6 +383,10 @@ export function getGitHubCopilotUsage(account: GitHubCopilotAccount): GitHubCopi
     snapshotChatUsed ?? calcUsedPercent(totalChat, remainingChat);
   const premiumUsedPercent =
     snapshotPremiumUsed ?? calcUsedPercent(totalPremium, remainingPremium);
+  const usedPremiumRequests = calcUsedFromExactRemaining(
+    totalPremium,
+    exactRemainingPremiumFromSnapshot,
+  );
 
   return {
     inlineSuggestionsUsedPercent: inlineUsedPercent,
@@ -307,8 +398,11 @@ export function getGitHubCopilotUsage(account: GitHubCopilotAccount): GitHubCopi
     allowanceResetAt: pickAllowanceResetAt(account),
     remainingCompletions,
     remainingChat,
+    remainingPremiumRequests: exactRemainingPremiumFromSnapshot ?? remainingPremium,
     totalCompletions,
     totalChat,
+    totalPremiumRequests: totalPremium,
+    usedPremiumRequests,
   };
 }
 
@@ -322,8 +416,10 @@ export function hasGitHubCopilotQuotaData(account: GitHubCopilotAccount): boolea
     usage.premiumRequestsUsedPercent != null ||
     usage.remainingCompletions != null ||
     usage.remainingChat != null ||
+    usage.remainingPremiumRequests != null ||
     usage.totalCompletions != null ||
-    usage.totalChat != null
+    usage.totalChat != null ||
+    usage.totalPremiumRequests != null
   );
 }
 

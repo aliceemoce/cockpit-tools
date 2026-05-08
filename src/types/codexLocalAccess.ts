@@ -3,7 +3,8 @@ export type CodexLocalAccessRoutingStrategy =
   | 'quota_high_first'
   | 'quota_low_first'
   | 'plan_high_first'
-  | 'plan_low_first';
+  | 'plan_low_first'
+  | 'expiry_soon_first';
 
 export interface CodexLocalAccessCollection {
   enabled: boolean;
@@ -61,4 +62,9 @@ export interface CodexLocalAccessState {
   lastError: string | null;
   memberCount: number;
   stats: CodexLocalAccessStats;
+}
+
+export interface CodexLocalAccessPortCleanupResult {
+  killedCount: number;
+  state: CodexLocalAccessState;
 }

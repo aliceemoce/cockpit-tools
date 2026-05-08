@@ -37,15 +37,18 @@ import {
 import {
   formatCodexResetTime,
   getCodexCodeReviewQuotaMetric,
+  getCodexEffectiveQuotaPercentages,
+  getCodexPlanBadgeClass,
   getCodexPlanBadgeLabel,
-  getCodexPlanDisplayName,
   getCodexQuotaClass,
   getCodexQuotaWindows,
   isCodexApiKeyAccount,
 } from '../types/codex';
 import {
   formatGitHubCopilotResetTime,
-  getGitHubCopilotPlanDisplayName,
+  getGitHubCopilotPlanBadge,
+  getGitHubCopilotPlanBadgeClass,
+  getGitHubCopilotPlanBadgeLabel,
   getGitHubCopilotQuotaClass,
   getGitHubCopilotUsage,
 } from '../types/githubCopilot';
@@ -140,6 +143,7 @@ export interface UnifiedQuotaMetric {
   used?: number;
   total?: number;
   left?: number;
+  hintText?: string;
 }
 
 export interface UnifiedAccountPresentation {
@@ -169,6 +173,7 @@ export interface QuotaPreviewLine {
   percentage: number;
   quotaClass: string;
   text: string;
+  title: string;
 }
 
 type AgQuotaDisplayItem = {
@@ -211,6 +216,15 @@ function formatQuotaNumber(value: number | null | undefined): string {
     return '0';
   }
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Math.max(0, value));
+}
+
+function formatRequestCount(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '0';
+  }
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: Number.isInteger(value) ? 0 : 1,
+  }).format(Math.max(0, value));
 }
 
 function formatUsdCurrency(value: number | null | undefined): string {
@@ -500,10 +514,16 @@ export function buildCodexAccountPresentation(
   account: CodexAccount,
   t: Translate,
 ): UnifiedAccountPresentation {
-  const normalizedPlan = getCodexPlanDisplayName(account.plan_type);
   const apiKeyDisplayName = account.account_name?.trim();
   const displayName =
     isCodexApiKeyAccount(account) && apiKeyDisplayName ? apiKeyDisplayName : account.email;
+  const effectiveQuota = getCodexEffectiveQuotaPercentages(account.quota);
+  const weeklyBlocksHourlyHint = effectiveQuota.weeklyBlocksHourly
+    ? t(
+        'codex.quota.weeklyBlocksHourly',
+        '周额度为 0，5小时额度已不可用',
+      )
+    : '';
   const quotaItems: UnifiedQuotaMetric[] = getCodexQuotaWindows(account.quota).map((window) => ({
     key: window.id,
     label: window.label,
@@ -512,6 +532,7 @@ export function buildCodexAccountPresentation(
     valueText: `${window.percentage}%`,
     resetText: window.resetTime ? formatCodexResetTime(window.resetTime, t) : '',
     resetAt: window.resetTime,
+    hintText: window.id === 'primary' && weeklyBlocksHourlyHint ? weeklyBlocksHourlyHint : undefined,
   }));
   const codeReviewMetric = getCodexCodeReviewQuotaMetric(account.quota);
   if (codeReviewMetric) {
@@ -530,7 +551,7 @@ export function buildCodexAccountPresentation(
     id: account.id,
     displayName,
     planLabel: getCodexPlanBadgeLabel(account),
-    planClass: normalizedPlan.toLowerCase(),
+    planClass: getCodexPlanBadgeClass(account),
     quotaItems,
   };
 }
@@ -540,6 +561,7 @@ function buildCopilotMetric(
   included: boolean | undefined,
   quotaClassGetter: (value: number) => string,
   includedText: string,
+  usageText?: string,
 ) {
   if (included) {
     return {
@@ -557,7 +579,7 @@ function buildCopilotMetric(
   }
   const normalized = Math.max(0, Math.min(100, Math.round(percentage)));
   return {
-    valueText: `${normalized}%`,
+    valueText: usageText || `${normalized}%`,
     percentage: normalized,
     quotaClass: quotaClassGetter(normalized),
   };
@@ -568,10 +590,19 @@ export function buildGitHubCopilotAccountPresentation(
   t: Translate,
 ): UnifiedAccountPresentation {
   const displayName = account.email ?? account.github_email ?? account.github_login;
-  const normalizedPlan = getGitHubCopilotPlanDisplayName(account.plan_type || account.copilot_plan);
-  const rawPlan = account.plan_type?.trim() || account.copilot_plan?.trim();
+  const planBadge = getGitHubCopilotPlanBadge(account);
   const usage = getGitHubCopilotUsage(account);
   const includedText = t('githubCopilot.usage.included', 'Included');
+  const premiumUsageText =
+    usage.usedPremiumRequests != null &&
+    usage.totalPremiumRequests != null &&
+    usage.totalPremiumRequests > 0
+      ? t('githubCopilot.usage.usedOfTotal', {
+          used: formatRequestCount(usage.usedPremiumRequests),
+          total: formatRequestCount(usage.totalPremiumRequests),
+          defaultValue: '{{used}} / {{total}}',
+        })
+      : undefined;
 
   const inline = buildCopilotMetric(
     usage.inlineSuggestionsUsedPercent,
@@ -590,6 +621,7 @@ export function buildGitHubCopilotAccountPresentation(
     usage.premiumIncluded,
     getGitHubCopilotQuotaClass,
     includedText,
+    premiumUsageText,
   );
 
   const inlineReset = account.quota?.hourly_reset_time ?? usage.allowanceResetAt ?? null;
@@ -598,8 +630,8 @@ export function buildGitHubCopilotAccountPresentation(
   return {
     id: account.id,
     displayName,
-    planLabel: rawPlan || normalizedPlan,
-    planClass: normalizedPlan.toLowerCase(),
+    planLabel: getGitHubCopilotPlanBadgeLabel(planBadge),
+    planClass: getGitHubCopilotPlanBadgeClass(planBadge),
     quotaItems: [
       {
         key: 'inline',
@@ -1357,5 +1389,6 @@ export function buildQuotaPreviewLines(
     percentage: item.percentage,
     quotaClass: item.quotaClass,
     text: `${item.label} ${item.valueText}`,
+    title: item.hintText ? `${item.label} ${item.valueText} · ${item.hintText}` : `${item.label} ${item.valueText}`,
   }));
 }

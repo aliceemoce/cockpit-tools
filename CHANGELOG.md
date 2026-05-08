@@ -7,6 +7,125 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.22.20] - 2026-05-06
+
+### Added
+- **Windsurf account management now supports the Devin Auth account system introduced for new 2026-04+ accounts**: email/password login, `auth1_` token import, refresh, and instance switching can use the Devin auth1 → session → one-time token → IDE token flow, while preserving Devin account/org IDs and user-status data needed by the IDE.
+- **Windsurf accounts now default to a recommended sort**: the account overview adds a Recommended sort option that scores accounts from saved daily/weekly quota, reset timing, and plan-cycle timing so accounts with more useful remaining capacity surface first.
+- **Backup Manager now produces and exports platform-aware archives**: scheduled/manual backups keep the restorable JSON file and a matching ZIP archive, show platform account counts, support platform filtering, and can download the full JSON, the ZIP, or one platform's JSON.
+- **Codex Local API Service now shows its quota pool on the account overview**: the API Service card summarizes member accounts by subscription tier with separate 5-hour and weekly quota totals, and exposes a full quota-pool dialog when there are more tiers to inspect.
+
+### Changed
+- **Codex account loading now accepts more portable managed-account files**: token/API-key detail files with portable JSON shapes can be recovered into the current account model, including API provider metadata, timestamps, account IDs, organization IDs, and subscription/plan fields.
+- **Codex account overview now treats the Local API Service as the current entry when it is active**: the current marker moves from the underlying account to the API Service card on this page, while the rest of the app keeps its existing current-account logic.
+- **Codex Local API Service cards now align with regular account cards**: the card keeps the same action-bar rhythm and hover styling as normal accounts while keeping member previews and quota-pool stats stacked in the body.
+- **Codex instance account selection now identifies API Key providers**: API Key accounts show their provider inline in instance quota previews and can be searched by provider name.
+- **File writes for account/config state now use a shared synced atomic path**: account indexes, OAuth pending state, `config.toml`, group/sync settings, OpenCode/OpenClaw auth files, and backup files write through temp-file replacement with validated backup restore behavior.
+- **Quota and token refreshes now use the primary refresh path directly**: provider refresh flows no longer wait on a hidden delayed retry before surfacing the actual failure.
+- **Homebrew Cask metadata has been caught up with the v0.22.19 release artifact**: the cask version and checksum now point to the 0.22.19 universal DMG.
+
+### Fixed
+- **Windsurf Devin accounts switch into instances with fresher IDE credentials**: instance launch pre-refreshes Devin accounts, writes stable installation/onboarding/sign-in/user fields, and includes Devin account/org/protobuf status data to avoid launch-time signed-out or permission-denied states.
+- **Account lists no longer disappear when storage temporarily returns an unexpected empty result**: shared account stores keep the current cached accounts/current account during abnormal empty reads, while still allowing real empty results after intentional deletion.
+- **Backup restore and retention now handle JSON/ZIP pairs consistently**: backup reads can fall back from a damaged or missing JSON file to its archive, and cleanup removes expired JSON and ZIP backups together.
+
+---
+## [0.22.19] - 2026-05-05
+
+### Added
+- **Codex external account-import links now support remote import bundles**: the `import_url` deep-link parameter can fetch an HTTP/HTTPS JSON import bundle, import accounts one by one, and show a dedicated progress dialog with totals, success/failure counts, and copyable failed items.
+
+### Changed
+- **Codex account imports now refresh OAuth quota data in the backend**: local, JSON, and file imports refresh imported OAuth accounts after saving, skip API Key accounts, then update account and tray state from the refreshed records.
+- **Codex import bundles now accept more portable JSON shapes**: remote and pasted JSON imports can read root arrays, nested string payloads, direct Codex token objects, and JSON Lines with one account object per line.
+- **Codex portable export output now normalizes Cockpit Tools JSON**: Cockpit Tools exports produce portable token/API-key JSON, while CPA documents preserve token refresh and expiry metadata.
+- **Codex PRO plan handling now aligns bare `pro` accounts with CPA 20x semantics**: accounts without an explicit `prolite` marker are shown as PRO Max/20x and ranked as the 20x tier by Local API Service routing.
+- **Codex session-visibility repair now keeps only the latest repair backup per instance**: old session-visibility repair backup directories are pruned before running a new repair to avoid long-term backup buildup.
+
+### Fixed
+- **Codex OAuth imports no longer fail when email only exists in the OpenAI profile claim**: `id_token` parsing now reads `https://api.openai.com/profile.email` when the top-level email claim is absent.
+- **External import links now honor automatic token import requests**: token/payload links with `auto_import=true` submit automatically, and repeated delivery of the same import request within a short window is ignored.
+
+---
+## [0.22.18] - 2026-05-04
+
+### Added
+- **Codex Local API Service now supports the official image-generation API path**: the local gateway exposes `gpt-image-2`, accepts `/v1/images/generations` and `/v1/images/edits`, maps image requests to Codex Responses `image_generation`, and injects the image-generation tool into regular Responses/chat sessions so Codex's official imagegen skill can use the same local API service.
+
+### Changed
+- **Codex API/account switching now repairs session visibility automatically**: switches between OAuth accounts, API Key accounts, and the local API Service show the detected source and target credential types, run visibility repair in the dialog automatically, and show the repair result without requiring a separate manual repair click.
+- **Codex quota refresh errors now avoid implying account damage**: transient quota refresh failures now say that the latest quota could not be fetched and the account status is unaffected.
+
+### Fixed
+- **Codex session visibility repair and sync no longer fail on invalid state databases**: unreadable, corrupted, or incomplete `state_5.sqlite` files are skipped with a clear repair summary, while valid rollout and SQLite records continue to be repaired or synchronized.
+
+---
+## [0.22.17] - 2026-04-30
+
+### Changed
+- **Codex API/account switching now keeps account changes and session-visibility repair separate**: switching between OAuth accounts, API Key accounts, and the local API Service now completes the real account change first, then shows a post-switch “Codex Sessions Hidden” dialog with an explicit Repair Visibility action, in-dialog repair results, and a “don’t show again” option.
+
+### Fixed
+- **Codex API Service activation no longer shows the session-visibility dialog after cancellation**: canceling the API Service risk notice stops the activation flow without showing the post-switch repair guidance.
+- **Codex account switching no longer auto-runs history visibility repair in the backend**: normal account switching no longer waits on rollout/SQLite repair work, avoiding stuck processing states when users only want to switch accounts.
+
+---
+## [0.22.16] - 2026-04-30
+
+### Changed
+- **Codex OAuth token management now uses a guarded official-client refresh path**: refresh requests use the official JSON payload with connector scopes, account refresh reloads newer official Keychain/auth snapshots for the same account before rotating tokens, and TokenKeeper performs an 8-day guarded keepalive so refreshed token chains are written through before stale `refresh_token` values are reused.
+- **WorkBuddy account switching now writes the shared client auth file directly**: switch, inject, and local import flows use `CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info` instead of VS Code `state.vscdb` secret injection, matching the current desktop client storage shape without requiring a prior Keychain-backed secret store.
+- **GitHub Copilot account presentation now distinguishes PRO+ premium entitlement**: plan badges, filters, dashboard cards, floating cards, instance badges, and quota presentation recognize PRO+ and show premium request usage as used/total when exact counters are available.
+- **Trae OAuth login now normalizes app version and product detection**: login context discovery accepts app directories and executable paths, and auth requests now use a minimum supported app version of `3.5.54` instead of falling back to stale plugin/version fields.
+- **Codex account overview now supports custom account ordering and safer API-mode switching**: users can persist a custom display order, and switching from OAuth to API Key/API Service shows a session-visibility notice with an optional one-time repair action.
+
+### Fixed
+- **Codex auth failures now explain the real refresh-token failure mode**: reused, expired, revoked, invalid, or missing refresh tokens ask the user to log in again, while `unsupported_country_region_territory` tells the user to change network region without marking the account as permanently requiring reauthorization.
+- **Instance auto-refresh no longer interrupts active instance menus or modals**: background refresh pauses while inline menus or instance dialogs are open.
+
+### Removed
+- **Official Linux/Ubuntu release support has been removed**: release workflows no longer build Ubuntu packages, updater metadata no longer requires Linux AppImage/deb/rpm assets, and official documentation now lists macOS and Windows as the supported desktop platforms.
+
+---
+## [0.22.15] - 2026-04-29
+
+### Changed
+- **Codex Local API Service now listens on local and LAN interfaces**: the gateway binds to all IPv4 interfaces while keeping the app's own base URL on `127.0.0.1`, so LAN clients can connect through the host machine's LAN IP without a separate Windows `portproxy` rule.
+- **Codex Local API Service now accepts larger Codex client payloads**: the request read limit increases from 8 MB to 32 MB to accommodate larger code-context requests before they are forwarded upstream.
+- **Codex API Key account handling is now save-only from the add-account modal**: API Key imports refresh the account list after saving, remove the separate add-and-switch action, and show empty quota/subscription states instead of linking out to OpenAI usage.
+- **Codex plan detection now recognizes current PRO tier aliases**: `pro-5x` and `codex-pro-5x` map to PRO Lite, while `pro-20x` and `codex-pro-20x` map to PRO Max.
+
+---
+## [0.22.14] - 2026-04-28
+
+### Added
+- **Codex Local API Service routing can now prioritize accounts whose subscriptions expire sooner**: account pool routing adds an `Expiry Soon First` strategy that reads saved subscription expiry metadata and then falls back to plan tier and remaining quota ordering.
+
+### Changed
+- **Codex account overview no longer keeps a separate subscription-expiry filter**: the accounts page removes the expiry filter control and clears its persisted filter state while keeping subscription metadata available in account details.
+- **Codex Plus accounts now use a distinct badge treatment**: account lists, Local API Service member views, dashboard cards, floating cards, and instance badges can style Plus separately from other plan badges.
+
+---
+## [0.22.13] - 2026-04-27
+
+### Fixed
+- **Codex quota refresh no longer forces OAuth token rotation only because `id_token` expired**: quota refresh again uses the `access_token` validity and only refreshes tokens when the access token is expired or the quota API reports token invalidation, avoiding unnecessary refreshes that could lead to 401 responses.
+
+### Changed
+- **Codex subscription metadata now uses neutral missing-information wording**: subscription columns, filters, cards, and tooltips now say subscription info or term, and missing subscription metadata is shown as unavailable instead of asking the user to reauthorize.
+- **Codex PRO Lite and PRO Max accounts now keep PRO filtering while using distinct badges**: account lists, local API access, dashboard cards, floating cards, and instance badges can style `pro_lite` and `pro_max` separately without moving them out of the PRO filter group.
+
+---
+## [0.22.12] - 2026-04-27
+
+### Fixed
+- **Codex Local API Service port conflicts are now recoverable in-app**: gateway restart stops the previous listener before rebinding, occupied-port failures show a clear cleanup action, and the configured local port can be cleared before restarting the service.
+
+### Added
+- **Codex account lists now surface subscription expiry**: OAuth accounts persist `chatgpt_subscription_active_until`, display expiry state in compact, card, and table views, support expiry filtering/sorting, and include subscription expiry metadata in `sub2api` exports.
+- **GitHub Copilot accounts can now import the current local VS Code session**: the import modal can read VS Code's selected Copilot GitHub login and matching GitHub auth session, validate it through official GitHub/Copilot APIs, and save it as a managed account.
+
+---
 ## [0.22.11] - 2026-04-26
 
 ### Changed

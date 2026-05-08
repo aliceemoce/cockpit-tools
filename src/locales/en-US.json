@@ -77,6 +77,34 @@
           "statusPending": "Pending import"
         }
       },
+      "externalImport": {
+        "bundleInvalidJson": "The import bundle is not valid JSON",
+        "bundleEmpty": "The import bundle is empty",
+        "bundleProviderMismatch": "The import bundle provider does not match",
+        "bundleNoItems": "The import bundle has no importable items",
+        "titleCodex": "Codex Batch Import",
+        "statusReceiving": "Receiving import request...",
+        "statusFetching": "Getting import bundle...",
+        "statusParsing": "Parsing Codex JSON...",
+        "statusImporting": "Importing account {{current}} / {{total}}",
+        "statusRefreshing": "Refreshing account list...",
+        "statusSuccess": "Import complete",
+        "statusPartial": "Partially imported",
+        "statusFailed": "Import failed",
+        "total": "Total",
+        "success": "Success",
+        "failed": "Failed",
+        "stepReceive": "Receive request",
+        "stepFetch": "Get bundle",
+        "stepParse": "Parse Codex JSON",
+        "stepImport": "Import accounts",
+        "stepRefresh": "Refresh list",
+        "errorsTitle": "Failed items",
+        "viewAccounts": "View Codex Accounts",
+        "copyErrors": "Copy errors",
+        "copied": "Copied",
+        "unknownItem": "JSON #{{index}}"
+      },
       "instances": {
         "unsupported": {
           "title": "Unsupported on this system"
@@ -114,7 +142,10 @@
         "descTooltip": "Current: Descending. Click to switch to ascending",
         "toggleDirection": "Toggle sort direction",
         "credits": "By remaining credits",
-        "planEnd": "By cycle end time"
+        "planEnd": "By cycle end time",
+        "recommended": "Recommended",
+        "recommendedAscTooltip": "Recommended (least worthwhile first)",
+        "recommendedDescTooltip": "Recommended (most worthwhile first)"
       },
       "sortLabel": "Sort",
       "token": {
@@ -557,13 +588,13 @@
       "backup": {
         "title": "Backup Manager",
         "desc": "Manage scheduled backups, the backup folder, and backup files in one place.",
-        "modalDesc": "Configure automatic backups, browse files stored in the project backup folder, and restore or clean them up here.",
+        "modalDesc": "Configure automatic backups, browse files stored in the project backup folder, and restore, download, or clean them up here.",
         "statusEnabled": "Auto backup is on",
         "statusDisabled": "Auto backup is off",
         "lastRunLabel": "Last backup: {{time}}",
         "lastRunNever": "Not backed up yet",
         "autoTitle": "Scheduled Backup",
-        "autoDesc": "When enabled, one backup is exported per day and stays restorable with the current import flow.",
+        "autoDesc": "When enabled, one JSON backup is exported per day with a matching ZIP archive copy.",
         "runNow": "Back Up Now",
         "running": "Backing up...",
         "typeTitle": "Backup Type",
@@ -578,14 +609,24 @@
         "directoryDesc": "Backups are always saved in the project's backups folder.",
         "openFolder": "Open Folder",
         "listTitle": "Backup List",
-        "listDesc": "Import a backup directly or remove old files.",
+        "listDesc": "View account contents by platform, download the full JSON, ZIP, or one platform JSON.",
+        "platformFilterLabel": "Platform",
+        "platformFilterAll": "All platforms",
         "openList": "Open List",
         "emptyTitle": "No backups yet",
-        "emptyDesc": "Turn on auto backup or click \"Back Up Now\" to create restorable JSON backups here.",
+        "emptyDesc": "Turn on auto backup or click \"Back Up Now\" to create restorable JSON and ZIP backups here.",
+        "platformEmptyTitle": "No matching backups",
+        "platformEmptyDesc": "This platform has no downloadable account backup.",
         "sourceAuto": "Auto",
         "sourceManual": "Manual",
         "fileTime": "Time: {{time}}",
         "fileSize": "Size: {{size}}",
+        "archiveTag": "ZIP",
+        "archiveSize": "Archive: {{size}}",
+        "platformsTitle": "Platform accounts",
+        "platformDownloadAction": "Download platform JSON",
+        "downloadJsonAction": "JSON",
+        "downloadZipAction": "ZIP",
         "importAction": "Import",
         "deleteAction": "Delete",
         "deleteConfirm": "Delete backup {{name}}?",
@@ -600,7 +641,9 @@
           "saveSettingsFailed": "Failed to save backup settings: {{error}}",
           "cleanupDone": "Cleaned up {{count}} expired backup(s)",
           "cleanupFailed": "Failed to clean up expired backups: {{error}}",
-          "openFolderFailed": "Failed to open backup folder: {{error}}"
+          "openFolderFailed": "Failed to open backup folder: {{error}}",
+          "downloadSuccess": "Backup downloaded to {{path}}",
+          "downloadFailed": "Failed to download backup: {{error}}"
         },
         "errors": {
           "invalidRetention": "Retention must be between 1 and 365 days"
@@ -1592,7 +1635,8 @@
     "installing": "Installing...",
     "authorizing": "Waiting for system authorization...",
     "installFailed": "System installation failed. Try again later or download manually.",
-    "restartRequiredAfterInstall": "The update is installed. Restart the app manually to finish switching."
+    "restartRequiredAfterInstall": "The update is installed. Restart the app manually to finish switching.",
+    "stoppingApiService": "Stopping API service..."
   },
   "closeDialog": {
     "title": "Close Window",
@@ -1644,6 +1688,25 @@
     "switch": "Switch",
     "switched": "Switched to {{email}}",
     "switchFailed": "Switch failed: {{error}}",
+    "authError": {
+      "badge": "Auth Issue",
+      "refreshTokenReused": "Codex authorization is invalid: the refresh_token was already used by another client or instance. Sign in again, and avoid refreshing the same account from official Codex, other instances, or external tools at the same time.",
+      "refreshTokenExpired": "Codex login authorization has expired and cannot be refreshed automatically. Sign in to the Codex account again.",
+      "refreshTokenInvalidated": "Codex login authorization was revoked by the service and cannot be refreshed automatically. Sign in to the Codex account again.",
+      "invalidGrant": "Codex login authorization is invalid and cannot be refreshed automatically. Sign in to the Codex account again.",
+      "unsupportedCountryRegion": "The current network region does not support refreshing Codex authorization. OpenAI authorization rejected this network exit. Switch to a supported region and retry."
+    },
+    "apiSwitchNotice": {
+      "title": "Codex Sessions Hidden",
+      "message": "Detected that Codex switched from {{from}} to {{to}}. Because of Codex's official behavior, existing sessions may not appear automatically after switching directly between API and accounts. Session visibility is being repaired automatically. You can also use Session Management > Repair Visibility later.",
+      "repairing": "Repairing Codex session visibility...",
+      "repairFailed": "Automatic repair failed. You can retry later from Session Management > Repair Visibility.",
+      "type": {
+        "apiKey": "API Key",
+        "apiService": "API Service",
+        "account": "Account"
+      }
+    },
     "current": "Current",
     "account": {
       "personal": "Personal account"
@@ -1701,8 +1764,8 @@
       "statusDisabled": "Disabled",
       "statusUnconfigured": "Not Configured",
       "emptyMembers": "Add accounts to the API service, then click Start. No extra setup is required.",
-      "footerHint": "Listens on 127.0.0.1 only",
-      "memberOnlyLocal": "Codex Only",
+      "footerHint": "Listens on local and LAN",
+      "memberOnlyLocal": "Local/LAN",
       "manageAccounts": "Manage Accounts",
       "rotateKey": "Reset Key",
       "rotateConfirmMessage": "The current API service key will stop working immediately after reset, and in-flight requests may become unavailable. Continue?",
@@ -1738,17 +1801,24 @@
       "routingDescriptionQuotaLowFirst": "Prefer accounts with less remaining quota.",
       "routingDescriptionPlanHighFirst": "Prefer accounts on higher subscription tiers.",
       "routingDescriptionPlanLowFirst": "Prefer accounts on lower subscription tiers.",
+      "routingDescriptionExpirySoonFirst": "Prefer accounts whose subscription expires sooner.",
       "portInvalid": "Enter a port between 1 and 65535",
       "statsTitle": "Totals",
       "clearStats": "Clear Stats",
       "clearStatsConfirm": "Clear all API service stats?",
       "clearStatsSuccess": "API service stats have been cleared",
+      "killPortAction": "Clear Port",
+      "killPortTitle": "Clear API Service Port",
+      "killPortConfirmMessage": "This will force-close other processes using local port {{port}}, then restart the API service. Continue?",
+      "killPortSuccess": "Port cleared (closed {{count}} process(es))",
+      "killPortSuccessNone": "Port checked. No external process was using it.",
+      "killPortSuccessUnknown": "API service port cleared",
       "refreshStats": "Refresh Stats",
       "refreshStatsSuccess": "API service stats have been refreshed",
       "accountStatsTitle": "By Account",
       "statsEmpty": "No stats yet",
-      "summaryMeta": "{{count}} accounts · Codex only",
-      "summaryMetaUnconfigured": "Not configured · Codex only",
+      "summaryMeta": "{{count}} accounts · Local/LAN",
+      "summaryMetaUnconfigured": "Not configured · Local/LAN",
       "expandDetails": "Expand details",
       "collapseDetails": "Collapse details",
       "hideEntryAction": "Hide API Service Entry",
@@ -1770,13 +1840,22 @@
         "weekly": "Week",
         "monthly": "Month"
       },
+      "quotaPool": {
+        "title": "Quota Pool",
+        "hourlyShort": "5h",
+        "weeklyShort": "Week",
+        "viewFull": "View full stats",
+        "modalTitle": "API Service Quota Pool",
+        "empty": "No quota stats yet"
+      },
       "memberTitle": "Collection Members",
       "routingStrategy": {
         "auto": "Auto (Recommended)",
         "quotaHighFirst": "High Quota First",
         "quotaLowFirst": "Low Quota First",
         "planHighFirst": "High Plan First",
-        "planLowFirst": "Low Plan First"
+        "planLowFirst": "Low Plan First",
+        "expirySoonFirst": "Expiry Soon First"
       },
       "stats": {
         "requests": "Requests",
@@ -1805,6 +1884,7 @@
         "empty": "No OAuth accounts available",
         "selected": "In API Service",
         "available": "Regular Overview",
+        "manageMembers": "Manage Members",
         "save": "Save Collection"
       }
     },
@@ -1820,6 +1900,7 @@
       },
       "provider": {
         "label": "Provider",
+        "inlineLabel": "Provider: {{provider}}",
         "custom": "Custom",
         "endpoint": "Provider Endpoint",
         "hint": "A compatible Base URL has been filled in automatically. You can still edit it manually.",
@@ -2020,6 +2101,7 @@
     "quota": {
       "hourly": "5-hour quota",
       "weekly": "Weekly quota",
+      "weeklyBlocksHourly": "Weekly quota is 0, so the 5-hour quota is unavailable",
       "reset": "Reset"
     },
     "usage": {
@@ -2034,7 +2116,7 @@
       "badge": "Quota error",
       "generic": "Quota refresh failed, please try again later",
       "deactivatedWorkspace": "Workspace is deactivated, switch account or re-authorize",
-      "requestFailedManualRetry": "Network error, please refresh quota manually"
+      "requestFailedManualRetry": "Quota refresh failed, and the latest quota could not be fetched; the account status is not affected. Please refresh again."
     },
     "plan": {
       "free": "FREE",
@@ -2051,6 +2133,25 @@
       "tomorrow": "Tomorrow {{time}}",
       "dateTime": "{{date}} {{time}}"
     },
+    "subscription": {
+      "label": "Term",
+      "column": "Subscription info",
+      "unknown": "No subscription info",
+      "missingDetail": "No subscription info",
+      "expired": "Expired",
+      "hoursLeft": "{{count}}h",
+      "daysLeft": "{{count}}d",
+      "over99Days": "99+d",
+      "titleWithDate": "Subscription valid until: {{date}}",
+      "titleUnknown": "No subscription info",
+      "filterLabel": "Term filter",
+      "filterAll": "Term All ({{count}})",
+      "filterExpired": "Expired ({{count}})",
+      "filterWithin24h": "24h ({{count}})",
+      "filterWithin7d": "7d ({{count}})",
+      "filterWithin30d": "30d ({{count}})",
+      "filterMissing": "No info ({{count}})"
+    },
     "view": {
       "compact": "Compact view"
     },
@@ -2062,7 +2163,15 @@
       "weekly": "Weekly quota",
       "hourly": "5-hour quota",
       "weeklyReset": "Weekly reset time",
-      "hourlyReset": "5-hour reset time"
+      "hourlyReset": "5-hour reset time",
+      "subscriptionExpiry": "Subscription term",
+      "custom": "Custom order",
+      "customModalTitle": "Custom account order",
+      "customModalDesc": "Drag accounts or use the up and down buttons to adjust the display order.",
+      "customDragHandle": "Drag to sort",
+      "customMoveUp": "Move up",
+      "customMoveDown": "Move down",
+      "customReset": "Reset custom order"
     },
     "opencodeSwitch": "OpenCode switch toggle",
     "opencodeSwitchDesc": "Sync Codex account info in OpenCode",
@@ -2256,15 +2365,15 @@
     "sessionManager": {
       "title": "Session Manager",
       "desc": "Sync, visibility repair, cleanup, and restore live here together: use the top actions to sync sessions, repair history visibility, or restore from Trash, then expand each project to review and trash sessions.",
-    "actions": {
-      "moveToTrash": "Move to Trash",
-      "syncSessions": "Sync Sessions",
-      "repairVisibility": "Repair Visibility",
-      "restoreSessions": "Restore Sessions",
-      "copySessionId": "Copy Session ID",
-      "expand": "Expand",
-      "collapse": "Collapse"
-    },
+      "actions": {
+        "moveToTrash": "Move to Trash",
+        "syncSessions": "Sync Sessions",
+        "repairVisibility": "Repair Visibility",
+        "restoreSessions": "Restore Sessions",
+        "copySessionId": "Copy Session ID",
+        "expand": "Expand",
+        "collapse": "Collapse"
+      },
       "confirm": {
         "title": "Move to Trash",
         "message": "Selected sessions will be moved to Trash from their instances so they can be restored later. Running instances may need a restart before the change appears. Continue?",
@@ -2278,16 +2387,18 @@
       "messages": {
         "pickOne": "Please select at least one session",
         "pickRestoreOne": "Please select at least one session to restore",
-        "syncNeedTwo": "At least two instances are required to sync sessions"
+        "syncNeedTwo": "At least two instances are required to sync sessions",
+        "repairVisibilitySkippedOnly": "No writable provider differences were found; skipped {{count}} invalid or corrupted state_5.sqlite file(s). Codex must regenerate them before their SQLite records can be repaired.",
+        "repairVisibilitySkippedWithBase": "{{message}}; skipped {{count}} invalid or corrupted state_5.sqlite file(s). Codex must regenerate them before their SQLite records can be repaired."
       },
-    "groupCount": "{{count}} sessions",
-    "updatedAt": "Updated",
-    "labels": {
-      "sessionId": "Session ID",
-      "tokenUsage": "Token Usage"
-    },
-    "locationRunning": " (running)",
-    "untitled": "Untitled session",
+      "groupCount": "{{count}} sessions",
+      "updatedAt": "Updated",
+      "labels": {
+        "sessionId": "Session ID",
+        "tokenUsage": "Token Usage"
+      },
+      "locationRunning": " (running)",
+      "untitled": "Untitled session",
       "restoreModal": {
         "title": "Restore Sessions",
         "hint": "Restoring puts the rollout file, SQLite thread row, and session_index entry back into the original instance together.",
@@ -2420,7 +2531,8 @@
       "desc": "Paste your GitHub Copilot access token or exported JSON data."
     },
     "import": {
-      "localDesc": "Import GitHub Copilot account data from a JSON file."
+      "localDesc": "Import GitHub Copilot account data from local VS Code or a JSON file.",
+      "localClient": "Import from local VS Code"
     },
     "sort": {
       "weekly": "By Chat messages usage",
@@ -2435,7 +2547,8 @@
       "premium": "Premium requests"
     },
     "usage": {
-      "included": "Included"
+      "included": "Included",
+      "usedOfTotal": "{{used}} / {{total}}"
     },
     "injectToVSCode": "Switch to VS Code",
     "injectSuccess": "Token injected to VS Code successfully. VS Code is launching.",
@@ -2445,7 +2558,7 @@
       "desc": "Switching accounts requires reading VS Code local auth storage and using the system credential service for decrypt/write-back. Data is processed locally only.",
       "inject": "One-click switching: This tool reads local VS Code encryption material (DPAPI/Keychain/Secret Service), decrypts the auth session in state.vscdb, replaces the GitHub Copilot token, and re-encrypts it — all locally on your machine.",
       "reason": "Permission scope: read VS Code auth database (state.vscdb) and call system credential capability (Windows DPAPI / macOS Keychain / Linux Secret Service) for decrypt/write-back.",
-      "storage": "Data scope: only GitHub auth-session related entries are read/updated; all processes run locally."
+      "storage": "Data scope: local import reads GitHub auth sessions from VS Code, and switching updates the same entries; OAuth, token import, local-import validation, and quota refresh call GitHub official APIs with required auth fields. state.vscdb and system keys are not uploaded."
     }
   },
   "dashboard": {
@@ -3495,9 +3608,9 @@
     "addAccount": "Add WorkBuddy Account",
     "flowNotice": {
       "title": "WorkBuddy Account Info (click to expand/collapse)",
-      "desc": "Switching accounts requires reading WorkBuddy local auth storage and calling system credential services for decryption/re-encryption. Data is processed locally only.",
-      "permission": "Permission scope: read WorkBuddy auth database (state.vscdb), call system credential capabilities (macOS Keychain / Windows DPAPI / Linux Secret Service) for decrypt/write-back.",
-      "network": "Network scope: OAuth login and token refresh require network requests to WorkBuddy; quota queries call billing APIs. No local keys or credentials are uploaded."
+      "desc": "Account switching writes the local sign-in file using the latest official WorkBuddy client layout; local import reads the same file. Data is processed locally only.",
+      "permission": "Permission scope: read and write the WorkBuddy sign-in file (CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info) for local import and account switching; the legacy state.vscdb is no longer read or modified.",
+      "network": "Network scope: OAuth login and token refresh require network requests to WorkBuddy; quota queries call billing APIs. Local sign-in files and raw credentials are not uploaded."
     },
     "nickname": "Nickname",
     "enterprise": "Enterprise",

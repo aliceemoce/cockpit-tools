@@ -70,6 +70,34 @@
           "statusPending": "Đang chờ nhập"
         }
       },
+      "externalImport": {
+        "bundleInvalidJson": "Gói nhập không phải JSON hợp lệ",
+        "bundleEmpty": "Gói nhập trống",
+        "bundleProviderMismatch": "Nhà cung cấp của gói nhập không khớp",
+        "bundleNoItems": "Gói nhập không có mục nào để nhập",
+        "titleCodex": "Nhập hàng loạt Codex",
+        "statusReceiving": "Đang nhận yêu cầu nhập...",
+        "statusFetching": "Đang lấy gói nhập...",
+        "statusParsing": "Đang phân tích JSON Codex...",
+        "statusImporting": "Đang nhập tài khoản {{current}} / {{total}}",
+        "statusRefreshing": "Đang làm mới danh sách tài khoản...",
+        "statusSuccess": "Nhập hoàn tất",
+        "statusPartial": "Nhập một phần hoàn tất",
+        "statusFailed": "Nhập thất bại",
+        "total": "Tổng",
+        "success": "Thành công",
+        "failed": "Thất bại",
+        "stepReceive": "Nhận yêu cầu",
+        "stepFetch": "Lấy gói",
+        "stepParse": "Phân tích JSON Codex",
+        "stepImport": "Nhập tài khoản",
+        "stepRefresh": "Làm mới danh sách",
+        "errorsTitle": "Mục thất bại",
+        "viewAccounts": "Xem tài khoản Codex",
+        "copyErrors": "Sao chép lỗi",
+        "copied": "Đã sao chép",
+        "unknownItem": "JSON số {{index}}"
+      },
       "instances": {
         "unsupported": {
           "title": "Không hỗ trợ trên hệ thống này"
@@ -107,7 +135,10 @@
         "descTooltip": "Giảm dần (nhấn để chuyển Tăng dần)",
         "toggleDirection": "Đổi hướng sắp xếp",
         "credits": "Bằng số tín chỉ còn lại",
-        "planEnd": "Theo thời gian kết thúc chu kỳ"
+        "planEnd": "Theo thời gian kết thúc chu kỳ",
+        "recommended": "Đề xuất",
+        "recommendedAscTooltip": "Đề xuất (ít đáng chuyển trước)",
+        "recommendedDescTooltip": "Đề xuất (đáng chuyển nhất trước)"
       },
       "sortLabel": "Sắp xếp",
       "token": {
@@ -823,11 +854,23 @@
           "saveSettingsFailed": "Lưu thiết lập sao lưu thất bại: {{error}}",
           "cleanupDone": "Đã dọn {{count}} bản sao lưu hết hạn",
           "cleanupFailed": "Dọn bản sao lưu hết hạn thất bại: {{error}}",
-          "openFolderFailed": "Mở thư mục sao lưu thất bại: {{error}}"
+          "openFolderFailed": "Mở thư mục sao lưu thất bại: {{error}}",
+          "downloadSuccess": "Đã tải bản sao lưu xuống {{path}}",
+          "downloadFailed": "Không thể tải bản sao lưu: {{error}}"
         },
         "errors": {
           "invalidRetention": "Thời gian lưu phải từ 1 đến 365 ngày"
-        }
+        },
+        "platformFilterLabel": "Nền tảng",
+        "platformFilterAll": "Tất cả nền tảng",
+        "platformEmptyTitle": "Không có bản sao phù hợp",
+        "platformEmptyDesc": "Nền tảng này không có bản sao tài khoản để tải xuống.",
+        "archiveTag": "Gói nén",
+        "archiveSize": "Gói nén: {{size}}",
+        "platformsTitle": "Tài khoản nền tảng",
+        "platformDownloadAction": "Tải JSON nền tảng",
+        "downloadJsonAction": "Tệp JSON",
+        "downloadZipAction": "Gói ZIP"
       },
       "exportTitle": "Xuất dữ liệu",
       "exportDesc": "Xuất dữ liệu tài khoản, dữ liệu cấu hình hoặc gói di chuyển đầy đủ tùy nhu cầu.",
@@ -1545,6 +1588,7 @@
     "authorizing": "Đang chờ cấp quyền hệ thống...",
     "installFailed": "Cài đặt hệ thống thất bại. Hãy thử lại sau hoặc tải gói về thủ công.",
     "restartRequiredAfterInstall": "Bản cập nhật đã được cài. Hãy khởi động lại ứng dụng thủ công để hoàn tất chuyển đổi.",
+    "stoppingApiService": "Đang dừng dịch vụ API...",
     "skipThisVersion": "Bỏ qua phiên bản này",
     "skipFailed": "Không thể bỏ qua bản cập nhật này: {{error}}"
   },
@@ -1598,6 +1642,14 @@
     "switch": "Chuyển",
     "switched": "Đã chuyển sang {{email}}",
     "switchFailed": "Chuyển thất bại: {{error}}",
+    "authError": {
+      "badge": "Lỗi ủy quyền",
+      "refreshTokenReused": "Ủy quyền Codex không hợp lệ: refresh_token đã được dùng bởi máy khách hoặc phiên bản khác. Hãy đăng nhập lại và tránh làm mới cùng một tài khoản đồng thời từ Codex chính thức, phiên bản khác hoặc công cụ bên ngoài.",
+      "refreshTokenExpired": "Ủy quyền đăng nhập Codex đã hết hạn và không thể tự động làm mới. Hãy đăng nhập lại tài khoản Codex.",
+      "refreshTokenInvalidated": "Ủy quyền đăng nhập Codex đã bị dịch vụ thu hồi và không thể tự động làm mới. Hãy đăng nhập lại tài khoản Codex.",
+      "invalidGrant": "Ủy quyền đăng nhập Codex không hợp lệ và không thể tự động làm mới. Hãy đăng nhập lại tài khoản Codex.",
+      "unsupportedCountryRegion": "Khu vực mạng hiện tại không hỗ trợ làm mới ủy quyền Codex. Dịch vụ ủy quyền OpenAI đã từ chối lối ra mạng này. Hãy chuyển sang khu vực được hỗ trợ rồi thử lại."
+    },
     "current": "Hiện tại",
     "empty": {
       "description": "Nhấn \"Thêm tài khoản\" để bắt đầu"
@@ -1644,7 +1696,7 @@
       "statusStopped": "Đã dừng",
       "statusDisabled": "Đã tắt",
       "emptyMembers": "Hiện chưa có tài khoản trong bộ sưu tập",
-      "footerHint": "Chỉ lắng nghe trên 127.0.0.1",
+      "footerHint": "Lắng nghe trên máy cục bộ và LAN",
       "manageAccounts": "Quản lý tài khoản",
       "rotateKey": "Đổi khóa",
       "rotateConfirmMessage": "Sau khi đặt lại, khóa dịch vụ API hiện tại sẽ mất hiệu lực ngay và các yêu cầu đang chạy có thể không dùng được nữa. Tiếp tục chứ?",
@@ -1672,7 +1724,8 @@
         "freeNoticeRestricted": "Tài khoản Free bị giới hạn. Tắt tùy chọn này để chọn chúng.",
         "freeNoticeUnstable": "Proxy tài khoản Free có thể không ổn định. Hãy dùng thận trọng.",
         "restrictFreeDisableConfirmTitle": "Cho phép tài khoản Free",
-        "restrictFreeDisableConfirmMessage": "Proxy tài khoản Free có thể không ổn định. Bạn có chắc muốn dùng không?"
+        "restrictFreeDisableConfirmMessage": "Proxy tài khoản Free có thể không ổn định. Bạn có chắc muốn dùng không?",
+        "manageMembers": "Quản lý thành viên"
       },
       "entryAction": "Thêm vào dịch vụ API",
       "testAction": "Kiểm tra dịch vụ API",
@@ -1683,7 +1736,7 @@
       "activateSuccess": "Đã chuyển sang dịch vụ API",
       "dashboardAction": "Bảng dịch vụ",
       "manageDesc": "Quản lý thống kê dịch vụ API, thành viên, cổng, khóa và kiểm tra kết nối tại một nơi.",
-      "memberOnlyLocal": "Chỉ Codex",
+      "memberOnlyLocal": "Cục bộ/LAN",
       "configTitle": "Cấu hình dịch vụ",
       "configEmpty": "Hãy lưu ít nhất một tài khoản vào bộ sưu tập dịch vụ API trước khi tạo URL, khóa và cổng.",
       "portLabel": "Cổng dịch vụ",
@@ -1693,8 +1746,8 @@
       "statsTitle": "Tổng quan",
       "accountStatsTitle": "Theo tài khoản",
       "statsEmpty": "Chưa có thống kê",
-      "summaryMeta": "{{count}} tài khoản · Chỉ Codex",
-      "summaryMetaUnconfigured": "Chưa cấu hình · Chỉ Codex",
+      "summaryMeta": "{{count}} tài khoản · Cục bộ/LAN",
+      "summaryMetaUnconfigured": "Chưa cấu hình · Cục bộ/LAN",
       "memberTitle": "Thành viên bộ sưu tập",
       "stats": {
         "requests": "Yêu cầu",
@@ -1717,9 +1770,16 @@
       "routingDescriptionQuotaLowFirst": "Ưu tiên tài khoản còn ít hạn mức hơn.",
       "routingDescriptionPlanHighFirst": "Ưu tiên tài khoản ở bậc thuê bao cao hơn.",
       "routingDescriptionPlanLowFirst": "Ưu tiên tài khoản ở bậc thuê bao thấp hơn.",
+      "routingDescriptionExpirySoonFirst": "Ưu tiên tài khoản có gói đăng ký hết hạn sớm hơn.",
       "clearStats": "Xóa thống kê",
       "clearStatsConfirm": "Xóa toàn bộ thống kê dịch vụ API?",
       "clearStatsSuccess": "Đã xóa thống kê dịch vụ API",
+      "killPortAction": "Dọn cổng",
+      "killPortTitle": "Dọn cổng dịch vụ API",
+      "killPortConfirmMessage": "Các tiến trình khác đang dùng cổng cục bộ {{port}} sẽ bị buộc đóng, sau đó dịch vụ API sẽ khởi động lại. Tiếp tục?",
+      "killPortSuccess": "Đã dọn cổng (đã đóng {{count}} tiến trình)",
+      "killPortSuccessNone": "Đã kiểm tra cổng. Không có tiến trình bên ngoài nào đang dùng.",
+      "killPortSuccessUnknown": "Đã dọn cổng dịch vụ API",
       "refreshStats": "Làm mới thống kê",
       "refreshStatsSuccess": "Đã làm mới thống kê dịch vụ API",
       "routingStrategy": {
@@ -1727,7 +1787,8 @@
         "quotaHighFirst": "Ưu tiên hạn mức cao",
         "quotaLowFirst": "Ưu tiên hạn mức thấp",
         "planHighFirst": "Ưu tiên gói cao",
-        "planLowFirst": "Ưu tiên gói thấp"
+        "planLowFirst": "Ưu tiên gói thấp",
+        "expirySoonFirst": "Sắp hết hạn trước"
       },
       "statusUnconfigured": "Chưa cấu hình",
       "expandDetails": "Mở chi tiết",
@@ -1757,7 +1818,15 @@
       "apiPortUrl": "URL cổng API",
       "modelId": "ID mô hình",
       "modelIdPlaceholder": "Chọn ID mô hình",
-      "modelIdViewOnly": "Chỉ xem"
+      "modelIdViewOnly": "Chỉ xem",
+      "quotaPool": {
+        "title": "Nhóm hạn mức",
+        "hourlyShort": "5h",
+        "weeklyShort": "Tuần",
+        "viewFull": "Xem thống kê đầy đủ",
+        "modalTitle": "Nhóm hạn mức dịch vụ API",
+        "empty": "Chưa có thống kê hạn mức"
+      }
     },
     "local": {
       "desc": "Nhập tài khoản hiện tại từ ~/.codex/auth.json",
@@ -1771,7 +1840,8 @@
     "quota": {
       "hourly": "Hạn mức 5 giờ",
       "weekly": "Hạn mức tuần",
-      "reset": "Đặt lại"
+      "reset": "Đặt lại",
+      "weeklyBlocksHourly": "Hạn mức tuần là 0 nên hạn mức 5 giờ không khả dụng"
     },
     "quotaError": {
       "badge": "Lỗi quota",
@@ -1805,7 +1875,15 @@
       "weekly": "Hạn mức tuần",
       "hourly": "Hạn mức 5 giờ",
       "weeklyReset": "Thời gian đặt lại theo tuần",
-      "hourlyReset": "Thời gian đặt lại 5 giờ"
+      "hourlyReset": "Thời gian đặt lại 5 giờ",
+      "subscriptionExpiry": "Hạn gói",
+      "custom": "Thứ tự tùy chỉnh",
+      "customModalTitle": "Thứ tự tài khoản",
+      "customModalDesc": "Kéo tài khoản hoặc dùng nút lên/xuống để chỉnh thứ tự hiển thị.",
+      "customDragHandle": "Kéo để sắp xếp",
+      "customMoveUp": "Lên",
+      "customMoveDown": "Xuống",
+      "customReset": "Đặt lại thứ tự"
     },
     "opencodeSwitch": "Công tắc OpenCode",
     "opencodeSwitchDesc": "Đồng bộ chuyển đổi tài khoản Codex trong OpenCode",
@@ -2032,7 +2110,9 @@
       "messages": {
         "pickOne": "Vui lòng chọn ít nhất một phiên",
         "syncNeedTwo": "Cần ít nhất hai phiên bản để đồng bộ phiên",
-        "pickRestoreOne": "Hãy chọn ít nhất một phiên để khôi phục"
+        "pickRestoreOne": "Hãy chọn ít nhất một phiên để khôi phục",
+        "repairVisibilitySkippedOnly": "Không tìm thấy khác biệt provider có thể ghi; đã bỏ qua {{count}} tệp state_5.sqlite không hợp lệ hoặc bị hỏng. Codex phải tạo lại chúng trước khi có thể sửa các bản ghi SQLite bên trong.",
+        "repairVisibilitySkippedWithBase": "{{message}}; đã bỏ qua {{count}} tệp state_5.sqlite không hợp lệ hoặc bị hỏng. Codex phải tạo lại chúng trước khi có thể sửa các bản ghi SQLite bên trong."
       },
       "groupCount": "{{count}} phiên",
       "updatedAt": "Đã cập nhật",
@@ -2067,6 +2147,7 @@
       },
       "provider": {
         "label": "Nhà cung cấp",
+        "inlineLabel": "Nhà cung cấp: {{provider}}",
         "custom": "Tùy chỉnh",
         "endpoint": "Điểm cuối nhà cung cấp",
         "hint": "Base URL tương thích đã được điền tự động. Bạn vẫn có thể chỉnh sửa thủ công.",
@@ -2252,6 +2333,36 @@
     },
     "groups": {
       "addToGroup": "Thêm vào nhóm"
+    },
+    "subscription": {
+      "label": "Hết hạn gói",
+      "column": "Hết hạn",
+      "unknown": "Ủy quyền lại",
+      "missingDetail": "Ủy quyền lại để lấy",
+      "expired": "Đã hết hạn",
+      "hoursLeft": "{{count}} giờ",
+      "daysLeft": "{{count}} ngày",
+      "over99Days": "99+ ngày",
+      "titleWithDate": "Gói hết hạn: {{date}}",
+      "titleUnknown": "Ủy quyền lại để lấy hạn gói",
+      "filterLabel": "Lọc hạn",
+      "filterAll": "Tất cả ({{count}})",
+      "filterExpired": "Đã hết hạn ({{count}})",
+      "filterWithin24h": "24 giờ ({{count}})",
+      "filterWithin7d": "7 ngày ({{count}})",
+      "filterWithin30d": "30 ngày ({{count}})",
+      "filterMissing": "Không rõ ({{count}})"
+    },
+    "apiSwitchNotice": {
+      "title": "Phiên Codex bị ẩn",
+      "message": "Đã phát hiện Codex chuyển từ {{from}} sang {{to}}. Do hành vi chính thức, các phiên hiện có có thể không tự hiển thị sau khi chuyển trực tiếp giữa API và tài khoản. Hệ thống đang tự sửa khả năng hiển thị phiên; bạn cũng có thể dùng Quản lý phiên > Sửa hiển thị sau này.",
+      "repairing": "Đang sửa khả năng hiển thị phiên Codex...",
+      "repairFailed": "Tự động sửa thất bại. Bạn có thể thử lại sau trong Quản lý phiên > Sửa hiển thị.",
+      "type": {
+        "apiKey": "Khóa API",
+        "apiService": "Dịch vụ API",
+        "account": "Tài khoản"
+      }
     }
   },
   "githubCopilot": {
@@ -2274,7 +2385,8 @@
       "desc": "Dán token truy cập GitHub Copilot hoặc dữ liệu JSON đã xuất."
     },
     "import": {
-      "localDesc": "Nhập tài khoản GitHub Copilot từ các phiên đăng nhập cục bộ."
+      "localDesc": "Nhập dữ liệu tài khoản GitHub Copilot từ VS Code cục bộ hoặc tệp JSON.",
+      "localClient": "Nhập từ VS Code cục bộ"
     },
     "sort": {
       "weekly": "Hạn mức tuần",
@@ -2289,7 +2401,8 @@
       "premium": "Yêu cầu Premium"
     },
     "usage": {
-      "included": "Đã bao gồm"
+      "included": "Đã bao gồm",
+      "usedOfTotal": "{{used}} / {{total}} đã dùng"
     },
     "injectToVSCode": "Chuyển sang VS Code",
     "injectSuccess": "Đã chèn token vào VS Code thành công. VS Code đang được khởi chạy.",
@@ -2299,7 +2412,7 @@
       "desc": "Việc chuyển tài khoản yêu cầu đọc kho xác thực cục bộ của VS Code và dùng dịch vụ thông tin xác thực hệ thống để giải mã/ghi lại; dữ liệu chỉ được xử lý trên máy cục bộ.",
       "inject": "Chuyển đổi một lần nhấp: công cụ này đọc dữ liệu mã hóa cục bộ của VS Code (DPAPI/Keychain/Secret Service), giải mã phiên xác thực trong state.vscdb, thay thế token GitHub Copilot rồi mã hóa lại — mọi thao tác đều diễn ra cục bộ trên máy của bạn.",
       "reason": "Phạm vi quyền: đọc cơ sở dữ liệu xác thực VS Code (state.vscdb) và gọi khả năng mã hóa hệ thống (Windows DPAPI / macOS Keychain / Linux Secret Service) để giải mã/ghi lại.",
-      "storage": "Phạm vi đọc: chỉ xử lý dữ liệu liên quan đến phiên đăng nhập GitHub; mọi quy trình đều được thực thi cục bộ."
+      "storage": "Phạm vi dữ liệu: nhập cục bộ đọc các phiên đăng nhập GitHub trong VS Code, còn chuyển tài khoản cập nhật các mục này; OAuth, nhập token, xác minh nhập cục bộ và làm mới hạn mức gọi API chính thức của GitHub với các trường xác thực cần thiết. Không tải lên state.vscdb hoặc khóa hệ thống."
     }
   },
   "dashboard": {
@@ -3342,11 +3455,11 @@
       "status": "Trạng thái điểm danh",
       "checkedIn": "Đã điểm danh",
       "notCheckedIn": "Chưa điểm danh",
-      "button": {},
+      "button": "Điểm danh",
       "button.loading": "Đang điểm danh...",
       "done": "Hoàn tất",
       "success": "Điểm danh thành công! Chuỗi {{days}} ngày",
-      "failure": {},
+      "failure": "Điểm danh thất bại: {{message}}",
       "failure.network": "Lỗi mạng, vui lòng thử lại sau",
       "lastCheckin": "Lần điểm danh gần nhất: {{time}}",
       "streak": "Chuỗi {{days}} ngày",
@@ -3377,9 +3490,9 @@
     "addAccount": "Thêm tài khoản WorkBuddy",
     "flowNotice": {
       "title": "Hướng dẫn quản lý tài khoản WorkBuddy (bấm để mở rộng/thu gọn)",
-      "desc": "Khi chuyển tài khoản, ứng dụng cần đọc vùng lưu xác thực cục bộ của WorkBuddy và gọi dịch vụ chứng thực hệ thống để giải mã/mã hóa lại. Dữ liệu chỉ được xử lý cục bộ.",
-      "permission": "Phạm vi quyền: đọc cơ sở dữ liệu xác thực WorkBuddy (state.vscdb), gọi khả năng chứng thực hệ thống (macOS Keychain / Windows DPAPI / Linux Secret Service) để giải mã và ghi lại.",
-      "network": "Phạm vi mạng: đăng nhập OAuth và làm mới Token cần gửi yêu cầu đến WorkBuddy; truy vấn hạn ngạch sẽ gọi API tính phí. Không tải lên khóa hoặc thông tin xác thực cục bộ."
+      "desc": "Khi chuyển tài khoản, ứng dụng ghi tệp đăng nhập cục bộ theo bố cục mới nhất của ứng dụng WorkBuddy chính thức; nhập cục bộ đọc cùng tệp đó. Dữ liệu chỉ được xử lý cục bộ.",
+      "permission": "Phạm vi quyền: đọc và ghi tệp đăng nhập WorkBuddy (CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info) để nhập cục bộ và chuyển tài khoản; state.vscdb cũ không còn được đọc hoặc sửa đổi.",
+      "network": "Phạm vi mạng: đăng nhập OAuth và làm mới Token cần gửi yêu cầu đến WorkBuddy; truy vấn hạn ngạch sẽ gọi API tính phí. Không tải lên tệp đăng nhập cục bộ hoặc thông tin xác thực thô."
     },
     "nickname": "Biệt danh",
     "enterprise": "Doanh nghiệp",

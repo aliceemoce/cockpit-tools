@@ -70,6 +70,34 @@
           "statusPending": "İçe aktarım bekleniyor"
         }
       },
+      "externalImport": {
+        "bundleInvalidJson": "İçe aktarma paketi geçerli JSON değil",
+        "bundleEmpty": "İçe aktarma paketi boş",
+        "bundleProviderMismatch": "İçe aktarma paketinin sağlayıcısı eşleşmiyor",
+        "bundleNoItems": "İçe aktarılabilir öğe yok",
+        "titleCodex": "Codex Toplu İçe Aktarma",
+        "statusReceiving": "İçe aktarma isteği alınıyor...",
+        "statusFetching": "İçe aktarma paketi alınıyor...",
+        "statusParsing": "Codex JSON ayrıştırılıyor...",
+        "statusImporting": "{{current}} / {{total}} hesabı içe aktarılıyor",
+        "statusRefreshing": "Hesap listesi yenileniyor...",
+        "statusSuccess": "İçe aktarma tamamlandı",
+        "statusPartial": "Kısmi içe aktarma tamamlandı",
+        "statusFailed": "İçe aktarma başarısız",
+        "total": "Toplam",
+        "success": "Başarılı",
+        "failed": "Başarısız",
+        "stepReceive": "İsteği al",
+        "stepFetch": "Paketi al",
+        "stepParse": "Codex JSON ayrıştır",
+        "stepImport": "Hesapları içe aktar",
+        "stepRefresh": "Listeyi yenile",
+        "errorsTitle": "Başarısız öğeler",
+        "viewAccounts": "Codex hesaplarını görüntüle",
+        "copyErrors": "Hataları kopyala",
+        "copied": "Kopyalandı",
+        "unknownItem": "{{index}}. JSON"
+      },
       "instances": {
         "unsupported": {
           "title": "Bu sistemde desteklenmiyor"
@@ -107,7 +135,10 @@
         "descTooltip": "Azalan (Artan için tıkla)",
         "toggleDirection": "Sıralama yönünü değiştir",
         "credits": "Kalan kredilere göre",
-        "planEnd": "Döngü bitiş zamanına göre"
+        "planEnd": "Döngü bitiş zamanına göre",
+        "recommended": "Önerilen",
+        "recommendedAscTooltip": "Önerilen (en az uygun önce)",
+        "recommendedDescTooltip": "Önerilen (en uygun önce)"
       },
       "sortLabel": "Sırala",
       "token": {
@@ -823,11 +854,23 @@
           "saveSettingsFailed": "Yedek ayarları kaydedilemedi: {{error}}",
           "cleanupDone": "Süresi geçmiş {{count}} yedek temizlendi",
           "cleanupFailed": "Süresi geçmiş yedekler temizlenemedi: {{error}}",
-          "openFolderFailed": "Yedek klasörü açılamadı: {{error}}"
+          "openFolderFailed": "Yedek klasörü açılamadı: {{error}}",
+          "downloadSuccess": "Yedek {{path}} konumuna indirildi",
+          "downloadFailed": "Yedek indirilemedi: {{error}}"
         },
         "errors": {
           "invalidRetention": "Saklama süresi 1 ile 365 gün arasında olmalıdır"
-        }
+        },
+        "platformFilterLabel": "Platformu",
+        "platformFilterAll": "Tüm platformlar",
+        "platformEmptyTitle": "Eşleşen yedek yok",
+        "platformEmptyDesc": "Bu platformun indirilebilir hesap yedeği yok.",
+        "archiveTag": "Arşiv",
+        "archiveSize": "Arşiv: {{size}}",
+        "platformsTitle": "Platform hesapları",
+        "platformDownloadAction": "Platform JSON indir",
+        "downloadJsonAction": "JSON dosyası",
+        "downloadZipAction": "ZIP arşivi"
       },
       "exportTitle": "Veri dışa aktarımı",
       "exportDesc": "İhtiyaca göre hesap verilerini, yapılandırma verilerini veya tam taşıma paketini dışa aktarın.",
@@ -1545,6 +1588,7 @@
     "authorizing": "Sistem yetkisi bekleniyor...",
     "installFailed": "Sistem kurulumu başarısız oldu. Daha sonra yeniden deneyin veya paketi manuel indirin.",
     "restartRequiredAfterInstall": "Güncelleme yüklendi. Geçişi tamamlamak için uygulamayı manuel olarak yeniden başlatın.",
+    "stoppingApiService": "API hizmeti durduruluyor...",
     "skipThisVersion": "Bu sürümü atla",
     "skipFailed": "Bu güncelleme atlanamadı: {{error}}"
   },
@@ -1598,6 +1642,14 @@
     "switch": "Değiştir",
     "switched": "{{email}} hesabına geçildi",
     "switchFailed": "Değiştirme başarısız: {{error}}",
+    "authError": {
+      "badge": "Yetki sorunu",
+      "refreshTokenReused": "Codex yetkilendirmesi geçersiz: refresh_token başka bir istemci veya örnek tarafından zaten kullanılmış. Yeniden oturum açın ve aynı hesabı resmi Codex, diğer örnekler veya harici araçlarla aynı anda yenilemeyin.",
+      "refreshTokenExpired": "Codex giriş yetkisi süresi doldu ve otomatik yenilenemiyor. Codex hesabına yeniden oturum açın.",
+      "refreshTokenInvalidated": "Codex giriş yetkisi servis tarafından iptal edildi ve otomatik yenilenemiyor. Codex hesabına yeniden oturum açın.",
+      "invalidGrant": "Codex giriş yetkisi geçersiz ve otomatik yenilenemiyor. Codex hesabına yeniden oturum açın.",
+      "unsupportedCountryRegion": "Geçerli ağ bölgesi Codex yetkilendirmesini yenilemeyi desteklemiyor. OpenAI yetkilendirme servisi bu ağ çıkışını reddetti. Desteklenen bir bölgeye geçip yeniden deneyin."
+    },
     "current": "Geçerli",
     "empty": {
       "description": "\"Hesap ekle\"ye tıklayın"
@@ -1644,7 +1696,7 @@
       "statusStopped": "Durduruldu",
       "statusDisabled": "Devre dışı",
       "emptyMembers": "Koleksiyonda henüz hesap yok",
-      "footerHint": "Yalnızca 127.0.0.1 üzerinde dinler",
+      "footerHint": "Yerel ve LAN üzerinde dinler",
       "manageAccounts": "Hesapları yönet",
       "rotateKey": "Anahtarı yenile",
       "rotateConfirmMessage": "Sıfırlamadan sonra mevcut API hizmeti anahtarı hemen geçersiz olur ve devam eden istekler kullanılamaz hale gelebilir. Devam edilsin mi?",
@@ -1672,7 +1724,8 @@
         "freeNoticeRestricted": "Free hesaplar sınırlıdır. Seçmek için bunu kapatın.",
         "freeNoticeUnstable": "Free hesap proxy'si kararsız olabilir. Dikkatli kullanın.",
         "restrictFreeDisableConfirmTitle": "Free hesaplara izin ver",
-        "restrictFreeDisableConfirmMessage": "Free hesap proxy'si kararsız olabilir. Kullanmak istediğinizden emin misiniz?"
+        "restrictFreeDisableConfirmMessage": "Free hesap proxy'si kararsız olabilir. Kullanmak istediğinizden emin misiniz?",
+        "manageMembers": "Üyeleri yönet"
       },
       "entryAction": "API hizmetine ekle",
       "testAction": "API hizmetini test et",
@@ -1683,7 +1736,7 @@
       "activateSuccess": "API hizmetine geçildi",
       "dashboardAction": "Hizmet paneli",
       "manageDesc": "API hizmeti istatistiklerini, üyeleri, portu, anahtarı ve bağlantı testini tek yerden yönetin.",
-      "memberOnlyLocal": "Yalnızca Codex",
+      "memberOnlyLocal": "Yerel/LAN",
       "configTitle": "Hizmet yapılandırması",
       "configEmpty": "URL, anahtar ve port oluşturulmadan önce en az bir hesabı API hizmeti koleksiyonuna kaydedin.",
       "portLabel": "Hizmet portu",
@@ -1693,8 +1746,8 @@
       "statsTitle": "Toplam",
       "accountStatsTitle": "Hesaba göre",
       "statsEmpty": "Henüz istatistik yok",
-      "summaryMeta": "{{count}} hesap · Yalnızca Codex",
-      "summaryMetaUnconfigured": "Yapılandırılmadı · Yalnızca Codex",
+      "summaryMeta": "{{count}} hesap · Yerel/LAN",
+      "summaryMetaUnconfigured": "Yapılandırılmadı · Yerel/LAN",
       "memberTitle": "Koleksiyon üyeleri",
       "stats": {
         "requests": "İstekler",
@@ -1717,9 +1770,16 @@
       "routingDescriptionQuotaLowFirst": "Kalan kotası daha düşük hesapları tercih eder.",
       "routingDescriptionPlanHighFirst": "Daha yüksek abonelik planındaki hesapları tercih eder.",
       "routingDescriptionPlanLowFirst": "Daha düşük abonelik planındaki hesapları tercih eder.",
+      "routingDescriptionExpirySoonFirst": "Aboneliği daha erken sona erecek hesapları tercih eder.",
       "clearStats": "İstatistikleri Temizle",
       "clearStatsConfirm": "API hizmeti istatistiklerinin tümü temizlensin mi?",
       "clearStatsSuccess": "API hizmeti istatistikleri temizlendi",
+      "killPortAction": "Portu temizle",
+      "killPortTitle": "API hizmeti portunu temizle",
+      "killPortConfirmMessage": "Yerel {{port}} portunu kullanan diğer işlemler zorla kapatılacak, ardından API hizmeti yeniden başlatılacak. Devam edilsin mi?",
+      "killPortSuccess": "Port temizlendi ({{count}} işlem kapatıldı)",
+      "killPortSuccessNone": "Port kontrol edildi. Harici bir işlem kullanmıyor.",
+      "killPortSuccessUnknown": "API hizmeti portu temizlendi",
       "refreshStats": "İstatistikleri Yenile",
       "refreshStatsSuccess": "API hizmeti istatistikleri yenilendi",
       "routingStrategy": {
@@ -1727,7 +1787,8 @@
         "quotaHighFirst": "Önce yüksek kota",
         "quotaLowFirst": "Önce düşük kota",
         "planHighFirst": "Önce yüksek plan",
-        "planLowFirst": "Önce düşük plan"
+        "planLowFirst": "Önce düşük plan",
+        "expirySoonFirst": "Yakında Biten Önce"
       },
       "statusUnconfigured": "Yapılandırılmadı",
       "expandDetails": "Ayrıntıları aç",
@@ -1757,7 +1818,15 @@
       "apiPortUrl": "API Port URL",
       "modelId": "Model ID",
       "modelIdPlaceholder": "Model ID seçin",
-      "modelIdViewOnly": "Yalnızca görüntüle"
+      "modelIdViewOnly": "Yalnızca görüntüle",
+      "quotaPool": {
+        "title": "Kota havuzu",
+        "hourlyShort": "5h",
+        "weeklyShort": "Hafta",
+        "viewFull": "Tam istatistikleri gör",
+        "modalTitle": "API hizmeti kota havuzu",
+        "empty": "Henüz kota istatistiği yok"
+      }
     },
     "local": {
       "desc": "~/.codex/auth.json'dan mevcut hesabı içe aktar",
@@ -1771,7 +1840,8 @@
     "quota": {
       "hourly": "5 saatlik kota",
       "weekly": "Haftalık kota",
-      "reset": "Sıfırla"
+      "reset": "Sıfırla",
+      "weeklyBlocksHourly": "Haftalık kota 0 olduğu için 5 saatlik kota kullanılamaz"
     },
     "quotaError": {
       "badge": "Kota hatası",
@@ -1805,7 +1875,15 @@
       "weekly": "Haftalık kota",
       "hourly": "5 saatlik kota",
       "weeklyReset": "Haftalık sıfırlama zamanı",
-      "hourlyReset": "5 saatlik sıfırlama zamanı"
+      "hourlyReset": "5 saatlik sıfırlama zamanı",
+      "subscriptionExpiry": "Abonelik bitişi",
+      "custom": "Özel sıra",
+      "customModalTitle": "Özel hesap sırası",
+      "customModalDesc": "Hesapları sürükleyin veya yukarı/aşağı düğmeleriyle görünüm sırasını ayarlayın.",
+      "customDragHandle": "Sürükle",
+      "customMoveUp": "Yukarı",
+      "customMoveDown": "Aşağı",
+      "customReset": "Sırayı sıfırla"
     },
     "opencodeSwitch": "OpenCode geçiş anahtarı",
     "opencodeSwitchDesc": "OpenCode içinde Codex hesap geçişini senkronize et",
@@ -2032,7 +2110,9 @@
       "messages": {
         "pickOne": "Lütfen en az bir oturum seçin",
         "syncNeedTwo": "Oturumları eşitlemek için en az iki örnek gerekir",
-        "pickRestoreOne": "Lütfen geri yüklenecek en az bir oturum seçin"
+        "pickRestoreOne": "Lütfen geri yüklenecek en az bir oturum seçin",
+        "repairVisibilitySkippedOnly": "Yazılabilir provider farkı bulunamadı; geçersiz veya bozuk {{count}} state_5.sqlite dosyası atlandı. Bu SQLite kayıtları onarılmadan önce Codex bu dosyaları yeniden oluşturmalıdır.",
+        "repairVisibilitySkippedWithBase": "{{message}}; geçersiz veya bozuk {{count}} state_5.sqlite dosyası atlandı. Bu SQLite kayıtları onarılmadan önce Codex bu dosyaları yeniden oluşturmalıdır."
       },
       "groupCount": "{{count}} oturum",
       "updatedAt": "Güncellendi",
@@ -2067,6 +2147,7 @@
       },
       "provider": {
         "label": "Sağlayıcı",
+        "inlineLabel": "Sağlayıcı: {{provider}}",
         "custom": "Özel",
         "endpoint": "Sağlayıcı uç noktası",
         "hint": "Uyumlu bir Base URL otomatik olarak dolduruldu. İsterseniz bunu yine de elle düzenleyebilirsiniz.",
@@ -2252,6 +2333,36 @@
     },
     "groups": {
       "addToGroup": "Gruba Ekle"
+    },
+    "subscription": {
+      "label": "Abonelik bitişi",
+      "column": "Bitiş",
+      "unknown": "Yeniden yetkilendir",
+      "missingDetail": "Almak icin yeniden yetkilendir",
+      "expired": "Süresi doldu",
+      "hoursLeft": "{{count}} sa",
+      "daysLeft": "{{count}} gün",
+      "over99Days": "99+ gün",
+      "titleWithDate": "Abonelik bitişi: {{date}}",
+      "titleUnknown": "Abonelik bitişini almak için yeniden yetkilendir",
+      "filterLabel": "Bitiş filtresi",
+      "filterAll": "Tümü ({{count}})",
+      "filterExpired": "Süresi dolan ({{count}})",
+      "filterWithin24h": "24 sa ({{count}})",
+      "filterWithin7d": "7 gün ({{count}})",
+      "filterWithin30d": "30 gün ({{count}})",
+      "filterMissing": "Bilinmiyor ({{count}})"
+    },
+    "apiSwitchNotice": {
+      "title": "Codex oturumları gizli",
+      "message": "Codex’in {{from}} üzerinden {{to}} konumuna geçtiği algılandı. Resmi davranış nedeniyle API ile hesaplar arasında doğrudan geçişten sonra mevcut oturumlar otomatik görünmeyebilir. Oturum görünürlüğü otomatik olarak onarılıyor; daha sonra Oturum Yönetimi > Görünürlüğü Onar bölümünü de kullanabilirsiniz.",
+      "repairing": "Codex oturum görünürlüğü onarılıyor...",
+      "repairFailed": "Otomatik onarım başarısız oldu. Daha sonra Oturum Yönetimi > Görünürlüğü Onar bölümünden tekrar deneyebilirsiniz.",
+      "type": {
+        "apiKey": "API Anahtarı",
+        "apiService": "API Hizmeti",
+        "account": "Hesap"
+      }
     }
   },
   "githubCopilot": {
@@ -2274,7 +2385,8 @@
       "desc": "GitHub Copilot erişim belirtecini veya dışa aktarılan JSON verisini yapıştırın."
     },
     "import": {
-      "localDesc": "Yerelde oturum açılmış oturumlardan GitHub Copilot hesaplarını içe aktar."
+      "localDesc": "GitHub Copilot hesap verilerini yerel VS Code'dan veya bir JSON dosyasından içe aktarın.",
+      "localClient": "Yerel VS Code'dan içe aktar"
     },
     "sort": {
       "weekly": "Haftalık kota",
@@ -2289,7 +2401,8 @@
       "premium": "Premium istekler"
     },
     "usage": {
-      "included": "Dahil"
+      "included": "Dahil",
+      "usedOfTotal": "{{used}} / {{total}} kullanıldı"
     },
     "injectToVSCode": "VS Code'a geç",
     "injectSuccess": "Belirteç VS Code'a başarıyla enjekte edildi. VS Code başlatılıyor.",
@@ -2299,7 +2412,7 @@
       "desc": "Hesap değiştirme, VS Code yerel kimlik doğrulama deposunun okunmasını ve şifre çözme/geri yazma için sistem kimlik bilgisi hizmetinin kullanılmasını gerektirir; veriler yalnızca yerelde işlenir.",
       "inject": "Tek tıkla geçiş: Bu araç VS Code'un yerel şifreleme materyalini (DPAPI/Keychain/Secret Service) okur, state.vscdb içindeki kimlik doğrulama oturumunu çözer, GitHub Copilot belirtecini değiştirir ve yeniden şifreler — tüm işlem cihazınızda yerel olarak yapılır.",
       "reason": "İzin kapsamı: VS Code kimlik doğrulama veritabanını (state.vscdb) okumak ve şifre çözme/geri yazma için sistem şifreleme yeteneklerini (Windows DPAPI / macOS Keychain / Linux Secret Service) çağırmak.",
-      "storage": "Okuma kapsamı: yalnızca GitHub oturum açma oturumu ile ilgili veriler işlenir; tüm işlemler yerel olarak yürütülür."
+      "storage": "Veri kapsamı: yerel içe aktarma VS Code içindeki GitHub oturum açma oturumlarını okur, hesap değiştirme aynı kayıtları günceller; OAuth, token içe aktarma, yerel içe aktarma doğrulaması ve kota yenileme gerekli kimlik doğrulama alanlarıyla GitHub resmi API'lerini çağırır. state.vscdb ve sistem anahtarları yüklenmez."
     }
   },
   "dashboard": {
@@ -3342,11 +3455,11 @@
       "status": "Check-in durumu",
       "checkedIn": "Check-in yapıldı",
       "notCheckedIn": "Check-in yapılmadı",
-      "button": {},
+      "button": "Yoklama",
       "button.loading": "Check-in yapılıyor...",
       "done": "Tamam",
       "success": "Check-in başarılı! {{days}} günlük seri",
-      "failure": {},
+      "failure": "Yoklama başarısız: {{message}}",
       "failure.network": "Ağ hatası, lütfen daha sonra tekrar deneyin",
       "lastCheckin": "Son check-in: {{time}}",
       "streak": "{{days}} günlük seri",
@@ -3377,9 +3490,9 @@
     "addAccount": "WorkBuddy Hesabı Ekle",
     "flowNotice": {
       "title": "WorkBuddy hesap yönetimi bilgisi (genişlet/daralt için tıklayın)",
-      "desc": "Hesap değiştirme için WorkBuddy yerel kimlik doğrulama deposu okunur ve şifre çözme/yeniden şifreleme için sistem kimlik bilgisi servisleri çağrılır. Veriler yalnızca yerelde işlenir.",
-      "permission": "İzin kapsamı: WorkBuddy kimlik veritabanını (state.vscdb) okuma; şifre çözme/geri yazma için sistem kimlik yeteneklerini çağırma (macOS Keychain / Windows DPAPI / Linux Secret Service).",
-      "network": "Ağ kapsamı: OAuth girişi ve belirteç yenileme için WorkBuddy'ye ağ istekleri gerekir; kota sorguları faturalama API'lerini çağırır. Yerel anahtarlar veya kimlik bilgileri yüklenmez."
+      "desc": "Hesap değiştirme, en yeni resmi WorkBuddy istemci düzenine göre yerel oturum açma dosyasını yazar; yerel içe aktarma aynı dosyayı okur. Veriler yalnızca yerelde işlenir.",
+      "permission": "İzin kapsamı: yerel içe aktarma ve hesap değiştirme için WorkBuddy oturum açma dosyasını (CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info) okuma ve yazma; eski state.vscdb artık okunmaz veya değiştirilmez.",
+      "network": "Ağ kapsamı: OAuth girişi ve belirteç yenileme için WorkBuddy'ye ağ istekleri gerekir; kota sorguları faturalama API'lerini çağırır. Yerel oturum açma dosyaları veya ham kimlik bilgileri yüklenmez."
     },
     "nickname": "Takma ad",
     "enterprise": "Kurumsal",

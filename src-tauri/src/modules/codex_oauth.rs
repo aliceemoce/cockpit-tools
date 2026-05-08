@@ -15,7 +15,8 @@ use url::Url;
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTH_ENDPOINT: &str = "https://auth.openai.com/oauth/authorize";
 const TOKEN_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
-const SCOPES: &str = "openid profile email offline_access";
+const SCOPES: &str =
+    "openid profile email offline_access api.connectors.read api.connectors.invoke";
 const ORIGINATOR: &str = "codex_vscode";
 const OAUTH_CALLBACK_PORT: u16 = 1455;
 const OAUTH_PORT_IN_USE_CODE: &str = "CODEX_OAUTH_PORT_IN_USE";
@@ -805,8 +806,8 @@ pub fn restore_pending_oauth_listener(app_handle: AppHandle) {
     }
 }
 
-pub fn is_token_expired(access_token: &str) -> bool {
-    let parts: Vec<&str> = access_token.split('.').collect();
+pub fn is_jwt_token_expired(token: &str) -> bool {
+    let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return true;
     }
@@ -836,6 +837,10 @@ pub fn is_token_expired(access_token: &str) -> bool {
     exp < now + TOKEN_REFRESH_SKEW_SECONDS
 }
 
+pub fn is_token_expired(access_token: &str) -> bool {
+    is_jwt_token_expired(access_token)
+}
+
 pub async fn refresh_access_token(refresh_token: &str) -> Result<CodexTokens, String> {
     refresh_access_token_with_fallback(refresh_token, None).await
 }
@@ -846,17 +851,15 @@ pub async fn refresh_access_token_with_fallback(
 ) -> Result<CodexTokens, String> {
     let client = reqwest::Client::new();
 
-    let params = [
-        ("grant_type", "refresh_token"),
-        ("refresh_token", refresh_token),
-        ("client_id", CLIENT_ID),
-    ];
-
     logger::log_info("Codex Token 刷新中...");
 
     let response = client
         .post(TOKEN_ENDPOINT)
-        .form(&params)
+        .json(&serde_json::json!({
+            "client_id": CLIENT_ID,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }))
         .send()
         .await
         .map_err(|e| format!("Token 刷新请求失败: {}", e))?;

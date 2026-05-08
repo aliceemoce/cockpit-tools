@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  CodexLocalAccessPortCleanupResult,
   CodexLocalAccessRoutingStrategy,
   CodexLocalAccessState,
 } from '../types/codexLocalAccess';
@@ -30,6 +31,14 @@ export async function rotateCodexLocalAccessApiKey(): Promise<CodexLocalAccessSt
 
 export async function clearCodexLocalAccessStats(): Promise<CodexLocalAccessState> {
   return await invoke('codex_local_access_clear_stats');
+}
+
+export async function prepareCodexLocalAccessForRestart(): Promise<CodexLocalAccessState> {
+  return await invoke('codex_local_access_prepare_restart');
+}
+
+export async function killCodexLocalAccessPort(): Promise<CodexLocalAccessPortCleanupResult> {
+  return await invoke('codex_local_access_kill_port');
 }
 
 export async function updateCodexLocalAccessPort(

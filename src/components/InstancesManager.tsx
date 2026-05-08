@@ -464,6 +464,7 @@ export function InstancesManager<TAccount extends AccountLike>({
     let inFlight = false;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
+      if (openInlineMenuId || showModal) return;
       if (inFlight) return;
       inFlight = true;
       Promise.all([refreshInstances(), fetchAccounts()])
@@ -475,7 +476,7 @@ export function InstancesManager<TAccount extends AccountLike>({
         });
     }, INSTANCE_AUTO_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [fetchAccounts, refreshInstances]);
+  }, [fetchAccounts, openInlineMenuId, refreshInstances, showModal]);
 
   useEffect(() => {
     if (!error) return;

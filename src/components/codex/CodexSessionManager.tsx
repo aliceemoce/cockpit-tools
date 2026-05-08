@@ -5,6 +5,7 @@ import { Check, ChevronDown, ChevronRight, Copy, Eye, Folder, RefreshCw, RotateC
 import { ModalErrorMessage, useModalErrorState } from '../ModalErrorMessage';
 import type { CodexSessionRecord, CodexSessionTokenStats, CodexTrashedSessionRecord } from '../../types/codex';
 import { useCodexInstanceStore } from '../../stores/useCodexInstanceStore';
+import { formatCodexSessionVisibilityRepairMessage } from '../../utils/codexSessionVisibility';
 
 type MessageState = { text: string; tone?: 'error' };
 type SessionTokenStatsMap = Record<string, CodexSessionTokenStats>;
@@ -390,7 +391,7 @@ export function CodexSessionManager() {
     setRepairingVisibility(true);
     try {
       const summary = await repairSessionVisibilityAcrossInstances();
-      setMessage({ text: summary.message });
+      setMessage({ text: formatCodexSessionVisibilityRepairMessage(summary, t) });
       await loadSessions();
     } catch (error) {
       setMessage({ text: String(error), tone: 'error' });

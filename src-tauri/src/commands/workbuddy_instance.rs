@@ -1,95 +1,9 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::models::InstanceProfileView;
 use crate::modules;
 
 const DEFAULT_INSTANCE_ID: &str = "__default__";
-
-fn ensure_workbuddy_state_db_path(user_data_dir: &str) -> Result<PathBuf, String> {
-    let root = Path::new(user_data_dir);
-    let candidates = vec![
-        root.join("User").join("globalStorage").join("state.vscdb"),
-        root.join("globalStorage").join("state.vscdb"),
-        root.join("state.vscdb"),
-    ];
-
-    if let Some(path) = candidates.iter().find(|path| path.exists()) {
-        return Ok(path.clone());
-    }
-
-    let preferred = root.join("User").join("globalStorage").join("state.vscdb");
-    if let Some(parent) = preferred.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建 globalStorage 目录失败：{}", e))?;
-    }
-
-    if let Some(default_db) = modules::workbuddy_account::get_default_workbuddy_state_db_path() {
-        if default_db.exists() && default_db != preferred {
-            match fs::copy(&default_db, &preferred) {
-                Ok(_) => {
-                    modules::logger::log_info(&format!(
-                        "[WorkBuddy Instance] 已回退复制默认 state.vscdb: from={}, to={}",
-                        default_db.to_string_lossy(),
-                        preferred.to_string_lossy()
-                    ));
-                }
-                Err(err) => {
-                    modules::logger::log_warn(&format!(
-                        "[WorkBuddy Instance] 复制默认 state.vscdb 失败，改为写入新库：from={}, to={}, error={}",
-                        default_db.to_string_lossy(),
-                        preferred.to_string_lossy(),
-                        err
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(preferred)
-}
-
-fn build_session_json(account: &crate::models::workbuddy::WorkbuddyAccount) -> String {
-    let uid = account.uid.as_deref().unwrap_or("");
-    let nickname = account.nickname.as_deref().unwrap_or("");
-    let enterprise_id = account.enterprise_id.as_deref().unwrap_or("");
-    let enterprise_name = account.enterprise_name.as_deref().unwrap_or("");
-    let domain = account.domain.as_deref().unwrap_or("");
-    let refresh_token = account.refresh_token.as_deref().unwrap_or("");
-    let expires_at = account.expires_at.unwrap_or(0);
-
-    let session = serde_json::json!({
-        "id": "Tencent-Cloud.genie-ide-cn",
-        "token": account.access_token,
-        "refreshToken": refresh_token,
-        "expiresAt": expires_at,
-        "domain": domain,
-        "accessToken": format!("{}+{}", uid, account.access_token),
-        "converted": true,
-        "account": {
-            "id": uid,
-            "uid": uid,
-            "label": nickname,
-            "nickname": nickname,
-            "enterpriseId": enterprise_id,
-            "enterpriseName": enterprise_name,
-            "pluginEnabled": true,
-            "lastLogin": true,
-        },
-        "auth": {
-            "accessToken": account.access_token,
-            "refreshToken": refresh_token,
-            "tokenType": account.token_type.as_deref().unwrap_or("Bearer"),
-            "domain": domain,
-            "expiresAt": expires_at,
-            "expiresIn": expires_at,
-            "refreshExpiresIn": 0,
-            "refreshExpiresAt": 0,
-            "lastRefreshTime": chrono::Utc::now().timestamp_millis(),
-        }
-    });
-
-    session.to_string()
-}
 
 fn inject_bound_account_for_instance_start(
     user_data_dir: &str,
@@ -109,62 +23,14 @@ fn inject_bound_account_for_instance_start(
         bind_id, account.email, user_data_dir
     ));
 
-    let state_db_path = ensure_workbuddy_state_db_path(user_data_dir)?;
-    let session_json = build_session_json(&account);
-    let secret_key = r#"{"extensionId":"tencent-cloud.coding-copilot","key":"planning-genie.new.accessTokencn"}"#;
-    let db_key = format!("secret://{}", secret_key);
-
-    if let Err(err) = modules::vscode_inject::inject_secret_to_state_db_for_workbuddy(
-        &state_db_path,
-        &db_key,
-        &session_json,
-    ) {
-        let friendly_err = if err.contains("Safe Storage password")
-            || err.contains("Keychain")
-            || err.contains("Failed to read")
-        {
-            format!(
-                "注入登录状态失败：{}\n\n可能的原因：\n\
-                1. WorkBuddy 从未登录过，请先手动打开 WorkBuddy 并登录一次\n\
-                2. macOS Keychain 中缺少加密密钥条目\n\n\
-                请尝试：打开 WorkBuddy → 登录任意账号 → 退出 → 再使用切号功能",
-                err
-            )
-        } else {
-            err
-        };
-        return Err(friendly_err);
-    }
-    verify_state_db_injection(&state_db_path, &db_key)?;
+    modules::workbuddy_account::write_account_to_default_client(&account)?;
 
     modules::logger::log_info(&format!(
-        "[WorkBuddy Instance] 账号注入完成: email={}, db={}",
-        account.email,
-        state_db_path.to_string_lossy()
+        "[WorkBuddy Instance] 账号注入完成: email={}, user_data_dir={}",
+        account.email, user_data_dir
     ));
 
     Ok(())
-}
-
-fn verify_state_db_injection(state_db_path: &Path, db_key: &str) -> Result<(), String> {
-    let conn = rusqlite::Connection::open(state_db_path)
-        .map_err(|e| format!("注入校验失败，无法打开 state.vscdb: {}", e))?;
-
-    let value: Option<String> = conn
-        .query_row(
-            "SELECT value FROM ItemTable WHERE key = ?1",
-            [db_key],
-            |row| row.get(0),
-        )
-        .ok();
-    match value {
-        Some(stored) if !stored.trim().is_empty() => Ok(()),
-        _ => Err(format!(
-            "注入校验失败，未在 state.vscdb 找到目标 key: db={}, key={}",
-            state_db_path.to_string_lossy(),
-            db_key
-        )),
-    }
 }
 
 fn is_profile_initialized(user_data_dir: &str) -> bool {

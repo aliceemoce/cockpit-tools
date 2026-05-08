@@ -15,6 +15,7 @@ import {
   Server,
   ShieldCheck,
   Trash2,
+  Wrench,
   X,
 } from 'lucide-react';
 import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog';
@@ -26,12 +27,21 @@ import type {
   CodexLocalAccessState,
   CodexLocalAccessStatsWindow,
 } from '../types/codexLocalAccess';
-import { isCodexApiKeyAccount, isCodexExplicitFreePlanType } from '../types/codex';
+import {
+  getCodexPlanFilterKey,
+  isCodexApiKeyAccount,
+  isCodexExplicitFreePlanType,
+} from '../types/codex';
 import {
   buildCodexAccountPresentation,
   buildQuotaPreviewLines,
 } from '../presentation/platformAccountPresentation';
 import { buildValidAccountsFilterOption, splitValidityFilterValues } from '../utils/accountValidityFilter';
+import {
+  formatCodexQuotaPoolPercent,
+  summarizeCodexQuotaPool,
+  type CodexQuotaPoolItem,
+} from '../utils/codexQuotaPool';
 import { AccountTagFilterDropdown } from './AccountTagFilterDropdown';
 import {
   MultiSelectFilterDropdown,
@@ -61,11 +71,13 @@ interface CodexLocalAccessModalProps {
     strategy: CodexLocalAccessRoutingStrategy,
   ) => Promise<unknown> | unknown;
   onRotateApiKey: () => Promise<unknown> | unknown;
+  onKillPort: () => Promise<unknown> | unknown;
   onToggleEnabled: () => Promise<unknown> | unknown;
   onTest: () => Promise<number> | number;
   saving: boolean;
   testing: boolean;
   starting: boolean;
+  portCleanupBusy: boolean;
 }
 
 type StatsRangeKey = 'daily' | 'weekly' | 'monthly';
@@ -109,6 +121,15 @@ function formatLatencyMs(value: number): string {
   return `${Math.round(value)}ms`;
 }
 
+function formatQuotaPoolLabel(
+  baseLabel: string,
+  pool: CodexQuotaPoolItem,
+  hourlyLabel: string,
+  weeklyLabel: string,
+): string {
+  return `${baseLabel} · ${hourlyLabel} ${formatCodexQuotaPoolPercent(pool.hourly)} · ${weeklyLabel} ${formatCodexQuotaPoolPercent(pool.weekly)}`;
+}
+
 function areSetsEqual(left: Set<string>, right: Set<string>): boolean {
   if (left.size !== right.size) return false;
   for (const value of left) {
@@ -125,18 +146,20 @@ export function CodexLocalAccessModal({
   accountGroups,
   initialSelectedIds,
   maskAccountText,
-    onClose,
-    onSaveAccounts,
-    onClearStats,
-    onRefreshStats,
-    onUpdatePort,
-    onUpdateRoutingStrategy,
-    onRotateApiKey,
+  onClose,
+  onSaveAccounts,
+  onClearStats,
+  onRefreshStats,
+  onUpdatePort,
+  onUpdateRoutingStrategy,
+  onRotateApiKey,
+  onKillPort,
   onToggleEnabled,
   onTest,
   saving,
   testing,
   starting,
+  portCleanupBusy,
 }: CodexLocalAccessModalProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -169,6 +192,14 @@ export function CodexLocalAccessModal({
       ] satisfies Array<{ key: StatsRangeKey; label: string }>,
     [t],
   );
+  const quotaPoolLabels = useMemo(
+    () => ({
+      hourly: t('codex.localAccess.quotaPool.hourlyShort', '5h'),
+      weekly: t('codex.localAccess.quotaPool.weeklyShort', '周'),
+      title: t('codex.localAccess.quotaPool.title', '额度池'),
+    }),
+    [t],
+  );
   const selectedStatsWindow = useMemo<CodexLocalAccessStatsWindow | null>(() => {
     if (!stats) return null;
     return stats[statsRange];
@@ -187,7 +218,7 @@ export function CodexLocalAccessModal({
     selectedTotals && selectedTotals.requestCount > 0
       ? Math.round((selectedTotals.successCount / selectedTotals.requestCount) * 100)
       : 0;
-  const actionBusy = saving || testing || starting;
+  const actionBusy = saving || testing || starting || portCleanupBusy;
   const summaryStats = useMemo(
     () => [
       {
@@ -239,6 +270,14 @@ export function CodexLocalAccessModal({
     () => accounts.filter((account) => !isCodexApiKeyAccount(account)),
     [accounts],
   );
+  const quotaPoolSummary = useMemo(
+    () => summarizeCodexQuotaPool(oauthAccounts),
+    [oauthAccounts],
+  );
+  const currentQuotaPoolSummary = useMemo(() => {
+    const accountIds = new Set(collection?.accountIds ?? []);
+    return summarizeCodexQuotaPool(oauthAccounts.filter((account) => accountIds.has(account.id)));
+  }, [collection?.accountIds, oauthAccounts]);
   const oauthAccountIdSet = useMemo(
     () => new Set(oauthAccounts.map((account) => account.id)),
     [oauthAccounts],
@@ -334,7 +373,7 @@ export function CodexLocalAccessModal({
       if (!account.quota_error) {
         counts.VALID += 1;
       }
-      const tier = buildCodexAccountPresentation(account, t).planClass.toUpperCase();
+      const tier = getCodexPlanFilterKey(account);
       if (tier in counts) {
         counts[tier as keyof typeof counts] += 1;
       }
@@ -343,19 +382,70 @@ export function CodexLocalAccessModal({
       }
     });
     return counts;
-  }, [oauthAccounts, t]);
+  }, [oauthAccounts]);
+
+  const allTierFilterLabel = useMemo(
+    () =>
+      formatQuotaPoolLabel(
+        t('common.shared.filter.all', { count: tierCounts.all }),
+        quotaPoolSummary.all,
+        quotaPoolLabels.hourly,
+        quotaPoolLabels.weekly,
+      ),
+    [quotaPoolLabels.hourly, quotaPoolLabels.weekly, quotaPoolSummary.all, t, tierCounts.all],
+  );
 
   const tierFilterOptions = useMemo<MultiSelectFilterOption[]>(
     () => [
-      { value: 'FREE', label: `FREE (${tierCounts.FREE})` },
-      { value: 'PLUS', label: `PLUS (${tierCounts.PLUS})` },
-      { value: 'PRO', label: `PRO (${tierCounts.PRO})` },
-      { value: 'TEAM', label: `TEAM (${tierCounts.TEAM})` },
-      { value: 'ENTERPRISE', label: `ENTERPRISE (${tierCounts.ENTERPRISE})` },
+      {
+        value: 'FREE',
+        label: formatQuotaPoolLabel(
+          `FREE (${tierCounts.FREE})`,
+          quotaPoolSummary.byPlan.FREE,
+          quotaPoolLabels.hourly,
+          quotaPoolLabels.weekly,
+        ),
+      },
+      {
+        value: 'PLUS',
+        label: formatQuotaPoolLabel(
+          `PLUS (${tierCounts.PLUS})`,
+          quotaPoolSummary.byPlan.PLUS,
+          quotaPoolLabels.hourly,
+          quotaPoolLabels.weekly,
+        ),
+      },
+      {
+        value: 'PRO',
+        label: formatQuotaPoolLabel(
+          `PRO (${tierCounts.PRO})`,
+          quotaPoolSummary.byPlan.PRO,
+          quotaPoolLabels.hourly,
+          quotaPoolLabels.weekly,
+        ),
+      },
+      {
+        value: 'TEAM',
+        label: formatQuotaPoolLabel(
+          `TEAM (${tierCounts.TEAM})`,
+          quotaPoolSummary.byPlan.TEAM,
+          quotaPoolLabels.hourly,
+          quotaPoolLabels.weekly,
+        ),
+      },
+      {
+        value: 'ENTERPRISE',
+        label: formatQuotaPoolLabel(
+          `ENTERPRISE (${tierCounts.ENTERPRISE})`,
+          quotaPoolSummary.byPlan.ENTERPRISE,
+          quotaPoolLabels.hourly,
+          quotaPoolLabels.weekly,
+        ),
+      },
       { value: 'ERROR', label: `ERROR (${tierCounts.ERROR})` },
       buildValidAccountsFilterOption(t, tierCounts.VALID),
     ],
-    [t, tierCounts],
+    [quotaPoolLabels.hourly, quotaPoolLabels.weekly, quotaPoolSummary.byPlan, t, tierCounts],
   );
 
   const visibleAccounts = useMemo(() => {
@@ -396,7 +486,7 @@ export function CodexLocalAccessModal({
       }
 
       if (selectedTypes.size > 0) {
-        const planKey = presentation.planClass.toUpperCase();
+        const planKey = getCodexPlanFilterKey(account);
         const matchesType = Array.from(selectedTypes).some((type) => {
           if (type === 'ERROR') return Boolean(account.quota_error);
           return type === planKey;
@@ -502,6 +592,10 @@ export function CodexLocalAccessModal({
         value: 'plan_low_first',
         label: t('codex.localAccess.routingStrategy.planLowFirst', '优先低订阅'),
       },
+      {
+        value: 'expiry_soon_first',
+        label: t('codex.localAccess.routingStrategy.expirySoonFirst', '优先近到期'),
+      },
     ] satisfies Array<{ value: CodexLocalAccessRoutingStrategy; label: string }>,
     [t],
   );
@@ -521,7 +615,7 @@ export function CodexLocalAccessModal({
           <span
             key={line.key}
             className={`codex-local-access-quota-chip ${line.quotaClass}`}
-            title={line.text}
+            title={line.title}
           >
             <span className="codex-local-access-quota-dot" />
             <span>{line.text}</span>
@@ -698,6 +792,15 @@ export function CodexLocalAccessModal({
     }, t('codex.localAccess.clearStatsSuccess', 'API 服务统计已清空'));
   };
 
+  const handleKillPort = async () => {
+    await runAction(
+      async () => {
+        await onKillPort();
+      },
+      t('codex.localAccess.killPortSuccessUnknown', 'API 服务端口已清理'),
+    );
+  };
+
   const handleRefreshStats = async () => {
     setError('');
     setNotice('');
@@ -779,7 +882,7 @@ export function CodexLocalAccessModal({
                       : t('codex.localAccess.statusDisabled', '已停用')}
                   </span>
                   <span className="codex-local-access-subtle-badge">
-                    {t('codex.localAccess.memberOnlyLocal', '仅监听 127.0.0.1')}
+                    {t('codex.localAccess.memberOnlyLocal', '本机/局域网')}
                   </span>
                 </div>
                 <div className="codex-local-access-header-tools">
@@ -849,9 +952,24 @@ export function CodexLocalAccessModal({
 
         <div className="modal-body codex-local-access-modal-body">
           {state?.lastError && (
-            <div className="codex-local-access-inline-error">
+            <div className="codex-local-access-inline-error codex-local-access-inline-error-with-action">
               <CircleAlert size={14} />
               <span>{state.lastError}</span>
+              {collection && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm codex-local-access-inline-action"
+                  onClick={() => void handleKillPort()}
+                  disabled={actionBusy}
+                >
+                  {portCleanupBusy ? (
+                    <RefreshCw size={14} className="loading-spinner" />
+                  ) : (
+                    <Wrench size={14} />
+                  )}
+                  {t('codex.localAccess.killPortAction', '清理端口')}
+                </button>
+              )}
             </div>
           )}
 
@@ -923,6 +1041,26 @@ export function CodexLocalAccessModal({
                   </div>
                 ))}
               </div>
+              {currentQuotaPoolSummary.visiblePlans.length > 0 && (
+                <div
+                  className="codex-local-access-quota-pool-grid"
+                  aria-label={quotaPoolLabels.title}
+                >
+                  {currentQuotaPoolSummary.visiblePlans.map((item) => (
+                    <div key={item.key} className="codex-local-access-quota-pool-card">
+                      <span className="codex-local-access-quota-pool-plan">
+                        {item.key} ({item.count})
+                      </span>
+                      <span className="codex-local-access-quota-pool-value">
+                        {quotaPoolLabels.hourly} {formatCodexQuotaPoolPercent(item.hourly)}
+                      </span>
+                      <span className="codex-local-access-quota-pool-value">
+                        {quotaPoolLabels.weekly} {formatCodexQuotaPoolPercent(item.weekly)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
@@ -1210,7 +1348,7 @@ export function CodexLocalAccessModal({
                   <MultiSelectFilterDropdown
                     options={tierFilterOptions}
                     selectedValues={filterTypes}
-                    allLabel={t('common.shared.filter.all', { count: tierCounts.all })}
+                    allLabel={allTierFilterLabel}
                     filterLabel={t('common.shared.filterLabel', '筛选')}
                     clearLabel={t('accounts.clearFilter', '清空筛选')}
                     emptyLabel={t('common.none', '暂无')}

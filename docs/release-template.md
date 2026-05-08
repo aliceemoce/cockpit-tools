@@ -16,7 +16,7 @@
 
 - Windows:
 - macOS:
-- Linux:
+- Linux/Ubuntu: 不再提供官方安装包
 
 ### 文件校验（SHA256）
 
@@ -50,7 +50,7 @@
 
 - Windows:
 - macOS:
-- Linux:
+- Linux/Ubuntu: no official installer is provided
 
 ### File Integrity (SHA256)
 
@@ -64,4 +64,3 @@ Please verify downloaded files with `SHA256SUMS.txt` before installation.
 ### Known Issues
 
 - (Use "None" if no known issues)
-

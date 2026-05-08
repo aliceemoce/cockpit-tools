@@ -22,7 +22,7 @@ interface Sub2apiCreateAccountItem {
   priority: number;
 }
 
-interface CpaCodexTokenStorage {
+interface CodexPortableTokenStorage {
   id_token: string;
   access_token: string;
   refresh_token: string;
@@ -156,7 +156,10 @@ function formatSub2apiExportedAt(): string {
 
 function resolveSubscriptionExpiresAt(account: CodexAccount): string | undefined {
   const authPayload = resolveAuthPayload(account);
-  return normalizeTimestampToIso(authPayload?.chatgpt_subscription_active_until);
+  return (
+    normalizeTimestampToIso(account.subscription_active_until) ||
+    normalizeTimestampToIso(authPayload?.chatgpt_subscription_active_until)
+  );
 }
 
 function resolveAccessTokenExpiry(account: CodexAccount): string | undefined {
@@ -168,6 +171,10 @@ function resolveAccessTokenExpiry(account: CodexAccount): string | undefined {
   }
   const idExp = toNumberValue(idTokenPayload?.exp);
   return normalizeTimestampToIso(idExp);
+}
+
+function resolveLastRefresh(account: CodexAccount): string {
+  return normalizeTimestampToIso(account.token_updated_at) || new Date().toISOString();
 }
 
 function buildSub2apiCredentials(account: CodexAccount): JsonRecord {
@@ -229,17 +236,48 @@ function toSub2apiAccount(account: CodexAccount): Sub2apiCreateAccountItem {
   };
 }
 
-function toCpaTokenStorage(account: CodexAccount): CpaCodexTokenStorage {
+function toPortableTokenStorage(account: CodexAccount): CodexPortableTokenStorage {
   return {
     id_token: account.tokens.id_token || '',
     access_token: account.tokens.access_token || '',
     refresh_token: account.tokens.refresh_token?.trim() || '',
     account_id: resolveAccountId(account) || '',
-    last_refresh: new Date().toISOString(),
+    last_refresh: resolveLastRefresh(account),
     email: account.email || '',
     type: 'codex',
     expired: resolveAccessTokenExpiry(account) || '',
   };
+}
+
+function isCodexApiKeyAccount(account: CodexAccount): boolean {
+  return account.auth_mode === 'apikey' || Boolean(account.openai_api_key?.trim());
+}
+
+function toPortableApiKeyStorage(account: CodexAccount): JsonRecord {
+  const payload: JsonRecord = {
+    auth_mode: 'apikey',
+    OPENAI_API_KEY: account.openai_api_key || '',
+    email: account.email || '',
+  };
+
+  if (account.api_base_url?.trim()) {
+    payload.api_base_url = account.api_base_url.trim();
+  }
+  if (account.api_provider_id?.trim()) {
+    payload.api_provider_id = account.api_provider_id.trim();
+  }
+  if (account.api_provider_name?.trim()) {
+    payload.api_provider_name = account.api_provider_name.trim();
+  }
+
+  return payload;
+}
+
+function toCockpitToolsPortableStorage(account: CodexAccount): CodexPortableTokenStorage | JsonRecord {
+  if (isCodexApiKeyAccount(account)) {
+    return toPortableApiKeyStorage(account);
+  }
+  return toPortableTokenStorage(account);
 }
 
 export function parseCockpitToolsCodexExport(rawJson: string): CodexAccount[] {
@@ -257,11 +295,12 @@ export function transformCodexExportJson(
   rawJson: string,
   format: CodexExportFormat,
 ): string {
+  const accounts = parseCockpitToolsCodexExport(rawJson);
+
   if (format === 'cockpit_tools') {
-    return rawJson;
+    return JSON.stringify(accounts.map(toCockpitToolsPortableStorage), null, 2);
   }
 
-  const accounts = parseCockpitToolsCodexExport(rawJson);
   if (format === 'sub2api') {
     const payload: Sub2apiBatchCreatePayload = {
       exported_at: formatSub2apiExportedAt(),
@@ -273,7 +312,7 @@ export function transformCodexExportJson(
     return JSON.stringify(payload, null, 2);
   }
 
-  const cpaPayload = accounts.map(toCpaTokenStorage);
+  const cpaPayload = accounts.map(toPortableTokenStorage);
   const normalizedPayload = cpaPayload.length === 1 ? cpaPayload[0] : cpaPayload;
   return JSON.stringify(normalizedPayload, null, 2);
 }
@@ -336,7 +375,7 @@ export function buildCodexExportContent(
       id: `${account.id || resolveAccountId(account) || 'cpa_account'}_${index}`,
       label: resolveCpaDocumentLabel(account, index),
       fileNameBase: buildCpaDocumentFileNameBase(fileNameBase, account, index),
-      jsonContent: JSON.stringify(toCpaTokenStorage(account), null, 2),
+      jsonContent: JSON.stringify(toPortableTokenStorage(account), null, 2),
     })),
   };
 }

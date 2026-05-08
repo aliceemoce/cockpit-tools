@@ -60,6 +60,7 @@ import {
   normalizeExternalProviderImportPayload,
 } from './utils/externalProviderImport';
 import { runAutoBackupCycle } from './services/scheduledBackupService';
+import { prepareCodexLocalAccessForRestart } from './services/codexLocalAccessService';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -194,6 +195,7 @@ const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
 const TASKS_STORAGE_KEY = 'agtools.wakeup.tasks';
 const WAKEUP_FORCE_DISABLE_MIGRATION_KEY = 'agtools.wakeup.migration.force_disable_0_8_14';
 const TOP_RIGHT_AD_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+const EXTERNAL_IMPORT_DEDUPE_WINDOW_MS = 30 * 1000;
 
 type WakeupHistoryRecord = {
   id: string;
@@ -272,6 +274,22 @@ type UpdateAction = {
   progress: number;
   requiresInstall: boolean;
 };
+
+function buildExternalImportDedupeKey(payload: {
+  providerId: string;
+  page: string;
+  token: string;
+  importUrl?: string | null;
+  rawUrl?: string | null;
+}): string {
+  return [
+    payload.providerId,
+    payload.page,
+    payload.rawUrl ?? '',
+    payload.importUrl ?? '',
+    payload.token,
+  ].join('|');
+}
 
 function normalizeQuotaAlertPlatform(platform: string | undefined): QuotaAlertPlatform {
   switch (platform) {
@@ -477,6 +495,7 @@ function MainApp() {
   const updateDownloadTaskIdRef = useRef(0);
   const updateDownloadOwnerRef = useRef<'none' | 'shared' | 'silent'>('none');
   const updateCheckRequestIdRef = useRef(0);
+  const externalImportHandledAtRef = useRef<Map<string, number>>(new Map());
   const { showModal, closeModal } = useGlobalModal();
   const topRightAdState = useTopRightAdStore((state) => state.state);
   const fetchTopRightAdState = useTopRightAdStore((state) => state.fetchState);
@@ -501,17 +520,30 @@ function MainApp() {
     setShowBreakout(true);
   }, []);
   const handleExternalProviderImportRawPayload = useCallback((rawPayload: unknown) => {
-    console.info('[ExternalImport][App] 收到原始 payload:', rawPayload)
+    console.info('[ExternalImport][App] 收到原始 payload:', rawPayload);
     const normalized = normalizeExternalProviderImportPayload(rawPayload);
     if (!normalized) {
       console.warn('[ExternalImport][App] payload 归一化失败，已忽略');
       return;
     }
+    const now = Date.now();
+    for (const [key, handledAt] of externalImportHandledAtRef.current) {
+      if (now - handledAt > EXTERNAL_IMPORT_DEDUPE_WINDOW_MS) {
+        externalImportHandledAtRef.current.delete(key);
+      }
+    }
+    const dedupeKey = buildExternalImportDedupeKey(normalized);
+    if (externalImportHandledAtRef.current.has(dedupeKey)) {
+      console.info('[ExternalImport][App] 重复外部导入 payload 已忽略');
+      return;
+    }
+    externalImportHandledAtRef.current.set(dedupeKey, now);
     console.info('[ExternalImport][App] payload 归一化成功:', {
       providerId: normalized.providerId,
       page: normalized.page,
       autoImport: normalized.autoImport,
       tokenLength: normalized.token.length,
+      hasImportUrl: Boolean(normalized.importUrl),
       source: normalized.source ?? null,
     });
     setPage(normalized.page);
@@ -633,6 +665,33 @@ function MainApp() {
   const writeUpdateLog = useCallback((level: 'info' | 'warn' | 'error', message: string) => {
     void invoke('update_log', { level, message }).catch(() => {});
   }, []);
+
+  const prepareCodexLocalAccessBeforeRelaunch = useCallback(async () => {
+    setUpdateRetryStatus(
+      t('update_notification.stoppingApiService', '正在关闭 API 服务...'),
+    );
+    try {
+      const state = await prepareCodexLocalAccessForRestart();
+      writeUpdateLog(
+        'info',
+        `应用重启前已关闭 Codex API 服务监听: enabled=${Boolean(state.collection?.enabled)}, running=${state.running}`,
+      );
+    } catch (error) {
+      writeUpdateLog(
+        'warn',
+        `应用重启前关闭 Codex API 服务监听失败，继续重启: error=${sanitizeUpdaterErrorMessage(error)}`,
+      );
+    }
+  }, [t, writeUpdateLog]);
+
+  const restoreCodexLocalAccessAfterRelaunchFailure = useCallback(async () => {
+    await invoke('codex_local_access_get_state').catch((error) => {
+      writeUpdateLog(
+        'warn',
+        `应用重启失败后恢复 Codex API 服务状态失败: error=${sanitizeUpdaterErrorMessage(error)}`,
+      );
+    });
+  }, [writeUpdateLog]);
 
   const prepareUpdateNotificationInfo = useCallback(async (update: UpdaterUpdate): Promise<UpdateInfo> => {
     const { releaseNotes, releaseNotesZh } = parseUpdaterReleaseNotes(update.body);
@@ -899,6 +958,7 @@ function MainApp() {
         await pendingUpdate.close();
         pendingSilentUpdateRef.current = null;
       }
+      await prepareCodexLocalAccessBeforeRelaunch();
       setSilentUpdateVersion(null);
       setUpdateRetryStatus('');
       setUpdateDownloadError('');
@@ -912,10 +972,17 @@ function MainApp() {
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
     } catch (error) {
+      await restoreCodexLocalAccessAfterRelaunchFailure();
       console.error('[App] Failed to apply pending update:', error);
       writeUpdateLog('error', `用户手动应用更新失败: error=${sanitizeUpdaterErrorMessage(error)}`);
     }
-  }, [silentUpdateVersion, updateAction, writeUpdateLog]);
+  }, [
+    prepareCodexLocalAccessBeforeRelaunch,
+    restoreCodexLocalAccessAfterRelaunchFailure,
+    silentUpdateVersion,
+    updateAction,
+    writeUpdateLog,
+  ]);
 
   const runLinuxManagedUpdate = useCallback(async (expectedVersion: string) => {
     setUpdateRetryStatus('');
@@ -952,9 +1019,11 @@ function MainApp() {
       setUpdateErrorDetails('');
 
       try {
+        await prepareCodexLocalAccessBeforeRelaunch();
         const { relaunch } = await import('@tauri-apps/plugin-process');
         await relaunch();
       } catch (error) {
+        await restoreCodexLocalAccessAfterRelaunchFailure();
         const compactError = sanitizeUpdaterErrorMessage(error);
         console.error('[App] Linux managed update installed but relaunch failed:', error);
         writeUpdateLog(
@@ -984,7 +1053,13 @@ function MainApp() {
       });
       throw error;
     }
-  }, [closeUpdaterHandle, t, writeUpdateLog]);
+  }, [
+    closeUpdaterHandle,
+    prepareCodexLocalAccessBeforeRelaunch,
+    restoreCodexLocalAccessAfterRelaunchFailure,
+    t,
+    writeUpdateLog,
+  ]);
 
   const runSharedUpdateDownload = useCallback(async (expectedVersion: string) => {
     const taskId = Date.now();

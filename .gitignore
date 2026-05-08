@@ -45,3 +45,4 @@ src-tauri/native/macos-native-menu/.build/
 target/
 **/*.rs.bk
 docs/plugin-architecture-proposal.md
+.aitasks
