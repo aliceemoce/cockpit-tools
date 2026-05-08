@@ -2038,6 +2038,12 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
+    void useWindsurfAccountStore.getState().fetchAccounts().catch((error) => {
+      console.error('Failed to prefetch Windsurf accounts:', error);
+    });
+  }, []);
+
+  useEffect(() => {
     let unlisten: UnlistenFn | undefined;
     let disposed = false;
 
