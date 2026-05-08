@@ -4,15 +4,16 @@ English · [简体中文](README.md)
 
 ## Unofficial Derivative Notice
 
-This repository is an unofficial derivative of
-[jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) and is
-maintained to preserve local custom behavior while continuing to sync upstream
-updates.
+This repository is based on
+[jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools).
+The upstream project did not fully match some local account-handling behavior
+and personal usage preferences, so this repository keeps a small set of
+personal-use modifications while continuing to sync upstream updates.
 
 - Upstream source: `jlcodes99/cockpit-tools`
 - Current repository: `aliceemoce/cockpit-tools`
-- Status: unofficial derivative, not endorsed by or maintained on behalf of the upstream author
-- Changes made: email-based deduplication, fingerprint-related retention, startup-performance rollback, import behavior updates, and cache/logging adjustments
+- Status: unofficial personal modified version, not endorsed by or maintained on behalf of the upstream author
+- Main changes: email-based deduplication, fingerprint-related retention, startup behavior adjustments, plus import and cache/logging fixes
 
 A **universal AI IDE account management tool**, currently supporting **Antigravity**, **Codex**, **GitHub Copilot**, **Windsurf**, **Kiro**, **Cursor**, **Gemini Cli**, **CodeBuddy**, **CodeBuddy CN**, **Qoder**, **Trae**, and **Zed**, with multi-instance parallel workflows.
 
@@ -296,42 +297,14 @@ Notes:
 
 ## Installation Guide
 
-### Option A: Manual Download (Recommended)
+This repository is mainly maintained as a personal-use modified build and does
+not separately maintain full public distribution instructions parallel to the
+upstream project.
 
-Go to [GitHub Releases](https://github.com/jlcodes99/cockpit-tools/releases) to download the package for your system:
+- For official upstream releases, see [jlcodes99/cockpit-tools Releases](https://github.com/jlcodes99/cockpit-tools/releases)
+- For the changes in this repository, build from source locally or use local build artifacts
 
-*   **macOS**: `.dmg` (Apple Silicon & Intel)
-*   **Windows**: `.msi` (Recommended) or `.exe`
-
-> Linux/Ubuntu is no longer an official release target; the Releases page will no longer provide `.deb`, `.rpm`, or `.AppImage` installers.
-
-### Option B: Install with Homebrew (macOS)
-
-> Homebrew is required.
-
-```bash
-brew tap jlcodes99/cockpit-tools https://github.com/jlcodes99/cockpit-tools
-brew install --cask cockpit-tools
-```
-
-If you hit the macOS "App is damaged" warning, you can also install with `--no-quarantine`:
-
-```bash
-brew install --cask --no-quarantine cockpit-tools
-```
-
-If Homebrew says the app already exists (e.g. `already an App at '/Applications/Cockpit Tools.app'`), remove the old app and install again:
-
-```bash
-rm -rf "/Applications/Cockpit Tools.app"
-brew install --cask cockpit-tools
-```
-
-Or force overwrite the existing app:
-
-```bash
-brew install --cask --force cockpit-tools
-```
+> This repository does not maintain separate sponsor pages, chat groups, Homebrew distribution notes, or other personal operator channels.
 
 ### 🛠️ Troubleshooting
 
@@ -377,25 +350,11 @@ npm run tauri build
 
 ---
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=jlcodes99/cockpit-tools&type=Date)](https://star-history.com/#jlcodes99/cockpit-tools&Date)
-
----
-
-## Sponsor
-
-If you find this project useful, consider supporting it here: [☕ Donate](docs/DONATE.en.md)
-
-Every bit of support helps sustain open-source development. Thank you!
-
----
-
 ## Acknowledgments
 
 - Antigravity account switching logic based on: [Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
 
-Thanks to the project author for their open-source contributions! If these projects have helped you, please give them a ⭐ Star to show your support!
+Thanks to the upstream author for the open-source work.
 
 ---
 

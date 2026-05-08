@@ -4,13 +4,13 @@
 
 ## 非官方衍生说明
 
-本仓库是基于上游项目 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools)
-持续修改的非官方衍生版本，用于保留本地定制行为并同步上游更新。
+本仓库基于上游项目 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools)。
+原项目在部分账号处理和本地使用习惯上不完全符合个人需求，因此补充了少量自用改动，当前主要用于个人使用与同步上游更新。
 
 - 上游来源：`jlcodes99/cockpit-tools`
 - 当前仓库：`aliceemoce/cockpit-tools`
-- 版本性质：非官方衍生版，不代表上游作者立场、背书或维护状态
-- 改动说明：包含邮箱口径去重、指纹相关保留、启动性能回退、导入与缓存日志调整等本地修改
+- 版本性质：非官方个人修改版，不代表上游作者立场、背书或维护状态
+- 主要改动：包含邮箱口径去重、指纹相关保留、启动性能相关调整，以及导入与缓存日志修正
 
 一款**通用的 AI IDE 账号管理工具**，目前支持 **Antigravity**、**Codex**、**GitHub Copilot**、**Windsurf**、**Kiro**、**Cursor**、**Gemini Cli**、**CodeBuddy**、**CodeBuddy CN**、**Qoder**、**Trae** 和 **Zed**，并支持多账号多实例并行运行。
 
@@ -291,42 +291,12 @@ Codex 同样支持多账号多实例并行运行。比如同时打开两个 Code
 
 ## 安装指南 (Installation)
 
-### 选项 A: 手动下载 (推荐)
+本仓库目前主要面向个人自用修改，不单独维护与上游一致的公开发布分发说明。
 
-前往 [GitHub Releases](https://github.com/jlcodes99/cockpit-tools/releases) 下载对应系统的安装包：
+- 如需使用上游官方发布版本，请前往 [jlcodes99/cockpit-tools Releases](https://github.com/jlcodes99/cockpit-tools/releases)
+- 如需使用当前仓库改动，请自行拉取源码构建，或直接使用本地构建产物
 
-*   **macOS**: `.dmg` (Apple Silicon & Intel)
-*   **Windows**: `.msi` (推荐) 或 `.exe`
-
-> Linux/Ubuntu 不再作为官方发布目标；Release 页面不会再提供 `.deb`、`.rpm` 或 `.AppImage` 安装包。
-
-### 选项 B: Homebrew 安装 (macOS)
-
-> 需要先安装 Homebrew。
-
-```bash
-brew tap jlcodes99/cockpit-tools https://github.com/jlcodes99/cockpit-tools
-brew install --cask cockpit-tools
-```
-
-如果遇到 macOS “应用已损坏”或无法打开，也可以使用 `--no-quarantine` 安装：
-
-```bash
-brew install --cask --no-quarantine cockpit-tools
-```
-
-如果提示已存在应用（例如：`already an App at '/Applications/Cockpit Tools.app'`），请先删除旧版本再安装：
-
-```bash
-rm -rf "/Applications/Cockpit Tools.app"
-brew install --cask cockpit-tools
-```
-
-或者直接强制覆盖安装：
-
-```bash
-brew install --cask --force cockpit-tools
-```
+> 当前仓库不会额外维护 QQ 群、赞助、Homebrew 发布说明或其他个人运营信息。
 
 ### 🛠️ 常见问题排查 (Troubleshooting)
 
@@ -372,35 +342,11 @@ npm run tauri build
 
 ---
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=jlcodes99/cockpit-tools&type=Date)](https://star-history.com/#jlcodes99/cockpit-tools&Date)
-
----
-
-## 💬 交流群
-
-QQ交流群 或者加我微信 拉微信群
-
-| QQ 群 | 微信（个人） |
-| :---: | :---: |
-| <img src="docs/images/qq_group_20260404_183718.png" width="200" /> | <img src="docs/images/wechat_info.jpg" width="200" /> |
-
----
-
-## ☕ 赞助项目
-
-如果不介意，请 [☕ 赞赏支持一下](docs/DONATE.md)
-
-您的每一份支持都是对开源项目最大的鼓励！无论金额大小，都代表着您对这个项目的认可。
-
----
-
 ## 致谢
 
 - Antigravity 账号切号逻辑参考：[Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
 
-感谢项目作者的开源贡献！如果这些项目对你有帮助，也请给他们点个 ⭐ Star 支持一下！
+感谢上游项目作者的开源贡献。
 
 ---
 
