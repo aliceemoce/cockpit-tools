@@ -49,7 +49,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/48x48.png",
       "icons/32x32.png",
@@ -62,6 +62,10 @@
       "icons/icon.ico"
     ],
     "resources": {
+      "../scripts/auto_register_kiro.cjs": "scripts/auto_register_kiro.cjs",
+      "../scripts/auto_register_windsurf.cjs": "scripts/auto_register_windsurf.cjs",
+      "../scripts/auto_register_windsurf_stealth.cjs": "scripts/auto_register_windsurf_stealth.cjs",
+      "../scripts/node_modules": "scripts/node_modules",
       "../src/assets/icons/antigravity-menu.png": "native-menu-icons/antigravity-menu.png",
       "../src/assets/icons/codebuddy.png": "native-menu-icons/codebuddy.png",
       "../src/assets/icons/codex.svg": "native-menu-icons/codex.svg",

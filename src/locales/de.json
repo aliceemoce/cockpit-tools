@@ -3783,6 +3783,46 @@
     "accountNameRequired": "Kontoname ist erforderlich.",
     "copySecret": "Secret kopieren"
   },
+  "autoRegister": {
+    "pageTitle": "Auto-Registrierung",
+    "pageSubtitle": "System generiert automatisch zufällige E-Mail und schließt die Registrierung ab",
+    "stopFirst": "Bitte zuerst die Registrierung stoppen",
+    "noPendingAccounts": "Keine ausstehenden Konten",
+    "startBatch": "Batch-Registrierung starten",
+    "completed": "Registrierung abgeschlossen",
+    "userStopped": "Registrierung vom Benutzer gestoppt",
+    "stopping": "Registrierung wird gestoppt...",
+    "starting": "Registrierung wird gestartet",
+    "error": "Fehler",
+    "startRegistration": "Registrierung starten",
+    "logs": "Protokolle",
+    "noLogs": "Keine Protokolle",
+    "registrationList": "Registrierungsliste",
+    "instructions": "Anleitung",
+    "stats": {
+      "total": "Gesamt",
+      "success": "Erfolg",
+      "failed": "Fehlgeschlagen",
+      "exists": "Existiert"
+    },
+    "status": {
+      "pending": "Ausstehend",
+      "exists": "Existiert",
+      "registering": "Registrierung läuft",
+      "gettingCode": "Code abrufen",
+      "success": "Erfolg",
+      "failed": "Fehlgeschlagen"
+    },
+    "table": {
+      "no": "Nr.",
+      "email": "E-Mail",
+      "name": "Name",
+      "status": "Status"
+    },
+    "help": {
+      "browserNote": "Browser-Installation für Erstbenutzung erforderlich"
+    }
+  },
   "logViewer": {
     "fileLabel": "Logdatei",
     "levelLabel": "Stufe",

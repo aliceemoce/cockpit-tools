@@ -123,6 +123,9 @@ const SettingsPage = lazy(() =>
 const TwoFactorAuthPage = lazy(() =>
   import('./pages/TwoFactorAuthPage').then((module) => ({ default: module.TwoFactorAuthPage })),
 );
+const AutoRegisterPage = lazy(() =>
+  import('./pages/AutoRegisterPage').then((module) => ({ default: module.AutoRegisterPage })),
+);
 const ManualPage = lazy(() =>
   import('./pages/ManualPage').then((module) => ({ default: module.ManualPage })),
 );
@@ -3091,6 +3094,7 @@ function MainApp() {
           {page === 'wakeup' && <WakeupTasksPage onNavigate={setPage} />}
           {page === 'verification' && <WakeupVerificationPage onNavigate={setPage} />}
           {page === '2fa' && <TwoFactorAuthPage />}
+          {page === 'auto-register' && <AutoRegisterPage />}
           {page === 'manual' && (
             <ManualPage
               onNavigate={setPage}

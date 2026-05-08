@@ -12,7 +12,7 @@ use tauri::ActivationPolicy;
 #[cfg(target_os = "macos")]
 use tauri::RunEvent;
 use tauri::WindowEvent;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tracing::info;
 
@@ -284,6 +284,11 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
+            // Auto Register Commands
+            commands::auto_register::auto_register_kiro,
+            commands::auto_register::auto_register_windsurf,
+            commands::auto_register::import_from_sso_token,
+            commands::auto_register::submit_verification_code,
             // Account Commands
             commands::account::list_accounts,
             commands::account::add_account,

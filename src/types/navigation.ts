@@ -22,4 +22,5 @@ export type Page =
   | 'verification'
   | '2fa'
   | 'token-monitor'
+  | 'auto-register'
   | 'settings';
