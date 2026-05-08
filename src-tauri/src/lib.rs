@@ -288,7 +288,6 @@ pub fn run() {
             commands::auto_register::auto_register_kiro,
             commands::auto_register::auto_register_windsurf,
             commands::auto_register::import_from_sso_token,
-            commands::auto_register::stop_auto_register,
             commands::auto_register::submit_verification_code,
             // Account Commands
             commands::account::list_accounts,
