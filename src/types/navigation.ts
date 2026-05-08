@@ -21,5 +21,4 @@ export type Page =
   | 'wakeup'
   | 'verification'
   | '2fa'
-  | 'token-monitor'
   | 'settings';

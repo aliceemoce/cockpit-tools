@@ -16,39 +16,11 @@
         },
         {
           "path": "$DOWNLOAD/**"
-        },
-        {
-          "path": "$HOME/.config/**"
-        },
-        {
-          "path": "$HOME\\.config\\**"
         }
       ]
     },
     "dialog:default",
     "fs:default",
-    {
-      "identifier": "fs:allow-read-text-file",
-      "allow": [
-        {
-          "path": "$HOME/.config/**"
-        },
-        {
-          "path": "$HOME\\.config\\**"
-        }
-      ]
-    },
-    {
-      "identifier": "fs:allow-write-text-file",
-      "allow": [
-        {
-          "path": "$HOME/.config/anti-tracker/**"
-        },
-        {
-          "path": "$HOME\\.config\\anti-tracker\\**"
-        }
-      ]
-    },
     "notification:default",
     "updater:default",
     "process:default"
