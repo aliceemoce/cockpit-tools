@@ -2,10 +2,18 @@
 
 English · [简体中文](README.md)
 
-[![GitHub stars](https://img.shields.io/github/stars/jlcodes99/cockpit-tools?style=flat&color=gold)](https://github.com/jlcodes99/cockpit-tools)
-[![GitHub downloads](https://img.shields.io/github/downloads/jlcodes99/cockpit-tools/total?style=flat&color=blue)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub release](https://img.shields.io/github/v/release/jlcodes99/cockpit-tools?style=flat)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub issues](https://img.shields.io/github/issues/jlcodes99/cockpit-tools)](https://github.com/jlcodes99/cockpit-tools/issues)
+## Unofficial Derivative Notice
+
+This repository is an unofficial derivative of
+[jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) and is
+maintained to preserve local custom behavior while continuing to sync upstream
+updates.
+
+- Upstream source: `jlcodes99/cockpit-tools`
+- Current repository: `aliceemoce/cockpit-tools`
+- Status: unofficial derivative, not endorsed by or maintained on behalf of the upstream author
+- Changes made: email-based deduplication, fingerprint-related retention, startup-performance rollback, import behavior updates, and cache/logging adjustments
+- Build process: some code and documentation changes in this repository were drafted or refined with AI assistance, then reviewed, merged, and published by the repository maintainer
 
 A **universal AI IDE account management tool**, currently supporting **Antigravity**, **Codex**, **GitHub Copilot**, **Windsurf**, **Kiro**, **Cursor**, **Gemini Cli**, **CodeBuddy**, **CodeBuddy CN**, **Qoder**, **Trae**, and **Zed**, with multi-instance parallel workflows.
 

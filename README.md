@@ -2,10 +2,16 @@
 
 [English](README.en.md) · 简体中文
 
-[![GitHub stars](https://img.shields.io/github/stars/jlcodes99/cockpit-tools?style=flat&color=gold)](https://github.com/jlcodes99/cockpit-tools)
-[![GitHub downloads](https://img.shields.io/github/downloads/jlcodes99/cockpit-tools/total?style=flat&color=blue)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub release](https://img.shields.io/github/v/release/jlcodes99/cockpit-tools?style=flat)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub issues](https://img.shields.io/github/issues/jlcodes99/cockpit-tools)](https://github.com/jlcodes99/cockpit-tools/issues)
+## 非官方衍生说明
+
+本仓库是基于上游项目 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools)
+持续修改的非官方衍生版本，用于保留本地定制行为并同步上游更新。
+
+- 上游来源：`jlcodes99/cockpit-tools`
+- 当前仓库：`aliceemoce/cockpit-tools`
+- 版本性质：非官方衍生版，不代表上游作者立场、背书或维护状态
+- 改动说明：包含邮箱口径去重、指纹相关保留、启动性能回退、导入与缓存日志调整等本地修改
+- 生成方式：仓库内部分代码与文档改动包含 AI 辅助生成或整理，最终由仓库维护者审阅、合并与发布
 
 一款**通用的 AI IDE 账号管理工具**，目前支持 **Antigravity**、**Codex**、**GitHub Copilot**、**Windsurf**、**Kiro**、**Cursor**、**Gemini Cli**、**CodeBuddy**、**CodeBuddy CN**、**Qoder**、**Trae** 和 **Zed**，并支持多账号多实例并行运行。
 
