@@ -13,7 +13,22 @@ personal-use modifications while continuing to sync upstream updates.
 - Upstream source: `jlcodes99/cockpit-tools`
 - Current repository: `aliceemoce/cockpit-tools`
 - Status: unofficial personal modified version, not endorsed by or maintained on behalf of the upstream author
-- Main changes: email-based deduplication, fingerprint-related retention, startup behavior adjustments, plus import and cache/logging fixes
+
+### Why this fork was changed
+
+- The upstream `Cursor` import and dedup behavior did not fully match local day-to-day usage needs
+- Local usage requires email to be the single stable dedup identity, instead of falling back to `id` or `token`
+- Startup responsiveness matters more for daily use, so slower recovery paths were removed
+- `Windsurf` needed more direct cache persistence logs to diagnose stale snapshot behavior
+
+### Concrete changes in this repository
+
+1. Switched `Cursor` deduplication paths to use email as the only identity, without falling back to `id` / `token`
+2. Fixed cross-email overwrite during `Cursor` import and rejected non-email dedup for accounts without a valid email
+3. Preserved the useful fingerprint-related changes instead of touching unrelated behavior
+4. Changed `Cursor` index normalization so duplicate accounts are merged in the index view without physically deleting the original account files
+5. Rolled back backup mirror / restore scan logic that slowed startup, to keep local startup behavior faster for daily use
+6. Added `Windsurf` cache persistence logs to help diagnose cases where a new snapshot does not replace an older cached snapshot
 
 A **universal AI IDE account management tool**, currently supporting **Antigravity**, **Codex**, **GitHub Copilot**, **Windsurf**, **Kiro**, **Cursor**, **Gemini Cli**, **CodeBuddy**, **CodeBuddy CN**, **Qoder**, **Trae**, and **Zed**, with multi-instance parallel workflows.
 
