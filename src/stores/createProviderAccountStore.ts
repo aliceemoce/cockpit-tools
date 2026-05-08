@@ -44,13 +44,14 @@ type ProviderMapper<TAccount> = {
   getUsage: (account: TAccount) => ProviderUsage;
 };
 
-type ProviderStoreOptions = {
+type ProviderStoreOptions<TAccount> = {
   platformId: PlatformId;
   currentAccountIdKey?: string;
   resolveCurrentAccountId?: () => Promise<string | null>;
   persistCurrentAccountId?: boolean;
   hydrateCurrentAccountId?: boolean;
   enableAccountsCache?: boolean;
+  projectAccountsForCache?: (accounts: TAccount[]) => TAccount[];
 };
 
 export interface ProviderAccountStoreState<TAccount> {
@@ -74,7 +75,7 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
   cacheKey: string,
   service: ProviderService<TAccount>,
   mapper: ProviderMapper<TAccount>,
-  options: ProviderStoreOptions,
+  options: ProviderStoreOptions<TAccount>,
 ) {
   const currentAccountIdKey = options?.currentAccountIdKey ?? null;
   const hasCurrentAccountResolver = typeof options?.resolveCurrentAccountId === 'function';
@@ -83,6 +84,7 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
   const shouldHydrateCurrentAccountId =
     options?.hydrateCurrentAccountId ?? shouldPersistCurrentAccountId;
   const shouldUseAccountsCache = options?.enableAccountsCache ?? true;
+  const projectAccountsForCache = options?.projectAccountsForCache;
   let allowNextEmptyAccountList = false;
   let allowNextEmptyCurrentAccountId = false;
 
@@ -108,15 +110,17 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
     }
 
     try {
-      const serialized = JSON.stringify(accounts);
+      const cachePayload = projectAccountsForCache ? projectAccountsForCache(accounts) : accounts;
+      const serialized = JSON.stringify(cachePayload);
       localStorage.setItem(cacheKey, serialized);
       console.info(
-        `[Provider Store] Cache persisted for ${cacheKey}: accounts=${accounts.length}, bytes=${serialized.length}`,
+        `[Provider Store] Cache persisted for ${cacheKey}: accounts=${cachePayload.length}, bytes=${serialized.length}`,
       );
     } catch (error) {
       const fallbackSize = (() => {
         try {
-          return JSON.stringify(accounts).length;
+          const cachePayload = projectAccountsForCache ? projectAccountsForCache(accounts) : accounts;
+          return JSON.stringify(cachePayload).length;
         } catch {
           return -1;
         }

@@ -409,7 +409,6 @@ export function WindsurfAccountsPage() {
 
   const accounts = store.accounts;
   const loading = store.loading;
-  const isInitialAccountsLoading = loading && accounts.length === 0;
   const recommendNowSec = useMemo(() => Math.floor(Date.now() / 1000), [accounts]);
   const [passwordEmail, setPasswordEmail] = useState('');
   const [passwordPassword, setPasswordPassword] = useState('');
@@ -1029,19 +1028,6 @@ export function WindsurfAccountsPage() {
 
   const tierFilterOptions = useMemo<MultiSelectFilterOption[]>(
     () => {
-      if (isInitialAccountsLoading) {
-        return [
-          ...WINDSURF_PLAN_FILTERS.map((planKey) => ({
-            value: planKey,
-            label: `${getWindsurfPlanLabel(planKey)} (...)`,
-          })),
-          {
-            value: 'VALID',
-            label: `${t('accounts.validAccounts', '有效账号')} (...)`,
-          },
-        ];
-      }
-
       return [
         ...WINDSURF_PLAN_FILTERS.map((planKey) => ({
           value: planKey,
@@ -1050,7 +1036,7 @@ export function WindsurfAccountsPage() {
         buildValidAccountsFilterOption(t, tierCounts.VALID ?? 0),
       ];
     },
-    [isInitialAccountsLoading, t, tierCounts],
+    [t, tierCounts],
   );
 
   // ─── Filtering & Sorting ────────────────────────────────────────────
@@ -1365,11 +1351,7 @@ export function WindsurfAccountsPage() {
           <MultiSelectFilterDropdown
             options={tierFilterOptions}
             selectedValues={filterTypes}
-            allLabel={
-              isInitialAccountsLoading
-                ? 'ALL (...)'
-                : `ALL (${tierCounts.all})`
-            }
+            allLabel={`ALL (${tierCounts.all})`}
             filterLabel={t('common.shared.filterLabel', '筛选')}
             clearLabel={t('accounts.clearFilter', '清空筛选')}
             emptyLabel={t('common.none', '暂无')}

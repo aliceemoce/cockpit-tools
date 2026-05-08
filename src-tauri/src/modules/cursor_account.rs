@@ -15,6 +15,7 @@ use crate::modules::{account, logger};
 
 const ACCOUNTS_INDEX_FILE: &str = "cursor_accounts.json";
 const ACCOUNTS_DIR: &str = "cursor_accounts";
+const LOCAL_IMPORT_BACKUPS_DIR: &str = "cursor_local_import_backups";
 const CURSOR_QUOTA_ALERT_COOLDOWN_SECONDS: i64 = 10 * 60;
 const CURSOR_ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS: i64 = 5 * 60;
 
@@ -83,6 +84,14 @@ fn get_accounts_index_path() -> Result<PathBuf, String> {
     Ok(get_data_dir()?.join(ACCOUNTS_INDEX_FILE))
 }
 
+fn get_local_import_backups_dir() -> Result<PathBuf, String> {
+    let dir = get_data_dir()?.join(LOCAL_IMPORT_BACKUPS_DIR);
+    if !dir.exists() {
+        fs::create_dir_all(&dir).map_err(|e| format!("创建 Cursor 本机导入备份目录失败: {}", e))?;
+    }
+    Ok(dir)
+}
+
 pub fn accounts_index_path_string() -> Result<String, String> {
     Ok(get_accounts_index_path()?.to_string_lossy().to_string())
 }
@@ -110,6 +119,59 @@ fn normalize_account_id(account_id: &str) -> Result<String, String> {
 fn resolve_account_file_path(account_id: &str) -> Result<PathBuf, String> {
     let normalized = normalize_account_id(account_id)?;
     Ok(get_accounts_dir()?.join(format!("{}.json", normalized)))
+}
+
+#[derive(serde::Serialize)]
+struct CursorLocalImportBackupSnapshot {
+    created_at_ms: i64,
+    email: String,
+    action: String,
+    payload: CursorImportPayload,
+    account: CursorAccount,
+}
+
+fn sanitize_backup_file_segment(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    for ch in value.chars() {
+        let normalized = if ch.is_ascii_alphanumeric() { ch } else { '_' };
+        output.push(normalized.to_ascii_lowercase());
+    }
+    let trimmed = output.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "unknown".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn write_local_import_backup(
+    payload: &CursorImportPayload,
+    outcome: &UpsertAccountOutcome,
+) -> Result<PathBuf, String> {
+    let backup_dir = get_local_import_backups_dir()?;
+    let timestamp_ms = chrono::Utc::now().timestamp_millis();
+    let email_segment = sanitize_backup_file_segment(payload.email.as_str());
+    let file_name = format!(
+        "{}-{}-{}.json",
+        timestamp_ms, email_segment, outcome.account.id
+    );
+    let backup_path = backup_dir.join(file_name);
+    let snapshot = CursorLocalImportBackupSnapshot {
+        created_at_ms: timestamp_ms,
+        email: payload.email.clone(),
+        action: if outcome.created {
+            "created".to_string()
+        } else {
+            "updated".to_string()
+        },
+        payload: payload.clone(),
+        account: outcome.account.clone(),
+    };
+    let content = serde_json::to_string_pretty(&snapshot)
+        .map_err(|e| format!("序列化 Cursor 本机导入备份失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(&backup_path, &content)
+        .map_err(|e| format!("写入 Cursor 本机导入备份失败: {}", e))?;
+    Ok(backup_path)
 }
 
 // ---------------------------------------------------------------------------
@@ -683,6 +745,44 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
     normalized_accounts
 }
 
+fn should_replace_primary_account(current: &CursorAccount, incoming: &CursorAccount) -> bool {
+    incoming.last_used > current.last_used
+        || (incoming.last_used == current.last_used && incoming.created_at < current.created_at)
+}
+
+fn list_accounts_from_index_view(index: &CursorAccountIndex) -> Vec<CursorAccount> {
+    let mut accounts_by_key: HashMap<String, CursorAccount> = HashMap::new();
+    let mut ordered_keys: Vec<String> = Vec::new();
+
+    for summary in &index.accounts {
+        let Some(account) = load_account(&summary.id) else {
+            continue;
+        };
+
+        let key = normalize_email_identity(Some(account.email.as_str()))
+            .unwrap_or_else(|| format!("id:{}", account.id));
+
+        if let Some(primary) = accounts_by_key.get_mut(&key) {
+            if should_replace_primary_account(primary, &account) {
+                let mut next_primary = account.clone();
+                merge_duplicate_account(&mut next_primary, primary);
+                *primary = next_primary;
+            } else {
+                merge_duplicate_account(primary, &account);
+            }
+            continue;
+        }
+
+        ordered_keys.push(key.clone());
+        accounts_by_key.insert(key, account);
+    }
+
+    ordered_keys
+        .into_iter()
+        .filter_map(|key| accounts_by_key.remove(&key))
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -691,33 +791,19 @@ pub fn list_accounts() -> Vec<CursorAccount> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut index = load_account_index();
-    let had_index_accounts = !index.accounts.is_empty();
-    let accounts = normalize_account_index(&mut index);
-    if had_index_accounts && accounts.is_empty() {
-        logger::log_warn(
-            "[Cursor Account] 账号索引中存在账号，但详情文件均无法读取，已跳过空索引写回",
-        );
-        return accounts;
-    }
-    if let Err(err) = save_account_index(&index) {
-        logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
-    }
-    accounts
+    let index = load_account_index();
+    list_accounts_from_index_view(&index)
 }
 
 pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
-    let mut index = load_account_index_checked()?;
+    let index = load_account_index_checked()?;
     let had_index_accounts = !index.accounts.is_empty();
-    let accounts = normalize_account_index(&mut index);
+    let accounts = list_accounts_from_index_view(&index);
     if had_index_accounts && accounts.is_empty() {
         return Err("Cursor 账号索引中存在账号，但详情文件均无法读取；已保留前端缓存，请从账号备份或本地账号文件恢复。".to_string());
-    }
-    if let Err(err) = save_account_index(&index) {
-        logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
     }
     Ok(accounts)
 }
@@ -1240,12 +1326,14 @@ pub fn import_from_local() -> Result<Option<CursorAccount>, String> {
         Some(p) => p,
         None => return Ok(None),
     };
-    let outcome = upsert_account_with_outcome(payload)?;
+    let outcome = upsert_account_with_outcome(payload.clone())?;
+    let backup_path = write_local_import_backup(&payload, &outcome)?;
     logger::log_info(&format!(
-        "[Cursor Account] 从本地导入成功: action={}, id={}, email={}",
+        "[Cursor Account] 从本地导入成功: action={}, id={}, email={}, backup={}",
         if outcome.created { "created" } else { "updated" },
         outcome.account.id,
-        outcome.account.email
+        outcome.account.email,
+        backup_path.display()
     ));
     Ok(Some(outcome.account))
 }
