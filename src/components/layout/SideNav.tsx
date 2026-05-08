@@ -925,14 +925,6 @@ export function SideNav({
         <>
           <div className="nav-footer">
             <button
-              className={`nav-item ${page === 'auto-register' && !shouldLockActiveOnMore ? 'active' : ''}`}
-              onClick={() => setPage('auto-register')}
-              title={t('nav.autoRegister', '自动注册')}
-            >
-              <UserPlus size={20} />
-              <span className="tooltip">{t('nav.autoRegister', '自动注册')}</span>
-            </button>
-            <button
               className={`nav-item ${page === 'settings' && !shouldLockActiveOnMore ? 'active' : ''}`}
               onClick={() => setPage('settings')}
               title={t('nav.settings')}
