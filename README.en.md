@@ -18,7 +18,6 @@ personal-use modifications while continuing to sync upstream updates.
 
 - The upstream `Cursor` import and dedup behavior did not fully match local day-to-day usage needs
 - Local usage requires email to be the single stable dedup identity, instead of falling back to `id` or `token`
-- Startup responsiveness matters more for daily use, so slower recovery paths were removed
 - `Windsurf` needed more direct cache persistence logs to diagnose stale snapshot behavior
 
 ### Concrete changes in this repository
@@ -27,8 +26,7 @@ personal-use modifications while continuing to sync upstream updates.
 2. Fixed cross-email overwrite during `Cursor` import and rejected non-email dedup for accounts without a valid email
 3. Preserved the useful fingerprint-related changes instead of touching unrelated behavior
 4. Changed `Cursor` index normalization so duplicate accounts are merged in the index view without physically deleting the original account files
-5. Rolled back backup mirror / restore scan logic that slowed startup, to keep local startup behavior faster for daily use
-6. Added `Windsurf` cache persistence logs to help diagnose cases where a new snapshot does not replace an older cached snapshot
+5. Added `Windsurf` cache persistence logs to help diagnose cases where a new snapshot does not replace an older cached snapshot
 
 A **universal AI IDE account management tool**, currently supporting **Antigravity**, **Codex**, **GitHub Copilot**, **Windsurf**, **Kiro**, **Cursor**, **Gemini Cli**, **CodeBuddy**, **CodeBuddy CN**, **Qoder**, **Trae**, and **Zed**, with multi-instance parallel workflows.
 
