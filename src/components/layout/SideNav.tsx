@@ -1,4 +1,4 @@
-import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck, Zap, UserPlus } from 'lucide-react';
+import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck, UserPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -830,19 +830,6 @@ export function SideNav({
             <span className="nav-item-text">{t('nav.dashboard')}</span>
           ) : !isClassicLayout ? (
             <span className="tooltip">{t('nav.dashboard')}</span>
-          ) : null}
-        </button>
-
-        <button
-          className={`nav-item ${page === 'token-monitor' ? 'active' : ''}`}
-          onClick={() => setPage('token-monitor')}
-          title="Token Monitor"
-        >
-          <Zap size={isClassicLayout ? classicMainIconSize : 20} />
-          {showClassicLabels ? (
-            <span className="nav-item-text">Token Monitor</span>
-          ) : !isClassicLayout ? (
-            <span className="tooltip">Token Monitor</span>
           ) : null}
         </button>
 
