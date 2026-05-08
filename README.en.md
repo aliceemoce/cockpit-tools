@@ -13,7 +13,6 @@ updates.
 - Current repository: `aliceemoce/cockpit-tools`
 - Status: unofficial derivative, not endorsed by or maintained on behalf of the upstream author
 - Changes made: email-based deduplication, fingerprint-related retention, startup-performance rollback, import behavior updates, and cache/logging adjustments
-- Build process: some code and documentation changes in this repository were drafted or refined with AI assistance, then reviewed, merged, and published by the repository maintainer
 
 A **universal AI IDE account management tool**, currently supporting **Antigravity**, **Codex**, **GitHub Copilot**, **Windsurf**, **Kiro**, **Cursor**, **Gemini Cli**, **CodeBuddy**, **CodeBuddy CN**, **Qoder**, **Trae**, and **Zed**, with multi-instance parallel workflows.
 

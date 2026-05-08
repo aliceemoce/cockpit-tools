@@ -11,7 +11,6 @@
 - 当前仓库：`aliceemoce/cockpit-tools`
 - 版本性质：非官方衍生版，不代表上游作者立场、背书或维护状态
 - 改动说明：包含邮箱口径去重、指纹相关保留、启动性能回退、导入与缓存日志调整等本地修改
-- 生成方式：仓库内部分代码与文档改动包含 AI 辅助生成或整理，最终由仓库维护者审阅、合并与发布
 
 一款**通用的 AI IDE 账号管理工具**，目前支持 **Antigravity**、**Codex**、**GitHub Copilot**、**Windsurf**、**Kiro**、**Cursor**、**Gemini Cli**、**CodeBuddy**、**CodeBuddy CN**、**Qoder**、**Trae** 和 **Zed**，并支持多账号多实例并行运行。
 
