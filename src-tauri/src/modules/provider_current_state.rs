@@ -70,9 +70,6 @@ fn save_state(state: &ProviderCurrentState) -> Result<(), String> {
         .map_err(|e| format!("序列化当前账号映射失败: {}", e))?;
     crate::modules::atomic_write::write_string_atomic(&path, &content)
         .map_err(|e| format!("保存当前账号映射失败: path={}, error={}", path.display(), e))?;
-    crate::modules::account_backup_mirror::try_mirror_shared_state_file(
-        PROVIDER_CURRENT_STATE_FILE,
-    );
     Ok(())
 }
 

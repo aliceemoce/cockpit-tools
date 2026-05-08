@@ -79,12 +79,6 @@ fn get_accounts_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn get_backup_accounts_dir() -> Result<PathBuf, String> {
-    Ok(get_data_dir()?
-        .join("account_backups")
-        .join("cursor_accounts"))
-}
-
 fn get_accounts_index_path() -> Result<PathBuf, String> {
     Ok(get_data_dir()?.join(ACCOUNTS_INDEX_FILE))
 }
@@ -141,7 +135,6 @@ fn save_account_file(account: &CursorAccount) -> Result<(), String> {
         serde_json::to_string_pretty(account).map_err(|e| format!("序列化账号失败: {}", e))?;
     crate::modules::atomic_write::write_string_atomic(&path, &content)
         .map_err(|e| format!("保存账号失败: {}", e))?;
-    crate::modules::account_backup_mirror::try_mirror_provider_account_file("cursor", &account.id);
     Ok(())
 }
 
@@ -246,7 +239,6 @@ fn save_account_index(index: &CursorAccountIndex) -> Result<(), String> {
         serde_json::to_string_pretty(index).map_err(|e| format!("序列化账号索引失败: {}", e))?;
     crate::modules::atomic_write::write_string_atomic(&path, &content)
         .map_err(|e| format!("写入账号索引失败: {}", e))?;
-    crate::modules::account_backup_mirror::try_mirror_provider_index_file("cursor");
     Ok(())
 }
 
@@ -366,12 +358,6 @@ fn resolve_payload_auth_id(payload: &CursorImportPayload) -> Option<String> {
         .or_else(|| extract_auth_id_from_access_token(payload.access_token.as_str()))
 }
 
-fn resolve_account_auth_id(account: &CursorAccount) -> Option<String> {
-    normalize_auth_identity(account.auth_id.as_deref())
-        .or_else(|| extract_auth_id_from_raw_value(account.cursor_auth_raw.as_ref()))
-        .or_else(|| extract_auth_id_from_access_token(account.access_token.as_str()))
-}
-
 fn cursor_auth_raw_object_mut(account: &mut CursorAccount) -> &mut serde_json::Map<String, Value> {
     if !matches!(account.cursor_auth_raw, Some(Value::Object(_))) {
         account.cursor_auth_raw = Some(Value::Object(serde_json::Map::new()));
@@ -408,6 +394,7 @@ fn normalize_cursor_sign_up_type(value: Option<&str>) -> Option<String> {
     }
 }
 
+/// 仅以规范化邮箱判定是否为同一人；避免仅靠 auth_id/token 把不同邮箱误合并。
 fn accounts_are_duplicates(left: &CursorAccount, right: &CursorAccount) -> bool {
     let left_email = normalize_email_identity(Some(left.email.as_str()));
     let right_email = normalize_email_identity(Some(right.email.as_str()));
@@ -564,95 +551,6 @@ fn collect_account_ids_from_directory() -> Vec<String> {
     ids
 }
 
-fn collect_account_ids_from_backup_directory() -> Vec<String> {
-    let backup_dir = match get_backup_accounts_dir() {
-        Ok(dir) => dir,
-        Err(err) => {
-            logger::log_warn(&format!(
-                "[Cursor Account] 获取备份账号目录失败，跳过备份补扫: {}",
-                err
-            ));
-            return Vec::new();
-        }
-    };
-
-    if !backup_dir.exists() {
-        return Vec::new();
-    }
-
-    let entries = match fs::read_dir(&backup_dir) {
-        Ok(value) => value,
-        Err(err) => {
-            logger::log_warn(&format!(
-                "[Cursor Account] 读取备份账号目录失败，跳过备份补扫: path={}, error={}",
-                backup_dir.display(),
-                err
-            ));
-            return Vec::new();
-        }
-    };
-
-    let mut ids = Vec::new();
-    for entry in entries {
-        let Ok(item) = entry else {
-            continue;
-        };
-        let path = item.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let is_json = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("json"))
-            .unwrap_or(false);
-        if !is_json {
-            continue;
-        }
-
-        let Some(stem) = path.file_stem().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let Ok(account_id) = normalize_account_id(stem) else {
-            continue;
-        };
-        ids.push(account_id);
-    }
-
-    ids.sort();
-    ids.dedup();
-    ids
-}
-
-fn restore_account_from_backup_if_needed(account_id: &str) -> Option<CursorAccount> {
-    if let Some(existing) = load_account(account_id) {
-        return Some(existing);
-    }
-
-    let backup_path = get_backup_accounts_dir()
-        .ok()?
-        .join(format!("{}.json", account_id));
-    if !backup_path.exists() {
-        return None;
-    }
-
-    let mut restored = load_account_from_path(&backup_path)?;
-    restored.id = account_id.to_string();
-
-    if let Err(err) = save_account_file(&restored) {
-        logger::log_warn(&format!(
-            "[Cursor Account] 从备份回填账号文件失败: id={}, backup={}, error={}",
-            account_id,
-            backup_path.display(),
-            err
-        ));
-        return None;
-    }
-
-    Some(restored)
-}
-
 fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount> {
     let mut loaded_accounts = Vec::new();
     let mut seen_account_ids = HashSet::new();
@@ -687,27 +585,6 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
         logger::log_warn(&format!(
             "[Cursor Account] 检测到索引缺失，已从账号目录恢复 {} 个账号",
             recovered_count
-        ));
-    }
-
-    let mut backup_recovered_count = 0usize;
-    for account_id in collect_account_ids_from_backup_directory() {
-        if seen_account_ids.contains(&account_id) {
-            continue;
-        }
-        if let Some(account) = restore_account_from_backup_if_needed(&account_id) {
-            if seen_account_ids.insert(account.id.clone()) {
-                if !seen_summary_ids.contains(&account.id) {
-                    backup_recovered_count += 1;
-                }
-                loaded_accounts.push(account);
-            }
-        }
-    }
-    if backup_recovered_count > 0 {
-        logger::log_warn(&format!(
-            "[Cursor Account] 检测到主目录账号缺失，已从备份目录回填 {} 个账号",
-            backup_recovered_count
         ));
     }
 
@@ -793,16 +670,8 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
                 ));
             }
         }
-        for account_id in &removed_ids {
-            if let Err(err) = delete_account_file(account_id) {
-                logger::log_warn(&format!(
-                    "[Cursor Account] 删除重复账号文件失败: id={}, error={}",
-                    account_id, err
-                ));
-            }
-        }
         logger::log_warn(&format!(
-            "[Cursor Account] 检测到重复账号并已合并: removed_ids={}",
+            "[Cursor Account] 检测到重复账号并已合并到索引视图，未删除原始文件: removed_ids={}",
             removed_ids.join(",")
         ));
     }
@@ -842,6 +711,11 @@ pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     Ok(accounts)
 }
 
+struct UpsertAccountOutcome {
+    account: CursorAccount,
+    created: bool,
+}
+
 fn apply_payload(
     account: &mut CursorAccount,
     payload: CursorImportPayload,
@@ -870,7 +744,7 @@ fn apply_payload(
     account.last_used = now_ts();
 }
 
-pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, String> {
+fn upsert_account_with_outcome(payload: CursorImportPayload) -> Result<UpsertAccountOutcome, String> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
@@ -879,14 +753,12 @@ pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, Str
     let mut index = load_account_index();
     let incoming_auth_id = resolve_payload_auth_id(&payload);
     let incoming_email = normalize_email_identity(Some(payload.email.as_str()));
-
-    // Email-first identity seed: avoids cross-email ID collision during import.
-    let identity_seed = incoming_email
+    let normalized_email = incoming_email
         .clone()
-        .or_else(|| incoming_auth_id.clone())
-        .or_else(|| normalize_token_identity(Some(payload.access_token.as_str())))
-        .unwrap_or_else(|| "cursor_user".to_string())
-        .to_lowercase();
+        .ok_or_else(|| "Cursor 账号缺少有效邮箱，禁止非邮箱去重".to_string())?;
+
+    // 所有去重与记录归并只认邮箱，不再回退到 auth_id / token。
+    let identity_seed = normalized_email.clone();
     let mut generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
 
     let account_id = index
@@ -902,8 +774,7 @@ pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, Str
         })
         .map(|account| account.id)
         .unwrap_or_else(|| {
-            // Safety: if a different-email account already occupies generated_id,
-            // derive a non-conflicting ID to prevent unintended overwrite.
+            // 若旧脏数据占用了同一个邮箱种子生成的 id，则只在邮箱不同的情况下避让。
             if let Some(existing) = load_account(&generated_id) {
                 let existing_email = normalize_email_identity(Some(existing.email.as_str()));
                 if existing_email != incoming_email {
@@ -914,6 +785,7 @@ pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, Str
         });
 
     let existing = load_account(&account_id);
+    let created = existing.is_none();
     let tags = existing.as_ref().and_then(|acc| acc.tags.clone());
     let created_at = existing.as_ref().map(|acc| acc.created_at).unwrap_or(now);
 
@@ -951,10 +823,16 @@ pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, Str
     save_account_index(&index)?;
 
     logger::log_info(&format!(
-        "Cursor 账号已保存: id={}, email={}",
-        account.id, account.email
+        "[Cursor Account] 账号已保存: action={}, id={}, email={}",
+        if created { "created" } else { "updated" },
+        account.id,
+        account.email
     ));
-    Ok(account)
+    Ok(UpsertAccountOutcome { account, created })
+}
+
+pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, String> {
+    Ok(upsert_account_with_outcome(payload)?.account)
 }
 
 pub fn remove_account(account_id: &str) -> Result<(), String> {
@@ -1151,28 +1029,53 @@ pub fn import_from_json(json_content: &str) -> Result<Vec<CursorAccount>, String
     if let Ok(account) = serde_json::from_str::<CursorAccount>(json_content) {
         let payload = payload_from_cursor_account(account)
             .map_err(|e| format!("Cursor 账号解析失败: {}", e))?;
-        let saved = upsert_account(payload)?;
-        return Ok(vec![saved]);
+        let outcome = upsert_account_with_outcome(payload)?;
+        logger::log_info(&format!(
+            "[Cursor Account] 从 JSON 导入完成: total=1, created={}, updated={}",
+            if outcome.created { 1 } else { 0 },
+            if outcome.created { 0 } else { 1 }
+        ));
+        return Ok(vec![outcome.account]);
     }
 
     if let Ok(accounts) = serde_json::from_str::<Vec<CursorAccount>>(json_content) {
         let mut result = Vec::new();
+        let mut created = 0usize;
         for (idx, account) in accounts.into_iter().enumerate() {
             let payload = payload_from_cursor_account(account)
                 .map_err(|e| format!("第 {} 条 Cursor 账号解析失败: {}", idx + 1, e))?;
-            let saved = upsert_account(payload)?;
-            result.push(saved);
+            let outcome = upsert_account_with_outcome(payload)?;
+            if outcome.created {
+                created += 1;
+            }
+            result.push(outcome.account);
         }
+        logger::log_info(&format!(
+            "[Cursor Account] 从 JSON 导入完成: total={}, created={}, updated={}",
+            result.len(),
+            created,
+            result.len().saturating_sub(created)
+        ));
         return Ok(result);
     }
 
     if let Ok(value) = serde_json::from_str::<Value>(json_content) {
         if let Ok(payloads) = payloads_from_import_json_value(value) {
             let mut result = Vec::with_capacity(payloads.len());
+            let mut created = 0usize;
             for payload in payloads {
-                let saved = upsert_account(payload)?;
-                result.push(saved);
+                let outcome = upsert_account_with_outcome(payload)?;
+                if outcome.created {
+                    created += 1;
+                }
+                result.push(outcome.account);
             }
+            logger::log_info(&format!(
+                "[Cursor Account] 从 JSON 导入完成: total={}, created={}, updated={}",
+                result.len(),
+                created,
+                result.len().saturating_sub(created)
+            ));
             return Ok(result);
         }
     }
@@ -1326,12 +1229,14 @@ pub fn import_from_local() -> Result<Option<CursorAccount>, String> {
         Some(p) => p,
         None => return Ok(None),
     };
-    let account = upsert_account(payload)?;
+    let outcome = upsert_account_with_outcome(payload)?;
     logger::log_info(&format!(
-        "[Cursor Account] 从本地导入成功: id={}, email={}",
-        account.id, account.email
+        "[Cursor Account] 从本地导入成功: action={}, id={}, email={}",
+        if outcome.created { "created" } else { "updated" },
+        outcome.account.id,
+        outcome.account.email
     ));
-    Ok(Some(account))
+    Ok(Some(outcome.account))
 }
 
 // ---------------------------------------------------------------------------

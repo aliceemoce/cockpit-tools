@@ -391,39 +391,14 @@ fn normalize_cursor_sign_up_type(value: Option<&str>) -> Option<String> {
     }
 }
 
+/// 仅以规范化邮箱判定是否为同一人；避免仅靠 auth_id/token 把不同邮箱误合并。
 fn accounts_are_duplicates(left: &CursorAccount, right: &CursorAccount) -> bool {
-    let left_auth_id = resolve_account_auth_id(left);
-    let right_auth_id = resolve_account_auth_id(right);
-    if let (Some(left_auth), Some(right_auth)) = (left_auth_id.as_ref(), right_auth_id.as_ref()) {
-        return left_auth == right_auth;
-    }
-    if left_auth_id.is_some() || right_auth_id.is_some() {
-        return false;
-    }
-
     let left_email = normalize_email_identity(Some(left.email.as_str()));
     let right_email = normalize_email_identity(Some(right.email.as_str()));
-    let left_token = normalize_token_identity(Some(left.access_token.as_str()));
-    let right_token = normalize_token_identity(Some(right.access_token.as_str()));
-
-    let email_conflict = matches!(
+    matches!(
         (left_email.as_ref(), right_email.as_ref()),
-        (Some(l), Some(r)) if l != r
-    );
-    if email_conflict {
-        return false;
-    }
-
-    let email_match = matches!(
-        (left_email.as_ref(), right_email.as_ref()),
-        (Some(l), Some(r)) if l == r
-    );
-    let token_match = matches!(
-        (left_token.as_ref(), right_token.as_ref()),
-        (Some(l), Some(r)) if l == r
-    );
-
-    email_match || token_match
+        (Some(le), Some(re)) if le == re
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -692,16 +667,8 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
                 ));
             }
         }
-        for account_id in &removed_ids {
-            if let Err(err) = delete_account_file(account_id) {
-                logger::log_warn(&format!(
-                    "[Cursor Account] 删除重复账号文件失败: id={}, error={}",
-                    account_id, err
-                ));
-            }
-        }
         logger::log_warn(&format!(
-            "[Cursor Account] 检测到重复账号并已合并: removed_ids={}",
+            "[Cursor Account] 检测到重复账号并已合并到索引视图，未删除原始文件: removed_ids={}",
             removed_ids.join(",")
         ));
     }
@@ -778,47 +745,34 @@ pub fn upsert_account(payload: CursorImportPayload) -> Result<CursorAccount, Str
     let mut index = load_account_index();
     let incoming_auth_id = resolve_payload_auth_id(&payload);
     let incoming_email = normalize_email_identity(Some(payload.email.as_str()));
-    let incoming_token = normalize_token_identity(Some(payload.access_token.as_str()));
-
-    let identity_seed = incoming_auth_id
+    let normalized_email = incoming_email
         .clone()
-        .or_else(|| incoming_email.clone())
-        .or_else(|| incoming_token.clone())
-        .unwrap_or_else(|| "cursor_user".to_string())
-        .to_lowercase();
-    let generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
+        .ok_or_else(|| "Cursor 账号缺少有效邮箱，禁止非邮箱去重".to_string())?;
+
+    let identity_seed = normalized_email.clone();
+    let mut generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
 
     let account_id = index
         .accounts
         .iter()
         .filter_map(|item| load_account(&item.id))
         .find(|account| {
-            let existing_auth_id = resolve_account_auth_id(account);
-            if let (Some(existing), Some(incoming)) =
-                (existing_auth_id.as_ref(), incoming_auth_id.as_ref())
-            {
-                return existing == incoming;
-            }
-            if existing_auth_id.is_some() || incoming_auth_id.is_some() {
-                return false;
-            }
-
             let existing_email = normalize_email_identity(Some(account.email.as_str()));
-            let existing_token = normalize_token_identity(Some(account.access_token.as_str()));
-            if let (Some(ex), Some(inc)) = (existing_email.as_ref(), incoming_email.as_ref()) {
-                if ex == inc {
-                    return true;
-                }
-            }
-            if let (Some(ex), Some(inc)) = (existing_token.as_ref(), incoming_token.as_ref()) {
-                if ex == inc {
-                    return true;
-                }
-            }
-            false
+            matches!(
+                (existing_email.as_ref(), incoming_email.as_ref()),
+                (Some(ex_email), Some(in_email)) if ex_email == in_email
+            )
         })
         .map(|account| account.id)
-        .unwrap_or(generated_id);
+        .unwrap_or_else(|| {
+            if let Some(existing) = load_account(&generated_id) {
+                let existing_email = normalize_email_identity(Some(existing.email.as_str()));
+                if existing_email != incoming_email {
+                    generated_id = format!("cursor_{:x}", md5::compute(format!("{}::{}", identity_seed, Uuid::new_v4()).as_bytes()));
+                }
+            }
+            generated_id
+        });
 
     let existing = load_account(&account_id);
     let tags = existing.as_ref().and_then(|acc| acc.tags.clone());
@@ -1871,40 +1825,16 @@ fn normalize_quota_alert_threshold(value: i32) -> i32 {
 
 pub(crate) fn resolve_current_account_id(accounts: &[CursorAccount]) -> Option<String> {
     if let Ok(Some(local_payload)) = read_local_cursor_auth() {
-        let incoming_auth_id = resolve_payload_auth_id(&local_payload);
         let incoming_email = normalize_email_identity(Some(local_payload.email.as_str()));
-        let incoming_token = normalize_token_identity(Some(local_payload.access_token.as_str()));
 
         if let Some(account_id) = accounts
             .iter()
             .find(|account| {
-                let existing_auth_id = resolve_account_auth_id(account);
-                if let (Some(existing), Some(incoming)) =
-                    (existing_auth_id.as_ref(), incoming_auth_id.as_ref())
-                {
-                    return existing == incoming;
-                }
-                if existing_auth_id.is_some() || incoming_auth_id.is_some() {
-                    return false;
-                }
-
                 let existing_email = normalize_email_identity(Some(account.email.as_str()));
-                let existing_token = normalize_token_identity(Some(account.access_token.as_str()));
-                if let (Some(existing), Some(incoming)) =
-                    (existing_email.as_ref(), incoming_email.as_ref())
-                {
-                    if existing == incoming {
-                        return true;
-                    }
-                }
-                if let (Some(existing), Some(incoming)) =
-                    (existing_token.as_ref(), incoming_token.as_ref())
-                {
-                    if existing == incoming {
-                        return true;
-                    }
-                }
-                false
+                matches!(
+                    (existing_email.as_ref(), incoming_email.as_ref()),
+                    (Some(existing), Some(incoming)) if existing == incoming
+                )
             })
             .map(|account| account.id.clone())
         {

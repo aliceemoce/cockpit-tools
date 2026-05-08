@@ -85,16 +85,31 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? (parsed as TAccount[]) : [];
-    } catch {
+    } catch (error) {
+      console.error(`[Provider Store] Failed to load cache for ${cacheKey}:`, error);
       return [];
     }
   };
 
   const persistAccountsCache = (accounts: TAccount[]) => {
     try {
-      localStorage.setItem(cacheKey, JSON.stringify(accounts));
-    } catch {
-      // ignore cache write failures
+      const serialized = JSON.stringify(accounts);
+      localStorage.setItem(cacheKey, serialized);
+      console.info(
+        `[Provider Store] Cache persisted for ${cacheKey}: accounts=${accounts.length}, bytes=${serialized.length}`,
+      );
+    } catch (error) {
+      const fallbackSize = (() => {
+        try {
+          return JSON.stringify(accounts).length;
+        } catch {
+          return -1;
+        }
+      })();
+      console.error(
+        `[Provider Store] Failed to persist cache for ${cacheKey}: accounts=${accounts.length}, bytes=${fallbackSize}`,
+        error,
+      );
     }
   };
 
