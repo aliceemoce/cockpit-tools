@@ -3783,46 +3783,6 @@
     "accountNameRequired": "계정 이름은 필수입니다.",
     "copySecret": "시크릿 복사"
   },
-  "autoRegister": {
-    "pageTitle": "자동 등록",
-    "pageSubtitle": "시스템이 자동으로 랜덤 이메일을 생성하고 등록을 완료합니다",
-    "stopFirst": "먼저 등록을 중지해 주세요",
-    "noPendingAccounts": "등록 대기 중인 계정이 없습니다",
-    "startBatch": "일괄 등록 시작",
-    "completed": "등록 완료",
-    "userStopped": "사용자가 등록을 중지했습니다",
-    "stopping": "등록 중지 중...",
-    "starting": "등록 시작 중",
-    "error": "오류",
-    "startRegistration": "등록 시작",
-    "logs": "로그",
-    "noLogs": "로그 없음",
-    "registrationList": "등록 목록",
-    "instructions": "사용 설명",
-    "stats": {
-      "total": "총계",
-      "success": "성공",
-      "failed": "실패",
-      "exists": "존재"
-    },
-    "status": {
-      "pending": "대기 중",
-      "exists": "존재",
-      "registering": "등록 중",
-      "gettingCode": "코드 가져오는 중",
-      "success": "성공",
-      "failed": "실패"
-    },
-    "table": {
-      "no": "번호",
-      "email": "이메일",
-      "name": "이름",
-      "status": "상태"
-    },
-    "help": {
-      "browserNote": "처음 사용 시 브라우저 설치가 필요합니다"
-    }
-  },
   "logViewer": {
     "fileLabel": "로그 파일",
     "levelLabel": "레벨",

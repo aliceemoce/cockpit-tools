@@ -21,8 +21,6 @@
     "detail": "详情",
     "editable": "可编辑",
     "preview": "预览",
-    "clear": "清空",
-    "stop": "停止",
     "topRightAd": {
       "ariaLabel": "全局右上角广告位",
       "badge": "广告",
@@ -300,7 +298,6 @@
     "switchClassicLayoutDesc": "经典布局将展示完整平台导航，并支持可折叠侧边栏。你可在“设置 > 通用 > 侧边栏布局”中随时切换回原始布局。",
     "switchClassicLayoutDontAskAgain": "不再提示此引导",
     "switchClassicLayoutConfirm": "立即切换",
-    "autoRegister": "自动注册",
     "2faManager": "2FA 管理"
   },
   "platformLayout": {
@@ -3796,45 +3793,5 @@
     "importErrorMsg": "导入失败，请检查文件格式是否为您之前导出的格式 (JSON Array)。",
     "btnImportTitle": "导入本地的 JSON 文件",
     "btnExportTitle": "导出已保存为 JSON"
-  },
-  "autoRegister": {
-    "pageTitle": "自动注册",
-    "pageSubtitle": "系统自动生成随机邮箱并完成注册",
-    "stopFirst": "请先停止注册",
-    "noPendingAccounts": "没有需要注册的账号",
-    "startBatch": "开始批量注册",
-    "completed": "注册完成",
-    "userStopped": "用户停止了注册",
-    "stopping": "正在停止注册...",
-    "starting": "开始注册",
-    "error": "错误",
-    "startRegistration": "开始注册",
-    "logs": "运行日志",
-    "noLogs": "暂无日志",
-    "registrationList": "注册列表",
-    "instructions": "使用说明",
-    "stats": {
-      "total": "总数",
-      "success": "成功",
-      "failed": "失败",
-      "exists": "已存在"
-    },
-    "status": {
-      "pending": "等待",
-      "exists": "已存在",
-      "registering": "注册中",
-      "gettingCode": "获取验证码",
-      "success": "成功",
-      "failed": "失败"
-    },
-    "table": {
-      "no": "序号",
-      "email": "邮箱",
-      "name": "姓名",
-      "status": "状态"
-    },
-    "help": {
-      "browserNote": "首次使用需要安装浏览器"
-    }
   }
 }

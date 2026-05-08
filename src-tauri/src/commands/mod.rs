@@ -1,6 +1,5 @@
 pub mod account;
 pub mod announcement;
-pub mod auto_register;
 pub mod codebuddy;
 pub mod codebuddy_cn;
 pub mod codebuddy_cn_instance;

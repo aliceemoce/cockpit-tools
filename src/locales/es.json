@@ -3783,46 +3783,6 @@
     "accountNameRequired": "El nombre de la cuenta es obligatorio.",
     "copySecret": "Copiar secreto"
   },
-  "autoRegister": {
-    "pageTitle": "Registro Automático",
-    "pageSubtitle": "El sistema genera automáticamente correo aleatorio y completa el registro",
-    "stopFirst": "Por favor detenga el registro primero",
-    "noPendingAccounts": "No hay cuentas pendientes",
-    "startBatch": "Iniciar registro por lotes",
-    "completed": "Registro completado",
-    "userStopped": "Registro detenido por el usuario",
-    "stopping": "Deteniendo registro...",
-    "starting": "Iniciando registro",
-    "error": "Error",
-    "startRegistration": "Iniciar Registro",
-    "logs": "Registros",
-    "noLogs": "Sin registros",
-    "registrationList": "Lista de Registros",
-    "instructions": "Instrucciones",
-    "stats": {
-      "total": "Total",
-      "success": "Éxito",
-      "failed": "Fallido",
-      "exists": "Existe"
-    },
-    "status": {
-      "pending": "Pendiente",
-      "exists": "Existe",
-      "registering": "Registrando",
-      "gettingCode": "Obteniendo código",
-      "success": "Éxito",
-      "failed": "Fallido"
-    },
-    "table": {
-      "no": "Nº",
-      "email": "Correo",
-      "name": "Nombre",
-      "status": "Estado"
-    },
-    "help": {
-      "browserNote": "Se requiere instalación del navegador para primer uso"
-    }
-  },
   "logViewer": {
     "fileLabel": "Archivo de registro",
     "levelLabel": "Nivel",

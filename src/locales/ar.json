@@ -3783,46 +3783,6 @@
     "accountNameRequired": "اسم الحساب مطلوب.",
     "copySecret": "نسخ السر"
   },
-  "autoRegister": {
-    "pageTitle": "التسجيل التلقائي",
-    "pageSubtitle": "يقوم النظام تلقائيًا بإنشاء بريد إلكتروني عشوائي وإكمال التسجيل",
-    "stopFirst": "الرجاء إيقاف التسجيل أولاً",
-    "noPendingAccounts": "لا توجد حسابات في انتظار التسجيل",
-    "startBatch": "بدء التسجيل بالدفعات",
-    "completed": "اكتمل التسجيل",
-    "userStopped": "أوقف المستخدم التسجيل",
-    "stopping": "جاري إيقاف التسجيل...",
-    "starting": "جاري بدء التسجيل",
-    "error": "خطأ",
-    "startRegistration": "بدء التسجيل",
-    "logs": "السجلات",
-    "noLogs": "لا توجد سجلات",
-    "registrationList": "قائمة التسجيل",
-    "instructions": "التعليمات",
-    "stats": {
-      "total": "الإجمالي",
-      "success": "نجاح",
-      "failed": "فشل",
-      "exists": "موجود"
-    },
-    "status": {
-      "pending": "معلق",
-      "exists": "موجود",
-      "registering": "جاري التسجيل",
-      "gettingCode": "جاري الحصول على الرمز",
-      "success": "نجاح",
-      "failed": "فشل"
-    },
-    "table": {
-      "no": "رقم",
-      "email": "البريد الإلكتروني",
-      "name": "الاسم",
-      "status": "الحالة"
-    },
-    "help": {
-      "browserNote": "مطلوب تثبيت المتصفح للاستخدام الأول"
-    }
-  },
   "logViewer": {
     "fileLabel": "ملف السجل",
     "levelLabel": "المستوى",

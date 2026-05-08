@@ -3783,46 +3783,6 @@
     "accountNameRequired": "Hesap adı gerekli.",
     "copySecret": "Gizli anahtarı kopyala"
   },
-  "autoRegister": {
-    "pageTitle": "Otomatik Kayıt",
-    "pageSubtitle": "Sistem otomatik olarak rastgele e-posta oluşturur ve kaydı tamamlar",
-    "stopFirst": "Lütfen önce kaydı durdurun",
-    "noPendingAccounts": "Kayıt bekleyen hesap yok",
-    "startBatch": "Toplu kayıt başlat",
-    "completed": "Kayıt tamamlandı",
-    "userStopped": "Kayıt kullanıcı tarafından durduruldu",
-    "stopping": "Kayıt durduruluyor...",
-    "starting": "Kayıt başlatılıyor",
-    "error": "Hata",
-    "startRegistration": "Kayıt Başlat",
-    "logs": "Günlükler",
-    "noLogs": "Günlük yok",
-    "registrationList": "Kayıt Listesi",
-    "instructions": "Talimatlar",
-    "stats": {
-      "total": "Toplam",
-      "success": "Başarılı",
-      "failed": "Başarısız",
-      "exists": "Mevcut"
-    },
-    "status": {
-      "pending": "Bekliyor",
-      "exists": "Mevcut",
-      "registering": "Kayıt yapılıyor",
-      "gettingCode": "Kod alınıyor",
-      "success": "Başarılı",
-      "failed": "Başarısız"
-    },
-    "table": {
-      "no": "No",
-      "email": "E-posta",
-      "name": "Ad",
-      "status": "Durum"
-    },
-    "help": {
-      "browserNote": "İlk kullanım için tarayıcı kurulumu gerekli"
-    }
-  },
   "logViewer": {
     "fileLabel": "Günlük dosyası",
     "levelLabel": "Seviye",

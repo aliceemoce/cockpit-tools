@@ -58,12 +58,10 @@ libc = "0.2"
 tokio-tungstenite = "0.26"
 futures-util = "0.3"
 md5 = "0.7"
-chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 tiny_http = "0.12"
 urlencoding = "2.1"
 lazy_static = "1.5"
 trash = "5"
-dunce = "1"
 
 # VS Code Copilot token injection (Windows only)
 aes-gcm = "0.10"

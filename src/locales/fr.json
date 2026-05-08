@@ -3783,46 +3783,6 @@
     "accountNameRequired": "Le nom du compte est requis.",
     "copySecret": "Copier le secret"
   },
-  "autoRegister": {
-    "pageTitle": "Inscription Auto",
-    "pageSubtitle": "Le système génère automatiquement un email aléatoire et complète l'inscription",
-    "stopFirst": "Veuillez d'abord arrêter l'inscription",
-    "noPendingAccounts": "Aucun compte en attente",
-    "startBatch": "Démarrer l'inscription par lot",
-    "completed": "Inscription terminée",
-    "userStopped": "Inscription arrêtée par l'utilisateur",
-    "stopping": "Arrêt de l'inscription...",
-    "starting": "Démarrage de l'inscription",
-    "error": "Erreur",
-    "startRegistration": "Démarrer l'Inscription",
-    "logs": "Journaux",
-    "noLogs": "Aucun journal",
-    "registrationList": "Liste des Inscriptions",
-    "instructions": "Instructions",
-    "stats": {
-      "total": "Total",
-      "success": "Succès",
-      "failed": "Échoué",
-      "exists": "Existe"
-    },
-    "status": {
-      "pending": "En attente",
-      "exists": "Existe",
-      "registering": "Inscription en cours",
-      "gettingCode": "Récupération du code",
-      "success": "Succès",
-      "failed": "Échoué"
-    },
-    "table": {
-      "no": "N°",
-      "email": "Email",
-      "name": "Nom",
-      "status": "Statut"
-    },
-    "help": {
-      "browserNote": "Installation du navigateur requise pour la première utilisation"
-    }
-  },
   "logViewer": {
     "fileLabel": "Fichier journal",
     "levelLabel": "Niveau",

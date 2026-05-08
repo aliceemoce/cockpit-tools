@@ -3783,46 +3783,6 @@
     "btnImportTitle": "Impor Cadangan JSON Lokal",
     "btnExportTitle": "Ekspor Tersimpan sebagai JSON"
   },
-  "autoRegister": {
-    "pageTitle": "Pendaftaran Otomatis",
-    "pageSubtitle": "Sistem secara otomatis menghasilkan email acak dan menyelesaikan pendaftaran",
-    "stopFirst": "Harap hentikan pendaftaran terlebih dahulu",
-    "noPendingAccounts": "Tidak ada akun yang menunggu pendaftaran",
-    "startBatch": "Mulai pendaftaran batch",
-    "completed": "Pendaftaran selesai",
-    "userStopped": "Pendaftaran dihentikan oleh pengguna",
-    "stopping": "Menghentikan pendaftaran...",
-    "starting": "Memulai pendaftaran",
-    "error": "Kesalahan",
-    "startRegistration": "Mulai Pendaftaran",
-    "logs": "Log",
-    "noLogs": "Tidak ada log",
-    "registrationList": "Daftar Pendaftaran",
-    "instructions": "Instruksi",
-    "stats": {
-      "total": "Total",
-      "success": "Berhasil",
-      "failed": "Gagal",
-      "exists": "Sudah Ada"
-    },
-    "status": {
-      "pending": "Tertunda",
-      "exists": "Sudah Ada",
-      "registering": "Mendaftarkan",
-      "gettingCode": "Mendapatkan Kode",
-      "success": "Berhasil",
-      "failed": "Gagal"
-    },
-    "table": {
-      "no": "No.",
-      "email": "Email",
-      "name": "Nama",
-      "status": "Status"
-    },
-    "help": {
-      "browserNote": "Instalasi browser diperlukan untuk penggunaan pertama"
-    }
-  },
   "logViewer": {
     "fileLabel": "File log",
     "levelLabel": "Tingkat",
