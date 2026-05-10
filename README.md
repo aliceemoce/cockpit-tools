@@ -24,6 +24,7 @@
 3. 保留原本有意义的指纹相关改动，不动与启动提速无关的行为
 4. `Cursor` 索引整理时只合并索引视图，不再物理删除原始账号文件
 5. 补充 `Windsurf` 账号缓存写入日志，方便排查缓存没有覆盖旧快照的问题
+6. `Cursor` 刷新时保留原始可用邮箱，不再用接口返回邮箱覆盖本地账号主邮箱；接口邮箱仅作为附加缓存信息记录
 
 一款**通用的 AI IDE 账号管理工具**，目前支持 **Antigravity**、**Codex**、**GitHub Copilot**、**Windsurf**、**Kiro**、**Cursor**、**Gemini Cli**、**CodeBuddy**、**CodeBuddy CN**、**Qoder**、**Trae** 和 **Zed**，并支持多账号多实例并行运行。
 

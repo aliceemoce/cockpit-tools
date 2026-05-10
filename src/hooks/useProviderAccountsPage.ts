@@ -235,6 +235,70 @@ const parseLineDelimitedJsonObjects = (
   });
 };
 
+const normalizeCursorDashedImport = (rawContent: string): string | null => {
+  const lines = rawContent
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const items = lines.map((line) => {
+    const parts = line.split('----').map((part) => part.trim());
+    if (parts.length < 3) {
+      return null;
+    }
+
+    const email = parts[0] ?? '';
+    if (!email.includes('@')) {
+      return null;
+    }
+
+    if (parts.length >= 4) {
+      const authId = parts[1] || undefined;
+      const accessToken = parts[2] || '';
+      const refreshToken = parts[3] || undefined;
+      if (!accessToken) {
+        return null;
+      }
+      return {
+        email,
+        auth_id: authId,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      };
+    }
+
+    const second = parts[1] || '';
+    const third = parts[2] || '';
+    if (!second || !third) {
+      return null;
+    }
+
+    if (second.startsWith('eyJ')) {
+      return {
+        email,
+        access_token: second,
+        refresh_token: third,
+      };
+    }
+
+    return {
+      email,
+      auth_id: second,
+      access_token: third,
+    };
+  });
+
+  if (items.some((item) => item == null)) {
+    return null;
+  }
+
+  return JSON.stringify(items.length === 1 ? items[0] : items);
+};
+
 const isCodexDirectImportItem = (value: unknown): boolean => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const payload = value as Record<string, unknown>;
@@ -1516,14 +1580,21 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
     try {
       let importedCount = 0;
-      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        const imported = await dataService.importFromJson(trimmed);
+      const cursorDashedImport =
+        platformId === 'cursor' ? normalizeCursorDashedImport(trimmed) : null;
+      const normalizedImportContent = cursorDashedImport ?? trimmed;
+
+      if (
+        normalizedImportContent.startsWith('{') ||
+        normalizedImportContent.startsWith('[')
+      ) {
+        const imported = await dataService.importFromJson(normalizedImportContent);
         importedCount = imported.length;
       } else if (dataService.addWithToken) {
         await dataService.addWithToken(trimmed);
         importedCount = 1;
       } else {
-        const imported = await dataService.importFromJson(trimmed);
+        const imported = await dataService.importFromJson(normalizedImportContent);
         importedCount = imported.length;
       }
       await fetchAccounts();

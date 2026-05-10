@@ -745,42 +745,20 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
     normalized_accounts
 }
 
-fn should_replace_primary_account(current: &CursorAccount, incoming: &CursorAccount) -> bool {
-    incoming.last_used > current.last_used
-        || (incoming.last_used == current.last_used && incoming.created_at < current.created_at)
-}
-
 fn list_accounts_from_index_view(index: &CursorAccountIndex) -> Vec<CursorAccount> {
-    let mut accounts_by_key: HashMap<String, CursorAccount> = HashMap::new();
-    let mut ordered_keys: Vec<String> = Vec::new();
+    let mut accounts = Vec::new();
+    let mut seen_ids = HashSet::new();
 
     for summary in &index.accounts {
         let Some(account) = load_account(&summary.id) else {
             continue;
         };
-
-        let key = normalize_email_identity(Some(account.email.as_str()))
-            .unwrap_or_else(|| format!("id:{}", account.id));
-
-        if let Some(primary) = accounts_by_key.get_mut(&key) {
-            if should_replace_primary_account(primary, &account) {
-                let mut next_primary = account.clone();
-                merge_duplicate_account(&mut next_primary, primary);
-                *primary = next_primary;
-            } else {
-                merge_duplicate_account(primary, &account);
-            }
-            continue;
+        if seen_ids.insert(account.id.clone()) {
+            accounts.push(account);
         }
-
-        ordered_keys.push(key.clone());
-        accounts_by_key.insert(key, account);
     }
 
-    ordered_keys
-        .into_iter()
-        .filter_map(|key| accounts_by_key.remove(&key))
-        .collect()
+    accounts
 }
 
 // ---------------------------------------------------------------------------
@@ -1860,7 +1838,17 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, S
     match fetch_user_meta_with_client(&client, &account.access_token).await {
         Ok(meta) => {
             if let Some(email) = normalize_email_identity(meta.email.as_deref()) {
-                account.email = email.clone();
+                let stored_email = normalize_email_identity(Some(account.email.as_str()));
+                if stored_email.is_none() {
+                    account.email = email.clone();
+                } else if stored_email.as_deref() != Some(email.as_str()) {
+                    logger::log_warn(&format!(
+                        "[Cursor Refresh] 官方邮箱与本地原始邮箱不一致，已保留本地邮箱: id={}, stored_email={}, remote_email={}",
+                        account.id,
+                        account.email,
+                        email
+                    ));
+                }
                 upsert_cursor_auth_raw_string(&mut account, "cachedEmail", Some(email));
             }
 

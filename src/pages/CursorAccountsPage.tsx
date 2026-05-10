@@ -83,6 +83,7 @@ const CURSOR_KNOWN_PLAN_FILTERS = [
   'ULTRA',
 ] as const;
 const CURSOR_TOKEN_SINGLE_EXAMPLE = `eyJhbGciOiJIUzI1NiIs...`;
+const CURSOR_TOKEN_DASHED_EXAMPLE = `glaring-menisci-5o@icloud.com----auth0|user_xxx----eyJaccess...----eyJrefresh...`;
 const CURSOR_TOKEN_BATCH_EXAMPLE = `[
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"a@example.com"},
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"b@example.com"}
@@ -1223,14 +1224,18 @@ export function CursorAccountsPage() {
 
               {addTab === 'token' && (
                 <div className="add-section">
-                  <p className="section-desc">{t('cursor.token.desc', '粘贴您的 Cursor Access Token（JWT）或导出的 JSON 数据。')}</p>
+                  <p className="section-desc">{t('cursor.token.desc', '粘贴 Cursor Access Token（JWT）、导出的 JSON，或 邮箱----auth_id----access_token----refresh_token。')}</p>
                   <details className="token-format-collapse">
                     <summary className="token-format-collapse-summary">{t('cursor.token.formatHint', '必填字段与示例（点击展开）')}</summary>
                     <div className="token-format">
-                      <p className="token-format-required">{t('cursor.token.formatRequired', '单条 Token 直接粘贴 JWT；批量导入使用 JSON 数组格式')}</p>
+                      <p className="token-format-required">{t('cursor.token.formatRequired', '支持三种格式：单条 JWT、JSON、以及 邮箱----auth_id----access_token----refresh_token')}</p>
                       <div className="token-format-group">
                         <div className="token-format-label">{t('cursor.token.singleExample', '单条示例（JWT）')}</div>
                         <pre className="token-format-code">{CURSOR_TOKEN_SINGLE_EXAMPLE}</pre>
+                      </div>
+                      <div className="token-format-group">
+                        <div className="token-format-label">{t('cursor.token.dashedExample', '单条示例（分隔格式）')}</div>
+                        <pre className="token-format-code">{CURSOR_TOKEN_DASHED_EXAMPLE}</pre>
                       </div>
                       <div className="token-format-group">
                         <div className="token-format-label">{t('cursor.token.batchExample', '批量示例（JSON）')}</div>
