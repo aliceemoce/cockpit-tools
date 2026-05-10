@@ -769,19 +769,22 @@ pub fn list_accounts() -> Vec<CursorAccount> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let index = load_account_index();
-    list_accounts_from_index_view(&index)
+    let mut index = load_account_index();
+    let accounts = normalize_account_index(&mut index);
+    if let Err(err) = save_account_index(&index) {
+        logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
+    }
+    accounts
 }
 
 pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
-    let index = load_account_index_checked()?;
-    let had_index_accounts = !index.accounts.is_empty();
-    let accounts = list_accounts_from_index_view(&index);
-    if had_index_accounts && accounts.is_empty() {
-        return Err("Cursor 账号索引中存在账号，但详情文件均无法读取；已保留前端缓存，请从账号备份或本地账号文件恢复。".to_string());
+    let mut index = load_account_index_checked()?;
+    let accounts = normalize_account_index(&mut index);
+    if let Err(err) = save_account_index(&index) {
+        logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
     }
     Ok(accounts)
 }
