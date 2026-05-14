@@ -121,7 +121,7 @@ fn resolve_account_file_path(account_id: &str) -> Result<PathBuf, String> {
     Ok(get_accounts_dir()?.join(format!("{}.json", normalized)))
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Deserialize, Clone)]
 struct CursorLocalImportBackupSnapshot {
     created_at_ms: i64,
     email: String,
@@ -172,6 +172,62 @@ fn write_local_import_backup(
     crate::modules::atomic_write::write_string_atomic(&backup_path, &content)
         .map_err(|e| format!("写入 Cursor 本机导入备份失败: {}", e))?;
     Ok(backup_path)
+}
+
+fn load_local_import_backup_snapshots() -> Vec<CursorLocalImportBackupSnapshot> {
+    let backup_dir = match get_local_import_backups_dir() {
+        Ok(dir) => dir,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Account] 获取本机导入备份目录失败，跳过备份补扫: {}",
+                err
+            ));
+            return Vec::new();
+        }
+    };
+
+    let entries = match fs::read_dir(&backup_dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Account] 读取本机导入备份目录失败，跳过备份补扫: path={}, error={}",
+                backup_dir.display(),
+                err
+            ));
+            return Vec::new();
+        }
+    };
+
+    let mut snapshots = Vec::new();
+    for entry in entries {
+        let Ok(item) = entry else {
+            continue;
+        };
+        let path = item.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let is_json = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
+        if !is_json {
+            continue;
+        }
+
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(snapshot) = serde_json::from_str::<CursorLocalImportBackupSnapshot>(&content) else {
+            continue;
+        };
+        snapshots.push(snapshot);
+    }
+
+    snapshots.sort_by_key(|snapshot| snapshot.created_at_ms);
+    snapshots
 }
 
 // ---------------------------------------------------------------------------
@@ -761,6 +817,91 @@ fn list_accounts_from_index_view(index: &CursorAccountIndex) -> Vec<CursorAccoun
     accounts
 }
 
+fn restore_missing_accounts_from_backups(index: &mut CursorAccountIndex) -> usize {
+    let mut latest_by_email = HashMap::<String, CursorLocalImportBackupSnapshot>::new();
+    for snapshot in load_local_import_backup_snapshots() {
+        let Some(email) = normalize_email_identity(Some(snapshot.email.as_str()))
+            .or_else(|| normalize_email_identity(Some(snapshot.account.email.as_str())))
+        else {
+            continue;
+        };
+        latest_by_email.insert(email, snapshot);
+    }
+
+    if latest_by_email.is_empty() {
+        return 0;
+    }
+
+    let current_accounts = list_accounts_from_index_view(index);
+    let mut live_emails = current_accounts
+        .iter()
+        .filter_map(|account| normalize_email_identity(Some(account.email.as_str())))
+        .collect::<HashSet<_>>();
+    let mut live_ids = current_accounts
+        .iter()
+        .map(|account| account.id.clone())
+        .collect::<HashSet<_>>();
+
+    let mut restored = 0usize;
+    let mut restored_emails = Vec::new();
+    let mut snapshots = latest_by_email.into_values().collect::<Vec<_>>();
+    snapshots.sort_by_key(|snapshot| snapshot.created_at_ms);
+
+    for snapshot in snapshots {
+        let Some(email) = normalize_email_identity(Some(snapshot.email.as_str()))
+            .or_else(|| normalize_email_identity(Some(snapshot.account.email.as_str())))
+        else {
+            continue;
+        };
+        if live_emails.contains(&email) {
+            continue;
+        }
+
+        if live_ids.contains(&snapshot.account.id) {
+            let existing_email = load_account(snapshot.account.id.as_str())
+                .and_then(|account| normalize_email_identity(Some(account.email.as_str())));
+            if existing_email.as_deref() != Some(email.as_str()) {
+                logger::log_warn(&format!(
+                    "[Cursor Account] 备份补扫跳过 ID 冲突: id={}, backup_email={}, existing_email={}",
+                    snapshot.account.id,
+                    snapshot.email,
+                    existing_email.unwrap_or_else(|| "<unknown>".to_string())
+                ));
+                continue;
+            }
+        }
+
+        let mut account = snapshot.account.clone();
+        if account.email.trim().is_empty() {
+            account.email = snapshot.email.clone();
+        }
+
+        if let Err(err) = save_account_file(&account) {
+            logger::log_warn(&format!(
+                "[Cursor Account] 备份补扫恢复账号失败: id={}, email={}, error={}",
+                account.id, account.email, err
+            ));
+            continue;
+        }
+
+        refresh_summary(index, &account);
+        live_emails.insert(email);
+        live_ids.insert(account.id.clone());
+        restored += 1;
+        restored_emails.push(account.email.clone());
+    }
+
+    if restored > 0 {
+        logger::log_warn(&format!(
+            "[Cursor Account] 检测到备份邮箱缺失，已从本机导入备份恢复 {} 个账号: {}",
+            restored,
+            restored_emails.join(",")
+        ));
+    }
+
+    restored
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -770,7 +911,10 @@ pub fn list_accounts() -> Vec<CursorAccount> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut index = load_account_index();
-    let accounts = normalize_account_index(&mut index);
+    let mut accounts = normalize_account_index(&mut index);
+    if restore_missing_accounts_from_backups(&mut index) > 0 {
+        accounts = normalize_account_index(&mut index);
+    }
     if let Err(err) = save_account_index(&index) {
         logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
     }
@@ -782,7 +926,10 @@ pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
     let mut index = load_account_index_checked()?;
-    let accounts = normalize_account_index(&mut index);
+    let mut accounts = normalize_account_index(&mut index);
+    if restore_missing_accounts_from_backups(&mut index) > 0 {
+        accounts = normalize_account_index(&mut index);
+    }
     if let Err(err) = save_account_index(&index) {
         logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
     }
@@ -822,7 +969,9 @@ fn apply_payload(
     account.last_used = now_ts();
 }
 
-fn upsert_account_with_outcome(payload: CursorImportPayload) -> Result<UpsertAccountOutcome, String> {
+fn upsert_account_with_outcome(
+    payload: CursorImportPayload,
+) -> Result<UpsertAccountOutcome, String> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
@@ -856,7 +1005,10 @@ fn upsert_account_with_outcome(payload: CursorImportPayload) -> Result<UpsertAcc
             if let Some(existing) = load_account(&generated_id) {
                 let existing_email = normalize_email_identity(Some(existing.email.as_str()));
                 if existing_email != incoming_email {
-                    generated_id = format!("cursor_{:x}", md5::compute(format!("{}::{}", identity_seed, Uuid::new_v4()).as_bytes()));
+                    generated_id = format!(
+                        "cursor_{:x}",
+                        md5::compute(format!("{}::{}", identity_seed, Uuid::new_v4()).as_bytes())
+                    );
                 }
             }
             generated_id
@@ -1311,7 +1463,11 @@ pub fn import_from_local() -> Result<Option<CursorAccount>, String> {
     let backup_path = write_local_import_backup(&payload, &outcome)?;
     logger::log_info(&format!(
         "[Cursor Account] 从本地导入成功: action={}, id={}, email={}, backup={}",
-        if outcome.created { "created" } else { "updated" },
+        if outcome.created {
+            "created"
+        } else {
+            "updated"
+        },
         outcome.account.id,
         outcome.account.email,
         backup_path.display()
@@ -1367,8 +1523,13 @@ fn upsert_storage_json_ids(
 
     let mut obj = serde_json::Map::<String, Value>::new();
     if storage_json_path.exists() {
-        let raw = fs::read_to_string(storage_json_path)
-            .map_err(|e| format!("读取 storage.json 失败({}): {}", storage_json_path.display(), e))?;
+        let raw = fs::read_to_string(storage_json_path).map_err(|e| {
+            format!(
+                "读取 storage.json 失败({}): {}",
+                storage_json_path.display(),
+                e
+            )
+        })?;
         if !raw.trim().is_empty() {
             if let Ok(Value::Object(parsed)) = serde_json::from_str::<Value>(&raw) {
                 obj = parsed;
@@ -1400,7 +1561,10 @@ fn upsert_storage_json_ids(
     Ok(())
 }
 
-fn upsert_state_vscdb_ids(state_db_path: &PathBuf, ids: &HashMap<&str, String>) -> Result<(), String> {
+fn upsert_state_vscdb_ids(
+    state_db_path: &PathBuf,
+    ids: &HashMap<&str, String>,
+) -> Result<(), String> {
     if !state_db_path.exists() {
         return Ok(());
     }
@@ -1412,10 +1576,22 @@ fn upsert_state_vscdb_ids(state_db_path: &PathBuf, ids: &HashMap<&str, String>) 
             e
         )
     })?;
-    upsert_vscdb_item(&conn, "storage.serviceMachineId", &ids["storage.serviceMachineId"])?;
+    upsert_vscdb_item(
+        &conn,
+        "storage.serviceMachineId",
+        &ids["storage.serviceMachineId"],
+    )?;
     upsert_vscdb_item(&conn, "telemetry.machineId", &ids["telemetry.machineId"])?;
-    upsert_vscdb_item(&conn, "telemetry.macMachineId", &ids["telemetry.macMachineId"])?;
-    upsert_vscdb_item(&conn, "telemetry.devDeviceId", &ids["telemetry.devDeviceId"])?;
+    upsert_vscdb_item(
+        &conn,
+        "telemetry.macMachineId",
+        &ids["telemetry.macMachineId"],
+    )?;
+    upsert_vscdb_item(
+        &conn,
+        "telemetry.devDeviceId",
+        &ids["telemetry.devDeviceId"],
+    )?;
     upsert_vscdb_item(&conn, "telemetry.sqmId", &ids["telemetry.sqmId"])?;
     Ok(())
 }
@@ -1438,13 +1614,19 @@ pub fn hard_reset_cursor_fingerprint_state() -> Result<(), String> {
         .parent()
         .ok_or_else(|| "machineId 路径无效".to_string())?;
     if !machine_parent.exists() {
-        fs::create_dir_all(machine_parent).map_err(|e| format!("创建 machineId 目录失败: {}", e))?;
+        fs::create_dir_all(machine_parent)
+            .map_err(|e| format!("创建 machineId 目录失败: {}", e))?;
     }
-    crate::modules::atomic_write::write_string_atomic(&machine_id_path, &ids["telemetry.devDeviceId"])
-        .map_err(|e| format!("写入 machineId 失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(
+        &machine_id_path,
+        &ids["telemetry.devDeviceId"],
+    )
+    .map_err(|e| format!("写入 machineId 失败: {}", e))?;
 
     upsert_state_vscdb_ids(&state_db, &ids)?;
-    logger::log_info("[Cursor Switch] 已执行 n 风格本地指纹重置（state.vscdb/storage.json/machineId）");
+    logger::log_info(
+        "[Cursor Switch] 已执行 n 风格本地指纹重置（state.vscdb/storage.json/machineId）",
+    );
     Ok(())
 }
 
