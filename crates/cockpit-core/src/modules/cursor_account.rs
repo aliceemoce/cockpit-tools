@@ -1559,7 +1559,17 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, S
     match fetch_user_meta_with_client(&client, &account.access_token).await {
         Ok(meta) => {
             if let Some(email) = normalize_email_identity(meta.email.as_deref()) {
-                account.email = email.clone();
+                let local_email = normalize_email_identity(Some(account.email.as_str()));
+                if local_email.is_none() {
+                    account.email = email.clone();
+                } else if local_email.as_deref() != Some(email.as_str()) {
+                    logger::log_warn(&format!(
+                        "[Cursor Refresh] 保留本地主邮箱，接口邮箱仅缓存: id={}, local={}, remote={}",
+                        account.id,
+                        account.email,
+                        email
+                    ));
+                }
                 upsert_cursor_auth_raw_string(&mut account, "cachedEmail", Some(email));
             }
 
