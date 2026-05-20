@@ -58,6 +58,7 @@ import { loadWakeupOfficialLsVersionMode } from './utils/wakeupOfficialLsVersion
 import {
   dispatchExternalProviderImportEvent,
   normalizeExternalProviderImportPayload,
+  type ExternalProviderImportPayload,
 } from './utils/externalProviderImport';
 import { runAutoBackupCycle } from './services/scheduledBackupService';
 import { prepareCodexLocalAccessForRestart } from './services/codexLocalAccessService';
@@ -188,7 +189,7 @@ type AppPathMissingDetail = {
   retry?:
     | { kind: 'default' }
     | { kind: 'instance'; instanceId?: string }
-    | { kind: 'switchAccount'; accountId?: string };
+    | { kind: 'switchAccount'; accountId?: string; runtimeTarget?: string };
 };
 
 const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
@@ -280,6 +281,8 @@ function buildExternalImportDedupeKey(payload: {
   page: string;
   token: string;
   importUrl?: string | null;
+  apiBaseUrl?: string | null;
+  minAppVersion?: string | null;
   rawUrl?: string | null;
 }): string {
   return [
@@ -287,8 +290,37 @@ function buildExternalImportDedupeKey(payload: {
     payload.page,
     payload.rawUrl ?? '',
     payload.importUrl ?? '',
+    payload.apiBaseUrl ?? '',
+    payload.minAppVersion ?? '',
     payload.token,
   ].join('|');
+}
+
+function parseVersionParts(value: string | null | undefined): number[] {
+  if (!value) return [];
+  return value
+    .trim()
+    .replace(/^v/i, '')
+    .split(/[^\d]+/)
+    .filter(Boolean)
+    .map((part) => Number.parseInt(part, 10))
+    .filter((part) => Number.isFinite(part) && part >= 0);
+}
+
+function isVersionLowerThan(currentVersion: string, minimumVersion: string): boolean {
+  const currentParts = parseVersionParts(currentVersion);
+  const minimumParts = parseVersionParts(minimumVersion);
+  if (currentParts.length === 0 || minimumParts.length === 0) {
+    return false;
+  }
+  const maxLength = Math.max(currentParts.length, minimumParts.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const current = currentParts[index] ?? 0;
+    const minimum = minimumParts[index] ?? 0;
+    if (current < minimum) return true;
+    if (current > minimum) return false;
+  }
+  return false;
 }
 
 function normalizeQuotaAlertPlatform(platform: string | undefined): QuotaAlertPlatform {
@@ -348,7 +380,7 @@ function getQuotaAlertPlatformLabel(
     case 'zed':
       return t('nav.zed', 'Zed');
     default:
-      return t('nav.overview', 'Antigravity');
+      return t('nav.overview', 'Antigravity IDE');
   }
 }
 
@@ -519,11 +551,67 @@ function MainApp() {
     setHasBreakoutSession(true);
     setShowBreakout(true);
   }, []);
-  const handleExternalProviderImportRawPayload = useCallback((rawPayload: unknown) => {
+  const ensureExternalImportVersionCompatible = useCallback(
+    async (payload: ExternalProviderImportPayload): Promise<boolean> => {
+      const requiredVersion = payload.minAppVersion?.trim().replace(/^v/i, '');
+      if (!requiredVersion) return true;
+
+      let currentVersion = '';
+      try {
+        currentVersion = await getVersion();
+      } catch (error) {
+        console.warn('[ExternalImport][App] 读取当前应用版本失败，已终止外部导入', error);
+      }
+
+      if (currentVersion && !isVersionLowerThan(currentVersion, requiredVersion)) {
+        return true;
+      }
+
+      showModal({
+        title: t('common.shared.externalImport.versionUnsupportedTitle', '应用版本过低'),
+        description: t(
+          'common.shared.externalImport.versionUnsupportedDesc',
+          '暂不支持此方式，请下载最新版。',
+        ),
+        width: 'sm',
+        actions: [
+          {
+            id: 'check-update',
+            label: t('common.shared.externalImport.checkUpdate', '检查更新'),
+            variant: 'primary',
+            onClick: () => {
+              window.dispatchEvent(
+                new CustomEvent('update-check-requested', {
+                  detail: { source: 'manual' satisfies UpdateCheckSource },
+                }),
+              );
+            },
+          },
+          {
+            id: 'close',
+            label: t('common.close', '关闭'),
+            variant: 'secondary',
+          },
+        ],
+      });
+      console.warn('[ExternalImport][App] 当前版本不支持外部导入方式，已终止导入', {
+        currentVersion: currentVersion || null,
+        requiredVersion,
+        providerId: payload.providerId,
+      });
+      return false;
+    },
+    [showModal, t],
+  );
+
+  const handleExternalProviderImportRawPayload = useCallback(async (rawPayload: unknown) => {
     console.info('[ExternalImport][App] 收到原始 payload:', rawPayload);
     const normalized = normalizeExternalProviderImportPayload(rawPayload);
     if (!normalized) {
       console.warn('[ExternalImport][App] payload 归一化失败，已忽略');
+      return;
+    }
+    if (!(await ensureExternalImportVersionCompatible(normalized))) {
       return;
     }
     const now = Date.now();
@@ -544,6 +632,8 @@ function MainApp() {
       autoImport: normalized.autoImport,
       tokenLength: normalized.token.length,
       hasImportUrl: Boolean(normalized.importUrl),
+      apiBaseUrl: normalized.apiBaseUrl ?? null,
+      minAppVersion: normalized.minAppVersion ?? null,
       source: normalized.source ?? null,
     });
     setPage(normalized.page);
@@ -551,7 +641,7 @@ function MainApp() {
       console.info('[ExternalImport][App] 分发前端外部导入事件');
       dispatchExternalProviderImportEvent(normalized);
     }, 0);
-  }, []);
+  }, [ensureExternalImportVersionCompatible]);
   const handleBreakoutMinimize = useCallback(() => {
     setShowBreakout(false);
   }, []);
@@ -679,8 +769,9 @@ function MainApp() {
     } catch (error) {
       writeUpdateLog(
         'warn',
-        `应用重启前关闭 Codex API 服务监听失败，继续重启: error=${sanitizeUpdaterErrorMessage(error)}`,
+        `应用重启前关闭 Codex API 服务监听失败，已中止本次重启: error=${sanitizeUpdaterErrorMessage(error)}`,
       );
+      throw error;
     }
   }, [t, writeUpdateLog]);
 
@@ -945,42 +1036,64 @@ function MainApp() {
     const shouldInstall = updateAction.state === 'ready'
       ? updateAction.requiresInstall
       : Boolean(pendingSilentUpdateRef.current);
+    let failureStage: 'prepare' | 'install' | 'relaunch' = 'prepare';
     try {
       writeUpdateLog(
         'info',
         `用户点击立即重启应用更新: version=${targetVersion || 'unknown'}, install_before_restart=${shouldInstall}`,
       );
+      setUpdateRetryStatus(
+        t('update_notification.stoppingApiService', '正在关闭 API 服务...'),
+      );
+      setUpdateDownloadError('');
+      setUpdateErrorDetails('');
+      await prepareCodexLocalAccessBeforeRelaunch();
+      failureStage = 'install';
       const pendingUpdate = pendingSilentUpdateRef.current;
       if (shouldInstall && pendingUpdate) {
         await pendingUpdate.install();
       }
       if (pendingUpdate) {
-        await pendingUpdate.close();
+        await pendingUpdate.close().catch(() => {});
         pendingSilentUpdateRef.current = null;
       }
-      await prepareCodexLocalAccessBeforeRelaunch();
       setSilentUpdateVersion(null);
       setUpdateRetryStatus('');
       setUpdateDownloadError('');
       setUpdateErrorDetails('');
       setUpdateAction({
-        state: 'hidden',
-        version: null,
-        progress: 0,
-        requiresInstall: true,
+        state: 'ready',
+        version: targetVersion || null,
+        progress: 100,
+        requiresInstall: false,
       });
+      failureStage = 'relaunch';
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
     } catch (error) {
       await restoreCodexLocalAccessAfterRelaunchFailure();
       console.error('[App] Failed to apply pending update:', error);
-      writeUpdateLog('error', `用户手动应用更新失败: error=${sanitizeUpdaterErrorMessage(error)}`);
+      const compactError = sanitizeUpdaterErrorMessage(error);
+      const errorMessage = failureStage === 'prepare'
+        ? t('update_notification.stopApiServiceFailed', '无法关闭 API 服务，请先停用后重试。')
+        : failureStage === 'install'
+          ? t('update_notification.installFailed', '系统安装失败，请稍后重试或手动下载安装。')
+          : t('update_notification.restartRequiredAfterInstall', '更新已安装，请手动重启应用完成切换。');
+      setUpdateRetryStatus('');
+      setUpdateDownloadError(errorMessage);
+      setUpdateErrorDetails(compactError);
+      writeUpdateLog(
+        'error',
+        `用户手动应用更新失败: stage=${failureStage}, error=${compactError}`,
+      );
+      throw error;
     }
   }, [
     prepareCodexLocalAccessBeforeRelaunch,
     restoreCodexLocalAccessAfterRelaunchFailure,
     silentUpdateVersion,
     updateAction,
+    t,
     writeUpdateLog,
   ]);
 
@@ -1018,8 +1131,10 @@ function MainApp() {
       setUpdateDownloadError('');
       setUpdateErrorDetails('');
 
+      let relaunchStage: 'prepare' | 'relaunch' = 'prepare';
       try {
         await prepareCodexLocalAccessBeforeRelaunch();
+        relaunchStage = 'relaunch';
         const { relaunch } = await import('@tauri-apps/plugin-process');
         await relaunch();
       } catch (error) {
@@ -1032,7 +1147,9 @@ function MainApp() {
         );
         setUpdateRetryStatus('');
         setUpdateDownloadError(
-          t('update_notification.restartRequiredAfterInstall', '更新已安装，请手动重启应用完成切换。'),
+          relaunchStage === 'prepare'
+            ? t('update_notification.stopApiServiceFailed', '无法关闭 API 服务，请先停用后重试。')
+            : t('update_notification.restartRequiredAfterInstall', '更新已安装，请手动重启应用完成切换。'),
         );
         setUpdateErrorDetails(compactError);
       }
@@ -1295,7 +1412,13 @@ function MainApp() {
     }
 
     if (updateAction.state === 'ready') {
-      await handleApplyPendingUpdate();
+      try {
+        await handleApplyPendingUpdate();
+      } catch (error) {
+        console.error('[App] Quick update restart failed:', error);
+        writeUpdateLog('error', `侧边栏重启更新失败: error=${sanitizeUpdaterErrorMessage(error)}`);
+        openUpdateNotification('manual');
+      }
       return;
     }
 
@@ -2328,7 +2451,7 @@ function MainApp() {
     const refreshTasks = [
       {
         command: 'refresh_current_quota',
-        errorMessage: 'Failed to refresh Antigravity quotas:',
+        errorMessage: 'Failed to refresh Antigravity IDE quotas:',
       },
       {
         command: 'refresh_current_codex_quota',
@@ -2525,7 +2648,10 @@ function MainApp() {
         await useZedAccountStore.getState().switchAccount(retry.accountId);
         setPage('zed');
       } else if (retry?.kind === 'switchAccount' && retry.accountId) {
-        await invoke('switch_account', { accountId: retry.accountId });
+        await invoke('switch_account', {
+          accountId: retry.accountId,
+          runtimeTarget: retry.runtimeTarget,
+        });
         await Promise.allSettled([
           useAccountStore.getState().fetchAccounts(),
           useAccountStore.getState().fetchCurrentAccount(),
@@ -2678,7 +2804,7 @@ function MainApp() {
     let unlisten: UnlistenFn | undefined;
     listen('external:provider-import', (event) => {
       console.info('[ExternalImport][App] 收到 Tauri 事件 external:provider-import');
-      handleExternalProviderImportRawPayload(event.payload);
+      void handleExternalProviderImportRawPayload(event.payload);
     }).then((fn) => {
       unlisten = fn;
     });
@@ -2700,7 +2826,7 @@ function MainApp() {
           return;
         }
         console.info('[ExternalImport][App] 启动时读取到待处理导入 payload');
-        handleExternalProviderImportRawPayload(payload);
+        void handleExternalProviderImportRawPayload(payload);
       })
       .catch((error) => {
         console.warn('[ExternalImport] 读取待处理导入请求失败:', error);
@@ -2774,7 +2900,7 @@ function MainApp() {
                 ? 'Qoder'
               : appPathMissing.app === 'trae'
                 ? 'Trae'
-              : 'Antigravity'
+              : 'Antigravity IDE'
     : '';
 
   const appPathMissingPathLabel = appPathMissing

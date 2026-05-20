@@ -1,7 +1,7 @@
 {
   "name": "cockpit-tools",
   "private": true,
-  "version": "0.22.20",
+  "version": "0.24.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,6 @@
     "preview": "vite preview",
     "pretauri": "npm run typecheck",
     "tauri": "npm run sync-version && tauri",
-    "tauri:build:unsigned": "npm run tauri -- build --no-sign",
     "sync-version": "node scripts/sync-version.js"
   },
   "dependencies": {

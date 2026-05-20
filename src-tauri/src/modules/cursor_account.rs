@@ -911,7 +911,14 @@ pub fn list_accounts() -> Vec<CursorAccount> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut index = load_account_index();
+    let had_index_accounts = !index.accounts.is_empty();
     let mut accounts = normalize_account_index(&mut index);
+    if had_index_accounts && accounts.is_empty() {
+        logger::log_warn(
+            "[Cursor Account] 账号索引中存在账号，但详情文件均无法读取，已跳过空索引写回",
+        );
+        return accounts;
+    }
     if restore_missing_accounts_from_backups(&mut index) > 0 {
         accounts = normalize_account_index(&mut index);
     }
@@ -926,7 +933,11 @@ pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
     let mut index = load_account_index_checked()?;
+    let had_index_accounts = !index.accounts.is_empty();
     let mut accounts = normalize_account_index(&mut index);
+    if had_index_accounts && accounts.is_empty() {
+        return Err("Cursor 账号索引中存在账号，但详情文件均无法读取；已保留前端缓存，请从账号备份或本地账号文件恢复。".to_string());
+    }
     if restore_missing_accounts_from_backups(&mut index) > 0 {
         accounts = normalize_account_index(&mut index);
     }

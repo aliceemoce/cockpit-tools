@@ -40,6 +40,7 @@ import {
   type ExternalProviderImportPayload,
 } from '../utils/externalProviderImport';
 import { useDropdownPanelPlacement } from './useDropdownPanelPlacement';
+import { useEscClose } from './useEscClose';
 import {
   ACCOUNTS_OVERVIEW_FILTER_PERSISTENCE_CHANGED_EVENT,
   type AccountsOverviewFilterPersistenceChangedDetail,
@@ -127,6 +128,7 @@ export interface ProviderStoreActions<TAccount> {
   fetchCurrentAccountId?: () => Promise<string | null>;
   setCurrentAccountId?: (accountId: string | null) => void;
   fetchAccounts: () => Promise<void>;
+  switchAccount?: (accountId: string) => Promise<unknown>;
   deleteAccounts: (ids: string[]) => Promise<void>;
   refreshToken: (id: string) => Promise<void>;
   refreshAllTokens: () => Promise<void>;
@@ -202,12 +204,35 @@ type ExternalImportBundleParseMessages = {
   empty: string;
   providerMismatch: string;
   noItems: string;
+  rawLineNoRefreshToken: (line: number) => string;
+  rawLineMultipleRefreshTokens: (line: number) => string;
 };
+
+const CODEX_REFRESH_TOKEN_PATTERN = /rt_[A-Za-z0-9._-]+/g;
+const COCKPIT_API_PROVIDER_ID = 'cockpit_api';
+const COCKPIT_API_PROVIDER_NAME = 'Cockpit Api';
+const COCKPIT_TOOLS_IMPORT_PATH_MARKERS = [
+  '/api/cockpit-tools/import/',
+  '/user/api/toolsimport/',
+];
 
 const readBundleMessage = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+};
+
+const readRecordString = (
+  payload: Record<string, unknown>,
+  keys: string[],
+): string | null => {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
 };
 
 const parseLineDelimitedJsonObjects = (
@@ -235,70 +260,6 @@ const parseLineDelimitedJsonObjects = (
   });
 };
 
-const normalizeCursorDashedImport = (rawContent: string): string | null => {
-  const lines = rawContent
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (lines.length === 0) {
-    return null;
-  }
-
-  const items = lines.map((line) => {
-    const parts = line.split('----').map((part) => part.trim());
-    if (parts.length < 3) {
-      return null;
-    }
-
-    const email = parts[0] ?? '';
-    if (!email.includes('@')) {
-      return null;
-    }
-
-    if (parts.length >= 4) {
-      const authId = parts[1] || undefined;
-      const accessToken = parts[2] || '';
-      const refreshToken = parts[3] || undefined;
-      if (!accessToken) {
-        return null;
-      }
-      return {
-        email,
-        auth_id: authId,
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      };
-    }
-
-    const second = parts[1] || '';
-    const third = parts[2] || '';
-    if (!second || !third) {
-      return null;
-    }
-
-    if (second.startsWith('eyJ')) {
-      return {
-        email,
-        access_token: second,
-        refresh_token: third,
-      };
-    }
-
-    return {
-      email,
-      auth_id: second,
-      access_token: third,
-    };
-  });
-
-  if (items.some((item) => item == null)) {
-    return null;
-  }
-
-  return JSON.stringify(items.length === 1 ? items[0] : items);
-};
-
 const isCodexDirectImportItem = (value: unknown): boolean => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const payload = value as Record<string, unknown>;
@@ -311,13 +272,60 @@ const isCodexDirectImportItem = (value: unknown): boolean => {
   ) {
     return true;
   }
-  return Boolean(
-    tokens &&
-      typeof tokens === 'object' &&
-      !Array.isArray(tokens) &&
-      typeof (tokens as Record<string, unknown>).id_token === 'string' &&
-      typeof (tokens as Record<string, unknown>).access_token === 'string',
-  );
+  if (typeof payload.refresh_token === 'string' && payload.refresh_token.trim()) {
+    return true;
+  }
+  if (
+    typeof payload.auth_mode === 'string' &&
+    payload.auth_mode.trim().toLowerCase() === 'apikey' &&
+    typeof payload.OPENAI_API_KEY === 'string' &&
+    payload.OPENAI_API_KEY.trim()
+  ) {
+    return true;
+  }
+  if (!tokens || typeof tokens !== 'object' || Array.isArray(tokens)) return false;
+  const tokenPayload = tokens as Record<string, unknown>;
+  const hasFullTokens =
+    typeof tokenPayload.id_token === 'string' &&
+    tokenPayload.id_token.trim() &&
+    typeof tokenPayload.access_token === 'string' &&
+    tokenPayload.access_token.trim();
+  const hasRefreshTokenOnly =
+    typeof tokenPayload.refresh_token === 'string' && tokenPayload.refresh_token.trim();
+  return Boolean(hasFullTokens || hasRefreshTokenOnly);
+};
+
+const parseCodexRawRefreshTokenItems = (
+  rawContent: string,
+  messages: ExternalImportBundleParseMessages,
+): unknown[] | null => {
+  const lines = rawContent
+    .split(/\r?\n/)
+    .map((line, index) => ({ line: line.trim(), lineNumber: index + 1 }))
+    .filter((item) => item.line.length > 0);
+
+  if (lines.length === 0) return null;
+
+  const items: unknown[] = [];
+  for (const item of lines) {
+    const matches = [...item.line.matchAll(CODEX_REFRESH_TOKEN_PATTERN)];
+    if (matches.length === 0) {
+      throw new Error(messages.rawLineNoRefreshToken(item.lineNumber));
+    }
+    if (matches.length > 1) {
+      throw new Error(messages.rawLineMultipleRefreshTokens(item.lineNumber));
+    }
+
+    const match = matches[0];
+    const refreshToken = match[0].trim();
+    const accountNote = item.line.slice(0, match.index ?? 0).trim();
+    items.push({
+      refresh_token: refreshToken,
+      ...(accountNote ? { account_note: accountNote } : {}),
+    });
+  }
+
+  return items.length > 0 ? items : null;
 };
 
 const resolveExternalImportBundleItems = (
@@ -329,10 +337,28 @@ const resolveExternalImportBundleItems = (
   try {
     parsed = JSON.parse(rawContent) as unknown;
   } catch {
-    const lineDelimitedItems = parseLineDelimitedJsonObjects(rawContent, messages.invalidJson);
-    if (lineDelimitedItems && lineDelimitedItems.length > 0) {
-      return lineDelimitedItems;
+    let lineDelimitedError: unknown = null;
+    try {
+      const lineDelimitedItems = parseLineDelimitedJsonObjects(rawContent, messages.invalidJson);
+      if (lineDelimitedItems && lineDelimitedItems.length > 0) {
+        return lineDelimitedItems;
+      }
+    } catch (error) {
+      lineDelimitedError = error;
     }
+
+    if (platformId === 'codex') {
+      try {
+        const rawRefreshTokenItems = parseCodexRawRefreshTokenItems(rawContent, messages);
+        if (rawRefreshTokenItems && rawRefreshTokenItems.length > 0) {
+          return rawRefreshTokenItems;
+        }
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    if (lineDelimitedError) throw lineDelimitedError;
     throw new Error(messages.invalidJson);
   }
 
@@ -389,6 +415,109 @@ const resolveExternalImportBundleItems = (
   throw new Error(messages.noItems);
 };
 
+const normalizeExternalImportApiBaseUrl = (rawValue?: string | null): string | null => {
+  const trimmed = (rawValue || '').trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+};
+
+const deriveApiBaseUrlFromImportUrl = (importUrl?: string | null): string | null => {
+  const trimmed = (importUrl || '').trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return `${parsed.origin}/v1`;
+  } catch {
+    return null;
+  }
+};
+
+const isCockpitToolsImportUrl = (importUrl?: string | null): boolean => {
+  const trimmed = (importUrl || '').trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname.toLowerCase();
+    return COCKPIT_TOOLS_IMPORT_PATH_MARKERS.some((marker) => pathname.includes(marker));
+  } catch {
+    return false;
+  }
+};
+
+const isCockpitApiImportItem = (item: Record<string, unknown>): boolean => {
+  const providerId = readRecordString(item, ['api_provider_id', 'apiProviderId']);
+  if (providerId?.toLowerCase() === COCKPIT_API_PROVIDER_ID) return true;
+
+  const candidates = [
+    readRecordString(item, ['api_provider_name', 'apiProviderName']),
+    readRecordString(item, ['plan_type', 'planType']),
+    readRecordString(item, ['account_note', 'accountNote']),
+  ];
+  const expected = COCKPIT_API_PROVIDER_NAME.toLowerCase();
+  return candidates.some(
+    (value) => value?.trim().toLowerCase().includes(expected),
+  );
+};
+
+const withCockpitApiBaseUrl = (
+  item: unknown,
+  apiBaseUrl: string | null,
+  isCockpitToolsImport: boolean,
+): unknown => {
+  if (!apiBaseUrl || !item || typeof item !== 'object' || Array.isArray(item)) {
+    return item;
+  }
+  const payload = item as Record<string, unknown>;
+  const authMode = readRecordString(payload, ['auth_mode', 'authMode']);
+  const apiKey = readRecordString(payload, ['OPENAI_API_KEY', 'openai_api_key', 'openaiApiKey']);
+  if (authMode?.toLowerCase() !== 'apikey' || !apiKey) {
+    return item;
+  }
+  if (!isCockpitToolsImport && !isCockpitApiImportItem(payload)) {
+    return item;
+  }
+
+  return {
+    ...payload,
+    base_url: apiBaseUrl,
+    api_base_url: apiBaseUrl,
+    api_provider_mode:
+      readRecordString(payload, ['api_provider_mode', 'apiProviderMode']) ?? 'custom',
+    api_provider_id:
+      readRecordString(payload, ['api_provider_id', 'apiProviderId']) ?? COCKPIT_API_PROVIDER_ID,
+    api_provider_name:
+      readRecordString(payload, ['api_provider_name', 'apiProviderName']) ??
+      COCKPIT_API_PROVIDER_NAME,
+    plan_type:
+      readRecordString(payload, ['plan_type', 'planType']) ?? COCKPIT_API_PROVIDER_NAME,
+  };
+};
+
+const applyCockpitApiBaseUrlToExternalImportItems = (
+  items: unknown[],
+  request: ExternalProviderImportPayload,
+): unknown[] => {
+  const apiBaseUrl =
+    normalizeExternalImportApiBaseUrl(request.apiBaseUrl) ??
+    deriveApiBaseUrlFromImportUrl(request.importUrl);
+  if (!apiBaseUrl) return items;
+
+  const isCockpitToolsImport =
+    Boolean(request.apiBaseUrl?.trim()) || isCockpitToolsImportUrl(request.importUrl);
+  return items.map((item) => withCockpitApiBaseUrl(item, apiBaseUrl, isCockpitToolsImport));
+};
+
 const buildInitialExternalImportProgress = (): ExternalImportProgressState => ({
   visible: false,
   status: 'idle',
@@ -429,6 +558,17 @@ const resolveExternalImportItemLabel = (
     }
   }
   return fallback;
+};
+
+const collectImportedAccountIds = (imported: unknown): string[] => {
+  const items = Array.isArray(imported) ? imported : [imported];
+  return items
+    .map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      const id = (item as { id?: unknown }).id;
+      return typeof id === 'string' ? id.trim() : '';
+    })
+    .filter(Boolean);
 };
 
 // ---------------------------------------------------------------------------
@@ -650,6 +790,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     deleteAccounts,
     refreshToken,
     refreshAllTokens,
+    switchAccount,
     setCurrentAccountId: setStoreCurrentAccountId,
     updateAccountTags,
   } = store;
@@ -1256,6 +1397,8 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     resetAddModalState();
   }, [resetAddModalState]);
 
+  useEscClose(showAddModal, closeAddModal);
+
   const closeExternalImportProgressModal = useCallback(() => {
     setExternalImportProgress((current) => {
       if (isExternalImportRunning(current.status)) {
@@ -1265,10 +1408,10 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     });
   }, []);
 
-  const runExternalImportFromUrl = useCallback(
+  const runExternalProviderImport = useCallback(
     (request: ExternalProviderImportPayload) => {
+      if (!platformId) return;
       const importUrl = request.importUrl?.trim();
-      if (!importUrl || !platformId) return;
       const runId = externalImportRunIdRef.current + 1;
       externalImportRunIdRef.current = runId;
 
@@ -1301,17 +1444,23 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
       void (async () => {
         try {
-          updateProgress({
-            status: 'fetching',
-            progress: 20,
-            message: t(
-              'common.shared.externalImport.statusFetching',
-              '正在获取导入包...',
-            ),
-          });
-          const content = await invoke<string>('external_import_fetch_import_url', {
-            importUrl,
-          });
+          let content = request.token.trim();
+          if (importUrl) {
+            updateProgress({
+              status: 'fetching',
+              progress: 20,
+              message: t(
+                'common.shared.externalImport.statusFetching',
+                '正在获取导入包...',
+              ),
+            });
+            content = await invoke<string>('external_import_fetch_import_url', {
+              importUrl,
+            });
+          }
+          if (!content.trim()) {
+            throw new Error(t('common.shared.externalImport.bundleEmpty', '导入包内容为空'));
+          }
 
           updateProgress({
             status: 'parsing',
@@ -1321,7 +1470,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
               '正在解析 Codex JSON...',
             ),
           });
-          const items = resolveExternalImportBundleItems(content, platformId, {
+          const resolvedItems = resolveExternalImportBundleItems(content, platformId, {
             invalidJson: t(
               'common.shared.externalImport.bundleInvalidJson',
               '导入包不是有效 JSON',
@@ -1335,10 +1484,25 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
               'common.shared.externalImport.bundleNoItems',
               '导入包没有可导入内容',
             ),
+            rawLineNoRefreshToken: (line) =>
+              t('common.shared.externalImport.rawLineNoRefreshToken', {
+                line,
+                defaultValue: '第 {{line}} 行没有匹配到 refresh_token',
+              }),
+            rawLineMultipleRefreshTokens: (line) =>
+              t('common.shared.externalImport.rawLineMultipleRefreshTokens', {
+                line,
+                defaultValue: '第 {{line}} 行匹配到多个 refresh_token，请只保留一个',
+              }),
           });
+          const items =
+            platformId === 'codex'
+              ? applyCockpitApiBaseUrlToExternalImportItems(resolvedItems, request)
+              : resolvedItems;
 
           let success = 0;
           const failures: ExternalImportProgressFailure[] = [];
+          const importedAccountIds: string[] = [];
           const total = items.length;
           updateProgress({
             status: 'importing',
@@ -1385,6 +1549,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
             try {
               const imported = await dataService.importFromJson(JSON.stringify(items[index]));
+              importedAccountIds.push(...collectImportedAccountIds(imported));
               success += Array.isArray(imported) ? imported.length : 1;
             } catch (error) {
               failures.push({
@@ -1395,6 +1560,34 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
             }
           }
 
+          const activateImportedAccount = request.activate ? switchAccount : undefined;
+          const activatedAccountId =
+            activateImportedAccount
+              ? importedAccountIds[importedAccountIds.length - 1]
+              : '';
+          if (activatedAccountId && activateImportedAccount) {
+            updateProgress({
+              status: 'refreshing',
+              progress: 92,
+              current: total,
+              success,
+              failed: failures.length,
+              failures: [...failures],
+              message: t(
+                'common.shared.externalImport.statusActivating',
+                '正在切换到导入账号...',
+              ),
+            });
+            await activateImportedAccount(activatedAccountId);
+            await refreshToken(activatedAccountId).catch(() => undefined);
+            if (platformId) {
+              await emitCurrentAccountChanged({
+                platformId,
+                accountId: activatedAccountId,
+                reason: 'external-import',
+              });
+            }
+          }
           updateProgress({
             status: 'refreshing',
             progress: 95,
@@ -1440,15 +1633,15 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
         }
       })();
     },
-    [dataService, fetchAccounts, platformId, t],
+    [dataService, fetchAccounts, platformId, refreshToken, switchAccount, t],
   );
 
   const consumeExternalProviderImport = useCallback(() => {
     if (!platformId) return;
     const request = consumeQueuedExternalProviderImportForPlatform(platformId);
     if (!request) return;
-    if (request.importUrl) {
-      runExternalImportFromUrl(request);
+    if (request.importUrl || (platformId === 'codex' && request.token.trim())) {
+      runExternalProviderImport(request);
       return;
     }
 
@@ -1459,7 +1652,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     if (request.autoImport) {
       setExternalAutoImportNonce((value) => value + 1);
     }
-  }, [openAddModal, platformId, runExternalImportFromUrl]);
+  }, [openAddModal, platformId, runExternalProviderImport]);
 
   useEffect(() => {
     if (!platformId) return;
@@ -1580,21 +1773,14 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
     try {
       let importedCount = 0;
-      const cursorDashedImport =
-        platformId === 'cursor' ? normalizeCursorDashedImport(trimmed) : null;
-      const normalizedImportContent = cursorDashedImport ?? trimmed;
-
-      if (
-        normalizedImportContent.startsWith('{') ||
-        normalizedImportContent.startsWith('[')
-      ) {
-        const imported = await dataService.importFromJson(normalizedImportContent);
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        const imported = await dataService.importFromJson(trimmed);
         importedCount = imported.length;
       } else if (dataService.addWithToken) {
         await dataService.addWithToken(trimmed);
         importedCount = 1;
       } else {
-        const imported = await dataService.importFromJson(normalizedImportContent);
+        const imported = await dataService.importFromJson(trimmed);
         importedCount = imported.length;
       }
       await fetchAccounts();

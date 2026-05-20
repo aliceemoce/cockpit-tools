@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   CodexAccount,
   CodexApiProviderMode,
+  CodexAppSpeed,
   CodexQuota,
   hasCodexAccountStructure,
   hasCodexAccountName,
@@ -89,7 +90,13 @@ interface CodexAccountState {
     apiProviderId?: string,
     apiProviderName?: string,
   ) => Promise<CodexAccount>;
+  updateApiKeyBoundOAuthAccount: (
+    accountId: string,
+    boundOauthAccountId: string | null,
+  ) => Promise<CodexAccount>;
   updateAccountTags: (accountId: string, tags: string[]) => Promise<CodexAccount>;
+  updateAccountNote: (accountId: string, note: string) => Promise<CodexAccount>;
+  updateAccountAppSpeed: (accountId: string, speed: CodexAppSpeed) => Promise<CodexAccount>;
 }
 
 export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
@@ -315,9 +322,36 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     return account;
   },
 
+  updateApiKeyBoundOAuthAccount: async (
+    accountId: string,
+    boundOauthAccountId: string | null,
+  ) => {
+    const account = await codexService.updateCodexApiKeyBoundOAuthAccount(
+      accountId,
+      boundOauthAccountId,
+    );
+    await get().fetchAccounts();
+    await get().fetchCurrentAccount();
+    return account;
+  },
+
   updateAccountTags: async (accountId: string, tags: string[]) => {
     const account = await codexService.updateCodexAccountTags(accountId, tags);
     await get().fetchAccounts();
+    return account;
+  },
+
+  updateAccountNote: async (accountId: string, note: string) => {
+    const account = await codexService.updateCodexAccountNote(accountId, note);
+    await get().fetchAccounts();
+    await get().fetchCurrentAccount();
+    return account;
+  },
+
+  updateAccountAppSpeed: async (accountId: string, speed: CodexAppSpeed) => {
+    const account = await codexService.updateCodexAccountAppSpeed(accountId, speed);
+    await get().fetchAccounts();
+    await get().fetchCurrentAccount();
     return account;
   },
 }));

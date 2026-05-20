@@ -8,7 +8,10 @@ export type ExternalProviderImportPayload = {
   page: Page;
   token: string;
   importUrl?: string | null;
+  apiBaseUrl?: string | null;
+  minAppVersion?: string | null;
   autoImport: boolean;
+  activate: boolean;
   source?: string | null;
   rawUrl?: string | null;
 };
@@ -25,8 +28,16 @@ type RawExternalProviderImportPayload = {
   importPayload?: unknown;
   importUrl?: unknown;
   import_url?: unknown;
+  apiBaseUrl?: unknown;
+  api_base_url?: unknown;
+  baseUrl?: unknown;
+  base_url?: unknown;
+  minAppVersion?: unknown;
+  min_app_version?: unknown;
   autoImport?: unknown;
   autoSubmit?: unknown;
+  activate?: unknown;
+  autoActivate?: unknown;
   source?: unknown;
   rawUrl?: unknown;
   url?: unknown;
@@ -151,7 +162,12 @@ export function normalizeExternalProviderImportPayload(
       payload.token ?? payload.importToken ?? payload.payload ?? payload.importPayload,
     ) ?? '';
   const importUrl = readString(payload.importUrl ?? payload.import_url);
+  const apiBaseUrl = readString(
+    payload.apiBaseUrl ?? payload.api_base_url ?? payload.baseUrl ?? payload.base_url,
+  );
   if (!token && !importUrl) return null;
+  const minAppVersion =
+    readString(payload.minAppVersion ?? payload.min_app_version)?.replace(/^v/i, '') ?? null;
 
   const page =
     providerId === 'antigravity' ? 'overview' : resolvePage(providerId, payload.page);
@@ -162,6 +178,8 @@ export function normalizeExternalProviderImportPayload(
     autoImport: parseBooleanLike(payload.autoImport ?? payload.autoSubmit),
     tokenLength: token.length,
     hasImportUrl: Boolean(importUrl),
+    apiBaseUrl: apiBaseUrl ?? null,
+    minAppVersion,
   });
 
   return {
@@ -169,7 +187,10 @@ export function normalizeExternalProviderImportPayload(
     page,
     token,
     importUrl,
+    apiBaseUrl,
+    minAppVersion,
     autoImport: parseBooleanLike(payload.autoImport ?? payload.autoSubmit),
+    activate: parseBooleanLike(payload.activate ?? payload.autoActivate),
     source: readString(payload.source),
     rawUrl: readString(payload.rawUrl ?? payload.url),
   };
@@ -181,6 +202,8 @@ export function queueExternalProviderImport(payload: ExternalProviderImportPaylo
     page: payload.page,
     autoImport: payload.autoImport,
     tokenLength: payload.token.length,
+    apiBaseUrl: payload.apiBaseUrl ?? null,
+    minAppVersion: payload.minAppVersion ?? null,
   });
   pendingExternalProviderImport = payload;
 }
@@ -206,6 +229,7 @@ export function consumeQueuedExternalProviderImportForPlatform(
     page: payload.page,
     autoImport: payload.autoImport,
     tokenLength: payload.token.length,
+    apiBaseUrl: payload.apiBaseUrl ?? null,
   });
   return payload;
 }
