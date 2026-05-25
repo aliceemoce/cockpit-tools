@@ -983,6 +983,11 @@
       "desc": "未找到 {{app}} 应用程序路径，请立即设置后继续启动。",
       "codexLaunchHint": "关闭后仅执行切号与登录覆盖，不再尝试启动 Codex App，也不会再次要求设置启动路径。",
       "action": "立即设置"
+    },
+    "install": {
+      "downloadAndInstall": "下载并安装",
+      "inProgress": "下载并安装中…",
+      "notDetected": "安装已完成，但未自动检测到启动路径，请手动选择或重置路径。"
     }
   },
   "accounts": {

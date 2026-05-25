@@ -981,6 +981,11 @@
       "codexLaunchHint": "When turned off, account switching and login overwrite still run, but Codex App will no longer be launched and this path prompt will not appear again.",
       "action": "Set now"
     },
+    "install": {
+      "downloadAndInstall": "Download & install",
+      "inProgress": "Downloading and installing…",
+      "notDetected": "Install finished, but the launch path was not detected automatically. Pick the path manually or reset to default."
+    },
     "modal": {
       "desc": "The app path for {{app}} was not found. Please configure it now to continue."
     }

@@ -1,0 +1,119 @@
+{
+  "cursor": {
+    "windows": {
+      "downloadPage": "https://cursor.com/downloads",
+      "directUrl": "https://downloader.cursor.sh/build/latest/windows/nsis/x64",
+      "installerKind": "exe",
+      "silentInstallArgs": ["/S"]
+    },
+    "macos": {
+      "downloadPage": "https://cursor.com/downloads",
+      "directUrl": "https://downloader.cursor.sh/build/latest/darwin/universal",
+      "installerKind": "dmg",
+      "silentInstallArgs": []
+    },
+    "linux": {
+      "downloadPage": "https://cursor.com/downloads",
+      "githubRepo": "getcursor/cursor",
+      "assetNameContains": ["linux", "x64", ".deb"],
+      "installerKind": "deb",
+      "silentInstallArgs": []
+    }
+  },
+  "vscode": {
+    "windows": {
+      "downloadPage": "https://code.visualstudio.com/download",
+      "directUrl": "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user",
+      "installerKind": "exe",
+      "silentInstallArgs": ["/VERYSILENT", "/NORESTART", "/MERGETASKS=!runcode"]
+    },
+    "macos": {
+      "downloadPage": "https://code.visualstudio.com/download",
+      "directUrl": "https://code.visualstudio.com/sha/download?build=stable&os=darwin-universal",
+      "installerKind": "zip",
+      "silentInstallArgs": []
+    },
+    "linux": {
+      "downloadPage": "https://code.visualstudio.com/download",
+      "directUrl": "https://code.visualstudio.com/sha/download?build=stable&os=linux-x64",
+      "installerKind": "tar",
+      "silentInstallArgs": []
+    }
+  },
+  "windsurf": {
+    "windows": {
+      "downloadPage": "https://windsurf.com/download",
+      "directUrl": "https://windsurf-stable.codeium.com/windsurf-stable/latest/win32-x64-user/WindsurfUserSetup-x64.exe",
+      "installerKind": "exe",
+      "silentInstallArgs": ["/VERYSILENT", "/NORESTART"]
+    },
+    "macos": {
+      "downloadPage": "https://windsurf.com/download",
+      "directUrl": "https://windsurf-stable.codeium.com/windsurf-stable/latest/darwin-universal/Windsurf-darwin-universal.dmg",
+      "installerKind": "dmg",
+      "silentInstallArgs": []
+    },
+    "linux": {
+      "downloadPage": "https://windsurf.com/download",
+      "githubRepo": "Exafunction/windsurf",
+      "assetNameContains": [".deb", "x64"],
+      "installerKind": "deb",
+      "silentInstallArgs": []
+    }
+  },
+  "kiro": {
+    "windows": {
+      "downloadPage": "https://kiro.dev/downloads",
+      "directUrl": "https://desktop.kiro.dev/releases/latest/kiro-setup-x64.exe",
+      "installerKind": "exe",
+      "silentInstallArgs": ["/S"]
+    },
+    "macos": {
+      "downloadPage": "https://kiro.dev/downloads",
+      "directUrl": "https://desktop.kiro.dev/releases/latest/kiro-darwin-universal.dmg",
+      "installerKind": "dmg",
+      "silentInstallArgs": []
+    },
+    "linux": {
+      "downloadPage": "https://kiro.dev/downloads",
+      "directUrl": "https://desktop.kiro.dev/releases/latest/kiro-linux-x64.deb",
+      "installerKind": "deb",
+      "silentInstallArgs": []
+    }
+  },
+  "antigravity": {
+    "windows": {
+      "downloadPage": "https://antigravity.google/download",
+      "directUrl": "https://antigravity.google/download/windows",
+      "installerKind": "exe",
+      "silentInstallArgs": ["/S"]
+    },
+    "macos": {
+      "downloadPage": "https://antigravity.google/download",
+      "installerKind": "dmg",
+      "silentInstallArgs": []
+    },
+    "linux": {
+      "downloadPage": "https://antigravity.google/download",
+      "installerKind": "unknown",
+      "silentInstallArgs": []
+    }
+  },
+  "codex": {
+    "windows": {
+      "downloadPage": "https://openai.com/codex",
+      "installerKind": "store",
+      "silentInstallArgs": []
+    },
+    "macos": {
+      "downloadPage": "https://openai.com/codex",
+      "installerKind": "unknown",
+      "silentInstallArgs": []
+    },
+    "linux": {
+      "downloadPage": "https://openai.com/codex",
+      "installerKind": "unknown",
+      "silentInstallArgs": []
+    }
+  }
+}
