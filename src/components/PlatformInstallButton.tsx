@@ -24,27 +24,27 @@ export function PlatformInstallButton({
   className = 'btn btn-secondary',
 }: PlatformInstallButtonProps) {
   const { t } = useTranslation();
-  const [supported, setSupported] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [progressLabel, setProgressLabel] = useState('');
 
   useEffect(() => {
     let active = true;
     if (!isInstallableAppPath(app)) {
-      setSupported(false);
       return () => {
         active = false;
       };
     }
+    // Probe backend support for logging/diagnostics only — visibility does not depend on it.
     void isPlatformInstallSupported(app).then((value) => {
-      if (active) setSupported(value);
+      if (!active || value) return;
+      console.warn(`[PlatformInstallButton] platform install probe returned false for "${app}"`);
     });
     return () => {
       active = false;
     };
   }, [app]);
 
-  if (!supported || !isInstallableAppPath(app)) {
+  if (!isInstallableAppPath(app)) {
     return null;
   }
 

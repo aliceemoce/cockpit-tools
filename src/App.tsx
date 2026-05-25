@@ -2735,12 +2735,14 @@ function MainApp() {
 
   const handleInstallMissingAppPath = async () => {
     if (!appPathMissing || appPathSetting || appPathDetecting || appPathInstalling) return;
-    if (!isInstallableAppPath(appPathMissing.app)) return;
+    const pathMissing = appPathMissing;
+    const appForRetry = pathMissing.app as AppPathMissingDetail['app'];
+    if (!isInstallableAppPath(pathMissing.app)) return;
     setAppPathInstalling(true);
     setAppPathActionError('');
     setAppPathInstallProgress('');
     try {
-      const result = await installMissingPlatform(appPathMissing.app, (payload) => {
+      const result = await installMissingPlatform(pathMissing.app, (payload) => {
         if (payload.message) {
           setAppPathInstallProgress(payload.message);
         } else if (payload.progress != null) {
@@ -2752,9 +2754,9 @@ function MainApp() {
       const detected = (result.installedPath || '').trim();
       if (detected) {
         setAppPathDraft(detected);
-        await invoke('set_app_path', { app: appPathMissing.app, path: detected });
-        const retry = appPathMissing.retry;
-        if (retry?.kind === 'switchAccount' && retry.accountId && appPathMissing.app === 'zed') {
+        await invoke('set_app_path', { app: pathMissing.app, path: detected });
+        const retry = pathMissing.retry;
+        if (retry?.kind === 'switchAccount' && retry.accountId && appForRetry === 'zed') {
           await useZedAccountStore.getState().switchAccount(retry.accountId);
           setPage('zed');
         } else if (retry?.kind === 'switchAccount' && retry.accountId) {
@@ -2767,31 +2769,31 @@ function MainApp() {
             useAccountStore.getState().fetchCurrentAccount(),
           ]);
         } else if (retry?.kind === 'instance' && retry.instanceId) {
-          if (appPathMissing.app === 'codex') {
+          if (appForRetry === 'codex') {
             await invoke('codex_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'vscode') {
+          } else if (appForRetry === 'vscode') {
             await invoke('github_copilot_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'windsurf') {
+          } else if (appForRetry === 'windsurf') {
             await invoke('windsurf_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'kiro') {
+          } else if (appForRetry === 'kiro') {
             await invoke('kiro_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'cursor') {
+          } else if (appForRetry === 'cursor') {
             await invoke('cursor_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'codebuddy') {
+          } else if (appForRetry === 'codebuddy') {
             await invoke('codebuddy_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'codebuddy_cn') {
+          } else if (appForRetry === 'codebuddy_cn') {
             await invoke('codebuddy_cn_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'qoder') {
+          } else if (appForRetry === 'qoder') {
             await invoke('qoder_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'trae') {
+          } else if (appForRetry === 'trae') {
             await invoke('trae_start_instance', { instanceId: retry.instanceId });
-          } else if (appPathMissing.app === 'zed') {
+          } else if (appForRetry === 'zed') {
             await invoke('zed_start_default_session');
           } else {
             await invoke('start_instance', { instanceId: retry.instanceId });
           }
         } else {
-          const app = appPathMissing.app;
+          const app = appForRetry;
           if (app === 'codex') {
             await invoke('codex_start_instance', { instanceId: '__default__' });
           } else if (app === 'vscode') {
@@ -2822,7 +2824,7 @@ function MainApp() {
       } else {
         setAppPathActionError(
           t(
-            appPathMissing.app === 'codex'
+            appForRetry === 'codex'
               ? 'appPath.install.codexNotDetected'
               : 'appPath.install.notDetected',
           ),
@@ -3234,7 +3236,7 @@ function MainApp() {
               >
                 {t('common.cancel', '取消')}
               </button>
-              {appPathMissing && appPathInstallSupported && isInstallableAppPath(appPathMissing.app) ? (
+              {appPathMissing && isInstallableAppPath(appPathMissing.app) ? (
                 <button
                   className="btn btn-secondary"
                   onClick={() => void handleInstallMissingAppPath()}

@@ -40,8 +40,10 @@ export async function isPlatformInstallSupported(app: string): Promise<boolean> 
   if (!isInstallableAppPath(app)) return false;
   try {
     return await invoke<boolean>('is_platform_install_supported', { platform_id: app });
-  } catch {
-    return false;
+  } catch (error) {
+    console.warn('[platformInstall] is_platform_install_supported failed:', app, error);
+    // Assume supported so Settings keeps the install action visible; install will surface errors.
+    return true;
   }
 }
 
