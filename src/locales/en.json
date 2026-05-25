@@ -983,8 +983,12 @@
     },
     "install": {
       "downloadAndInstall": "Download & install",
+      "codexDownloadAndInstall": "Install Codex",
       "inProgress": "Downloading and installing…",
-      "notDetected": "Install finished, but the launch path was not detected automatically. Pick the path manually or reset to default."
+      "codexInProgress": "Downloading and installing Codex via official MSIX…",
+      "codexHint": "Microsoft Store and the browser will not open. Uses codex-launcher to fetch the MSIX from Microsoft CDN, then Add-AppxPackage.",
+      "notDetected": "Install finished, but the launch path was not detected automatically. Pick the path manually or reset to default.",
+      "codexNotDetected": "Install finished, but Codex was not detected automatically. Confirm Codex is installed, then reset to default or pick Codex.exe manually."
     },
     "modal": {
       "desc": "The app path for {{app}} was not found. Please configure it now to continue."

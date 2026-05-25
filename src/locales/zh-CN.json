@@ -986,8 +986,12 @@
     },
     "install": {
       "downloadAndInstall": "下载并安装",
+      "codexDownloadAndInstall": "尝试安装 Codex",
       "inProgress": "下载并安装中…",
-      "notDetected": "安装已完成，但未自动检测到启动路径，请手动选择或重置路径。"
+      "codexInProgress": "正在通过官方 MSIX 直连下载并安装 Codex…",
+      "codexHint": "不会自动打开 Microsoft Store 或浏览器。通过 codex-launcher 从微软 CDN 下载 MSIX 并注册应用包。",
+      "notDetected": "安装已完成，但未自动检测到启动路径，请手动选择或重置路径。",
+      "codexNotDetected": "安装流程已结束，但未自动检测到 Codex 启动路径。请确认 Codex 已安装，然后「重置默认」或手动选择 Codex.exe。"
     }
   },
   "accounts": {

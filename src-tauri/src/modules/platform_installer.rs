@@ -9,6 +9,15 @@ use url::Url;
 const MANIFEST_JSON: &str = include_str!("../../platformInstallers.json");
 const PROGRESS_EVENT: &str = "platform-install://progress";
 const INSTALL_CACHE_DIR: &str = "platform-installers";
+/// Microsoft Store package id for the Codex desktop app (winget msstore source).
+const CODEX_MSSTORE_WINGET_ID: &str = "9PLM9XGG6VKS";
+const CODEX_LAUNCHER_GITHUB_REPO: &str = "vaportail/codex-windows-updater";
+const CODEX_LAUNCHER_ASSET_CONTAINS: &str = "codex-launcher";
+const CODEX_LAUNCHER_EXE: &str = "codex-launcher.exe";
+const CODEX_LAUNCHER_WORK_SUBDIR: &str = "codex-msix";
+const CODEX_LAUNCHER_MSIX_SUBDIR: &str = "test_download";
+/// Typical Codex MSIX size for coarse download progress (bytes).
+const CODEX_MSIX_EXPECTED_BYTES: u64 = 470_000_000;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -138,7 +147,10 @@ fn silent_supported(spec: &OsInstallerSpec) -> bool {
 }
 
 fn can_auto_install(spec: &OsInstallerSpec) -> bool {
-    if matches!(spec.installer_kind.as_str(), "store" | "unknown") {
+    if matches!(
+        spec.installer_kind.as_str(),
+        "store" | "unknown" | "msix-launcher"
+    ) {
         return spec.direct_url.is_some() || spec.github_repo.is_some();
     }
     spec.direct_url.is_some() || spec.github_repo.is_some()
@@ -597,11 +609,423 @@ pub async fn install_platform_installer(
     })
 }
 
+#[cfg(target_os = "windows")]
+fn is_winget_available() -> bool {
+    Command::new("where")
+        .args(["winget"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_winget_available() -> bool {
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn codex_msix_work_dir() -> Result<PathBuf, String> {
+    let dir = cache_dir()?.join(CODEX_LAUNCHER_WORK_SUBDIR);
+    std::fs::create_dir_all(&dir)
+        .map_err(|error| format!("Failed to create Codex MSIX work dir: {}", error))?;
+    Ok(dir)
+}
+
+#[cfg(target_os = "windows")]
+fn escape_powershell_single_quoted(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
+#[cfg(target_os = "windows")]
+fn find_latest_msix_in_dir(dir: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("msix") {
+            continue;
+        }
+        let modified = entry.metadata().ok()?.modified().ok()?;
+        if best.as_ref().map(|(t, _)| modified > *t).unwrap_or(true) {
+            best = Some((modified, path));
+        }
+    }
+    best.map(|(_, path)| path)
+}
+
+#[cfg(target_os = "windows")]
+async fn download_codex_launcher_binary(
+    app: &AppHandle,
+    platform_id: &str,
+    target_path: &Path,
+) -> Result<(), String> {
+    emit_progress(
+        app,
+        platform_id,
+        "resolving",
+        Some(5),
+        Some("Resolving codex-launcher release".to_string()),
+    );
+
+    let (download_url, _) = resolve_github_release_asset(
+        CODEX_LAUNCHER_GITHUB_REPO,
+        &[CODEX_LAUNCHER_ASSET_CONTAINS.to_string()],
+    )
+    .await?;
+
+    emit_progress(
+        app,
+        platform_id,
+        "downloading",
+        Some(10),
+        Some(format!("Downloading {}", CODEX_LAUNCHER_EXE)),
+    );
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .map_err(|error| format!("Failed to create HTTP client: {}", error))?;
+    let response = client
+        .get(&download_url)
+        .send()
+        .await
+        .map_err(|error| format!("Failed to download codex-launcher: {}", error))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to download codex-launcher: HTTP {}",
+            response.status()
+        ));
+    }
+
+    let content_length = response.content_length().unwrap_or(0);
+    let mut stream = response.bytes_stream();
+    use futures_util::StreamExt;
+    let mut file = tokio::fs::File::create(target_path)
+        .await
+        .map_err(|error| format!("Failed to create codex-launcher file: {}", error))?;
+    let mut downloaded: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk =
+            chunk.map_err(|error| format!("Failed while downloading codex-launcher: {}", error))?;
+        use tokio::io::AsyncWriteExt;
+        file.write_all(&chunk)
+            .await
+            .map_err(|error| format!("Failed to write codex-launcher file: {}", error))?;
+        downloaded += chunk.len() as u64;
+        if content_length > 0 {
+            let pct = 10 + (((downloaded * 15) / content_length).min(15) as u8);
+            emit_progress(
+                app,
+                platform_id,
+                "downloading",
+                Some(pct),
+                Some(format!("Downloading launcher {}%", (downloaded * 100) / content_length)),
+            );
+        }
+    }
+
+    crate::modules::logger::log_info(&format!(
+        "[PlatformInstall] codex-launcher downloaded: path={}",
+        target_path.display()
+    ));
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+async fn run_codex_launcher_msix_download(
+    app: &AppHandle,
+    platform_id: &str,
+    launcher_path: &Path,
+    work_dir: &Path,
+) -> Result<PathBuf, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let msix_dir = work_dir.join(CODEX_LAUNCHER_MSIX_SUBDIR);
+    if msix_dir.exists() {
+        let _ = std::fs::remove_dir_all(&msix_dir);
+    }
+    std::fs::create_dir_all(&msix_dir)
+        .map_err(|error| format!("Failed to prepare MSIX download dir: {}", error))?;
+
+    emit_progress(
+        app,
+        platform_id,
+        "downloading",
+        Some(20),
+        Some("Downloading official Codex MSIX from Microsoft CDN".to_string()),
+    );
+
+    let mut child = Command::new(launcher_path)
+        .args(["--fetcher", "direct", "--test-download"])
+        .current_dir(work_dir)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Failed to start codex-launcher: {}", error))?;
+
+    let mut last_pct: u8 = 20;
+    loop {
+        if let Some(msix_path) = find_latest_msix_in_dir(&msix_dir) {
+            if let Ok(meta) = msix_path.metadata() {
+                let len = meta.len();
+                if len > 0 {
+                    let pct = 20 + ((len * 60) / CODEX_MSIX_EXPECTED_BYTES).min(60) as u8;
+                    if pct > last_pct {
+                        last_pct = pct;
+                        emit_progress(
+                            app,
+                            platform_id,
+                            "downloading",
+                            Some(pct),
+                            Some(format!("Downloading MSIX (~{} MB)", len / 1_048_576)),
+                        );
+                    }
+                }
+            }
+        }
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return Err(format!(
+                        "codex-launcher MSIX download failed (exit {:?})",
+                        status.code()
+                    ));
+                }
+                break;
+            }
+            Ok(None) => {
+                tokio::time::sleep(Duration::from_millis(800)).await;
+            }
+            Err(error) => {
+                return Err(format!("Failed while waiting for codex-launcher: {}", error));
+            }
+        }
+    }
+
+    find_latest_msix_in_dir(&msix_dir).ok_or_else(|| {
+        format!(
+            "codex-launcher finished but no .msix found under {}",
+            msix_dir.display()
+        )
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn install_codex_msix_with_appx(msix_path: &Path) -> Result<(), String> {
+    let literal = escape_powershell_single_quoted(&msix_path.to_string_lossy());
+    let script = format!(
+        "Add-AppxPackage -LiteralPath '{literal}' -ForceUpdateFromAnyVersion -ErrorAction Stop"
+    );
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("Add-AppxPackage 启动失败: {}", error))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{}\n{}", stdout.trim(), stderr.trim()).trim().to_string();
+    if combined.to_ascii_lowercase().contains("already installed")
+        || combined.contains("已安装")
+        || combined.contains("0x80073D10")
+    {
+        return Ok(());
+    }
+
+    let detail = if combined.is_empty() {
+        format!("exit code {:?}", output.status.code())
+    } else {
+        combined.chars().take(600).collect()
+    };
+    Err(format!("Add-AppxPackage 安装 Codex 失败: {}", detail))
+}
+
+#[cfg(target_os = "windows")]
+async fn install_codex_via_msix_launcher(
+    app: &AppHandle,
+    platform_id: &str,
+) -> Result<(), String> {
+    let work_dir = codex_msix_work_dir()?;
+    let launcher_path = work_dir.join(CODEX_LAUNCHER_EXE);
+    if !launcher_path.exists() {
+        download_codex_launcher_binary(app, platform_id, &launcher_path).await?;
+    }
+
+    let msix_path = run_codex_launcher_msix_download(app, platform_id, &launcher_path, &work_dir).await?;
+    crate::modules::logger::log_info(&format!(
+        "[PlatformInstall] Codex MSIX ready: {}",
+        msix_path.display()
+    ));
+
+    emit_progress(
+        app,
+        platform_id,
+        "installing",
+        Some(85),
+        Some("Installing Codex MSIX (Add-AppxPackage)".to_string()),
+    );
+    install_codex_msix_with_appx(&msix_path)
+}
+
+#[cfg(target_os = "windows")]
+fn try_winget_install_codex_store_app() -> Result<(), String> {
+    if !is_winget_available() {
+        return Err("未找到 winget，无法自动安装 Codex".to_string());
+    }
+
+    let output = Command::new("winget")
+        .args([
+            "install",
+            "--id",
+            CODEX_MSSTORE_WINGET_ID,
+            "-s",
+            "msstore",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--disable-interactivity",
+            "-h",
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("winget 安装命令启动失败: {}", error))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{}\n{}", stdout.trim(), stderr.trim()).trim().to_string();
+    if combined.to_ascii_lowercase().contains("already installed")
+        || combined.contains("已安装")
+    {
+        return Ok(());
+    }
+
+    let detail = if combined.is_empty() {
+        format!("exit code {:?}", output.status.code())
+    } else {
+        combined.chars().take(500).collect()
+    };
+    Err(format!("winget 安装 Codex 失败: {}", detail))
+}
+
+async fn wait_for_codex_install_detection(
+    app: &AppHandle,
+    platform_id: &str,
+) -> Result<PlatformInstallResult, String> {
+    emit_progress(
+        app,
+        platform_id,
+        "detecting",
+        Some(90),
+        Some("Detecting installed application path".to_string()),
+    );
+
+    let mut installed_path = None;
+    for attempt in 0..12 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        } else {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+        installed_path = detect_installed_path(platform_id)?;
+        if installed_path.is_some() {
+            break;
+        }
+    }
+
+    let message = if installed_path.is_some() {
+        "Codex install finished".to_string()
+    } else {
+        "Codex install command finished, but launch path was not detected automatically".to_string()
+    };
+
+    emit_progress(
+        app,
+        platform_id,
+        if installed_path.is_some() {
+            "completed"
+        } else {
+            "completed_with_manual"
+        },
+        Some(100),
+        installed_path.clone(),
+    );
+
+    Ok(PlatformInstallResult {
+        platform_id: platform_id.to_string(),
+        installed_path,
+        used_manual_fallback: false,
+        message,
+    })
+}
+
+async fn install_codex_missing_platform(
+    app: AppHandle,
+    platform_id: String,
+) -> Result<PlatformInstallResult, String> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Err(primary_error) = install_codex_via_msix_launcher(&app, &platform_id).await {
+            crate::modules::logger::log_warn(&format!(
+                "[PlatformInstall] Codex MSIX launcher install failed, trying winget fallback: {}",
+                primary_error
+            ));
+            emit_progress(
+                &app,
+                &platform_id,
+                "installing",
+                Some(10),
+                Some("MSIX direct install failed; trying winget fallback".to_string()),
+            );
+            if let Err(winget_error) = try_winget_install_codex_store_app() {
+                return Err(format!(
+                    "直连 MSIX 安装失败：{}。winget 回退也失败：{}。不会打开 Microsoft Store 或浏览器；请稍后「重置默认」探测路径，或手动选择 Codex.exe。",
+                    primary_error, winget_error
+                ));
+            }
+        }
+
+        return wait_for_codex_install_detection(&app, &platform_id).await;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Err(
+            "当前系统不支持自动安装 Codex App。请从官方渠道安装后，在设置中配置启动路径。"
+                .to_string(),
+        )
+    }
+}
+
 pub async fn install_missing_platform(
     app: AppHandle,
     platform_id: String,
 ) -> Result<PlatformInstallResult, String> {
     let platform_id = normalize_platform_id(&platform_id)?;
+    if platform_id == "codex" {
+        return install_codex_missing_platform(app, platform_id).await;
+    }
     let spec = lookup_spec(&platform_id)?;
 
     if matches!(spec.installer_kind.as_str(), "store") {
@@ -653,9 +1077,21 @@ fn detect_installed_path(platform_id: &str) -> Result<Option<String>, String> {
 }
 
 pub fn is_install_supported(platform_id: &str) -> bool {
-    normalize_platform_id(platform_id)
+    let Ok(id) = normalize_platform_id(platform_id) else {
+        return false;
+    };
+    if id == "codex" {
+        #[cfg(target_os = "windows")]
+        {
+            return true;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            return false;
+        }
+    }
+    lookup_spec(&id)
         .ok()
-        .and_then(|id| lookup_spec(&id).ok())
         .map(|spec| can_auto_install(&spec) || spec.download_page.is_some())
         .unwrap_or(false)
 }

@@ -101,9 +101,11 @@
   },
   "codex": {
     "windows": {
-      "downloadPage": "https://openai.com/codex",
-      "installerKind": "store",
-      "silentInstallArgs": []
+      "downloadPage": "https://github.com/vaportail/codex-windows-updater",
+      "githubRepo": "vaportail/codex-windows-updater",
+      "assetNameContains": ["codex-launcher"],
+      "installerKind": "msix-launcher",
+      "silentInstallArgs": ["--fetcher", "direct", "--test-download"]
     },
     "macos": {
       "downloadPage": "https://openai.com/codex",
