@@ -11,8 +11,12 @@ import {
 import * as codexService from '../services/codexService';
 import { emitAccountsChanged, emitCurrentAccountChanged } from '../utils/accountSyncEvents';
 
-const CODEX_ACCOUNTS_CACHE_KEY = 'agtools.codex.accounts.cache';
-const CODEX_CURRENT_ACCOUNT_CACHE_KEY = 'agtools.codex.accounts.current';
+const APP_PROFILE = (import.meta.env.VITE_COCKPIT_TOOLS_PROFILE || '').trim();
+const STORAGE_PROFILE_SUFFIX =
+  APP_PROFILE && APP_PROFILE !== 'prod' ? `.${APP_PROFILE}` : '';
+const SHOULD_PRESERVE_CACHE_ON_EMPTY_LIST = !STORAGE_PROFILE_SUFFIX;
+const CODEX_ACCOUNTS_CACHE_KEY = `agtools.codex.accounts.cache${STORAGE_PROFILE_SUFFIX}`;
+const CODEX_CURRENT_ACCOUNT_CACHE_KEY = `agtools.codex.accounts.current${STORAGE_PROFILE_SUFFIX}`;
 const CODEX_PROFILE_SYNC_IN_FLIGHT = new Set<string>();
 const CODEX_PROFILE_SYNC_LAST_ATTEMPT = new Map<string, number>();
 const CODEX_PROFILE_SYNC_RETRY_INTERVAL_MS = 5 * 60 * 1000;
@@ -77,6 +81,7 @@ interface CodexAccountState {
   deleteAccount: (accountId: string) => Promise<void>;
   deleteAccounts: (accountIds: string[]) => Promise<void>;
   refreshQuota: (accountId: string) => Promise<CodexQuota>;
+  refreshSubscriptionInfo: (accountId: string) => Promise<CodexAccount>;
   refreshAllQuotas: () => Promise<number>;
   hydrateAccountProfilesIfNeeded: (accountIds?: string[]) => Promise<void>;
   importFromLocal: () => Promise<CodexAccount>;
@@ -110,6 +115,7 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     try {
       const accounts = await codexService.listCodexAccounts();
       if (
+        SHOULD_PRESERVE_CACHE_ON_EMPTY_LIST &&
         accounts.length === 0 &&
         get().accounts.length > 0 &&
         !allowNextEmptyCodexAccountList
@@ -131,6 +137,7 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     try {
       const currentAccount = await codexService.getCurrentCodexAccount();
       if (
+        SHOULD_PRESERVE_CACHE_ON_EMPTY_LIST &&
         !currentAccount &&
         get().currentAccount &&
         get().accounts.length > 0 &&
@@ -223,6 +230,13 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     await get().fetchAccounts();
     await get().fetchCurrentAccount();
     return quota;
+  },
+
+  refreshSubscriptionInfo: async (accountId: string) => {
+    const account = await codexService.refreshCodexSubscriptionInfo(accountId);
+    await get().fetchAccounts();
+    await get().fetchCurrentAccount();
+    return account;
   },
   
   refreshAllQuotas: async () => {

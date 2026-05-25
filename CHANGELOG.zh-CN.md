@@ -7,6 +7,96 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [0.24.8] - 2026-05-25
+
+### 新增
+- **Codex API 服务现支持 Sidecar 与 Legacy 网关模式切换**：可在账号卡片和完整 API 服务页切换网关模式，请求日志会记录并按模式筛选，日志也会以 `[sidecar]` 或 `[legacy]` 标记来源，便于定位问题。
+- **Codex API 服务新增调试日志开关**：开启后会记录 legacy 网关请求阶段、sidecar executor trace、上游耗时、已选账号、流式完成状态和超时诊断，同时保留常规请求日志。
+- **Codex API 服务两种网关模式均支持隐藏的 `codex-auto-review` 审查模型**：Sidecar 与 Legacy 网关都会在本地 `/v1/models` 暴露该内部审查模型，在 Codex 客户端模型目录中标记为隐藏，并原样转发 `/v1/responses` 审查请求，避免 Codex 自动审批审查在本地模型策略校验阶段失败。
+- **Codex API 服务现会在账号卡片引导用户切换网关**：首次显示不透明引导浮层，指向账号卡片的新旧网关选择器，同时不再把切换入口放回快速配置弹框。
+
+### 变更
+- **Codex API 服务现使用 `localhost` 写入本地客户端 Base URL**：生成的 Codex provider 配置改为 `http://localhost:<port>/v1`，不再使用 `127.0.0.1`，降低本机代理栈误拦截客户端到 sidecar 回环请求的概率。
+- **Cockpit 启动的 Codex 进程现注入受管本机代理绕过设置**：Codex CLI 与官方 app-server 启动时会合并继承的 `NO_PROXY` / `no_proxy` 与 Cockpit 管理的回环地址，包括 `127.0.0.1`、`127.0.0.0/8`、`localhost`、`::1` 和 `::1/128`。
+- **Sidecar 代理选择现与旧网关优先级对齐**：API 服务代理、Cockpit 全局代理、继承的环境代理与系统/默认代理发现会按旧网关同一套优先级解析。
+- **Codex API 服务快速配置弹框现保持配置定位**：新旧网关切换已从弹框移除，完整 API 服务页和账号卡片继续负责网关模式切换。
+
+### 修复
+- **Codex API 服务降低了回环请求被本机代理工具误转发的概率**：Cockpit 现在会注入回环地址绕过规则，健康诊断也能识别 Clash/FlyingBird 等本机代理是否拦截了 `localhost` 或 `127.0.0.1` 的 API 服务流量。
+- **Sidecar 流式请求在启动和空闲卡住时会更快失败**：首包超时、重试处理、空闲超时、完成状态校验与更清晰诊断可避免首字节前或半截流式响应后的长时间静默挂起。
+- **Sidecar 启动跨平台稳定性提升**：Cockpit 会等待 sidecar stdout `ready` 事件，开发构建优先解析本地 sidecar 二进制，Tauri 构建脚本会跟踪 Go sidecar 源码，Windows sidecar 也不再依赖不可靠的父进程 PID 检查退出。
+- **旧网关流式与 WebSocket 处理增强了超时和断开行为**：上游连接超时、流式空闲超时、总超时、心跳刷新、broken pipe 分类与首包/完成诊断让长请求更容易恢复和排查。
+- **Codex API 服务请求日志现稳定保留网关模式与诊断字段**：数据库迁移会补充网关模式字段和相关索引，完整功能页请求日志可区分 Sidecar 与 Legacy 流量。
+
+---
+## [0.24.7] - 2026-05-24
+
+### 新增
+- **Codex API 服务现改由内置 CLIProxyAPI sidecar 与 Cockpit relay 运行**：Cockpit Tools 会构建并打包 `cockpit-cliproxy`，根据受管账号和客户端 Key 生成 sidecar 配置、manifest 与认证文件，保持现有 Base URL/API Key 使用方式，并通过 CLIProxyAPI 的 Codex executor 转发 OpenAI 兼容的 Chat Completions、Responses、图片、流式与 CORS 预检请求。
+- **Codex API 服务现支持模型价格与估算价值统计**：内置价格预设覆盖包含 `gpt-5.5` 在内的当前 Codex 模型，模型页可编辑自定义 USD / 1M tokens 价格，总览、账号/模型/Key 统计与请求日志会按每次请求保存的价格快照展示估算价值。
+- **Codex API 服务请求日志现包含请求级诊断信息**：sidecar 事件会携带稳定请求 ID、已选认证/账号元数据、HTTP 状态、重试详情、清理后的上游错误信息、客户端取消分类与账号调度上下文，便于在界面中追踪失败原因。
+- **Codex 账号订阅期限现可手动刷新**：订阅信息缺失或已过期的 OAuth 账号会在卡片与表格视图中显示刷新操作，并在账号记录中保存查询尝试、成功时间、重试窗口和最近错误。
+- **Antigravity 2.0 桌面版切号现写入官方系统凭据**：桌面 Antigravity `2.0.0` 及以上版本会把官方 `gemini` / `antigravity` 凭据写入 macOS Keychain、Windows Credential Manager 或 Linux Secret Service，旧版本桌面端继续使用 legacy state 数据库路径。
+
+### 变更
+- **Codex API 服务运行时接管现会保留官方 Codex profile 文件**：启用服务前会备份 profile 下的 `auth.json` 与 `config.toml`，再写入受管 `codex_local_access` provider 状态；停用服务时会恢复已备份文件，或只移除 Cockpit 写入的条目。
+- **Codex API 服务启用期间现持续保持默认 Codex profile 接管状态**：状态快照会检查默认 profile 的配置/认证接管情况，并在 Base URL 或 API Key 过期时重新接管。
+- **Codex API 服务 sidecar 现基于 CLIProxyAPI v7.0.2 使用 Cockpit relay runtime**：Cockpit 负责 HTTP 监听、请求策略、模型策略、用量捕获与本地统计管线，CLIProxyAPI 负责 Codex 认证合成、账号选择、刷新、重试与 executor 行为。
+- **Codex API 服务 sidecar 流式响应现统一规范为 OpenAI 兼容 SSE 输出**：流式 Chat Completions 与 Responses 请求会稳定分帧，必要时把 JSON 分片和 `[DONE]` 转成 SSE，过滤 hop-by-hop 与代理专用响应头，本地 CORS 预检行为也与本地网关保持一致。
+- **Codex 历史会话可见性修复现同时更新 rollout 元数据与 `state_5.sqlite` thread 记录**：需要时会把 SQLite 数据库纳入备份，无效数据库会跳过并给出明确结果，修复摘要会展示已更新的 SQLite 记录数。
+- **Codex 多开实例启动现会识别账号/API 凭据来源变化**：实例在受管账号凭据与 API 凭据之间切换后启动时，会弹出既有的会话可见性修复弹框，并执行同一套跨实例修复流程。
+- **Codex API 服务请求日志存储现保留诊断与价格字段**：日志行会保存请求 ID、HTTP 状态、清理后的错误详情、估算 USD 价值，以及本次请求使用的输入/输出/缓存输入价格快照。
+- **本地运行时与配置持久化现统一使用原子写入和损坏文件隔离**：配置、公告、实例列表、OAuth pending 文件、唤醒状态/历史/验证、托盘布局、更新状态、指纹、Zed 运行时、Codex API 状态与 Codex API 日志存储会先隔离无效文件，再重建安全默认状态。
+- **Antigravity 桌面版切号现会动态识别已安装鉴权模式**：切号前会先检测已安装桌面版版本，仅对低于 `2.0.0` 的版本写入 legacy state 数据库，并让当前桌面版的原生失败原因直接显示在账号页中。
+
+### 修复
+- **Codex 历史会话可见性修复更新 rollout 文件时不再改写会话时间顺序**：重写 rollout provider、备份与恢复时会尽量保留原始文件修改时间；若时间恢复失败，该非关键步骤不会阻断修复流程。
+- **Codex API 服务流式响应不再泄露不兼容上游响应头或异常分片**：流式 relay 响应会保持单一且预期的 event-stream 内容类型，保留安全上游响应头，移除代理专用响应头，规范化不完整 SSE frame，并以 OpenAI 兼容 SSE 格式输出 `[DONE]`。
+- **Codex API 服务默认 profile 接管现可修复过期的本地 Base URL 或 API Key 状态**：服务启用时会检测并重写过期的 `codex_local_access` provider 配置，避免官方 Codex profile 仍指向旧端口或旧 Key。
+- **Antigravity 桌面版启动检测现优先使用当前 macOS 可执行文件名**：legacy Antigravity.app 解析会先检查 `Contents/MacOS/Antigravity`，再检查 `Electron`，与当前桌面包结构保持一致。
+
+---
+## [0.24.4] - 2026-05-23
+
+### 新增
+- **Codex API 服务新增独立管理页**：服务状态、访问地址、客户端 Key、账号池、模型规则、调度选项、健康状态与请求日志现在都可在同一个 Codex API 服务入口中管理。
+- **Codex API 服务现支持命名客户端 API Key 与按 Key 设置模型策略**：Key 可创建、改名、停用、重置、删除，并可设置模型前缀、允许模型列表和排除模型列表。
+- **Codex API 服务现可桥接官方 Codex 后端与 WebSocket 请求路径**：`/backend-api/codex/responses`、`/backend-api/codex/responses/compact` 与 Responses WebSocket 升级请求都可通过本地受管账号网关转发。
+- **Codex API 服务现通过 `gpt-image-2` 暴露图片生成兼容能力**：`/v1/images/generations` 与 `/v1/images/edits` 会映射到 Codex Responses 图片工具，并结合服务级图片模式与账号能力检查。
+- **Codex API 服务现记录用量统计与可检索请求日志**：支持按账号、模型和客户端 Key 统计日/周/月/全量用量，并可按模型、账号、Key、请求类型、状态和错误分类筛选日志。
+- **开发运行现使用独立 Cockpit Tools Dev 配置**：`npm run tauri:dev` 会以独立 Tauri 标识、数据目录、API 端口和窗口品牌启动开发版应用。
+
+### 变更
+- **Codex API 服务弹框现保持快速配置定位，并提供“查看全部功能”入口**：高级统计、请求日志、image_generation 控制与命名 Key 管理统一放到独立页面。
+- **Codex API 服务调度现加入会话亲和、可配置重试行为与账号健康跟踪**：连续轮次可保持在同一账号上，冷却中、额度耗尽或图片能力不可用的账号会在下次选号前被跳过。
+- **Codex 官方 App 速度选择现写入当前官方 `config.toml` 桌面服务档位键**：“标准”会移除受管档位，“快速”会写入 `priority`，与当前 Codex 客户端落盘位置保持一致。
+- **Cockpit 共享数据文件现统一通过同一数据目录解析**：账号分组、设备状态、配置状态与 Codex API 服务状态都会跟随同一配置目录或 profile 专属目录。
+- **文档现补充葡萄牙语 README/赞助页面与 WSL2 Ubuntu 24 构建说明**：项目本地化文档与 Linux 构建指引已与现有中英文文档并列提供。
+
+### 修复
+- **Codex 仅 access token 与 session token 导入不再因为缺少 `refresh_token` 被强制要求重新授权**：导入会识别 `session_token`/`sessionToken`，受管投影会保留预期的 `refresh_token` 字段，且无法刷新的账号会跳过主动续期。
+- **仪表盘与平台切换现保持 Antigravity/Codex 分组条目一致**：分组卡片会去重，Codex API 服务导航保留在 Codex 分组内，切换器也不再把当前额外页面误判为平台不匹配。
+
+---
+## [0.24.3] - 2026-05-21
+
+### 变更
+- **紧急修复 Codex 本地 API 服务在未配置显式代理时的路由问题**：API 代理地址、Cockpit 全局代理与环境代理变量仍会按顺序优先使用；服务现在会继续进入 reqwest 的系统代理自动发现，而不是在系统自动代理路径生效前停止请求。
+- **Antigravity 已安装版本读取现区分快速徽标读取与完整扫描**：总览徽标会短暂延迟后启动，优先使用可用缓存，并在后台完成更长的扫描，避免版本显示阻塞页面。
+- **Codex 套餐徽标现复用账号原始套餐值与共享样式**：账号卡片、摘要与路由视图都会保留后端或本地套餐标签原值，同时通过统一展示路径生成徽标样式。
+
+### 修复
+- **Antigravity 旧版切号不再因安装版本元数据缺失或无法解析而失败**：已缓存的明确版本仍会阻断 Antigravity `2.0.0` 及以上版本；缺少缓存信息时允许旧版路径继续执行。
+- **Codex 自定义路由账号列表现将表头与行内容限制在固定滚动区域内**：弹框主体可正确滚动，套餐徽标在窄布局下也保持稳定尺寸。
+
+---
+## [0.24.2] - 2026-05-21
+
+### 修复
+- **紧急修复 v0.24.1 后 Codex 本地 API 服务代理路由异常**：API 代理地址为空时会依次回退到 Cockpit 全局代理和显式环境代理变量（`HTTPS_PROXY`、`HTTP_PROXY` 或 `ALL_PROXY`）；没有可用代理地址时，网关会拒绝官方上游请求，避免意外直连官方上游。
+- **Codex 本地 API 服务上游失败诊断现标明实际代理来源**：502 诊断与日志会标明使用的是 API 服务代理、Cockpit 全局代理、环境代理或缺少代理配置，便于快速修正网络出口。
+
+---
 ## [0.24.1] - 2026-05-21
 
 ### 新增

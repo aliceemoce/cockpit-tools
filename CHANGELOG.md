@@ -7,6 +7,96 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.24.8] - 2026-05-25
+
+### Added
+- **Codex API Service now supports gateway mode switching between Sidecar and Legacy modes**: gateway mode can be changed from the account card and the full API Service page, request logs record and filter by mode, and logs are tagged as `[sidecar]` or `[legacy]` for easier diagnosis.
+- **Codex API Service now exposes a debug log switch**: when enabled, Cockpit records legacy gateway request phases, sidecar executor traces, upstream timing, selected account details, stream completion state, and timeout diagnostics while keeping normal request logs available.
+- **Codex API Service now supports the hidden `codex-auto-review` reviewer model in both gateway modes**: Sidecar and Legacy gateways expose the internal reviewer model in local `/v1/models`, mark it hidden in the Codex client model catalog, and forward `/v1/responses` reviewer requests unchanged so Codex automatic approval review no longer fails local model policy validation.
+- **Codex API Service now guides users to the gateway switch from the account card**: a one-time opaque guide highlights the new gateway selector without adding the selector back to the quick setup modal.
+
+### Changed
+- **Codex API Service now writes the local client Base URL with `localhost`**: generated Codex provider config uses `http://localhost:<port>/v1` instead of `127.0.0.1`, reducing the chance that local proxy stacks intercept the client-to-sidecar loopback request.
+- **Codex-launched processes now receive managed loopback proxy bypass settings**: launched Codex CLI and official app-server processes merge inherited `NO_PROXY` / `no_proxy` values with Cockpit-managed loopback entries for `127.0.0.1`, `127.0.0.0/8`, `localhost`, `::1`, and `::1/128`.
+- **Sidecar proxy selection now follows the legacy gateway priority**: API Service proxy, Cockpit global proxy, inherited environment proxy, and system/default proxy discovery are resolved through the same priority model used by the old gateway.
+- **Codex API Service quick setup modal now stays focused on service setup**: the new/old gateway mode switch was removed from the modal, while the full API Service page and account card remain responsible for mode switching.
+
+### Fixed
+- **Codex API Service no longer lets loopback requests get routed through local proxy tools as easily**: Cockpit now injects loopback bypass rules and health diagnostics can identify when Clash/FlyingBird-style local proxies are intercepting `localhost` or `127.0.0.1` API Service traffic.
+- **Sidecar streaming now fails fast on startup and idle stalls**: stream-open timeout, retry handling, idle timeout, completion-state validation, and clearer diagnostics prevent long silent hangs before the first byte or after a partial stream.
+- **Sidecar startup is more reliable across platforms**: Cockpit waits for the sidecar stdout `ready` event, development builds resolve the local sidecar binary first, Go sidecar sources are tracked by the Tauri build script, and Windows sidecars avoid unreliable parent-PID termination checks.
+- **Legacy gateway streaming and WebSocket handling now has stronger timeout and disconnect behavior**: upstream connect, stream idle, stream total timeout, heartbeat flush, broken-pipe classification, and first-chunk/completion diagnostics make long-running requests easier to recover from and debug.
+- **Codex API Service request log storage now preserves gateway mode and diagnostics consistently**: database migrations add the gateway mode field and related indexes so full-page request logs can distinguish Sidecar and Legacy traffic.
+
+---
+## [0.24.7] - 2026-05-24
+
+### Added
+- **Codex API Service now runs through a bundled CLIProxyAPI sidecar and Cockpit relay**: Cockpit Tools builds and packages `cockpit-cliproxy`, generates sidecar config, manifest, and auth files from managed accounts and client keys, keeps the existing Base URL/API key workflow, and relays OpenAI-compatible Chat Completions, Responses, image, streaming, and CORS preflight requests through CLIProxyAPI's Codex executor.
+- **Codex API Service now supports model pricing and estimated value statistics**: built-in pricing presets cover current Codex models including `gpt-5.5`, custom USD-per-million token prices can be edited from the model page, and totals, account/model/key breakdowns, and request logs show estimated value from each request's stored price snapshot.
+- **Codex API Service request logs now include request-level diagnostics**: sidecar events carry stable request IDs, selected auth/account metadata, HTTP status, retry details, sanitized upstream error messages, client-cancel classifications, and account routing context so failures can be traced from the UI.
+- **Codex account subscription terms can now be refreshed manually**: OAuth accounts with missing or expired subscription information expose a refresh action in card and table views, with query attempts, successes, retry windows, and last errors persisted on the account record.
+- **Antigravity 2.0 desktop account switching now writes the official system credential**: desktop Antigravity versions `2.0.0` and later write the official `gemini` / `antigravity` credential into macOS Keychain, Windows Credential Manager, or Linux Secret Service, while older desktop builds continue to use the legacy state database path.
+
+### Changed
+- **Codex API Service runtime takeover now preserves official Codex profile files**: enabling the service backs up profile `auth.json` and `config.toml` before writing the managed `codex_local_access` provider state, and disabling the service restores backed-up files or removes only Cockpit-owned entries.
+- **Codex API Service now keeps the default Codex profile attached while the service is enabled**: state snapshots inspect the default profile, report config/auth attachment status, and retry takeover if the expected Base URL or API key is stale.
+- **Codex API Service sidecar now uses Cockpit's relay runtime around CLIProxyAPI v7.0.2**: Cockpit owns the HTTP listener, request policy, model policy, usage capture, and local statistics pipeline while CLIProxyAPI provides Codex auth synthesis, account selection, refresh, retries, and executor behavior.
+- **Codex API Service sidecar streaming now normalizes OpenAI-compatible SSE output**: streamed Chat Completions and Responses traffic is framed consistently, JSON chunks and `[DONE]` are converted to SSE when needed, hop-by-hop and proxy-only headers are filtered, and local CORS preflight behavior matches the local gateway.
+- **Codex history visibility repair now updates both rollout metadata and `state_5.sqlite` thread rows**: repair backups include the SQLite database when needed, invalid databases are skipped with a clear result message, and the summary reports the number of updated SQLite records.
+- **Codex multi-instance launches now detect account/API credential source changes**: launching an instance after switching between managed account credentials and API credentials surfaces the existing session visibility repair dialog and runs the same cross-instance repair flow.
+- **Codex API Service request log storage now persists diagnostic and pricing fields**: log rows keep request ID, HTTP status, sanitized error details, estimated USD value, and the input/output/cached-input price snapshot used for that request.
+- **Local runtime and configuration persistence now uses shared atomic writes and corrupt-file quarantine**: config, announcements, instance stores, OAuth pending files, wakeup state/history/verification, tray layout, update state, fingerprints, Zed runtime, Codex API state, and Codex API log storage isolate invalid files before rebuilding safe defaults.
+- **Antigravity desktop account switching now resolves the installed auth mode dynamically**: Cockpit detects the installed desktop version before switching, writes legacy state DB data only for builds below `2.0.0`, and lets current desktop builds surface their native failure reason directly in the account page.
+
+### Fixed
+- **Codex history visibility repair no longer rewrites session chronology when updating rollout files**: rollout provider rewrites, backups, and restores now preserve the original file modification time when possible, and non-critical timestamp restore failures do not block the repair flow.
+- **Codex API Service streaming responses no longer leak incompatible upstream headers or malformed chunks**: streaming relay responses now keep one expected event-stream content type, preserve safe upstream headers, drop proxy-only headers, normalize partial SSE frames, and emit `[DONE]` in OpenAI-compatible SSE format.
+- **Codex API Service default profile attachment now repairs stale local Base URL or API key state**: when the service is enabled, stale `codex_local_access` provider config is detected and rewritten instead of leaving the official Codex profile pointed at an old port or key.
+- **Antigravity desktop launch detection now prefers the current macOS executable name**: legacy Antigravity.app resolution checks `Contents/MacOS/Antigravity` before `Electron`, matching the current desktop package layout.
+
+---
+## [0.24.4] - 2026-05-23
+
+### Added
+- **Codex API Service now has a dedicated management page**: service status, access URLs, client keys, account pool, model rules, routing options, health state, and request logs can now be managed from one Codex API Service entry.
+- **Codex API Service now supports named client API keys and per-key model policies**: keys can be created, renamed, disabled, rotated, deleted, and constrained with model prefixes plus allowed/excluded model lists.
+- **Codex API Service now bridges official Codex backend and WebSocket request paths**: `/backend-api/codex/responses`, `/backend-api/codex/responses/compact`, and Responses WebSocket upgrades can run through the local managed-account gateway.
+- **Codex API Service now exposes image-generation compatibility through `gpt-image-2`**: `/v1/images/generations` and `/v1/images/edits` are mapped to Codex Responses image tooling with service-level image modes and account capability checks.
+- **Codex API Service now records usage statistics and searchable request logs**: daily, weekly, monthly, and all-time usage is tracked by account, model, and client key, with filters for model, account, key, request type, status, and error category.
+- **Development runs now have an isolated Cockpit Tools Dev profile**: `npm run tauri:dev` starts the dev app with its own Tauri identifier, data directory, API port, and window branding.
+
+### Changed
+- **Codex API Service modal now stays focused on quick setup with a View All Features shortcut**: advanced stats, request logs, image-generation controls, and named key management now live on the dedicated page.
+- **Codex API Service routing now includes session affinity, configurable retry behavior, and account health tracking**: repeated turns can stay on one account while cooled-down, exhausted, or image-ineligible accounts are skipped before the next selection.
+- **Codex official app speed selection now writes the current official `config.toml` desktop service-tier key**: Standard removes the managed tier and Fast writes `priority`, matching the current Codex client storage.
+- **Shared Cockpit data files now resolve through one data-directory path**: account groups, device state, config state, and Codex API Service state follow the same configured or profile-specific data directory.
+- **Documentation now includes Portuguese README/donation pages and WSL2 Ubuntu 24 build guidance**: localized project documentation and Linux build notes are available alongside the existing English and Chinese docs.
+
+### Fixed
+- **Codex access-token-only and session-token imports no longer get forced into reauthorization because `refresh_token` is missing**: imports accept `session_token`/`sessionToken`, managed projections keep the expected `refresh_token` field, and proactive refresh skips accounts that cannot refresh.
+- **Dashboard and platform switching now keep grouped Antigravity/Codex entries consistent**: grouped cards are deduplicated, Codex API Service navigation stays inside the Codex group, and the switcher no longer treats the current extra page as a platform mismatch.
+
+---
+## [0.24.3] - 2026-05-21
+
+### Changed
+- **Emergency fix for Codex Local API Service routing when no explicit proxy is configured**: API proxy URL, Cockpit global proxy, and environment proxy variables are still preferred in order, while the service now falls through to reqwest's system proxy discovery instead of stopping before the system auto-proxy path can be used.
+- **Antigravity installed-version lookup now separates quick badge reads from full scans**: the overview badge starts after a short delay, uses cached metadata when possible, and completes a longer scan in the background so version display does not block the page.
+- **Codex plan badges now reuse the raw account plan value with shared styling**: account cards, summaries, and routing views keep backend/local plan labels unchanged while using one presentation path for badge classes.
+
+### Fixed
+- **Legacy Antigravity account switching no longer fails when installed-version metadata is unavailable or unparseable**: cached known versions still block Antigravity `2.0.0` and later, while missing cache data allows the legacy path to proceed.
+- **Codex custom routing account lists now keep their header and rows within a bounded scroll area**: the modal body scrolls correctly and plan badges keep stable sizing in narrow layouts.
+
+---
+## [0.24.2] - 2026-05-21
+
+### Fixed
+- **Emergency fix for Codex Local API Service proxy routing after v0.24.1**: empty API proxy URLs now fall back to the Cockpit global proxy and then explicit environment proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, or `ALL_PROXY`), and the gateway refuses official upstream requests when no proxy URL is available instead of falling back to unintended direct upstream access.
+- **Codex Local API Service upstream failures now identify the active proxy source**: 502 diagnostics and logs report whether the API service proxy, Cockpit global proxy, environment proxy, or missing proxy configuration was used so users can correct network routing quickly.
+
+---
 ## [0.24.1] - 2026-05-21
 
 ### Added

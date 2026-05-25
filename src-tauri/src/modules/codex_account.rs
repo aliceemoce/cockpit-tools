@@ -1261,6 +1261,16 @@ fn is_missing_refresh_token_reason(reason: &str) -> bool {
     reason.contains("缺少 refresh_token")
 }
 
+fn account_has_refresh_token(account: &CodexAccount) -> bool {
+    account
+        .tokens
+        .refresh_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .is_some()
+}
+
 fn clear_stale_missing_refresh_token_reauth(account: &mut CodexAccount) -> Result<(), String> {
     let is_missing_refresh_token_reauth = account
         .reauth_reason
@@ -1269,10 +1279,6 @@ fn clear_stale_missing_refresh_token_reauth(account: &mut CodexAccount) -> Resul
         .unwrap_or(false);
 
     if !account.requires_reauth || !is_missing_refresh_token_reauth {
-        return Ok(());
-    }
-
-    if codex_oauth::is_token_expired(&account.tokens.access_token) {
         return Ok(());
     }
 
@@ -2873,12 +2879,24 @@ fn sync_api_key_account_from_local_state(account: &mut CodexAccount, base_dir: &
 
 /// 获取当前激活的账号（基于 Tools 显式 current_account_id）
 pub fn get_current_account() -> Option<CodexAccount> {
-    let current_id = load_account_index().current_account_id?;
-    let mut account = load_account(&current_id)?;
     let base_dir = get_codex_home();
+    get_current_account_from_loaded(
+        load_account_index(),
+        |account_id| load_account(account_id),
+        &base_dir,
+    )
+}
+
+fn get_current_account_from_loaded(
+    index: CodexAccountIndex,
+    mut load: impl FnMut(&str) -> Option<CodexAccount>,
+    base_dir: &Path,
+) -> Option<CodexAccount> {
+    let current_id = index.current_account_id?;
+    let mut account = load(&current_id)?;
 
     if account.is_api_key_auth() {
-        sync_api_key_account_from_local_state(&mut account, &base_dir);
+        sync_api_key_account_from_local_state(&mut account, base_dir);
     }
     Some(account)
 }
@@ -2904,7 +2922,7 @@ fn build_auth_file_value(account: &CodexAccount) -> Result<serde_json::Value, St
         tokens: Some(CodexAuthTokens {
             id_token: account.tokens.id_token.clone(),
             access_token: account.tokens.access_token.clone(),
-            refresh_token: account.tokens.refresh_token.clone(),
+            refresh_token: Some(account.tokens.refresh_token.clone().unwrap_or_default()),
             account_id: account.account_id.clone(),
         }),
         last_refresh: Some(serde_json::Value::String(
@@ -3424,7 +3442,7 @@ fn write_managed_account_projections(account: &CodexAccount) {
 }
 
 pub fn is_managed_auth_refresh_due(account: &CodexAccount) -> bool {
-    if account.is_api_key_auth() || account.requires_reauth {
+    if account.is_api_key_auth() || account.requires_reauth || !account_has_refresh_token(account) {
         return false;
     }
 
@@ -3450,10 +3468,11 @@ async fn perform_managed_token_refresh(
     {
         Some(token) => token,
         None => {
-            return Err(
-                "Codex 登录授权缺少 refresh_token，无法自动续期；当前 access_token 已不可用。"
-                    .to_string(),
-            );
+            logger::log_warn(&format!(
+                "Codex Token Authority 跳过刷新：账号缺少 refresh_token，按 access-token-only 模式继续使用当前 access_token: account_id={}, email={}, reason={}",
+                account.id, account.email, reason
+            ));
+            return Ok(account);
         }
     };
 
@@ -3970,7 +3989,15 @@ fn extract_codex_session_candidate_from_value(
         .filter(|token| decode_jwt_payload_value(token).is_some())?;
     let id_token = first_json_string(&session, &[&["idToken"], &["id_token"]])
         .unwrap_or_else(|| access_token.clone());
-    let refresh_token = first_json_string(&session, &[&["refreshToken"], &["refresh_token"]]);
+    let refresh_token = first_json_string(
+        &session,
+        &[
+            &["refreshToken"],
+            &["refresh_token"],
+            &["sessionToken"],
+            &["session_token"],
+        ],
+    );
     let account_id_hint = first_json_string(&session, &[&["account", "id"], &["account_id"]]);
 
     Some(CodexJsonImportCandidate::FullToken {
@@ -4584,7 +4611,15 @@ fn extract_codex_tokens_from_value(
         first_json_string(value, &[&["id_token"], &["idToken"]]),
         first_json_string(value, &[&["access_token"], &["accessToken"]]),
     ) {
-        let refresh_token = first_json_string(value, &[&["refresh_token"], &["refreshToken"]]);
+        let refresh_token = first_json_string(
+            value,
+            &[
+                &["refresh_token"],
+                &["refreshToken"],
+                &["session_token"],
+                &["sessionToken"],
+            ],
+        );
         let account_id_hint = first_json_string(value, &[&["account_id"], &["accountId"]]);
         return Some((
             CodexTokens {
@@ -4607,7 +4642,14 @@ fn extract_codex_tokens_from_value(
         ) {
             let refresh_token = first_json_string(
                 value,
-                &[&["tokens", "refresh_token"], &["tokens", "refreshToken"]],
+                &[
+                    &["tokens", "refresh_token"],
+                    &["tokens", "refreshToken"],
+                    &["tokens", "session_token"],
+                    &["tokens", "sessionToken"],
+                    &["session_token"],
+                    &["sessionToken"],
+                ],
             );
             let account_id_hint = first_json_string(
                 value,
@@ -4635,12 +4677,13 @@ fn extract_codex_tokens_from_value(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_account_storage_id, decode_jwt_payload_value, detect_auth_file_plan_type_from_path,
+        build_account_storage_id, build_auth_file_value, decode_jwt_payload_value,
+        detect_auth_file_plan_type_from_path, ensure_managed_account_fresh,
         extract_codex_import_candidate_from_value, extract_codex_tokens_from_value,
         extract_user_info, format_refresh_error_for_user, get_accounts_dir,
-        get_accounts_storage_path, get_current_account, list_accounts_checked, load_account,
-        load_account_index, looks_like_sub2api_export, parse_auth_file_last_refresh,
-        parse_codex_account_compat, parse_line_delimited_json_values,
+        get_accounts_storage_path, get_current_account_from_loaded, is_managed_auth_refresh_due,
+        list_accounts_checked, load_account, load_account_index, looks_like_sub2api_export,
+        parse_auth_file_last_refresh, parse_codex_account_compat, parse_line_delimited_json_values,
         read_api_provider_from_config_toml, read_quick_config_from_config_toml,
         resolve_api_provider_config, save_account, save_account_index,
         should_accept_authority_snapshot, sync_account_from_auth_dir,
@@ -4655,6 +4698,7 @@ mod tests {
     use crate::models::codex::{CodexAccount, CodexApiProviderMode, CodexTokens};
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     use std::fs;
+    use std::path::Path;
     use std::sync::{LazyLock, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -4775,6 +4819,7 @@ mod tests {
         home_dir: std::path::PathBuf,
         previous_home: Option<String>,
         previous_codex_home: Option<String>,
+        previous_data_dir: Option<String>,
     }
 
     impl TestEnvGuard {
@@ -4785,13 +4830,16 @@ mod tests {
 
             let previous_home = std::env::var("HOME").ok();
             let previous_codex_home = std::env::var("CODEX_HOME").ok();
+            let previous_data_dir = std::env::var("COCKPIT_TOOLS_DATA_DIR").ok();
             std::env::set_var("HOME", &home_dir);
             std::env::set_var("CODEX_HOME", &codex_home);
+            std::env::set_var("COCKPIT_TOOLS_DATA_DIR", &home_dir);
 
             Self {
                 home_dir,
                 previous_home,
                 previous_codex_home,
+                previous_data_dir,
             }
         }
 
@@ -4809,6 +4857,10 @@ mod tests {
             match self.previous_codex_home.as_ref() {
                 Some(value) => std::env::set_var("CODEX_HOME", value),
                 None => std::env::remove_var("CODEX_HOME"),
+            }
+            match self.previous_data_dir.as_ref() {
+                Some(value) => std::env::set_var("COCKPIT_TOOLS_DATA_DIR", value),
+                None => std::env::remove_var("COCKPIT_TOOLS_DATA_DIR"),
             }
             let _ = fs::remove_dir_all(&self.home_dir);
         }
@@ -4857,7 +4909,7 @@ mod tests {
         }
     }
 
-    fn seed_oauth_account(tokens: CodexTokens) -> CodexAccount {
+    fn build_test_oauth_account(tokens: CodexTokens) -> CodexAccount {
         let email = "demo@example.com";
         let account_id = "acc-current";
         let organization_id = "org-current";
@@ -4868,11 +4920,23 @@ mod tests {
         account.plan_type = Some("pro".to_string());
         account.account_id = Some(account_id.to_string());
         account.organization_id = Some(organization_id.to_string());
+        account
+    }
+
+    fn seed_oauth_account(tokens: CodexTokens) -> CodexAccount {
+        let account = build_test_oauth_account(tokens);
         save_account(&account).expect("save account");
 
+        let index = build_test_account_index(&account);
+        save_account_index(&index).expect("save index");
+
+        account
+    }
+
+    fn build_test_account_index(account: &CodexAccount) -> CodexAccountIndex {
         let mut index = CodexAccountIndex::new();
         index.accounts.push(CodexAccountSummary {
-            id: storage_id,
+            id: account.id.clone(),
             email: account.email.clone(),
             plan_type: account.plan_type.clone(),
             subscription_active_until: account.subscription_active_until.clone(),
@@ -4880,9 +4944,25 @@ mod tests {
             last_used: account.last_used,
         });
         index.current_account_id = Some(account.id.clone());
-        save_account_index(&index).expect("save index");
+        index
+    }
 
-        account
+    fn write_test_account(data_dir: &Path, account: &CodexAccount) {
+        let accounts_dir = data_dir.join("codex_accounts");
+        fs::create_dir_all(&accounts_dir).expect("create test accounts dir");
+        fs::write(
+            accounts_dir.join(format!("{}.json", account.id)),
+            serde_json::to_string_pretty(account).expect("serialize test account"),
+        )
+        .expect("write test account");
+    }
+
+    fn load_test_account(data_dir: &Path, account_id: &str) -> CodexAccount {
+        let path = data_dir
+            .join("codex_accounts")
+            .join(format!("{}.json", account_id));
+        let content = fs::read_to_string(&path).expect("read test account");
+        serde_json::from_str(&content).expect("parse test account")
     }
 
     fn write_oauth_auth_file(base_dir: &std::path::Path, tokens: &CodexTokens, account_id: &str) {
@@ -4910,6 +4990,32 @@ mod tests {
     }
 
     #[test]
+    fn build_auth_file_value_keeps_empty_refresh_token_field_for_cpa_accounts() {
+        let mut account = CodexAccount::new(
+            "codex-cpa-account".to_string(),
+            "cpa@example.com".to_string(),
+            CodexTokens {
+                id_token: "id.jwt.token".to_string(),
+                access_token: "access.jwt.token".to_string(),
+                refresh_token: None,
+            },
+        );
+        account.account_id = Some("acc-cpa".to_string());
+
+        let auth_file = build_auth_file_value(&account).expect("build auth file");
+        let tokens = auth_file
+            .get("tokens")
+            .and_then(|value| value.as_object())
+            .expect("tokens object");
+
+        assert!(tokens.contains_key("refresh_token"));
+        assert_eq!(
+            tokens.get("refresh_token").and_then(|value| value.as_str()),
+            Some("")
+        );
+    }
+
+    #[test]
     fn extract_tokens_from_flat_codex_json() {
         let value = serde_json::json!({
             "id_token": "id.jwt.token",
@@ -4930,6 +5036,29 @@ mod tests {
     }
 
     #[test]
+    fn extract_tokens_from_flat_codex_json_falls_back_to_session_token() {
+        let value = serde_json::json!({
+            "id_token": "id.jwt.token",
+            "access_token": "access.jwt.token",
+            "refresh_token": "",
+            "session_token": "encrypted-session-token",
+            "account_id": "acc_cpa",
+            "type": "codex"
+        });
+
+        let (tokens, account_id_hint) =
+            extract_codex_tokens_from_value(&value).expect("should extract tokens");
+
+        assert_eq!(tokens.id_token, "id.jwt.token");
+        assert_eq!(tokens.access_token, "access.jwt.token");
+        assert_eq!(
+            tokens.refresh_token.as_deref(),
+            Some("encrypted-session-token")
+        );
+        assert_eq!(account_id_hint.as_deref(), Some("acc_cpa"));
+    }
+
+    #[test]
     fn extract_tokens_from_nested_tokens_json() {
         let value = serde_json::json!({
             "tokens": {
@@ -4947,6 +5076,30 @@ mod tests {
         assert_eq!(tokens.access_token, "access.jwt.token");
         assert_eq!(tokens.refresh_token.as_deref(), Some("rt_456"));
         assert_eq!(account_id_hint.as_deref(), Some("acc_2"));
+    }
+
+    #[test]
+    fn extract_tokens_from_nested_tokens_json_falls_back_to_session_token() {
+        let value = serde_json::json!({
+            "tokens": {
+                "id_token": "id.jwt.token",
+                "access_token": "access.jwt.token",
+                "refresh_token": ""
+            },
+            "session_token": "encrypted-session-token",
+            "account_id": "acc_nested"
+        });
+
+        let (tokens, account_id_hint) =
+            extract_codex_tokens_from_value(&value).expect("should extract tokens");
+
+        assert_eq!(tokens.id_token, "id.jwt.token");
+        assert_eq!(tokens.access_token, "access.jwt.token");
+        assert_eq!(
+            tokens.refresh_token.as_deref(),
+            Some("encrypted-session-token")
+        );
+        assert_eq!(account_id_hint.as_deref(), Some("acc_nested"));
     }
 
     #[test]
@@ -5043,7 +5196,7 @@ mod tests {
                 account_note,
             } => {
                 assert_eq!(tokens.id_token, tokens.access_token);
-                assert_eq!(tokens.refresh_token, None);
+                assert_eq!(tokens.refresh_token.as_deref(), Some("encrypted-session"));
                 assert_eq!(account_id_hint.as_deref(), Some("acc-session"));
                 assert_eq!(account_note, None);
                 assert!(decode_jwt_payload_value(&tokens.access_token).is_some());
@@ -5284,6 +5437,57 @@ mod tests {
     }
 
     #[test]
+    fn access_token_only_accounts_do_not_require_proactive_refresh() {
+        let mut account = CodexAccount::new(
+            "codex_access_only".to_string(),
+            "access-only@example.com".to_string(),
+            make_codex_tokens(
+                "access-only@example.com",
+                "acc-access-only",
+                "org-access-only",
+                "access-only",
+                "rt-unused",
+            ),
+        );
+        account.tokens.refresh_token = None;
+        account.token_updated_at = Some(0);
+
+        assert!(!is_managed_auth_refresh_due(&account));
+    }
+
+    #[test]
+    fn missing_refresh_token_reauth_is_cleared_for_access_token_only_accounts() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = TestEnvGuard::new("codex-access-token-only-reauth-clear-test");
+        let mut tokens = make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "access-only",
+            "rt-unused",
+        );
+        tokens.refresh_token = None;
+        let mut account = seed_oauth_account(tokens);
+        account.requires_reauth = true;
+        account.reauth_reason = Some(
+            "Codex 登录授权缺少 refresh_token，无法自动续期；当前 access_token 已不可用。"
+                .to_string(),
+        );
+        save_account(&account).expect("save access-token-only reauth account");
+
+        let runtime = tokio::runtime::Runtime::new().expect("create runtime");
+        let prepared = runtime
+            .block_on(ensure_managed_account_fresh(&account.id))
+            .expect("access-token-only account should remain usable");
+
+        assert!(!prepared.requires_reauth);
+        assert_eq!(prepared.tokens.refresh_token, None);
+        let persisted = load_account(&account.id).expect("persisted account");
+        assert!(!persisted.requires_reauth);
+        assert_eq!(persisted.reauth_reason, None);
+    }
+
+    #[test]
     fn authority_snapshot_requires_newer_refresh_marker() {
         let mut account = CodexAccount::new(
             "codex_test".to_string(),
@@ -5341,10 +5545,10 @@ mod tests {
 
     #[test]
     fn current_account_does_not_sync_tokens_from_official_store() {
-        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
-        let env = TestEnvGuard::new("codex-current-account-sync-test");
+        let data_dir = make_temp_dir("codex-current-account-sync-test");
+        let codex_home = data_dir.join(".codex");
 
-        let stored = seed_oauth_account(make_codex_tokens(
+        let stored = build_test_oauth_account(make_codex_tokens(
             "demo@example.com",
             "acc-current",
             "org-current",
@@ -5358,9 +5562,21 @@ mod tests {
             "latest",
             "rt-latest",
         );
-        write_oauth_auth_file(&env.codex_home(), &latest_tokens, "acc-current");
+        write_oauth_auth_file(&codex_home, &latest_tokens, "acc-current");
 
-        let current = get_current_account().expect("current account");
+        let index = build_test_account_index(&stored);
+        write_test_account(&data_dir, &stored);
+        assert_eq!(
+            index.current_account_id.as_deref(),
+            Some(stored.id.as_str())
+        );
+
+        let current = get_current_account_from_loaded(
+            index,
+            |account_id| Some(load_test_account(&data_dir, account_id)),
+            &codex_home,
+        )
+        .expect("current account");
         assert_eq!(current.id, stored.id);
         assert_eq!(current.tokens.access_token, stored.tokens.access_token);
         assert_eq!(
@@ -5368,12 +5584,13 @@ mod tests {
             stored.tokens.refresh_token.as_deref()
         );
 
-        let persisted = load_account(&stored.id).expect("persisted account");
+        let persisted = load_test_account(&data_dir, &stored.id);
         assert_eq!(persisted.tokens.access_token, stored.tokens.access_token);
         assert_eq!(
             persisted.tokens.refresh_token.as_deref(),
             stored.tokens.refresh_token.as_deref()
         );
+        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
     }
 
     #[test]
@@ -5499,7 +5716,7 @@ mod tests {
     }
 
     #[test]
-    fn config_toml_cleans_managed_api_key_providers_for_builtin_openai() {
+    fn config_toml_removes_runtime_provider_when_switching_to_builtin_openai() {
         let base_dir = make_temp_dir("codex-config-clean-managed-provider-test");
         let config_path = base_dir.join("config.toml");
         fs::write(
@@ -5513,6 +5730,7 @@ name = "OpenAI Official"
 base_url = "https://api.openai.com/v1"
 wire_api = "responses"
 requires_openai_auth = true
+experimental_bearer_token = "sk-history"
 
 [model_providers.cockpit_api]
 name = "Cockpit Api"
@@ -5546,7 +5764,8 @@ requires_openai_auth = false
 
         let content = fs::read_to_string(&config_path).expect("read config");
         assert!(!content.contains("model_provider = "));
-        assert!(!content.contains("codex_local_access"));
+        assert!(!content.contains("[model_providers.codex_local_access]"));
+        assert!(!content.contains("experimental_bearer_token = \"sk-history\""));
         assert!(!content.contains("[model_providers.cockpit_api]"));
         assert!(!content.contains("[model_providers.openai_api_key]"));
         assert!(content.contains("[model_providers.user_manual_provider_not_managed]"));
