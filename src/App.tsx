@@ -2822,8 +2822,9 @@ function MainApp() {
       } else {
         setAppPathActionError(
           t(
-            'appPath.install.notDetected',
-            '安装已完成，但未自动检测到启动路径，请手动选择或重置路径。',
+            appPathMissing.app === 'codex'
+              ? 'appPath.install.codexNotDetected'
+              : 'appPath.install.notDetected',
           ),
         );
       }
@@ -3219,6 +3220,9 @@ function MainApp() {
                 {appPathInstallProgress ? (
                   <p className="app-path-missing-hint">{appPathInstallProgress}</p>
                 ) : null}
+                {appPathMissing.app === 'codex' && appPathInstallSupported ? (
+                  <p className="app-path-missing-hint">{t('appPath.install.codexHint')}</p>
+                ) : null}
               </div>
             </div>
 
@@ -3237,8 +3241,13 @@ function MainApp() {
                   disabled={appPathMissingBusy}
                 >
                   {appPathInstalling
-                    ? appPathInstallProgress || t('appPath.install.inProgress', '下载并安装中…')
-                    : t('appPath.install.downloadAndInstall', '下载并安装')}
+                    ? appPathInstallProgress ||
+                      (appPathMissing.app === 'codex'
+                        ? t('appPath.install.codexInProgress')
+                        : t('appPath.install.inProgress'))
+                    : appPathMissing.app === 'codex'
+                      ? t('appPath.install.codexDownloadAndInstall')
+                      : t('appPath.install.downloadAndInstall')}
                 </button>
               ) : null}
               <button

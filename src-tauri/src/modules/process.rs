@@ -2642,6 +2642,11 @@ fn detect_codex_store_app_user_model_id() -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
+fn is_codex_windows_app_installed() -> bool {
+    detect_codex_exec_path().is_some()
+}
+
+#[cfg(target_os = "windows")]
 fn launch_codex_via_store_app_user_model_id(app_user_model_id: &str) -> Result<(), String> {
     let app_user_model_id = app_user_model_id.trim();
     if app_user_model_id.is_empty() {
@@ -2844,13 +2849,13 @@ pub fn ensure_vscode_launch_path_configured() -> Result<(), String> {
 pub fn ensure_codex_launch_path_configured() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        if detect_codex_store_app_user_model_id().is_some() {
+        if is_codex_windows_app_installed() || resolve_codex_launch_path().is_ok() {
             return Ok(());
         }
-        if resolve_codex_launch_path().is_ok() {
-            return Ok(());
-        }
-        return Err("未检测到 Codex 商店安装，请先在 Microsoft Store 安装 Codex".to_string());
+        return Err(
+            "未检测到 Codex 安装。可在路径弹窗中点击「安装 Codex」自动安装（不会打开商店），或点击「重置默认」/手动选择 Codex.exe。"
+                .to_string(),
+        );
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -7398,6 +7403,11 @@ pub fn start_codex_default(extra_args: &[String]) -> Result<u32, String> {
             .collect();
         let app_user_model_id = detect_codex_store_app_user_model_id();
         if let Some(app_user_model_id) = app_user_model_id {
+            if !is_codex_windows_app_installed() {
+                crate::modules::logger::log_warn(
+                    "[Codex Start] 已探测到 AppUserModelId，但未发现已安装的 Codex 可执行文件；跳过 shell:AppsFolder 启动，避免打开 Microsoft Store",
+                );
+            } else {
             crate::modules::logger::log_info(&format!(
                 "[Codex Start] 启动策略候选=system-store-entry app_id={}",
                 app_user_model_id
@@ -7453,6 +7463,7 @@ pub fn start_codex_default(extra_args: &[String]) -> Result<u32, String> {
                         err
                     ));
                 }
+            }
             }
         } else {
             crate::modules::logger::log_warn(

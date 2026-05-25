@@ -70,8 +70,9 @@ export function PlatformInstallButton({
       } else {
         onError?.(
           t(
-            'appPath.install.notDetected',
-            '安装已完成，但未自动检测到启动路径，请手动选择或重置路径。',
+            app === 'codex'
+              ? 'appPath.install.codexNotDetected'
+              : 'appPath.install.notDetected',
           ),
         );
       }
@@ -92,8 +93,13 @@ export function PlatformInstallButton({
     >
       <Download size={14} />
       {installing
-        ? progressLabel || t('appPath.install.inProgress', '下载并安装中…')
-        : t('appPath.install.downloadAndInstall', '下载并安装')}
+        ? progressLabel ||
+          (app === 'codex'
+            ? t('appPath.install.codexInProgress')
+            : t('appPath.install.inProgress'))
+        : app === 'codex'
+          ? t('appPath.install.codexDownloadAndInstall')
+          : t('appPath.install.downloadAndInstall')}
     </button>
   );
 }
