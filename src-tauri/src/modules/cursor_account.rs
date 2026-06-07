@@ -174,62 +174,6 @@ fn write_local_import_backup(
     Ok(backup_path)
 }
 
-fn load_local_import_backup_snapshots() -> Vec<CursorLocalImportBackupSnapshot> {
-    let backup_dir = match get_local_import_backups_dir() {
-        Ok(dir) => dir,
-        Err(err) => {
-            logger::log_warn(&format!(
-                "[Cursor Account] 获取本机导入备份目录失败，跳过备份补扫: {}",
-                err
-            ));
-            return Vec::new();
-        }
-    };
-
-    let entries = match fs::read_dir(&backup_dir) {
-        Ok(entries) => entries,
-        Err(err) => {
-            logger::log_warn(&format!(
-                "[Cursor Account] 读取本机导入备份目录失败，跳过备份补扫: path={}, error={}",
-                backup_dir.display(),
-                err
-            ));
-            return Vec::new();
-        }
-    };
-
-    let mut snapshots = Vec::new();
-    for entry in entries {
-        let Ok(item) = entry else {
-            continue;
-        };
-        let path = item.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let is_json = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("json"))
-            .unwrap_or(false);
-        if !is_json {
-            continue;
-        }
-
-        let Ok(content) = fs::read_to_string(&path) else {
-            continue;
-        };
-        let Ok(snapshot) = serde_json::from_str::<CursorLocalImportBackupSnapshot>(&content) else {
-            continue;
-        };
-        snapshots.push(snapshot);
-    }
-
-    snapshots.sort_by_key(|snapshot| snapshot.created_at_ms);
-    snapshots
-}
-
 // ---------------------------------------------------------------------------
 // Account file operations
 // ---------------------------------------------------------------------------
@@ -801,107 +745,6 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
     normalized_accounts
 }
 
-fn list_accounts_from_index_view(index: &CursorAccountIndex) -> Vec<CursorAccount> {
-    let mut accounts = Vec::new();
-    let mut seen_ids = HashSet::new();
-
-    for summary in &index.accounts {
-        let Some(account) = load_account(&summary.id) else {
-            continue;
-        };
-        if seen_ids.insert(account.id.clone()) {
-            accounts.push(account);
-        }
-    }
-
-    accounts
-}
-
-fn restore_missing_accounts_from_backups(index: &mut CursorAccountIndex) -> usize {
-    let mut latest_by_email = HashMap::<String, CursorLocalImportBackupSnapshot>::new();
-    for snapshot in load_local_import_backup_snapshots() {
-        let Some(email) = normalize_email_identity(Some(snapshot.email.as_str()))
-            .or_else(|| normalize_email_identity(Some(snapshot.account.email.as_str())))
-        else {
-            continue;
-        };
-        latest_by_email.insert(email, snapshot);
-    }
-
-    if latest_by_email.is_empty() {
-        return 0;
-    }
-
-    let current_accounts = list_accounts_from_index_view(index);
-    let mut live_emails = current_accounts
-        .iter()
-        .filter_map(|account| normalize_email_identity(Some(account.email.as_str())))
-        .collect::<HashSet<_>>();
-    let mut live_ids = current_accounts
-        .iter()
-        .map(|account| account.id.clone())
-        .collect::<HashSet<_>>();
-
-    let mut restored = 0usize;
-    let mut restored_emails = Vec::new();
-    let mut snapshots = latest_by_email.into_values().collect::<Vec<_>>();
-    snapshots.sort_by_key(|snapshot| snapshot.created_at_ms);
-
-    for snapshot in snapshots {
-        let Some(email) = normalize_email_identity(Some(snapshot.email.as_str()))
-            .or_else(|| normalize_email_identity(Some(snapshot.account.email.as_str())))
-        else {
-            continue;
-        };
-        if live_emails.contains(&email) {
-            continue;
-        }
-
-        if live_ids.contains(&snapshot.account.id) {
-            let existing_email = load_account(snapshot.account.id.as_str())
-                .and_then(|account| normalize_email_identity(Some(account.email.as_str())));
-            if existing_email.as_deref() != Some(email.as_str()) {
-                logger::log_warn(&format!(
-                    "[Cursor Account] 备份补扫跳过 ID 冲突: id={}, backup_email={}, existing_email={}",
-                    snapshot.account.id,
-                    snapshot.email,
-                    existing_email.unwrap_or_else(|| "<unknown>".to_string())
-                ));
-                continue;
-            }
-        }
-
-        let mut account = snapshot.account.clone();
-        if account.email.trim().is_empty() {
-            account.email = snapshot.email.clone();
-        }
-
-        if let Err(err) = save_account_file(&account) {
-            logger::log_warn(&format!(
-                "[Cursor Account] 备份补扫恢复账号失败: id={}, email={}, error={}",
-                account.id, account.email, err
-            ));
-            continue;
-        }
-
-        refresh_summary(index, &account);
-        live_emails.insert(email);
-        live_ids.insert(account.id.clone());
-        restored += 1;
-        restored_emails.push(account.email.clone());
-    }
-
-    if restored > 0 {
-        logger::log_warn(&format!(
-            "[Cursor Account] 检测到备份邮箱缺失，已从本机导入备份恢复 {} 个账号: {}",
-            restored,
-            restored_emails.join(",")
-        ));
-    }
-
-    restored
-}
-
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -919,9 +762,6 @@ pub fn list_accounts() -> Vec<CursorAccount> {
         );
         return accounts;
     }
-    if restore_missing_accounts_from_backups(&mut index) > 0 {
-        accounts = normalize_account_index(&mut index);
-    }
     if let Err(err) = save_account_index(&index) {
         logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
     }
@@ -937,9 +777,6 @@ pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     let mut accounts = normalize_account_index(&mut index);
     if had_index_accounts && accounts.is_empty() {
         return Err("Cursor 账号索引中存在账号，但详情文件均无法读取；已保留前端缓存，请从账号备份或本地账号文件恢复。".to_string());
-    }
-    if restore_missing_accounts_from_backups(&mut index) > 0 {
-        accounts = normalize_account_index(&mut index);
     }
     if let Err(err) = save_account_index(&index) {
         logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
@@ -1472,6 +1309,7 @@ pub fn import_from_local() -> Result<Option<CursorAccount>, String> {
     };
     let outcome = upsert_account_with_outcome(payload.clone())?;
     let backup_path = write_local_import_backup(&payload, &outcome)?;
+    crate::modules::cursor_import_backup_sync::schedule_local_import_backup_upload(backup_path.clone());
     logger::log_info(&format!(
         "[Cursor Account] 从本地导入成功: action={}, id={}, email={}, backup={}",
         if outcome.created {
@@ -2034,17 +1872,7 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, S
     match fetch_user_meta_with_client(&client, &account.access_token).await {
         Ok(meta) => {
             if let Some(email) = normalize_email_identity(meta.email.as_deref()) {
-                let stored_email = normalize_email_identity(Some(account.email.as_str()));
-                if stored_email.is_none() {
-                    account.email = email.clone();
-                } else if stored_email.as_deref() != Some(email.as_str()) {
-                    logger::log_warn(&format!(
-                        "[Cursor Refresh] 官方邮箱与本地原始邮箱不一致，已保留本地邮箱: id={}, stored_email={}, remote_email={}",
-                        account.id,
-                        account.email,
-                        email
-                    ));
-                }
+                account.email = email.clone();
                 upsert_cursor_auth_raw_string(&mut account, "cachedEmail", Some(email));
             }
 
@@ -2168,19 +1996,123 @@ pub async fn refresh_account_async(account_id: &str) -> Result<CursorAccount, St
     result
 }
 
+/// Batch path: refresh token if needed and pull usage only (skip user meta + stripe).
+async fn refresh_account_quota_only_async_once(account_id: &str) -> Result<CursorAccount, String> {
+    let existing = load_account(account_id).ok_or_else(|| "账号不存在".to_string())?;
+    let client = build_cursor_http_client()?;
+    let mut account = existing;
+
+    if access_token_needs_refresh(&account.access_token) {
+        match refresh_account_access_token_with_client(&client, &mut account).await {
+            Ok(true) | Ok(false) => {}
+            Err(err) => {
+                logger::log_warn(&format!(
+                    "[Cursor Refresh] batch access token 刷新失败，继续使用现有 token: id={}, error={}",
+                    account.id, err
+                ));
+            }
+        }
+    }
+
+    let mut usage_refreshed = false;
+    match fetch_usage_summary_with_client(&client, &account.access_token).await {
+        Ok(usage) => {
+            if let Some(mt) = usage.get("membershipType").and_then(|v| v.as_str()) {
+                if !mt.is_empty() {
+                    account.membership_type = Some(mt.to_string());
+                }
+            }
+            account.cursor_usage_raw = Some(usage);
+            account.quota_query_last_error = None;
+            account.quota_query_last_error_at = None;
+            usage_refreshed = true;
+        }
+        Err(err) => {
+            account.quota_query_last_error = Some(err.clone());
+            account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
+            return Err(err);
+        }
+    }
+
+    let refreshed_at = now_ts();
+    if usage_refreshed {
+        account.usage_updated_at = Some(refreshed_at);
+    }
+    account.last_used = refreshed_at;
+    let updated = account.clone();
+    upsert_account_record(account)?;
+    Ok(updated)
+}
+
+async fn refresh_account_quota_only_async(account_id: &str) -> Result<CursorAccount, String> {
+    let result = refresh_account_quota_only_async_once(account_id).await;
+    if let Err(err) = &result {
+        persist_quota_query_error(account_id, err);
+    }
+    result
+}
+
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<CursorAccount, String>)>, String> {
+    use futures::future::join_all;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+
+    const MAX_CONCURRENT: usize = 20;
+
     let accounts = list_accounts();
+    let total = accounts.len();
     let active_accounts: Vec<CursorAccount> = accounts
         .into_iter()
         .filter(|account| !is_banned_account(account))
         .collect();
+    let skipped_banned = total.saturating_sub(active_accounts.len());
 
-    let mut results = Vec::with_capacity(active_accounts.len());
-    for account in active_accounts {
-        let id = account.id.clone();
-        let result = refresh_account_async(&id).await;
-        results.push((id, result));
+    logger::log_info(&format!(
+        "[Cursor Refresh] 批量刷新开始: total={}, active={}, concurrent={}, mode=quota_only",
+        total,
+        active_accounts.len(),
+        MAX_CONCURRENT
+    ));
+    if skipped_banned > 0 {
+        logger::log_info(&format!(
+            "[Cursor Refresh] 跳过封禁账号: skipped={}",
+            skipped_banned
+        ));
     }
+
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
+    let tasks: Vec<_> = active_accounts
+        .into_iter()
+        .map(|account| {
+            let id = account.id;
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| format!("获取 Cursor 刷新并发许可失败: {}", e))?;
+                let result = refresh_account_quota_only_async(&id).await;
+                Ok::<(String, Result<CursorAccount, String>), String>((id, result))
+            }
+        })
+        .collect();
+
+    let mut results = Vec::with_capacity(tasks.len());
+    for task in join_all(tasks).await {
+        match task {
+            Ok(item) => results.push(item),
+            Err(err) => return Err(err),
+        }
+    }
+
+    let success_count = results.iter().filter(|(_, r)| r.is_ok()).count();
+    logger::log_info(&format!(
+        "[Cursor Refresh] 批量刷新完成: total={}, success={}, failed={}",
+        results.len(),
+        success_count,
+        results.len().saturating_sub(success_count)
+    ));
+
     Ok(results)
 }
 
