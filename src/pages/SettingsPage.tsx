@@ -28,7 +28,6 @@ import {
   buildAccountTierFilterOptions,
 } from '../utils/accountFilters';
 import { resolveUpdaterDownloadUrl } from '../utils/updaterReleaseNotes';
-import { PlatformInstallButton } from '../components/PlatformInstallButton';
 import { getSubscriptionTier } from '../utils/account';
 import type { Account } from '../types/account';
 import type { CodexAccount } from '../types/codex';
@@ -2234,11 +2233,6 @@ export function SettingsPage() {
                     >
                       {t('settings.general.codexPathSelect', '选择')}
                     </button>
-                    <PlatformInstallButton
-                      app="antigravity"
-                      disabled={isAppPathResetDetecting('antigravity')}
-                      onInstalled={(path) => setAntigravityAppPath(path)}
-                    />
                     <button
                       className="btn btn-secondary"
                       onClick={() => handleResetAppPath('antigravity')}
@@ -2671,11 +2665,6 @@ export function SettingsPage() {
                     >
                       {t('settings.general.codexPathSelect', '选择')}
                     </button>
-                    <PlatformInstallButton
-                      app="codex"
-                      disabled={isAppPathResetDetecting('codex')}
-                      onInstalled={(path) => setCodexAppPath(path)}
-                    />
                     <button
                       className="btn btn-secondary"
                       onClick={() => handleResetAppPath('codex')}
@@ -3066,11 +3055,6 @@ export function SettingsPage() {
                     >
                       {t('settings.general.vscodePathSelect', '选择')}
                     </button>
-                    <PlatformInstallButton
-                      app="vscode"
-                      disabled={isAppPathResetDetecting('vscode')}
-                      onInstalled={(path) => setVscodeAppPath(path)}
-                    />
                     <button
                       className="btn btn-secondary"
                       onClick={() => handleResetAppPath('vscode')}
@@ -3258,11 +3242,6 @@ export function SettingsPage() {
                     >
                       {t('settings.general.windsurfPathSelect', '选择')}
                     </button>
-                    <PlatformInstallButton
-                      app="windsurf"
-                      disabled={isAppPathResetDetecting('windsurf')}
-                      onInstalled={(path) => setWindsurfAppPath(path)}
-                    />
                     <button
                       className="btn btn-secondary"
                       onClick={() => handleResetAppPath('windsurf')}
@@ -3450,11 +3429,6 @@ export function SettingsPage() {
                     >
                       {t('settings.general.kiroPathSelect', '选择')}
                     </button>
-                    <PlatformInstallButton
-                      app="kiro"
-                      disabled={isAppPathResetDetecting('kiro')}
-                      onInstalled={(path) => setKiroAppPath(path)}
-                    />
                     <button
                       className="btn btn-secondary"
                       onClick={() => handleResetAppPath('kiro')}
@@ -4777,11 +4751,6 @@ export function SettingsPage() {
                     >
                       {t('settings.general.codexPathSelect', '选择')}
                     </button>
-                    <PlatformInstallButton
-                      app="cursor"
-                      disabled={isAppPathResetDetecting('cursor')}
-                      onInstalled={(path) => setCursorAppPath(path)}
-                    />
                     <button
                       className="btn btn-secondary"
                       onClick={() => handleResetAppPath('cursor')}
