@@ -20,6 +20,7 @@ import {
 } from '../../stores/usePlatformLayoutStore';
 import { getPlatformLabel } from '../../utils/platformMeta';
 import { PlatformGroupSwitcher } from './PlatformGroupSwitcher';
+import { PlatformInstalledVersionBadge } from './PlatformInstalledVersionBadge';
 
 export type PlatformOverviewTab = 'overview' | 'wakeup' | 'instances' | 'sessions' | 'providers';
 export type PlatformOverviewHeaderId =
@@ -199,7 +200,9 @@ export function PlatformOverviewTabsHeader({
           <ManualHelpIconButton className="platform-header-help" />
         </div>
         <TopCenterPromoBanner />
-        <div className="page-top-strip-right-placeholder" aria-hidden="true" />
+        <div className="page-top-strip-right">
+          <PlatformInstalledVersionBadge platform={platform} />
+        </div>
       </div>
       <div className="page-tabs-row page-tabs-center page-tabs-row-with-leading">
         <div className="page-tabs-leading">

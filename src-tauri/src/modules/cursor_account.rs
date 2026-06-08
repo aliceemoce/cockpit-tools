@@ -174,6 +174,203 @@ fn write_local_import_backup(
     Ok(backup_path)
 }
 
+fn load_local_import_backup_snapshots() -> Vec<CursorLocalImportBackupSnapshot> {
+    let backup_dir = match get_local_import_backups_dir() {
+        Ok(dir) => dir,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Account] 读取本机导入备份目录失败，跳过补扫: {}",
+                err
+            ));
+            return Vec::new();
+        }
+    };
+
+    let entries = match fs::read_dir(&backup_dir) {
+        Ok(value) => value,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Account] 枚举本机导入备份失败: path={}, error={}",
+                backup_dir.display(),
+                err
+            ));
+            return Vec::new();
+        }
+    };
+
+    let mut snapshots = Vec::new();
+    for entry in entries {
+        let Ok(item) = entry else {
+            continue;
+        };
+        let path = item.path();
+        if !path.is_file() {
+            continue;
+        }
+        let is_json = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
+        if !is_json {
+            continue;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(value) => value,
+            Err(err) => {
+                logger::log_warn(&format!(
+                    "[Cursor Account] 读取本机导入备份失败: path={}, error={}",
+                    path.display(),
+                    err
+                ));
+                continue;
+            }
+        };
+        match serde_json::from_str::<CursorLocalImportBackupSnapshot>(&content) {
+            Ok(snapshot) => snapshots.push(snapshot),
+            Err(err) => {
+                logger::log_warn(&format!(
+                    "[Cursor Account] 解析本机导入备份失败: path={}, error={}",
+                    path.display(),
+                    err
+                ));
+            }
+        }
+    }
+
+    snapshots.sort_by_key(|snapshot| snapshot.created_at_ms);
+    snapshots
+}
+
+fn collect_known_account_emails(index: &CursorAccountIndex) -> HashSet<String> {
+    let mut emails = collect_live_account_emails();
+    for summary in &index.accounts {
+        if let Some(email) = normalize_email_identity(Some(summary.email.as_str())) {
+            emails.insert(email);
+        }
+    }
+    emails
+}
+
+fn resolve_credentials_mirror_accounts_dir() -> Option<PathBuf> {
+    if let Ok(raw) = std::env::var("COCKPIT_CREDENTIALS_DIR") {
+        let root = PathBuf::from(raw.trim());
+        if !root.as_os_str().is_empty() {
+            for candidate in [
+                root.join("data").join("cursor_accounts"),
+                root.join("cursor_accounts"),
+            ] {
+                if candidate.is_dir() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    let home = dirs::home_dir()?;
+    let dev_mirror = home
+        .join("dev")
+        .join("cockpit-credentials")
+        .join("data")
+        .join("cursor_accounts");
+    if dev_mirror.is_dir() {
+        return Some(dev_mirror);
+    }
+    None
+}
+
+fn restore_missing_detail_files_from_mirror(index: &mut CursorAccountIndex) -> usize {
+    let mirror_dir = match resolve_credentials_mirror_accounts_dir() {
+        Some(dir) => dir,
+        None => return 0,
+    };
+
+    let mut restored_count = 0usize;
+    for summary in index.accounts.clone() {
+        if load_account(&summary.id).is_some() {
+            continue;
+        }
+        let mirror_path = mirror_dir.join(format!("{}.json", summary.id));
+        if !mirror_path.is_file() {
+            continue;
+        }
+        let content = match fs::read_to_string(&mirror_path) {
+            Ok(value) => value,
+            Err(err) => {
+                logger::log_warn(&format!(
+                    "[Cursor Account] 读取 credentials 镜像账号失败: path={}, error={}",
+                    mirror_path.display(),
+                    err
+                ));
+                continue;
+            }
+        };
+        let account = match crate::modules::atomic_write::parse_json_with_auto_restore::<
+            CursorAccount,
+        >(&mirror_path, &content)
+        {
+            Ok(value) => value,
+            Err(err) => {
+                logger::log_warn(&format!(
+                    "[Cursor Account] 解析 credentials 镜像账号失败: path={}, error={}",
+                    mirror_path.display(),
+                    err
+                ));
+                continue;
+            }
+        };
+        if let Err(err) = save_account_file(&account) {
+            logger::log_warn(&format!(
+                "[Cursor Account] 从 credentials 镜像恢复账号失败: id={}, error={}",
+                account.id, err
+            ));
+            continue;
+        }
+        refresh_summary(index, &account);
+        restored_count += 1;
+        logger::log_info(&format!(
+            "[Cursor Account] 已从 credentials 镜像恢复账号详情: id={}, email={}",
+            account.id, account.email
+        ));
+    }
+    restored_count
+}
+
+fn restore_missing_accounts_from_backups(index: &mut CursorAccountIndex) -> usize {
+    let live_emails = collect_known_account_emails(index);
+    let snapshots = load_local_import_backup_snapshots();
+    if snapshots.is_empty() {
+        return 0;
+    }
+
+    let mut restored_count = 0usize;
+    let mut seen_emails = live_emails;
+    for snapshot in snapshots {
+        let email = match normalize_email_identity(Some(snapshot.email.as_str())) {
+            Some(value) => value,
+            None => continue,
+        };
+        if !seen_emails.insert(email) {
+            continue;
+        }
+        let mut account = snapshot.account;
+        if let Err(err) = save_account_file(&account) {
+            logger::log_warn(&format!(
+                "[Cursor Account] 从本机导入备份恢复账号失败: email={}, error={}",
+                snapshot.email, err
+            ));
+            continue;
+        }
+        refresh_summary(index, &account);
+        restored_count += 1;
+        logger::log_warn(&format!(
+            "[Cursor Account] 已从本机导入备份恢复账号: id={}, email={}, action={}",
+            account.id, account.email, snapshot.action
+        ));
+    }
+    restored_count
+}
+
 // ---------------------------------------------------------------------------
 // Account file operations
 // ---------------------------------------------------------------------------
@@ -745,6 +942,32 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
     normalized_accounts
 }
 
+pub(crate) fn collect_live_account_emails() -> HashSet<String> {
+    let mut emails = HashSet::new();
+    for account_id in collect_account_ids_from_directory() {
+        let Some(account) = load_account(&account_id) else {
+            continue;
+        };
+        if let Some(email) = normalize_email_identity(Some(account.email.as_str())) {
+            emails.insert(email);
+        }
+    }
+    emails
+}
+
+pub(crate) fn upsert_import_payload_if_missing_email(
+    payload: CursorImportPayload,
+    live_emails: &HashSet<String>,
+) -> Result<bool, String> {
+    let incoming_email = normalize_email_identity(Some(payload.email.as_str()))
+        .ok_or_else(|| "Cursor 账号缺少有效邮箱，禁止非邮箱去重".to_string())?;
+    if live_emails.contains(&incoming_email) {
+        return Ok(false);
+    }
+    upsert_account_with_outcome(payload)?;
+    Ok(true)
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -756,6 +979,11 @@ pub fn list_accounts() -> Vec<CursorAccount> {
     let mut index = load_account_index();
     let had_index_accounts = !index.accounts.is_empty();
     let mut accounts = normalize_account_index(&mut index);
+    let mirror_restored = restore_missing_detail_files_from_mirror(&mut index);
+    let backup_restored = restore_missing_accounts_from_backups(&mut index);
+    if mirror_restored > 0 || backup_restored > 0 {
+        accounts = normalize_account_index(&mut index);
+    }
     if had_index_accounts && accounts.is_empty() {
         logger::log_warn(
             "[Cursor Account] 账号索引中存在账号，但详情文件均无法读取，已跳过空索引写回",
@@ -775,6 +1003,11 @@ pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     let mut index = load_account_index_checked()?;
     let had_index_accounts = !index.accounts.is_empty();
     let mut accounts = normalize_account_index(&mut index);
+    let mirror_restored = restore_missing_detail_files_from_mirror(&mut index);
+    let backup_restored = restore_missing_accounts_from_backups(&mut index);
+    if mirror_restored > 0 || backup_restored > 0 {
+        accounts = normalize_account_index(&mut index);
+    }
     if had_index_accounts && accounts.is_empty() {
         return Err("Cursor 账号索引中存在账号，但详情文件均无法读取；已保留前端缓存，请从账号备份或本地账号文件恢复。".to_string());
     }

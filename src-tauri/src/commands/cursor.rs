@@ -2,10 +2,16 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 
 use crate::models::cursor::CursorAccount;
-use crate::modules::{cursor_account, cursor_oauth, logger};
+use crate::modules::{cursor_account, cursor_import_backup_sync, cursor_oauth, logger};
 
 #[tauri::command]
-pub fn list_cursor_accounts() -> Result<Vec<CursorAccount>, String> {
+pub async fn list_cursor_accounts() -> Result<Vec<CursorAccount>, String> {
+    if let Err(error) = cursor_import_backup_sync::pull_remote_import_backups().await {
+        logger::log_warn(&format!(
+            "[Cursor Command] 远端账号拉取失败，继续使用本地列表: {}",
+            error
+        ));
+    }
     cursor_account::list_accounts_checked()
 }
 

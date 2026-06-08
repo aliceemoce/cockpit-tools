@@ -159,6 +159,7 @@ export function CursorAccountsPage() {
       injectToVSCode: cursorService.injectCursorAccount,
     },
     getDisplayEmail: (account) => getCursorAccountDisplayEmail(account),
+    defaultSortBy: 'credits',
   });
 
   const {
@@ -445,6 +446,12 @@ export function CursorAccountsPage() {
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;
+    }
+
+    const aQuotaFailed = Boolean(a.quota_query_last_error?.trim());
+    const bQuotaFailed = Boolean(b.quota_query_last_error?.trim());
+    if (aQuotaFailed !== bQuotaFailed) {
+      return aQuotaFailed ? 1 : -1;
     }
 
     if (sortBy === 'created_at') {
