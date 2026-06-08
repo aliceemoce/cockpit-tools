@@ -1,0 +1,15 @@
+# Cargo / Rust build outputs (reduce watcher/index churn during compile)
+target/
+**/target/
+src-tauri/target/
+
+# Out-of-tree release target
+cargo-target/
+
+# Frontend
+dist/
+node_modules/
+
+# Caches
+src-tauri/arms_cache/
+sidecars/
