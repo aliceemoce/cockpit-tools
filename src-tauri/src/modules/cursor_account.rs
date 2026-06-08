@@ -1561,6 +1561,34 @@ pub fn import_from_local() -> Result<Option<CursorAccount>, String> {
 // Inject (write auth fields back to Cursor's state.vscdb)
 // ---------------------------------------------------------------------------
 
+fn write_cursor_auth_fields_to_conn(conn: &Connection, account: &CursorAccount) -> Result<(), String> {
+    upsert_vscdb_item(&conn, "cursorAuth/accessToken", &account.access_token)?;
+    if let Some(ref rt) = account.refresh_token {
+        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", rt)?;
+    }
+    upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
+    let sign_up = account
+        .sign_up_type
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or("Auth_0");
+    upsert_vscdb_item(&conn, "cursorAuth/cachedSignUpType", sign_up)?;
+    if let Some(ref auth_id) = account.auth_id {
+        if !auth_id.trim().is_empty() {
+            upsert_vscdb_item(&conn, "cursorAuth/authId", auth_id)?;
+        }
+    }
+    if let Some(ref mt) = account.membership_type {
+        upsert_vscdb_item(&conn, "cursorAuth/stripeMembershipType", mt)?;
+    }
+    if let Some(ref ss) = account.subscription_status {
+        upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
+    }
+    upsert_vscdb_item(&conn, "cursor.accessToken", &account.access_token)?;
+    upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
+    Ok(())
+}
+
 fn upsert_vscdb_item(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
     conn.execute(
         "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?1, ?2)",
@@ -1750,6 +1778,28 @@ pub fn hard_reset_cursor_fingerprint_state_for_profile(profile_dir: &Path) -> Re
     Ok(())
 }
 
+/// 关闭 Cursor → 重置 profile 指纹 → 注入 token（账号总览 Play 与多开实例共用）
+pub fn switch_cursor_account_to_profile(
+    account_id: &str,
+    profile_dir: &Path,
+) -> Result<(), String> {
+    let account = load_account(account_id)
+        .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    let profile_dir_str = profile_dir.to_string_lossy().to_string();
+    crate::modules::cursor_instance::close_cursor(&[profile_dir_str], 20)?;
+    hard_reset_cursor_fingerprint_state_for_profile(profile_dir)?;
+    if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
+        crate::modules::cursor_switch_align::apply_pre_inject_cursor_patches(&cursor_exe);
+    }
+    crate::modules::cursor_instance::inject_account_to_profile(profile_dir, account_id)?;
+    logger::log_info(&format!(
+        "[Cursor Switch] 已切换账号到 profile: email={}, profile={}",
+        account.email,
+        profile_dir.display()
+    ));
+    Ok(())
+}
+
 pub fn inject_to_cursor(account_id: &str) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
@@ -1760,21 +1810,7 @@ pub fn inject_to_cursor(account_id: &str) -> Result<(), String> {
 
     let conn =
         Connection::open(&db_path).map_err(|e| format!("打开 Cursor 本地数据库失败: {}", e))?;
-
-    upsert_vscdb_item(&conn, "cursorAuth/accessToken", &account.access_token)?;
-    if let Some(ref rt) = account.refresh_token {
-        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", rt)?;
-    }
-    upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
-    if let Some(ref mt) = account.membership_type {
-        upsert_vscdb_item(&conn, "cursorAuth/stripeMembershipType", mt)?;
-    }
-    if let Some(ref ss) = account.subscription_status {
-        upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
-    }
-
-    upsert_vscdb_item(&conn, "cursor.accessToken", &account.access_token)?;
-    upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
+    write_cursor_auth_fields_to_conn(&conn, &account)?;
 
     logger::log_info(&format!(
         "[Cursor Account] 注入成功: id={}, email={}",
@@ -1792,21 +1828,7 @@ pub fn inject_to_cursor_at_path(db_path: &std::path::Path, account_id: &str) -> 
 
     let conn =
         Connection::open(db_path).map_err(|e| format!("打开 Cursor 本地数据库失败: {}", e))?;
-
-    upsert_vscdb_item(&conn, "cursorAuth/accessToken", &account.access_token)?;
-    if let Some(ref rt) = account.refresh_token {
-        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", rt)?;
-    }
-    upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
-    if let Some(ref mt) = account.membership_type {
-        upsert_vscdb_item(&conn, "cursorAuth/stripeMembershipType", mt)?;
-    }
-    if let Some(ref ss) = account.subscription_status {
-        upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
-    }
-
-    upsert_vscdb_item(&conn, "cursor.accessToken", &account.access_token)?;
-    upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
+    write_cursor_auth_fields_to_conn(&conn, &account)?;
 
     logger::log_info(&format!(
         "[Cursor Account] 注入成功(自定义路径): id={}, email={}, path={}",

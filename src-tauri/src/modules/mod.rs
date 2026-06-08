@@ -29,6 +29,7 @@ pub mod config;
 pub mod cursor_account;
 pub mod cursor_import_backup_sync;
 pub mod cursor_instance;
+pub mod cursor_switch_align;
 pub mod cursor_oauth;
 pub mod db;
 pub mod device;

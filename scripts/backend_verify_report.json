@@ -1,0 +1,87 @@
+{
+  "static_switch_paths": {
+    "exit": 0,
+    "output": "PASS: 总览 Play 与多开 Start 共用 start_cursor_instance_with_account_switch -> switch_cursor_account_to_profile"
+  },
+  "three_way_local_unified": true,
+  "cockpit_has_assistant_strings": false,
+  "nirvana_extracted": true,
+  "nirvana_hit_count": 52,
+  "nirvana_has_workbench_patch": true,
+  "cockpit_has_switch_align_module": true,
+  "flow_comparison": {
+    "nirvana_steps": [
+      "1. taskkill Cursor.exe",
+      "2. resetMachineIdFile (machineid file)",
+      "3. resetStorageJsonIds (telemetry.* in storage.json)",
+      "4. reset state.vscdb ItemTable telemetry + storage.serviceMachineId",
+      "5. optional resetWindowsMachineGuid",
+      "6. patch Cursor workbench main.js -> __cursorAuthBridge.switchAccount(access,refresh,email,signUpType)",
+      "7. launch Cursor"
+    ],
+    "cockpit_steps": [
+      "close_cursor",
+      "hard_reset_cursor_fingerprint_state_for_profile",
+      "reset_windows_machine_guid (optional)",
+      "patch_cursor_workbench_auth_bridge",
+      "inject_account_to_profile (cursorAuth/* aligned with nirvana writeTokenToDb)",
+      "cursor_start_instance_prepared"
+    ],
+    "mapping": [
+      {
+        "nirvana": "1. taskkill Cursor.exe",
+        "cockpit": "close_cursor",
+        "match": true
+      },
+      {
+        "nirvana": "2. resetMachineIdFile (machineid file)",
+        "cockpit": "hard_reset_*",
+        "match": true
+      },
+      {
+        "nirvana": "3. resetStorageJsonIds (telemetry.* in storage.json)",
+        "cockpit": "hard_reset_*",
+        "match": true
+      },
+      {
+        "nirvana": "4. reset state.vscdb ItemTable telemetry + storage.serviceMachineId",
+        "cockpit": "hard_reset_*",
+        "match": true
+      },
+      {
+        "nirvana": "5. optional resetWindowsMachineGuid",
+        "cockpit": "reset_windows_machine_guid",
+        "match": true
+      },
+      {
+        "nirvana": "6. patch Cursor workbench main.js -> __cursorAuthBridge.switchAccount(access,refresh,email,signUpType)",
+        "cockpit": "patch_cursor_workbench_auth_bridge",
+        "match": true
+      },
+      {
+        "nirvana": "7. launch Cursor",
+        "cockpit": "cursor_start_instance_prepared",
+        "match": true
+      }
+    ]
+  },
+  "flow_matches_nirvana": true,
+  "cursor_profile": {
+    "profile_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+    "storage_json": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\\User\\globalStorage\\storage.json",
+    "machine_id": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\\machineId",
+    "state_vscdb": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\\User\\globalStorage\\state.vscdb",
+    "storage_exists": true,
+    "machine_exists": true,
+    "vscdb_exists": true
+  },
+  "cursor_token_preview": "eyJhbGciOiJI...",
+  "cursor_telemetry_preview": {
+    "telemetry.machineId": "ca8d9fc12224...",
+    "telemetry.macMachineId": "49e64af83bb1...",
+    "telemetry.devDeviceId": "b811df7d-26f...",
+    "telemetry.sqmId": "{AB2E01AE-9F..."
+  },
+  "errors": [],
+  "ok": true
+}

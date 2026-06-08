@@ -53,20 +53,26 @@ Quick Settings 路径行有 `install_missing_platform`（`/S` 等静默参数）
 
 ## 10. Cursor 多开实例 vs 账号总览 Play
 
-| | 账号总览 Play (`inject_cursor_account`) | 多开实例 Start |
-|--|----------------------------------------|----------------|
-| 指纹重置 | 默认 profile `hard_reset` | 原先**无**（已补 `hard_reset_cursor_fingerprint_state_for_profile`） |
-| 注入 | 总是注入所选账号 | 仅当实例 **绑定账号** 时注入 |
-| 跟随当前账号 | N/A | Cursor **不支持** `follow_local_account` |
+**已统一（2026-06-08）：** 二者均调用 `switch_cursor_account_to_profile`（关进程 → 指纹重置 → 注入），启动阶段用 `cursor_start_instance_prepared` 避免二次注入。
 
-未绑定账号的实例会打开空 profile，表现为「无法登录」——需在实例上绑定账号后再启动。
+| | 账号总览 Play | 多开实例 Start |
+|--|---------------|----------------|
+| 切号 | `switch_cursor_account_to_profile` | 同上 |
+| 账号来源 | 用户点击的账号 | `bind_account_id` → 否则当前 Cursor 账号 |
+| 启动 | `cursor_start_instance_prepared` | 同上 |
 
-## 11. 换号逻辑 vs「无忧小助手」
+## 11. 桌面快捷方式指向旧 Cockpit 安装包
 
-本仓库 **无**「无忧小助手」字符串或专用协议。Cursor 切号为 Cockpit 自研路径：
+桌面 `Cockpit Tools.lnk` → `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（2026-06-06），**不是** dev 构建 `cargo-target\...\release\cockpit-tools.exe`（2026-06-08）。用户若只点桌面图标，会看到「全错」的旧 UI/逻辑。
 
-`close_cursor` → `hard_reset_cursor_fingerprint_state` → `inject_to_cursor` → `cursor_start_instance`
+## 12. cockpit-tools 内无小助手相关代码
 
-日志中的「n 风格指纹重置」指本地 machineId/storage.json/state.vscdb 重写，**不是**第三方无忧小助手逻辑。
+仓库内 **零** `无忧`/`nirvana`/`jzzcg` 引用。桌面小助手是独立程序，与 Cockpit 切号实现无关。
+
+未绑定账号且无「当前 Cursor 账号」时，实例启动会报错——需绑定账号或在总览 Play 切号一次。
+
+## 13. 验收未覆盖「安装目录 exe 已更新」
+
+旧版 `verify_acceptance_minimized.py` 只测 `cargo-target` release，不测 `%LocalAppData%\Cockpit Tools\`。桌面快捷方式仍可能指向旧包。新版要求 `installed_matches_release == true` 才算 `ok`。
 
 Antigravity 才有 WebSocket `seamless` 切号；Cursor **没有** seamless 插件切号。

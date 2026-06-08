@@ -1,0 +1,59 @@
+{
+  "bundle": "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\nirvana_extracted\\dist-electron\\main-FXxcqbQA.js",
+  "size": 859774,
+  "flows": [
+    {
+      "marker": "switchAccount",
+      "snippet": "ench.desktop.main.js.bak\"); g.existsSync(a) || (g.copyFileSync(t, a), console.log(`📦 已备份原文件到: ${a}`)); } catch (o) { console.warn(\"⚠️ 备份失败（不影响 patch）:\", o); } const s = e.indexOf(\"this.logout=\"); if (s === -1) return { success: !1, message: \"未找到 this.logout= 注入点，可能 Cursor 版本不兼容\" }; const r = e.slice(0, s) + '/*jzzcg-auth-bridge*/globalThis.__cursorAuthBridge={switchAccount:(at,rt,em,st)=>{this.storeAccessRefreshToken(at,rt);em&&(this.storageService.store(\"cursorAuth/cachedEmail\",em,-1,1),this.storageService.store(\"cursorAuth/cachedSignUpType\",st||\"Auth_0\",-1,1));this.refreshMembership()}},/*jzzcg-auth-bridge-end*/' + e.slice(s); console.log(\"📝 将要注入 auth bridge 代码\"); try { return g.writeFileSync(t, r, \"utf-8\"), console.log(\"✅ workbench pat"
+    },
+    {
+      "marker": "patchCursorWorkbench",
+      "snippet": "eamlessSetup: Kc, cleanCursorEnvironment: Vh, closeCursor: ho, fetchCursorUsage: fo, fetchCursorUsageDetailed: Uc, fetchCursorUserInfo: Nh, generateDeviceId: be, generateMacMachineId: ns, generateMachineId: ss, generateSqmId: rs, getLocalCursorAccount: Fc, getLocalCursorAccountWithUsage: Mh, getMachineGuidBackupInfo: ag, loginAndGetInfo: tg, patchCursorMachineId: Yh, patchCursorWorkbench: Xh, patchCursorWorkbenchV7: Hc, resetMachineIdFile: Jh, resetStorageJsonIds: Gh, resetWindowsMachineGuid: Nc, restoreCursorMainJs: Qh, restoreOriginalMachineGuid: sg, saveSeamlessSetupInfo: yo, setupSeamlessEnvironment: zc, silentLogin: mo, silentLoginWithPython: Mc, silentSwitch: Zh, startCursor: go, switchTokensInDb: Kh, teardownSeamlessEnvironme"
+    },
+    {
+      "marker": "patchCursorMachineId",
+      "snippet": "batchGetTokens: eg, checkSeamlessSetup: Kc, cleanCursorEnvironment: Vh, closeCursor: ho, fetchCursorUsage: fo, fetchCursorUsageDetailed: Uc, fetchCursorUserInfo: Nh, generateDeviceId: be, generateMacMachineId: ns, generateMachineId: ss, generateSqmId: rs, getLocalCursorAccount: Fc, getLocalCursorAccountWithUsage: Mh, getMachineGuidBackupInfo: ag, loginAndGetInfo: tg, patchCursorMachineId: Yh, patchCursorWorkbench: Xh, patchCursorWorkbenchV7: Hc, resetMachineIdFile: Jh, resetStorageJsonIds: Gh, resetWindowsMachineGuid: Nc, restoreCursorMainJs: Qh, restoreOriginalMachineGuid: sg, saveSeamlessSetupInfo: yo, setupSeamlessEnvironment: zc, silentLogin: mo, silentLoginWithPython: Mc, silentSwitch: Zh, startCursor: go, switchTokensInDb: Kh,"
+    },
+    {
+      "marker": "resetMachineIdFile",
+      "snippet": "sor: ho, fetchCursorUsage: fo, fetchCursorUsageDetailed: Uc, fetchCursorUserInfo: Nh, generateDeviceId: be, generateMacMachineId: ns, generateMachineId: ss, generateSqmId: rs, getLocalCursorAccount: Fc, getLocalCursorAccountWithUsage: Mh, getMachineGuidBackupInfo: ag, loginAndGetInfo: tg, patchCursorMachineId: Yh, patchCursorWorkbench: Xh, patchCursorWorkbenchV7: Hc, resetMachineIdFile: Jh, resetStorageJsonIds: Gh, resetWindowsMachineGuid: Nc, restoreCursorMainJs: Qh, restoreOriginalMachineGuid: sg, saveSeamlessSetupInfo: yo, setupSeamlessEnvironment: zc, silentLogin: mo, silentLoginWithPython: Mc, silentSwitch: Zh, startCursor: go, switchTokensInDb: Kh, teardownSeamlessEnvironment: qc, writeTokenToDb: Lc, writeTokensToDb: Wh }, Sym"
+    },
+    {
+      "marker": "resetStorageJsonIds",
+      "snippet": "e: fo, fetchCursorUsageDetailed: Uc, fetchCursorUserInfo: Nh, generateDeviceId: be, generateMacMachineId: ns, generateMachineId: ss, generateSqmId: rs, getLocalCursorAccount: Fc, getLocalCursorAccountWithUsage: Mh, getMachineGuidBackupInfo: ag, loginAndGetInfo: tg, patchCursorMachineId: Yh, patchCursorWorkbench: Xh, patchCursorWorkbenchV7: Hc, resetMachineIdFile: Jh, resetStorageJsonIds: Gh, resetWindowsMachineGuid: Nc, restoreCursorMainJs: Qh, restoreOriginalMachineGuid: sg, saveSeamlessSetupInfo: yo, setupSeamlessEnvironment: zc, silentLogin: mo, silentLoginWithPython: Mc, silentSwitch: Zh, startCursor: go, switchTokensInDb: Kh, teardownSeamlessEnvironment: qc, writeTokenToDb: Lc, writeTokensToDb: Wh }, Symbol.toStringTag, { value: "
+    },
+    {
+      "marker": "resetWindowsMachineGuid",
+      "snippet": " Dc(); if (g.existsSync(o)) try { const c = be(); g.writeFileSync(o, c), console.log(\"✅ machineId 文件已重置\"); } catch (c) { console.error(\"⚠️ 重置 machineId 失败:\", c); } let a = null, i = null; if (process.platform === \"win32\") { console.log(\"🔧 开始重置 Windows 注册表 MachineGuid...\"); try { const c = Nc(); a = c, console.log(\"🔧 resetWindowsMachineGuid 返回结果:\", c), c.success ? (console.log(\"✅ Windows 注册表 MachineGuid 已重置\"), console.log(` 旧值: ${c.oldGuid}`), console.log(` 新值: ${c.newGuid}`)) : (console.error(\"❌ 重置注册表 MachineGuid 失败:\", c.message), (c.message.includes(\"权限\") || c.message.includes(\"管理员\")) && (console.error(\"❌ 权限不足：请确保以管理员身份运行本程序！\"), console.error(\"❌ 注意：开发模式下需要手动以管理员身份运行\")), console.error(\"❌ 注册表清理失败，但其他清理步骤已完"
+    },
+    {
+      "marker": "FingerprintReset",
+      "snippet": "{ return \"{\" + je.randomUUID().toUpperCase() + \"}\"; } async function lh(t) { try { const e = t.getWindsurfPath(); if (!e || !D.existsSync(e)) return { success: !1, message: \"Windsurf 配置目录不存在，跳过指纹重置\" }; const s = I.join(e, \"machineid\"), n = qa(); try { D.existsSync(s) && await ye.copyFile(s, s + `.bak_${Date.now()}`), await ye.writeFile(s, n, \"utf-8\"), console.log(\"[FingerprintReset] machineid 已重置:\", n); } catch (l) { console.warn(\"[FingerprintReset] machineid 写入失败:\", l); } const r = I.join(e, \"User\", \"globalStorage\", \"storage.json\"), o = { \"telemetry.machineId\": ah(), \"telemetry.sqmId\": ch(), \"telemetry.devDeviceId\": qa() }; try { let l = {}; if (D.existsSync(r)) { await ye.copyFile(r, r + `.bak"
+    },
+    {
+      "marker": "taskkill /IM Cursor.exe",
+      "snippet": " break; } if (s >= t) { console.warn(\"[closeCursor] 等待超时，Cursor 可能仍在运行\"); try { C(\"pkill -9 -x Cursor\", { stdio: \"ignore\" }); } catch { } ((r) => { const o = Date.now() + r; for (; Date.now() < o; ) ; })(500); } } else if (process.platform === \"win32\") { try { C(\"taskkill /IM Cursor.exe\", { stdio: \"ignore\", timeout: 5e3 }); } catch { } const t = (r) => { const o = Date.now() + r; for (; Date.now() < o; ) ; }, e = 5e3, s = 500; let n = 0; for (; n < e; ) { t(s), n += s; try { if (!C('tasklist /FI \"IMAGENAME eq Cursor.exe\" /FO CSV /NH', { encoding: \"utf-8\", timeout: 3e3, "
+    },
+    {
+      "marker": "cursorAuth/cachedEmail",
+      "snippet": "正在打开 Cursor 登录页面...\"), r.loadURL(\"https://www.cursor.com/settings\"); }); } function Lc(t) { const e = ts(); if (!g.existsSync(e)) return console.error(\"Cursor 数据库不存在:\", e), !1; try { const s = new es(e), n = decodeURIComponent(t.sessionToken), o = [ [\"cursorAuth/accessToken\", n.includes(\"::\") ? n.split(\"::\")[1] : n], [\"cursorAuth/refreshToken\", t.sessionToken], [\"cursorAuth/cachedEmail\", t.email], [\"cursorAuth/cachedSignUpType\", \"Auth_0\"] ], a = s.prepare(\"INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)\"); for (const [i, c] of o) a.run(i, c); return s.close(), !0; } catch (s) { return console.error(\"写入数据库失败:\", s), !1; } } function Wh(t) { const e = ts(); if (!g.existsSync(e)) return console.error(\"Cursor "
+    },
+    {
+      "marker": "storeAccessRefreshToken",
+      "snippet": ".existsSync(a) || (g.copyFileSync(t, a), console.log(`📦 已备份原文件到: ${a}`)); } catch (o) { console.warn(\"⚠️ 备份失败（不影响 patch）:\", o); } const s = e.indexOf(\"this.logout=\"); if (s === -1) return { success: !1, message: \"未找到 this.logout= 注入点，可能 Cursor 版本不兼容\" }; const r = e.slice(0, s) + '/*jzzcg-auth-bridge*/globalThis.__cursorAuthBridge={switchAccount:(at,rt,em,st)=>{this.storeAccessRefreshToken(at,rt);em&&(this.storageService.store(\"cursorAuth/cachedEmail\",em,-1,1),this.storageService.store(\"cursorAuth/cachedSignUpType\",st||\"Auth_0\",-1,1));this.refreshMembership()}},/*jzzcg-auth-bridge-end*/' + e.slice(s); console.log(\"📝 将要注入 auth bridge 代码\"); try { return g.writeFileSync(t, r, \"utf-8\"), console.log(\"✅ workbench patch 成功，已注入 auth bridge\"), { success:"
+    },
+    {
+      "marker": "startCursor",
+      "snippet": "t t = me(\"cursor\"); try { const e = x.join(R.homedir(), \"Library/Saved Application State\"); if (g.existsSync(e)) { const s = g.readdirSync(e); for (const n of s) if (n.toLowerCase().includes(\"cursor\") && n.endsWith(\".savedState\")) { const r = x.join(e, n); try { g.rmSync(r, { recursive: !0, force: !0 }), console.log(`[startCursor] 已清理 Saved Application State: ${n}`); } catch { } } } } catch (e) { console.warn(\"[startCursor] 清理 Saved State 失败（不影响启动）:\", e); } t ? de(\"open\", [\"-n\", \"-a\", t], { detached: !0, stdio: \"ignore\" }) : de(\"open\", [\"-n\", \"-a\", \"Cursor\"], { detached: !0, stdio: \"ignore\" }), console.log(\"[startCursor] macOS: open -n -a Cursor\"); } e"
+    }
+  ],
+  "ordered_steps_inferred": [
+    "1. taskkill Cursor.exe",
+    "2. resetMachineIdFile (machineid file)",
+    "3. resetStorageJsonIds (telemetry.* in storage.json)",
+    "4. reset state.vscdb ItemTable telemetry + storage.serviceMachineId",
+    "5. optional resetWindowsMachineGuid",
+    "6. patch Cursor workbench main.js -> __cursorAuthBridge.switchAccount(access,refresh,email,signUpType)",
+    "7. launch Cursor"
+  ]
+}

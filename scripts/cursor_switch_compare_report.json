@@ -1,0 +1,86 @@
+{
+  "upstream": {
+    "src-tauri/src/commands/cursor.rs": {
+      "inject_cursor_account": [
+        187
+      ],
+      "inject_to_cursor": [
+        197
+      ]
+    },
+    "src-tauri/src/commands/cursor_instance.rs": {
+      "inject_bound_account_for_instance_start": [
+        19,
+        235,
+        281
+      ],
+      "inject_account_to_profile": [
+        39
+      ]
+    },
+    "src-tauri/src/modules/cursor_account.rs": {
+      "inject_to_cursor": [
+        1226,
+        1259
+      ]
+    }
+  },
+  "local": {
+    "src-tauri/src/commands/cursor.rs": {
+      "inject_cursor_account": [
+        193
+      ],
+      "start_cursor_instance_with_account_switch": [
+        203
+      ]
+    },
+    "src-tauri/src/commands/cursor_instance.rs": {
+      "switch_cursor_account_to_profile": [
+        41
+      ],
+      "start_cursor_instance_with_account_switch": [
+        78,
+        287
+      ],
+      "cursor_start_instance_prepared": [
+        109,
+        290
+      ]
+    },
+    "src-tauri/src/modules/cursor_account.rs": {
+      "inject_to_cursor": [
+        1803,
+        1822
+      ],
+      "switch_cursor_account_to_profile": [
+        1782
+      ],
+      "hard_reset_cursor_fingerprint": [
+        1719,
+        1744,
+        1748,
+        1759,
+        1769,
+        1790
+      ],
+      "inject_account_to_profile": [
+        1794
+      ]
+    }
+  },
+  "flows": {
+    "upstream": [
+      "upstream inject_cursor_account:",
+      "  -> inject_to_cursor (no unified switch)",
+      "  -> cursor_start_instance -> inject_bound (may double-inject)",
+      "upstream instance start: inject_bound only when bind set"
+    ],
+    "local": [
+      "local: unified start_cursor_instance_with_account_switch",
+      "  -> switch_cursor_account_to_profile (close+reset+inject)",
+      "  -> cursor_start_instance_prepared (launch only)"
+    ]
+  },
+  "consistent_local": true,
+  "fork_has_wuyou_strings": false
+}

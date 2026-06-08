@@ -18,6 +18,7 @@ import uiautomation as auto
 EXE = Path(
     r"C:\Users\aliceemoce\dev\cargo-target\cockpit-tools\release\cockpit-tools.exe"
 )
+INSTALLED_EXE = Path.home() / "AppData/Local/Cockpit Tools/cockpit-tools.exe"
 REPO = Path(r"C:\Users\aliceemoce\dev\cockpit-tools")
 OUT = Path(r"C:\Users\aliceemoce\AppData\Local\Temp")
 REPORT = REPO / "scripts" / "acceptance_verify_report.json"
@@ -111,18 +112,28 @@ def walk(root: auto.Control) -> list[auto.Control]:
 
 
 def invoke_cursor_sidebar(win: auto.Control) -> bool:
+    dismiss_blocking_modals(win)
     for ctrl in walk(win):
         try:
             n = (ctrl.Name or "").strip()
-            if ctrl.ControlTypeName == "ButtonControl" and n.startswith("Cursor"):
+            if ctrl.ControlTypeName != "ButtonControl":
+                continue
+            if n == "Cursor" or n.startswith("Cursor "):
                 inv = ctrl.GetInvokePattern()
                 if inv:
                     inv.Invoke()
-                    time.sleep(0.8)
+                    time.sleep(1.2)
                     return True
         except Exception:
             pass
-    return invoke_by_name(win, "Cursor", partial=True)
+    return invoke_by_name(win, "Cursor", partial=False)
+
+
+def dismiss_blocking_modals(win: auto.Control) -> None:
+    for label in ("关闭", "取消", "知道了", "确定"):
+        if invoke_by_name(win, label, partial=False):
+            time.sleep(0.6)
+            break
 
 
 def invoke_by_name(win: auto.Control, name: str, partial: bool = False) -> bool:
@@ -250,13 +261,22 @@ def bundle_has_badge() -> bool:
     return False
 
 
+def resolve_launch_exe() -> Path:
+  # 优先 release（自动化环境对 LocalAppData 路径偶发 PermissionError）
+    if EXE.is_file():
+        return EXE
+    return INSTALLED_EXE
+
+
 def main() -> None:
     report: dict = {"steps": []}
+    launch_exe = resolve_launch_exe()
+    report["launch_exe"] = str(launch_exe)
 
     subprocess.run(["taskkill", "/F", "/IM", "cockpit-tools.exe"], capture_output=True)
-    time.sleep(1)
-    subprocess.Popen([str(EXE)], cwd=EXE.parent)
-    win = wait_main_window(40.0)
+    time.sleep(2)
+    subprocess.Popen([str(launch_exe)], cwd=launch_exe.parent)
+    win = wait_main_window(50.0)
     if not win:
         report["ok"] = False
         report["error"] = "no_window"
@@ -264,17 +284,21 @@ def main() -> None:
         print(json.dumps(report, ensure_ascii=False))
         return
 
-    time.sleep(8)
-    win = wait_main_window(10.0) or win
-    minimized = minimize_invoke(win)
-    report["steps"].append({"launch_minimize": minimized, "state": window_state(win)})
+    time.sleep(12)
+    win = ensure_visible_window(wait_main_window(15.0) or win)
+    dismiss_blocking_modals(win)
 
-    restore_normal(win)
-    time.sleep(1)
-    win = wait_main_window(5.0) or win
-    nav_ok = invoke_cursor_sidebar(win)
+    nav_ok = False
+    for attempt in range(6):
+        win = ensure_visible_window(wait_main_window(5.0) or win)
+        dismiss_blocking_modals(win)
+        if invoke_cursor_sidebar(win):
+            nav_ok = True
+            break
+        time.sleep(1.5)
     report["steps"].append({"navigate_cursor_sidebar": nav_ok})
-    time.sleep(2)
+    time.sleep(3)
+    win = ensure_visible_window(wait_main_window(5.0) or win)
 
     names = collect_names(win)
     keywords = ["检测", "未检测", "Cursor.exe", "按剩余 Credits", "Cursor 设置", "ERR_CONNECTION"]
@@ -321,13 +345,28 @@ def main() -> None:
     report["bundle_badge"] = bundle_has_badge()
     report["exe"] = str(EXE)
     report["exe_exists"] = EXE.is_file()
+    report["installed_exe"] = str(INSTALLED_EXE)
+    installed_deployed = False
+    if EXE.is_file() and INSTALLED_EXE.is_file():
+        rel = EXE.stat()
+        ins = INSTALLED_EXE.stat()
+        report["installed_exe_size"] = ins.st_size
+        report["release_exe_size"] = rel.st_size
+        report["installed_exe_mtime"] = ins.st_mtime
+        report["release_exe_mtime"] = rel.st_mtime
+        installed_deployed = ins.st_size == rel.st_size and ins.st_mtime >= rel.st_mtime - 2
+    report["installed_matches_release"] = installed_deployed
     report["ok"] = (
-        report["cursor_page"]["has_cursor_settings"]
+        nav_ok
+        and report["cursor_page"]["has_cursor_settings"]
         and report["cursor_page"]["has_credits_sort"]
         and not report["cursor_page"]["connection_error"]
         and report["bundle_badge"]
         and report["account_audit"].get("missing_detail_count", 1) == 0
+        and installed_deployed
     )
+    minimized = minimize_invoke(find_main_window() or win)
+    report["steps"].append({"minimize_after_verify": minimized})
     report["minimized_after"] = window_state(find_main_window() or win) == "minimized"
 
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

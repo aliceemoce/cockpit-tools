@@ -1,53 +1,37 @@
 {
   "steps": [
     {
-      "launch_minimize": true,
-      "state": "minimized"
+      "navigate_cursor_sidebar": false
     },
     {
-      "navigate_cursor_sidebar": true
+      "minimize_after_verify": true
     }
   ],
+  "launch_exe": "C:\\Users\\aliceemoce\\dev\\cargo-target\\cockpit-tools\\release\\cockpit-tools.exe",
   "cursor_page": {
     "png": "C:\\Users\\aliceemoce\\AppData\\Local\\Temp\\acceptance-cursor-page.png",
     "keyword_hits": {
       "检测": [],
       "未检测": [],
-      "Cursor.exe": [
-        "Cursor.exe"
-      ],
-      "按剩余 Credits": [
-        "按剩余 Credits"
-      ],
-      "Cursor 设置": [
-        "Cursor 设置"
-      ],
+      "Cursor.exe": [],
+      "按剩余 Credits": [],
+      "Cursor 设置": [],
       "ERR_CONNECTION": []
     },
-    "has_credits_sort": true,
-    "has_cursor_settings": true,
-    "has_badge_text": true,
+    "has_credits_sort": false,
+    "has_cursor_settings": false,
+    "has_badge_text": false,
     "connection_error": false
   },
   "quick_settings": {
-    "opened": true,
+    "opened": false,
     "capture_ok": true,
     "png": "C:\\Users\\aliceemoce\\AppData\\Local\\Temp\\acceptance-quicksettings.png",
     "hits": {
       "Download": [],
-      "path": [
-        "CURSOR 路径",
-        "默认路径"
-      ],
+      "path": [],
       "RefreshCw": [
-        "刷新配额",
-        "刷新配额",
-        "刷新配额",
-        "刷新配额",
-        "刷新配额",
-        "刷新配额",
-        "刷新配额",
-        "刷新配额"
+        "刷新"
       ]
     }
   },
@@ -60,12 +44,18 @@
     "orphan_file_count": 0,
     "missing_detail_sample": [],
     "null_usage_files": 19,
-    "quota_error_files": 690,
+    "quota_error_files": 689,
     "backup_count": 0
   },
   "bundle_badge": true,
   "exe": "C:\\Users\\aliceemoce\\dev\\cargo-target\\cockpit-tools\\release\\cockpit-tools.exe",
   "exe_exists": true,
-  "ok": true,
-  "minimized_after": true
+  "installed_exe": "C:\\Users\\aliceemoce\\AppData\\Local\\Cockpit Tools\\cockpit-tools.exe",
+  "installed_exe_size": 65166336,
+  "release_exe_size": 65166336,
+  "installed_exe_mtime": 1780938200.505978,
+  "release_exe_mtime": 1780938200.505978,
+  "installed_matches_release": true,
+  "ok": false,
+  "minimized_after": false
 }

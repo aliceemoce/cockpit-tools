@@ -1104,7 +1104,7 @@ pub fn detect_and_save_cursor_launch_path(force: bool) -> Option<String> {
     Some(normalized)
 }
 
-fn resolve_cursor_launch_path() -> Result<PathBuf, String> {
+pub fn resolve_cursor_launch_path() -> Result<PathBuf, String> {
     let config = modules::config::get_user_config();
     if let Some(custom) = normalize_custom_path(&config.cursor_app_path) {
         if let Some(exec) = resolve_macos_exec_path(&custom) {

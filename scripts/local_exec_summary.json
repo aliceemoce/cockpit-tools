@@ -1,0 +1,17 @@
+﻿{
+    "verify_paths_exit":  0,
+    "compare_exit":  0,
+    "npm_exit":  0,
+    "cargo_exit":  101,
+    "copy_ok":  true,
+    "release_size":  65091072,
+    "release_mtime":  "2026-06-08T09:40:54.1367133Z",
+    "installed_size":  65091072,
+    "installed_mtime":  "2026-06-08T09:40:54.1367133Z",
+    "installed_matches_release":  true,
+    "acceptance_ok":  true,
+    "acceptance_installed_matches_release":  true,
+    "any_errors":  [
+                       "cargo build exit 101"
+                   ]
+}

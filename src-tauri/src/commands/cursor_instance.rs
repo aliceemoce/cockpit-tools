@@ -16,33 +16,97 @@ fn is_profile_initialized(user_data_dir: &str) -> bool {
     }
 }
 
-fn inject_bound_account_for_instance_start(
-    user_data_dir: &str,
-    bind_account_id: Option<&str>,
-) -> Result<(), String> {
-    let bind_id = bind_account_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let Some(bind_id) = bind_id else {
-        return Ok(());
+fn resolve_instance_switch_account_id(bind_account_id: Option<&str>) -> Result<String, String> {
+    if let Some(bind_id) = bind_account_id.map(str::trim).filter(|value| !value.is_empty()) {
+        if modules::cursor_account::load_account(bind_id).is_some() {
+            return Ok(bind_id.to_string());
+        }
+        return Err(format!("绑定账号不存在: {}", bind_id));
+    }
+
+    if let Some(current_id) =
+        modules::provider_current_state::get_current_account_id("cursor").ok().flatten()
+    {
+        if modules::cursor_account::load_account(&current_id).is_some() {
+            return Ok(current_id);
+        }
+    }
+
+    Err(
+        "请先为实例绑定账号，或在账号总览中切换当前账号后再启动".to_string(),
+    )
+}
+
+fn prepare_instance_for_account(user_data_dir: &str, account_id: &str) -> Result<(), String> {
+    modules::cursor_account::switch_cursor_account_to_profile(
+        account_id,
+        Path::new(user_data_dir),
+    )
+}
+
+struct InstanceLaunchContext {
+    user_data_dir: String,
+    bind_account_id: Option<String>,
+    is_default: bool,
+}
+
+fn resolve_instance_launch_context(instance_id: &str) -> Result<InstanceLaunchContext, String> {
+    if instance_id == DEFAULT_INSTANCE_ID {
+        let default_dir = modules::cursor_instance::get_default_cursor_user_data_dir()?;
+        let default_settings = modules::cursor_instance::load_default_settings()?;
+        return Ok(InstanceLaunchContext {
+            user_data_dir: default_dir.to_string_lossy().to_string(),
+            bind_account_id: default_settings.bind_account_id,
+            is_default: true,
+        });
+    }
+
+    let store = modules::cursor_instance::load_instance_store()?;
+    let instance = store
+        .instances
+        .into_iter()
+        .find(|item| item.id == instance_id)
+        .ok_or("实例不存在")?;
+    Ok(InstanceLaunchContext {
+        user_data_dir: instance.user_data_dir,
+        bind_account_id: instance.bind_account_id,
+        is_default: false,
+    })
+}
+
+/// 账号总览 Play 与多开实例启动的唯一切号入口。
+pub async fn start_cursor_instance_with_account_switch(
+    instance_id: String,
+    forced_account_id: Option<String>,
+) -> Result<InstanceProfileView, String> {
+    modules::cursor_instance::ensure_cursor_launch_path_configured()?;
+    let ctx = resolve_instance_launch_context(&instance_id)?;
+
+    let update_default_bind = ctx.is_default && forced_account_id.is_some();
+    let account_id = match forced_account_id {
+        Some(id) => {
+            if modules::cursor_account::load_account(&id).is_none() {
+                return Err(format!("Cursor 账号不存在: {}", id));
+            }
+            id
+        }
+        None => resolve_instance_switch_account_id(ctx.bind_account_id.as_deref())?,
     };
 
-    let account = modules::cursor_account::load_account(bind_id)
-        .ok_or_else(|| format!("绑定账号不存在: {}", bind_id))?;
+    prepare_instance_for_account(&ctx.user_data_dir, &account_id)?;
+    let _ = modules::provider_current_state::set_current_account_id("cursor", Some(&account_id));
 
-    modules::logger::log_info(&format!(
-        "实例启动检测到绑定 Cursor 账号，准备注入: bind_account_id={}, email={}, user_data_dir={}",
-        bind_id, account.email, user_data_dir
-    ));
+    if update_default_bind {
+        if let Err(err) = modules::cursor_instance::update_default_settings(
+            Some(Some(account_id.clone())),
+            None,
+            Some(false),
+        ) {
+            modules::logger::log_warn(&format!("更新 Cursor 默认实例绑定账号失败: {}", err));
+        }
+    }
 
-    modules::cursor_instance::close_cursor(&[user_data_dir.to_string()], 20)?;
-    modules::cursor_account::hard_reset_cursor_fingerprint_state_for_profile(Path::new(
-        user_data_dir,
-    ))?;
-    modules::cursor_instance::inject_account_to_profile(Path::new(user_data_dir), bind_id)?;
-
-    modules::logger::log_info(&format!("Cursor 账号注入完成: {}", account.email));
-    Ok(())
+    cursor_start_instance_prepared(instance_id).await
 }
 
 #[tauri::command]
@@ -220,8 +284,12 @@ pub async fn cursor_delete_instance(instance_id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn cursor_start_instance(instance_id: String) -> Result<InstanceProfileView, String> {
     modules::logger::log_info(&format!("开始启动 Cursor 实例: {}", instance_id));
-    modules::cursor_instance::ensure_cursor_launch_path_configured()?;
+    start_cursor_instance_with_account_switch(instance_id, None).await
+}
 
+pub async fn cursor_start_instance_prepared(
+    instance_id: String,
+) -> Result<InstanceProfileView, String> {
     if instance_id == DEFAULT_INSTANCE_ID {
         let default_dir = modules::cursor_instance::get_default_cursor_user_data_dir()?;
         let default_dir_str = default_dir.to_string_lossy().to_string();
@@ -235,10 +303,6 @@ pub async fn cursor_start_instance(instance_id: String) -> Result<InstanceProfil
         }
 
         modules::cursor_instance::close_cursor(&[default_dir_str.clone()], 20)?;
-        inject_bound_account_for_instance_start(
-            &default_dir_str,
-            default_settings.bind_account_id.as_deref(),
-        )?;
 
         let extra_args = modules::process::parse_extra_args(&default_settings.extra_args);
         let pid = modules::cursor_instance::start_cursor_default_with_args_with_new_window(
@@ -281,10 +345,6 @@ pub async fn cursor_start_instance(instance_id: String) -> Result<InstanceProfil
     }
 
     modules::cursor_instance::close_cursor(&[instance.user_data_dir.clone()], 20)?;
-    inject_bound_account_for_instance_start(
-        &instance.user_data_dir,
-        instance.bind_account_id.as_deref(),
-    )?;
 
     let extra_args = modules::process::parse_extra_args(&instance.extra_args);
     let pid = modules::cursor_instance::start_cursor_with_args_with_new_window(

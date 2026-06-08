@@ -1,0 +1,313 @@
+{
+  "root": "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\nirvana_extracted",
+  "exists": true,
+  "package": {
+    "name": "nirvana",
+    "private": true,
+    "version": "2.7.8",
+    "description": "AI无限续杯",
+    "author": "JZzCG",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/JZzCG/windsurf-assistant"
+    },
+    "type": "module",
+    "dependencies": {
+      "@radix-ui/react-tooltip": "^1.2.8",
+      "@types/imap": "^0.8.42",
+      "axios": "^1.13.2",
+      "better-sqlite3": "^12.4.6",
+      "bufferutil": "^4.0.9",
+      "electron-log": "^5.4.3",
+      "electron-updater": "^6.6.2",
+      "global-agent": "^3.0.0",
+      "imap": "^0.8.19",
+      "keytar": "^7.9.0",
+      "lucide-react": "^0.562.0",
+      "mailparser": "^3.9.0",
+      "playwright": "^1.57.0",
+      "proxy-from-env": "^1.1.0",
+      "puppeteer": "^24.31.0",
+      "puppeteer-extra": "^3.3.6",
+      "puppeteer-extra-plugin-stealth": "^2.11.2",
+      "puppeteer-real-browser": "^1.4.4",
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0",
+      "react-markdown": "^10.1.0",
+      "smart-buffer": "^4.2.0",
+      "socket.io-client": "^4.8.3",
+      "systeminformation": "^5.30.7",
+      "utf-8-validate": "^6.0.5"
+    },
+    "main": "dist-electron/main.js"
+  },
+  "files_scanned": 5386,
+  "matches": [
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "state.vscdb",
+      "snippet": "B: null, hasStateDb: !1 }; const e = this.getCacheSizeMB(), s = I.join(this.windsurfPath, \"User\", \"globalStorage\", \"state.vscdb\"), n = D.existsSync(s); return { cacheSizeMB: e, hasStateDb: n }; } async cleanCache() { if (!D.existsSync(this.windsurfPath)) return { success: !1, message: \"未找到 Windsur"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "storage.json",
+      "snippet": " { console.warn(\"[FingerprintReset] machineid 写入失败:\", l); } const r = I.join(e, \"User\", \"globalStorage\", \"storage.json\"), o = { \"telemetry.machineId\": ah(), \"telemetry.sqmId\": ch(), \"telemetry.devDeviceId\": qa() }; try { let l = {}; if (D.existsSync(r)) { awai"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "machineId",
+      "snippet": " if (!e || !D.existsSync(e)) return { success: !1, message: \"Windsurf 配置目录不存在，跳过指纹重置\" }; const s = I.join(e, \"machineid\"), n = qa(); try { D.existsSync(s) && await ye.copyFile(s, s + `.bak_${Date.now()}`), await ye.writeFile(s, n, \"utf-8\"), console.log(\"[FingerprintReset] machineid 已重置:\", n); } "
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "cursorAuth",
+      "snippet": "or 数据库不存在:\", t), null; try { const e = new es(t), s = e.prepare(\"SELECT key, value FROM ItemTable WHERE key LIKE 'cursorAuth%'\"), n = [], r = s.all; if (r && n.push(...r.call(s)), e.close(), n.length === 0) return console.log(\"[getLocalCursorAccount] 未找到登录信息\"), null; const o = {}; for (const u o"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "telemetry.machineId",
+      "snippet": "rprintReset] machineid 写入失败:\", l); } const r = I.join(e, \"User\", \"globalStorage\", \"storage.json\"), o = { \"telemetry.machineId\": ah(), \"telemetry.sqmId\": ch(), \"telemetry.devDeviceId\": qa() }; try { let l = {}; if (D.existsSync(r)) { await ye.copyFile(r, r + `.bak_${"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "telemetry.macMachineId",
+      "snippet": "), p = { \"storage.serviceMachineId\": n, \"telemetry.machineId\": o[\"telemetry.machineId\"], \"telemetry.macMachineId\": ih(), \"telemetry.devDeviceId\": o[\"telemetry.devDeviceId\"], \"telemetry.sqmId\": o[\"telemetry.sqmId\"] }; l.transaction(() => { for ("
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "telemetry.devDeviceId",
+      "snippet": "User\", \"globalStorage\", \"storage.json\"), o = { \"telemetry.machineId\": ah(), \"telemetry.sqmId\": ch(), \"telemetry.devDeviceId\": qa() }; try { let l = {}; if (D.existsSync(r)) { await ye.copyFile(r, r + `.bak_${Date.now()}`); try { const u = await ye.readFile"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "storage.serviceMachineId",
+      "snippet": "onst u = l.prepare( \"INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)\" ), p = { \"storage.serviceMachineId\": n, \"telemetry.machineId\": o[\"telemetry.machineId\"], \"telemetry.macMachineId\": ih(), \"telemetry.devDeviceId\": o[\"telemetry.devDeviceId\"], "
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "globalStorage",
+      "snippet": "turn { cacheSizeMB: null, hasStateDb: !1 }; const e = this.getCacheSizeMB(), s = I.join(this.windsurfPath, \"User\", \"globalStorage\", \"state.vscdb\"), n = D.existsSync(s); return { cacheSizeMB: e, hasStateDb: n }; } async cleanCache() { if (!D.existsSync(this.windsurfPath)) return { success: !1, mess"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "cursor.exe",
+      "snippet": " ; })(500); } } else if (process.platform === \"win32\") { try { C(\"taskkill /IM Cursor.exe\", { stdio: \"ignore\", timeout: 5e3 }); } catch { } const t = (r) => { const o = Date.now() + r; for (; Date.now() < o; ) ; }, e = 5e3, s = 5"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "taskkill",
+      "snippet": " 未运行\"); return; } console.log(\"[cleaner] 检测到 Windsurf 正在运行，正在关闭...\"); try { await Pt(\"taskkill /IM Windsurf.exe\"), console.log(\"[cleaner] 正常关闭命令已执行\"); } catch { console.log(\"[cleaner] 正常关闭失败，将尝试强制关闭\"); } await this.sleep(2e3); const { stdout: s } = await"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "user-data-dir",
+      "snippet": "= p) return null; l = d; } } function o() { const i = process.argv.filter((l) => l.indexOf(\"--user-data-dir=\") === 0); return i.length === 0 || typeof i[0] != \"string\" ? null : i[0].replace(\"--user-data-dir=\", \"\"); } function a() { var i; try { return (i = require.main) ="
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "accessToken",
+      "snippet": "oString(16); }); } generateAccountData(e, s, n) { return [ { id: this.generateUUID(), accessToken: e, account: { label: s, id: s }, scopes: [] } ]; } getEncryptedKey() { var e; try { const s = this.cleaner.getWinds"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "refreshToken",
+      "snippet": "inue; const a = o; typeof a.password == \"string\" && (n[r] = { password: a.password, refreshToken: typeof a.refreshToken == \"string\" ? a.refreshToken : void 0, accessToken: typeof a.accessToken == \"string\" ? a.accessToken : void 0, login_count: typeof a.login_count"
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "switchAccount",
+      "snippet": "this.logout= 注入点，可能 Cursor 版本不兼容\" }; const r = e.slice(0, s) + '/*jzzcg-auth-bridge*/globalThis.__cursorAuthBridge={switchAccount:(at,rt,em,st)=>{this.storeAccessRefreshToken(at,rt);em&&(this.storageService.store(\"cursorAuth/cachedEmail\",em,-1,1),this.storageService.store(\"cursorAuth/cachedSignUpType\",st||\"Auth_0\","
+    },
+    {
+      "file": "dist-electron\\main-FXxcqbQA.js",
+      "key": "resetMachine",
+      "snippet": "nfo: ag, loginAndGetInfo: tg, patchCursorMachineId: Yh, patchCursorWorkbench: Xh, patchCursorWorkbenchV7: Hc, resetMachineIdFile: Jh, resetStorageJsonIds: Gh, resetWindowsMachineGuid: Nc, restoreCursorMainJs: Qh, restoreOriginalMachineGuid: sg, saveSeamlessSetupInfo: yo, setupSeamlessEnvironment: "
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "storage.json",
+      "snippet": " ID（telemetry.macMachineId）\",checked:!0}),f.jsx(mw,{label:\"重置 SQM ID（telemetry.sqmId）\",checked:!0}),f.jsx(mw,{label:\"更新 storage.json 配置文件\",checked:!0}),f.jsx(mw,{label:\"更新 SQLite 数据库中的机器 ID\",checked:!0}),f.jsx(mw,{label:\"保留项目设置与用户偏好\",checked:!0})]}),d&&f.jsx(\"div\",{className:\"mt-4 rounded-xl p-4 \"+(d.success?\"border bo"
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "machineId",
+      "snippet": "败\",cooldownTitle:\"拉号冷却中\",cooldownDesc:\"为避免恶意刷号，拉号设有冷却时间。\",cooldownTip:\"如需立即获取，可切换为「积分拉号」\",resetMachineGuid:\"重置机器码\",resetMachineId:\"重置机器ID\",restoring:\"恢复中...\",autoDetectCursorPath:\"自动检测 Cursor 安装路径...\",autoDetectKiroPath:\"自动检测 Kiro 安装路径...\",gettingKiroAccount:\"正在获取 Kiro 账号并切换...\",verifyingAccount:\"正在验证账号有效性...\",confirmi"
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "telemetry.machineId",
+      "snippet": "me:\"space-y-3\",children:[f.jsx(mw,{label:\"重置 Kiro 机器码标识（telemetry.devDeviceId）\",checked:!0}),f.jsx(mw,{label:\"重置遥测机器 ID（telemetry.machineId）\",checked:!0}),f.jsx(mw,{label:\"重置 MAC 机器 ID（telemetry.macMachineId）\",checked:!0}),f.jsx(mw,{label:\"重置 SQM ID（telemetry.sqmId）\",checked:!0}),f.jsx(mw,{label:\"更新 storage.json 配置文件\","
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "telemetry.macMachineId",
+      "snippet": ".devDeviceId）\",checked:!0}),f.jsx(mw,{label:\"重置遥测机器 ID（telemetry.machineId）\",checked:!0}),f.jsx(mw,{label:\"重置 MAC 机器 ID（telemetry.macMachineId）\",checked:!0}),f.jsx(mw,{label:\"重置 SQM ID（telemetry.sqmId）\",checked:!0}),f.jsx(mw,{label:\"更新 storage.json 配置文件\",checked:!0}),f.jsx(mw,{label:\"更新 SQLite 数据库中的机器 ID\",checked:!0}),"
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "telemetry.devDeviceId",
+      "snippet": "rk:text-white\",children:\"清理内容（不影响项目与配置）\"}),f.jsxs(\"div\",{className:\"space-y-3\",children:[f.jsx(mw,{label:\"重置 Kiro 机器码标识（telemetry.devDeviceId）\",checked:!0}),f.jsx(mw,{label:\"重置遥测机器 ID（telemetry.machineId）\",checked:!0}),f.jsx(mw,{label:\"重置 MAC 机器 ID（telemetry.macMachineId）\",checked:!0}),f.jsx(mw,{label:\"重置 SQM ID（teleme"
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "accessToken",
+      "snippet": "t:e.usage_count||0,usageLimit:e.usage_limit||0,createdAt:e.acquired_at,expiresAt:e.expires_at,lastUsedAt:e.last_used_at,accessToken:e.access_token,refreshToken:s,clientId:e.client_id,clientSecret:e.client_secret,codeiumApiKey:e.codeium_api_key,bonusUsed:e.bonus_used??0,bonusLimit:e.bonus_limit??500,apiKey:t,idToken:e.i"
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "refreshToken",
+      "snippet": "ync t=>{const s=t.accounts.map(e=>{const t=e.apiKey||e.api_key||e.idToken||e.id_token||\"\";return{email:e.email,apiKey:t,refreshToken:e.refreshToken||e.refresh_token||\"\",account_type:e.accountType||e.account_type||\"FREE\",totalLimit:e.totalLimit??e.total_limit??150,usedLimit:e.usedLimit??e.used_limit??0,periodEnd:e.perio"
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "switchAccount",
+      "snippet": "accountType:\"账号类型\",accountStatus:\"账号状态\",expiresAt:\"到期时间\",email:\"邮箱\",password:\"密码\",copyAccount:\"复制账号\",copySuccess:\"复制成功\",switchAccount:\"切换账号\",refreshStatus:\"刷新状态\",lastPullTime:\"上次拉取\",pullInterval:\"拉取间隔\",pullIntervalTip:\"同类型账号 {minutes} 分钟内只能拉取 1 次\",pointsCost:\"消耗积分\",pointsBalance:\"积分余额\",insufficientPoints:\"积分不足\",goRecha"
+    },
+    {
+      "file": "dist\\assets\\index-_0e8hdf3.js",
+      "key": "resetMachine",
+      "snippet": "ccess:\"换号成功\",switchFailed:\"操作失败\",cooldownTitle:\"拉号冷却中\",cooldownDesc:\"为避免恶意刷号，拉号设有冷却时间。\",cooldownTip:\"如需立即获取，可切换为「积分拉号」\",resetMachineGuid:\"重置机器码\",resetMachineId:\"重置机器ID\",restoring:\"恢复中...\",autoDetectCursorPath:\"自动检测 Cursor 安装路径...\",autoDetectKiroPath:\"自动检测 Kiro 安装路径...\",gettingKiroAccount:\"正在获取 Kiro 账号并切换...\",verifyingA"
+    },
+    {
+      "file": "node_modules\\puppeteer-extra-plugin-user-data-dir\\index.js",
+      "key": "user-data-dir",
+      "snippet": "') const path = require('path') const rimraf = require('rimraf') const debug = require('debug')('puppeteer-extra-plugin:user-data-dir') const mkdtempAsync = util.promisify(fs.mkdtemp) const { PuppeteerExtraPlugin } = require('puppeteer-extra-plugin') /** * * Further reading: * https://chromium.googlesource.com/chro"
+    },
+    {
+      "file": "node_modules\\puppeteer-extra-plugin-user-preferences\\index.js",
+      "key": "user-data-dir",
+      "snippet": "et requirements() { return new Set(['runLast', 'dataFromPlugins']) } get dependencies() { return new Set(['user-data-dir']) } get data() { return [ { name: 'userDataDirFile', value: { target: 'Profile', file: 'Preferences', contents: JSON.stringi"
+    },
+    {
+      "file": "node_modules\\tree-kill\\index.js",
+      "key": "taskkill",
+      "snippet": " = {}; tree[pid] = []; pidsToProcess[pid] = 1; switch (process.platform) { case 'win32': exec('taskkill /pid ' + pid + ' /T /F', callback); break; case 'darwin': buildProcessTree(pid, tree, pidsToProcess, function (parentPid) { return spawn('pgrep', ['-P', parentPi"
+    },
+    {
+      "file": "node_modules\\@puppeteer\\browsers\\lib\\cjs\\launch.js",
+      "key": "taskkill",
+      "snippet": "rocess.platform === 'win32') { try { node_child_process_1.default.execSync(`taskkill /pid ${this.#browserProcess.pid} /T /F`); } catch (error) { debugLaunch(`Killing ${this.#browserProcess.pid} using taskkill fai"
+    },
+    {
+      "file": "node_modules\\@puppeteer\\browsers\\lib\\esm\\launch.js",
+      "key": "taskkill",
+      "snippet": " if (process.platform === 'win32') { try { childProcess.execSync(`taskkill /pid ${this.#browserProcess.pid} /T /F`); } catch (error) { debugLaunch(`Killing ${this.#browserProcess.pid} using taskkill fai"
+    },
+    {
+      "file": "node_modules\\chrome-launcher\\dist\\chrome-launcher.js",
+      "key": "taskkill",
+      "snippet": " if (isWindows) { // https://github.com/GoogleChrome/chrome-launcher/issues/266 const taskkillProc = spawnSync(`taskkill /pid ${this.chromeProcess.pid} /T /F`, { shell: true, encoding: 'utf-8' }); const { stderr } = taskkillProc; if (stderr) "
+    },
+    {
+      "file": "node_modules\\chrome-launcher\\dist\\chrome-launcher.js",
+      "key": "user-data-dir",
+      "snippet": "ustom location we'll rm -rf later // If in WSL, we need to use the Windows format flags.push(`--user-data-dir=${isWsl ? toWin32Path(this.userDataDir) : this.userDataDir}`); } if (process.env.HEADLESS) flags.push('--headless'); flags.push(...this.chromeFlags); "
+    },
+    {
+      "file": "node_modules\\chromium-bidi\\lib\\esm\\bidiServer\\BrowserInstance.js",
+      "key": "user-data-dir",
+      "snippet": " '--password-store=basic', '--remote-debugging-pipe', '--use-mock-keychain', `--user-data-dir=${profileDir}`, // keep-sorted end ...chromeOptions.chromeArgs, 'about:blank', ]; const executablePath = chromeOptions.chromeBinary ??"
+    },
+    {
+      "file": "node_modules\\electron-log\\src\\node\\packageJson.js",
+      "key": "user-data-dir",
+      "snippet": " } if (currentPath === root) { return null; } currentPath = dir; } } /** * Get app path from --user-data-dir cmd arg, passed to a renderer process * @return {string|null} */ function extractPathFromArgs() { const matchedArgs = process.argv.filter((arg) => { return arg.indexOf('--user-da"
+    },
+    {
+      "file": "node_modules\\nodemailer\\lib\\smtp-connection\\index.js",
+      "key": "accessToken",
+      "snippet": ", str); } } _handleXOauth2Token(isRetry, callback) { this._auth.oauth2.getToken(isRetry, (err, accessToken) => { if (err) { this.logger.info( { tnx: 'smtp', username: this._auth.user, "
+    },
+    {
+      "file": "node_modules\\nodemailer\\lib\\xoauth2\\index.js",
+      "key": "accessToken",
+      "snippet": "f true indicates that existing token failed and needs to be renewed * * callback is the callback to run with (error, accessToken [, expires]) * * accessToken is a string * * expires is an optional expire time in milliseconds * If provisionCallback is used, then Nodemailer does not try to attempt generatin"
+    },
+    {
+      "file": "node_modules\\nodemailer\\lib\\xoauth2\\index.js",
+      "key": "refreshToken",
+      "snippet": "* Create client ID for web applications in Google API console to use it. * See Offline Access for receiving the needed refreshToken for an user * https://developers.google.com/accounts/docs/OAuth2WebServer#offline * * Usage for generating access tokens with a custom method using provisionCallback: * provisionCallb"
+    },
+    {
+      "file": "node_modules\\playwright\\lib\\mcpBundleImpl.js",
+      "key": "refreshToken",
+      "snippet": "v),\"AUTHORIZED\"}let f=await a.tokens();if(f!=null&&f.refresh_token)try{let m=await ym(o,{metadata:c,clientInformation:h,refreshToken:f.refresh_token,resource:u,addClientAuthentication:a.addClientAuthentication,fetchFn:n});return await a.saveTokens(m),\"AUTHORIZED\"}catch(m){if(!(!(m instanceof Pe)||m instanceof Tr))throw"
+    },
+    {
+      "file": "node_modules\\playwright\\lib\\mcp\\program.js",
+      "key": "user-data-dir",
+      "snippet": "ults to 60000ms\", import_config.numberParser).option(\"--user-agent <ua string>\", \"specify user agent string\").option(\"--user-data-dir <path>\", \"path to the user data directory. If not specified, a temporary directory will be created.\").option(\"--viewport-size <size>\", 'specify browser viewport size in pixels, for examp"
+    },
+    {
+      "file": "node_modules\\playwright\\lib\\mcp\\extension\\cdpRelay.js",
+      "key": "user-data-dir",
+      "snippet": "ure it is installed at a standard location.`); } const args = []; if (this._userDataDir) args.push(`--user-data-dir=${this._userDataDir}`); args.push(href); (0, import_child_process.spawn)(executablePath, args, { windowsHide: true, detached: true, shell: false, stdio: \""
+    },
+    {
+      "file": "node_modules\\playwright-core\\lib\\cli\\program.js",
+      "key": "user-data-dir",
+      "snippet": "ions in milliseconds, no timeout by default\").option(\"--user-agent <ua string>\", \"specify user agent string\").option(\"--user-data-dir <directory>\", \"use the specified user data directory instead of a new context\").option(\"--viewport-size <size>\", 'specify browser viewport size in pixels, for example \"1280, 720\"'); } fu"
+    },
+    {
+      "file": "node_modules\\playwright-core\\lib\\server\\bidi\\bidiChromium.js",
+      "key": "user-data-dir",
+      "snippet": ", isPersistent, userDataDir) { const chromeArguments = this._innerDefaultArgs(options); chromeArguments.push(`--user-data-dir=${userDataDir}`); chromeArguments.push(\"--remote-debugging-port=0\"); if (isPersistent) chromeArguments.push(\"about:blank\"); else chromeArguments.push(\"--no-startu"
+    },
+    {
+      "file": "node_modules\\playwright-core\\lib\\server\\chromium\\chromium.js",
+      "key": "user-data-dir",
+      "snippet": ", isPersistent, userDataDir) { const chromeArguments = this._innerDefaultArgs(options); chromeArguments.push(`--user-data-dir=${userDataDir}`); if (options.cdpPort !== void 0) chromeArguments.push(`--remote-debugging-port=${options.cdpPort}`); else chromeArguments.push(\"--remote-debugging-pi"
+    },
+    {
+      "file": "node_modules\\playwright-core\\lib\\server\\utils\\processLauncher.js",
+      "key": "taskkill",
+      "snippet": "pid=${spawnedProcess.pid}] <will force kill>`); try { if (process.platform === \"win32\") { const taskkillProcess = childProcess.spawnSync(`taskkill /pid ${spawnedProcess.pid} /T /F`, { shell: true }); const [stdout2, stderr2] = [taskkillProcess.stdout.toString(), taskkillProcess.stderr."
+    },
+    {
+      "file": "node_modules\\playwright-core\\lib\\server\\webkit\\webkit.js",
+      "key": "user-data-dir",
+      "snippet": "DataDir) { const { args = [], headless } = options; const userDataDirArg = args.find((arg) => arg.startsWith(\"--user-data-dir\")); if (userDataDirArg) throw this._createUserDataDirArgMisuseError(\"--user-data-dir\"); if (args.find((arg) => !arg.startsWith(\"-\"))) throw new Error(\"Arguments can n"
+    },
+    {
+      "file": "node_modules\\puppeteer-core\\lib\\cjs\\puppeteer\\node\\ChromeLauncher.js",
+      "key": "user-data-dir",
+      "snippet": "rDataDir option. let userDataDirIndex = chromeArguments.findIndex(arg => { return arg.startsWith('--user-data-dir'); }); if (userDataDirIndex < 0) { isTempUserDataDir = true; chromeArguments.push(`--user-data-dir=${await (0, promises_1.mkdtemp)(this.getProfile"
+    },
+    {
+      "file": "node_modules\\puppeteer-core\\lib\\esm\\puppeteer\\node\\ChromeLauncher.js",
+      "key": "user-data-dir",
+      "snippet": "rDataDir option. let userDataDirIndex = chromeArguments.findIndex(arg => { return arg.startsWith('--user-data-dir'); }); if (userDataDirIndex < 0) { isTempUserDataDir = true; chromeArguments.push(`--user-data-dir=${await mkdtemp(this.getProfilePath())}`); "
+    },
+    {
+      "file": "node_modules\\rebrowser-puppeteer-core\\lib\\cjs\\puppeteer\\node\\ChromeLauncher.js",
+      "key": "user-data-dir",
+      "snippet": "rDataDir option. let userDataDirIndex = chromeArguments.findIndex(arg => { return arg.startsWith('--user-data-dir'); }); if (userDataDirIndex < 0) { isTempUserDataDir = true; chromeArguments.push(`--user-data-dir=${await (0, promises_1.mkdtemp)(this.getProfile"
+    },
+    {
+      "file": "node_modules\\rebrowser-puppeteer-core\\lib\\esm\\puppeteer\\node\\ChromeLauncher.js",
+      "key": "user-data-dir",
+      "snippet": "rDataDir option. let userDataDirIndex = chromeArguments.findIndex(arg => { return arg.startsWith('--user-data-dir'); }); if (userDataDirIndex < 0) { isTempUserDataDir = true; chromeArguments.push(`--user-data-dir=${await mkdtemp(this.getProfilePath())}`); "
+    },
+    {
+      "file": "node_modules\\rebrowser-puppeteer-core\\node_modules\\@puppeteer\\browsers\\lib\\cjs\\launch.js",
+      "key": "taskkill",
+      "snippet": "if (process.platform === 'win32') { try { child_process_1.default.execSync(`taskkill /pid ${this.#browserProcess.pid} /T /F`); } catch (error) { debugLaunch(`Killing ${this.#browserProcess.pid} using taskkill fai"
+    },
+    {
+      "file": "node_modules\\rebrowser-puppeteer-core\\node_modules\\@puppeteer\\browsers\\lib\\esm\\launch.js",
+      "key": "taskkill",
+      "snippet": " if (process.platform === 'win32') { try { childProcess.execSync(`taskkill /pid ${this.#browserProcess.pid} /T /F`); } catch (error) { debugLaunch(`Killing ${this.#browserProcess.pid} using taskkill fai"
+    },
+    {
+      "file": "node_modules\\rebrowser-puppeteer-core\\node_modules\\chromium-bidi\\lib\\esm\\bidiServer\\BrowserInstance.js",
+      "key": "user-data-dir",
+      "snippet": "'--password-store=basic', '--remote-debugging-port=9222', '--use-mock-keychain', `--user-data-dir=${profileDir}`, // keep-sorted end ...chromeOptions.chromeArgs, 'about:blank', ]; const executablePath = chromeOptions.chromeBinary ??"
+    }
+  ],
+  "inferred_steps": [
+    "terminate_cursor_process",
+    "reset_telemetry_ids_storage_json_and_vscdb",
+    "write_cursorAuth_to_state_vscdb",
+    "launch_cursor_with_user_data_dir"
+  ]
+}

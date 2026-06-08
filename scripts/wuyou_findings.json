@@ -1,0 +1,274 @@
+﻿{
+    "shortcuts":  [
+                      {
+                          "name":  "AIDA64 Extreme.lnk",
+                          "target":  "C:\\Program Files\\FinalWire\\AIDA64 Extreme\\aida64.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\FinalWire\\AIDA64 Extreme"
+                      },
+                      {
+                          "name":  "AniCh.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\AniCh\\anich.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\alice\\AppData\\Local\\Programs\\AniCh"
+                      },
+                      {
+                          "name":  "Antigravity.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\antigravity"
+                      },
+                      {
+                          "name":  "Clash Verge.lnk",
+                          "target":  "C:\\Program Files\\Clash Verge\\clash-verge.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\Clash Verge"
+                      },
+                      {
+                          "name":  "Cockpit Tools.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Cockpit Tools\\cockpit-tools.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Cockpit Tools"
+                      },
+                      {
+                          "name":  "CodeBuddy.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\CodeBuddy\\CodeBuddy.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\CodeBuddy"
+                      },
+                      {
+                          "name":  "Cursor.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor"
+                      },
+                      {
+                          "name":  "Dism++.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Microsoft\\WinGet\\Packages\\ChuyuTeam.DISM++_Microsoft.Winget.Source_8wekyb3d8bbwe\\Dism++x64.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Microsoft\\WinGet\\Packages\\ChuyuTeam.DISM++_Microsoft.Winget.Source_8wekyb3d8bbwe"
+                      },
+                      {
+                          "name":  "Docker Desktop.lnk",
+                          "target":  "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe",
+                          "args":  "",
+                          "workdir":  ""
+                      },
+                      {
+                          "name":  "GitHub Copilot.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\GitHub Copilot\\github.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\GitHub Copilot"
+                      },
+                      {
+                          "name":  "Google Calendar.lnk",
+                          "target":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+                          "args":  "--app=https://calendar.google.com",
+                          "workdir":  "C:\\Program Files\\Google\\Chrome\\Application"
+                      },
+                      {
+                          "name":  "Kiro.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Kiro\\Kiro.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Kiro"
+                      },
+                      {
+                          "name":  "NeeView.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\NeeLaboratory\\NeeView\\NeeView.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\NeeLaboratory\\NeeView"
+                      },
+                      {
+                          "name":  "Qoder.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Qoder\\Qoder.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Qoder"
+                      },
+                      {
+                          "name":  "Simple Live.lnk",
+                          "target":  "C:\\SimpleLive\\simple_live_app.exe",
+                          "args":  "",
+                          "workdir":  "C:\\SimpleLive"
+                      },
+                      {
+                          "name":  "Trae CN.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Trae CN\\Trae CN.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Trae CN"
+                      },
+                      {
+                          "name":  "TRAE SOLO.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\TRAE SOLO\\TRAE SOLO.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\TRAE SOLO"
+                      },
+                      {
+                          "name":  "Trae.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Trae\\Trae.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Trae"
+                      },
+                      {
+                          "name":  "UC浏览器.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\UC浏览器\\uc.exe",
+                          "args":  "--launch-from=desktopicon",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\UC浏览器"
+                      },
+                      {
+                          "name":  "WeGame.lnk",
+                          "target":  "C:\\Program Files\\WeGame\\wegame.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\WeGame"
+                      },
+                      {
+                          "name":  "Windsurf.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Windsurf\\Windsurf.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Windsurf"
+                      },
+                      {
+                          "name":  "Zed.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Zed"
+                      },
+                      {
+                          "name":  "动漫共和国概念版.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\动漫共和国概念版\\dmghg.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\动漫共和国概念版"
+                      },
+                      {
+                          "name":  "团子翻译器.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\DangoTranslator\\DangoTranslator.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\DangoTranslator"
+                      },
+                      {
+                          "name":  "夸克.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Quark\\quark.exe",
+                          "args":  "--launch-from=desktopicon --brand-quark",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\Quark"
+                      },
+                      {
+                          "name":  "无忧小助手.lnk",
+                          "target":  "C:\\Program Files\\nirvana\\nirvana.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\nirvana"
+                      },
+                      {
+                          "name":  "百度网盘.lnk",
+                          "target":  "C:\\Users\\aliceemoce\\AppData\\Roaming\\baidu\\BaiduNetdisk\\BaiduNetdisk.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Users\\aliceemoce\\AppData\\Roaming\\baidu\\BaiduNetdisk"
+                      },
+                      {
+                          "name":  "迅雷.lnk",
+                          "target":  "C:\\Program Files (x86)\\Thunder Network\\Thunder\\Program\\ThunderStart.exe",
+                          "args":  "-StartType:DesktopIcon",
+                          "workdir":  ""
+                      },
+                      {
+                          "name":  "AiPPT.lnk",
+                          "target":  "C:\\Program Files\\AiPPT\\AiPPT.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\AiPPT"
+                      },
+                      {
+                          "name":  "CPUID CPU-Z MSI.lnk",
+                          "target":  "C:\\Program Files\\CPUID\\CPU-Z MSI\\cpuz.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\CPUID\\CPU-Z MSI"
+                      },
+                      {
+                          "name":  "DefenderUI.lnk",
+                          "target":  "C:\\Program Files\\DefenderUI\\DefenderUI.exe",
+                          "args":  "/sw",
+                          "workdir":  "C:\\Program Files\\DefenderUI"
+                      },
+                      {
+                          "name":  "DiskGenius-CN.lnk",
+                          "target":  "C:\\Program Files\\DiskGenius_CN\\DiskGenius.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\DiskGenius_CN"
+                      },
+                      {
+                          "name":  "DiskGenius.lnk",
+                          "target":  "C:\\Program Files\\DiskGenius\\DiskGenius.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\DiskGenius"
+                      },
+                      {
+                          "name":  "Google Chrome.lnk",
+                          "target":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\Google\\Chrome\\Application"
+                      },
+                      {
+                          "name":  "Google Earth Pro.lnk",
+                          "target":  "C:\\Program Files\\Google\\Google Earth Pro\\client\\googleearth.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\Google\\Google Earth Pro\\client\\"
+                      },
+                      {
+                          "name":  "Microsoft Edge.lnk",
+                          "target":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application"
+                      },
+                      {
+                          "name":  "MiniTool 鍒嗗尯鍚戝.lnk",
+                          "target":  "C:\\Program Files\\MiniTool Partition Wizard 13\\partitionwizard.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\MiniTool Partition Wizard 13"
+                      },
+                      {
+                          "name":  "VPN by Google One.lnk",
+                          "target":  "C:\\Program Files\\Google\\VPN by Google One\\1.9.0.6\\googleone.exe",
+                          "args":  "",
+                          "workdir":  ""
+                      },
+                      {
+                          "name":  "WorkBuddy.lnk",
+                          "target":  "C:\\Program Files\\WorkBuddy\\WorkBuddy.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\WorkBuddy"
+                      },
+                      {
+                          "name":  "网易云音乐.lnk",
+                          "target":  "C:\\Program Files\\NetEase\\CloudMusic\\cloudmusic.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files\\NetEase\\CloudMusic"
+                      },
+                      {
+                          "name":  "鍌叉鍒嗗尯鍔╂墜.lnk",
+                          "target":  "C:\\Program Files (x86)\\AOMEI Partition Assistant\\PartAssist.exe",
+                          "args":  "",
+                          "workdir":  "C:\\Program Files (x86)\\AOMEI Partition Assistant"
+                      }
+                  ],
+    "exes":  null,
+    "paths":  [
+                  "C:\\Users\\aliceemoce\\AppData\\Local\\Google\\Chrome\\User Data\\Profile 10\\IndexedDB\\https_proxyhub.jzzcg.com_0.indexeddb.leveldb",
+                  "C:\\Users\\aliceemoce\\AppData\\Roaming\\nirvana\\IndexedDB\\https_www.jzzcg.com_0.indexeddb.leveldb",
+                  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\find_wuyou_assistant.ps1",
+                  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\wuyou_findings.json",
+                  "C:\\Users\\aliceemoce\\dev\\cargo-target\\debug\\incremental\\antigravity_cockpit_tools_lib-3hinkpji25k93\\s-hj8xrhi41w-18leh4o-6x2r2da6yso4gzpvtp1ehno54\\5kjzzepydek999slq8uh54esc.o",
+                  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\target\\debug\\incremental\\antigravity_cockpit_tools_lib-3hinkpji25k93\\s-hj97yctkej-0htc9yw-01gw6zl4o4y3791h571xp7e3j\\5jufo0hsgjzztynpujuimt7cs.o",
+                  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\target\\debug\\incremental\\antigravity_cockpit_tools_lib-3hinkpji25k93\\s-hj97yctkej-0htc9yw-01gw6zl4o4y3791h571xp7e3j\\enp00sjzzq6s8nms2efmqxs28.o",
+                  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\target\\debug\\incremental\\antigravity_cockpit_tools_lib-3hinkpji25k93\\s-hj98kk5c7m-1w0w34o-01gw6zl4o4y3791h571xp7e3j\\5jufo0hsgjzztynpujuimt7cs.o",
+                  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\target\\debug\\incremental\\antigravity_cockpit_tools_lib-3hinkpji25k93\\s-hj98kk5c7m-1w0w34o-01gw6zl4o4y3791h571xp7e3j\\enp00sjzzq6s8nms2efmqxs28.o"
+              ],
+    "stringHits":  [
+                       {
+                           "file":  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\wuyou_findings.json",
+                           "keyword":  "cursor",
+                           "kind":  "text"
+                       },
+                       {
+                           "file":  "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\wuyou_findings.json",
+                           "keyword":  "cockpit",
+                           "kind":  "text"
+                       }
+                   ]
+}

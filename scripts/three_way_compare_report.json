@@ -1,0 +1,82 @@
+{
+  "cockpit_has_assistant_strings": false,
+  "upstream": {
+    "src-tauri/src/commands/cursor.rs": {
+      "inject_cursor_account": true,
+      "inject_to_cursor": true,
+      "switch_cursor_account_to_profile": false,
+      "start_cursor_instance_with_account_switch": false,
+      "inject_bound_account_for_instance_start": false,
+      "hard_reset_cursor_fingerprint": false
+    },
+    "src-tauri/src/commands/cursor_instance.rs": {
+      "inject_cursor_account": false,
+      "inject_to_cursor": false,
+      "switch_cursor_account_to_profile": false,
+      "start_cursor_instance_with_account_switch": false,
+      "inject_bound_account_for_instance_start": true,
+      "hard_reset_cursor_fingerprint": false
+    },
+    "src-tauri/src/modules/cursor_account.rs": {
+      "inject_cursor_account": false,
+      "inject_to_cursor": true,
+      "switch_cursor_account_to_profile": false,
+      "start_cursor_instance_with_account_switch": false,
+      "inject_bound_account_for_instance_start": false,
+      "hard_reset_cursor_fingerprint": false
+    }
+  },
+  "local": {
+    "src-tauri/src/commands/cursor.rs": {
+      "inject_cursor_account": true,
+      "inject_to_cursor": false,
+      "switch_cursor_account_to_profile": false,
+      "start_cursor_instance_with_account_switch": true,
+      "inject_bound_account_for_instance_start": false,
+      "hard_reset_cursor_fingerprint": false
+    },
+    "src-tauri/src/commands/cursor_instance.rs": {
+      "inject_cursor_account": false,
+      "inject_to_cursor": false,
+      "switch_cursor_account_to_profile": true,
+      "start_cursor_instance_with_account_switch": true,
+      "inject_bound_account_for_instance_start": false,
+      "hard_reset_cursor_fingerprint": false
+    },
+    "src-tauri/src/modules/cursor_account.rs": {
+      "inject_cursor_account": false,
+      "inject_to_cursor": true,
+      "switch_cursor_account_to_profile": true,
+      "start_cursor_instance_with_account_switch": false,
+      "inject_bound_account_for_instance_start": false,
+      "hard_reset_cursor_fingerprint": true
+    }
+  },
+  "upstream_flow": [
+    "inject_cursor_account -> inject_to_cursor",
+    "-> cursor_start_instance(__default__)",
+    "instance: inject_bound only if bind_account_id set",
+    "无 hard_reset_cursor_fingerprint"
+  ],
+  "local_flow": [
+    "inject_cursor_account -> start_cursor_instance_with_account_switch(__default__, Some(id))",
+    "cursor_start_instance -> start_cursor_instance_with_account_switch(id, None)",
+    "-> switch_cursor_account_to_profile (close+reset+inject)",
+    "-> cursor_start_instance_prepared (launch only)"
+  ],
+  "nirvana_external": {
+    "exists": true,
+    "path": "C:\\Program Files\\nirvana\\nirvana.exe",
+    "size": 177101824,
+    "string_hits": {
+      "state.vscdb": false,
+      "storage.json": false,
+      "machineId": false,
+      "cursorAuth": false,
+      "telemetry.machineId": false,
+      "globalStorage": false
+    },
+    "note": "独立程序；非 cockpit-tools 源码。仅证明其操作 Cursor 数据文件。"
+  },
+  "local_unified": true
+}

@@ -200,28 +200,11 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
     let account = cursor_account::load_account(&account_id)
         .ok_or_else(|| format!("Cursor account not found: {}", account_id))?;
 
-    let default_user_data_dir = crate::modules::cursor_instance::get_default_cursor_user_data_dir()?;
-    let default_user_data_dir_str = default_user_data_dir.to_string_lossy().to_string();
-    crate::modules::cursor_instance::close_cursor(&[default_user_data_dir_str], 20)?;
-    cursor_account::hard_reset_cursor_fingerprint_state()?;
-
-    cursor_account::inject_to_cursor(&account_id)?;
-    crate::modules::provider_current_state::set_current_account_id(
-        "cursor",
-        Some(account_id.as_str()),
-    )?;
-
-    if let Err(err) = crate::modules::cursor_instance::update_default_settings(
-        Some(Some(account_id.clone())),
-        None,
-        Some(false),
-    ) {
-        logger::log_warn(&format!("更新 Cursor 默认实例绑定账号失败: {}", err));
-    }
-
-    let launch_warning =
-        match crate::commands::cursor_instance::cursor_start_instance("__default__".to_string())
-            .await
+    let launch_warning = match crate::commands::cursor_instance::start_cursor_instance_with_account_switch(
+        "__default__".to_string(),
+        Some(account_id.clone()),
+    )
+    .await
         {
             Ok(_) => None,
             Err(err) => {
