@@ -42,14 +42,14 @@ function resolveDetectAppId(platform: PlatformOverviewHeaderId): string | null {
   }
 }
 
-function resolveInstallableApp(
+function resolveInstallAppId(
   platform: PlatformOverviewHeaderId,
 ): InstallableAppPath | null {
-  const detectAppId = resolveDetectAppId(platform);
-  if (!detectAppId || !isInstallableAppPath(detectAppId)) {
+  const detectId = resolveDetectAppId(platform);
+  if (!detectId || !isInstallableAppPath(detectId)) {
     return null;
   }
-  return detectAppId;
+  return detectId;
 }
 
 function basenameFromPath(path: string): string {
@@ -65,7 +65,7 @@ export function PlatformInstalledVersionBadge({
 }) {
   const { t } = useTranslation();
   const detectAppId = useMemo(() => resolveDetectAppId(platform), [platform]);
-  const installableApp = useMemo(() => resolveInstallableApp(platform), [platform]);
+  const installAppId = useMemo(() => resolveInstallAppId(platform), [platform]);
   const productLabel = useMemo(
     () => getPlatformLabel(platform, t),
     [platform, t],
@@ -76,14 +76,14 @@ export function PlatformInstalledVersionBadge({
   const [installing, setInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState('');
 
-  const reloadPath = useCallback(async (force = false) => {
+  const reloadPath = useCallback(async () => {
     if (!detectAppId) {
       return;
     }
     try {
       const detected = await invoke<string | null>('detect_app_path', {
         app: detectAppId,
-        force,
+        force: false,
       });
       setAppPath(detected?.trim() || null);
     } catch (error) {
@@ -106,13 +106,16 @@ export function PlatformInstalledVersionBadge({
     let timer = 0;
 
     const load = async () => {
-      if (installableApp) {
-        const supported = await isPlatformInstallSupported(installableApp);
+      if (installAppId) {
+        const supported = await isPlatformInstallSupported(installAppId);
         if (!cancelled) {
           setInstallSupported(supported);
         }
       }
-      await reloadPath(false);
+      if (!cancelled) {
+        setLoaded(false);
+        await reloadPath();
+      }
     };
 
     timer = window.setTimeout(() => {
@@ -125,46 +128,50 @@ export function PlatformInstalledVersionBadge({
         window.clearTimeout(timer);
       }
     };
-  }, [detectAppId, installableApp, reloadPath]);
+  }, [detectAppId, installAppId, reloadPath]);
 
   const handleSilentInstall = useCallback(async () => {
-    if (!installableApp || installing) {
+    if (!installAppId || installing) {
       return;
     }
     setInstalling(true);
-    setInstallProgress(
-      t('appPath.install.inProgress', '正在下载并安装…'),
-    );
+    setInstallProgress('');
     try {
-      const result = await installMissingPlatform(installableApp, (payload) => {
-        if (payload.message) {
-          setInstallProgress(payload.message);
-        }
+      const result = await installMissingPlatform(installAppId, (payload) => {
+        setInstallProgress(payload.message || payload.phase || '');
       });
-      setInstallProgress(result.message);
-      await reloadPath(true);
+      const installedPath = (result.installedPath || '').trim();
+      if (installedPath) {
+        await invoke('set_app_path', { app: installAppId, path: installedPath });
+        setAppPath(installedPath);
+        return;
+      }
+      if (!result.usedManualFallback) {
+        setInstallProgress(
+          t('appPath.install.notDetected', '安装完成但未检测到可执行文件'),
+        );
+      } else {
+        setInstallProgress(result.message);
+      }
     } catch (error) {
       console.warn('[PlatformInstalledVersionBadge] install failed:', error);
-      setInstallProgress(
-        error instanceof Error ? error.message : String(error),
-      );
+      setInstallProgress(String(error));
     } finally {
       setInstalling(false);
     }
-  }, [installableApp, installing, reloadPath, t]);
+  }, [installAppId, installing, t]);
 
   const title = useMemo(() => {
     if (!loaded) {
       return t('runtime.installedVersion.loading', '正在检测安装版本');
     }
     if (!appPath) {
-      if (installableApp && installSupported) {
-        return t('appPath.install.downloadAndInstall', '下载并静默安装');
-      }
-      return t('runtime.installedVersion.missing', '未检测到已安装版本');
+      return installSupported
+        ? t('appPath.install.downloadAndInstall', '下载并静默安装')
+        : t('runtime.installedVersion.missing', '未检测到已安装版本');
     }
     return `${productLabel}\n${appPath}`;
-  }, [appPath, installSupported, installableApp, loaded, productLabel, t]);
+  }, [appPath, installSupported, loaded, productLabel, t]);
 
   if (!detectAppId) {
     return null;
@@ -182,17 +189,13 @@ export function PlatformInstalledVersionBadge({
   }
 
   if (!appPath) {
-    const canInstall = Boolean(installableApp && installSupported);
     return (
-      <div
-        className={`installed-version-badge is-missing${canInstall ? ' has-install' : ''}`}
-        title={title}
-      >
+      <div className="installed-version-badge is-missing" title={title}>
         <span className="installed-version-dot" />
         <span className="installed-version-value">
           {t('runtime.installedVersion.notFound', '未检测到版本')}
         </span>
-        {canInstall ? (
+        {installSupported && installAppId ? (
           <button
             type="button"
             className="installed-version-install-btn"
@@ -207,10 +210,13 @@ export function PlatformInstalledVersionBadge({
             ) : (
               <Download size={12} />
             )}
+            <span>
+              {installing
+                ? installProgress ||
+                  t('appPath.install.inProgress', '安装中…')
+                : t('appPath.install.downloadAndInstall', '静默安装')}
+            </span>
           </button>
-        ) : null}
-        {installProgress ? (
-          <span className="installed-version-install-hint">{installProgress}</span>
         ) : null}
       </div>
     );
