@@ -252,31 +252,119 @@ fn collect_known_account_emails(index: &CursorAccountIndex) -> HashSet<String> {
     emails
 }
 
-fn resolve_credentials_mirror_accounts_dir() -> Option<PathBuf> {
+fn resolve_credentials_mirror_root() -> Option<PathBuf> {
     if let Ok(raw) = std::env::var("COCKPIT_CREDENTIALS_DIR") {
         let root = PathBuf::from(raw.trim());
-        if !root.as_os_str().is_empty() {
-            for candidate in [
-                root.join("data").join("cursor_accounts"),
-                root.join("cursor_accounts"),
-            ] {
-                if candidate.is_dir() {
-                    return Some(candidate);
-                }
-            }
+        if root.as_os_str().is_empty() {
+            return None;
+        }
+        if root.is_dir() {
+            return Some(root);
         }
     }
 
     let home = dirs::home_dir()?;
-    let dev_mirror = home
-        .join("dev")
-        .join("cockpit-credentials")
-        .join("data")
-        .join("cursor_accounts");
+    let dev_mirror = home.join("dev").join("cockpit-credentials");
     if dev_mirror.is_dir() {
         return Some(dev_mirror);
     }
     None
+}
+
+fn resolve_credentials_mirror_accounts_dir() -> Option<PathBuf> {
+    let root = resolve_credentials_mirror_root()?;
+    for candidate in [
+        root.join("data").join("cursor_accounts"),
+        root.join("cursor_accounts"),
+    ] {
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn restore_missing_index_entries_from_mirror(index: &mut CursorAccountIndex) -> usize {
+    let root = match resolve_credentials_mirror_root() {
+        Some(dir) => dir,
+        None => return 0,
+    };
+    let mirror_index_path = root.join("cursor_accounts.json");
+    if !mirror_index_path.is_file() {
+        let alt = root.join("data").join("cursor_accounts.json");
+        if !alt.is_file() {
+            return 0;
+        }
+        return restore_missing_index_entries_from_mirror_file(index, &alt);
+    }
+    restore_missing_index_entries_from_mirror_file(index, &mirror_index_path)
+}
+
+fn restore_missing_index_entries_from_mirror_file(
+    index: &mut CursorAccountIndex,
+    mirror_index_path: &PathBuf,
+) -> usize {
+    let content = match fs::read_to_string(mirror_index_path) {
+        Ok(value) => value,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Account] 读取 credentials 镜像索引失败: path={}, error={}",
+                mirror_index_path.display(),
+                err
+            ));
+            return 0;
+        }
+    };
+    let mirror_index =
+        match crate::modules::atomic_write::parse_json_with_auto_restore::<CursorAccountIndex>(
+            mirror_index_path,
+            &content,
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                logger::log_warn(&format!(
+                    "[Cursor Account] 解析 credentials 镜像索引失败: path={}, error={}",
+                    mirror_index_path.display(),
+                    err
+                ));
+                return 0;
+            }
+        };
+
+    let live_ids: HashSet<String> = index.accounts.iter().map(|s| s.id.clone()).collect();
+    let mirror_dir = resolve_credentials_mirror_accounts_dir();
+    let mut restored_count = 0usize;
+
+    for summary in mirror_index.accounts {
+        let summary_id = summary.id.clone();
+        if live_ids.contains(&summary_id) {
+            continue;
+        }
+        if load_account(&summary_id).is_none() {
+            if let Some(ref mirror_dir) = mirror_dir {
+                let mirror_path = mirror_dir.join(format!("{}.json", summary_id));
+                if mirror_path.is_file() {
+                    if let Ok(detail) = fs::read_to_string(&mirror_path) {
+                        if let Ok(account) = crate::modules::atomic_write::parse_json_with_auto_restore::<CursorAccount>(
+                            &mirror_path,
+                            &detail,
+                        ) {
+                            let _ = save_account_file(&account);
+                        }
+                    }
+                }
+            }
+        }
+        if load_account(&summary_id).is_some() {
+            index.accounts.push(summary);
+            restored_count += 1;
+            logger::log_info(&format!(
+                "[Cursor Account] 已从 credentials 镜像索引恢复账号: id={}",
+                summary_id
+            ));
+        }
+    }
+    restored_count
 }
 
 fn restore_missing_detail_files_from_mirror(index: &mut CursorAccountIndex) -> usize {
@@ -979,9 +1067,10 @@ pub fn list_accounts() -> Vec<CursorAccount> {
     let mut index = load_account_index();
     let had_index_accounts = !index.accounts.is_empty();
     let mut accounts = normalize_account_index(&mut index);
+    let index_restored = restore_missing_index_entries_from_mirror(&mut index);
     let mirror_restored = restore_missing_detail_files_from_mirror(&mut index);
     let backup_restored = restore_missing_accounts_from_backups(&mut index);
-    if mirror_restored > 0 || backup_restored > 0 {
+    if index_restored > 0 || mirror_restored > 0 || backup_restored > 0 {
         accounts = normalize_account_index(&mut index);
     }
     if had_index_accounts && accounts.is_empty() {
@@ -1003,9 +1092,10 @@ pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     let mut index = load_account_index_checked()?;
     let had_index_accounts = !index.accounts.is_empty();
     let mut accounts = normalize_account_index(&mut index);
+    let index_restored = restore_missing_index_entries_from_mirror(&mut index);
     let mirror_restored = restore_missing_detail_files_from_mirror(&mut index);
     let backup_restored = restore_missing_accounts_from_backups(&mut index);
-    if mirror_restored > 0 || backup_restored > 0 {
+    if index_restored > 0 || mirror_restored > 0 || backup_restored > 0 {
         accounts = normalize_account_index(&mut index);
     }
     if had_index_accounts && accounts.is_empty() {
@@ -1678,10 +1768,18 @@ fn upsert_state_vscdb_ids(
     Ok(())
 }
 
-pub fn hard_reset_cursor_fingerprint_state() -> Result<(), String> {
-    let storage_json = get_default_cursor_storage_json_path()?;
-    let machine_id_path = get_default_cursor_machine_id_path()?;
-    let state_db = get_default_cursor_state_db_path()?;
+pub fn hard_reset_cursor_fingerprint_state_for_profile(
+    profile_dir: &std::path::Path,
+) -> Result<(), String> {
+    let storage_json = profile_dir
+        .join("User")
+        .join("globalStorage")
+        .join("storage.json");
+    let machine_id_path = profile_dir.join("machineId");
+    let state_db = profile_dir
+        .join("User")
+        .join("globalStorage")
+        .join("state.vscdb");
 
     let mut ids = HashMap::<&str, String>::new();
     ids.insert("storage.serviceMachineId", Uuid::new_v4().to_string());
@@ -1706,10 +1804,16 @@ pub fn hard_reset_cursor_fingerprint_state() -> Result<(), String> {
     .map_err(|e| format!("写入 machineId 失败: {}", e))?;
 
     upsert_state_vscdb_ids(&state_db, &ids)?;
-    logger::log_info(
-        "[Cursor Switch] 已执行 n 风格本地指纹重置（state.vscdb/storage.json/machineId）",
-    );
+    logger::log_info(&format!(
+        "[Cursor Switch] 已执行本地指纹重置: profile={}",
+        profile_dir.display()
+    ));
     Ok(())
+}
+
+pub fn hard_reset_cursor_fingerprint_state() -> Result<(), String> {
+    let profile_dir = get_default_cursor_data_dir()?;
+    hard_reset_cursor_fingerprint_state_for_profile(&profile_dir)
 }
 
 pub fn inject_to_cursor(account_id: &str) -> Result<(), String> {

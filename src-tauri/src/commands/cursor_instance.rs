@@ -36,6 +36,9 @@ fn inject_bound_account_for_instance_start(
     ));
 
     modules::cursor_instance::close_cursor(&[user_data_dir.to_string()], 20)?;
+    modules::cursor_account::hard_reset_cursor_fingerprint_state_for_profile(Path::new(
+        user_data_dir,
+    ))?;
     modules::cursor_instance::inject_account_to_profile(Path::new(user_data_dir), bind_id)?;
 
     modules::logger::log_info(&format!("Cursor 账号注入完成: {}", account.email));

@@ -47,7 +47,24 @@ normalize_account_index()
 - Cursor 账号页默认排序：`defaultSortBy: 'credits'`（剩余 Credits 降序）。
 - `quota_query_last_error` 非空的账号在任意排序键下**排在最后**（当前账号仍优先）。
 
-## 本地审计快照（2026-06-08）
+## 账号总数不止 Cursor 1242
+
+运行 `python scripts/audit_all_accounts.py` 可对比**全平台** live vs `cockpit-credentials` 镜像。
+
+典型结构（非仅 Cursor）：
+
+| 平台 | 量级（本机索引） |
+|------|------------------|
+| Cursor | ~1242（镜像可能 +1） |
+| Windsurf | ~1300+ |
+| Trae | ~100+ |
+| Antigravity / Codex / … | 个位数～数十 |
+
+**全平台索引合计约 2700+**，仪表盘「账号总数」≈ 各平台之和（去重前）。
+
+Cursor 若少于镜像：新增 `restore_missing_index_entries_from_mirror()`，从 `cockpit-credentials/cursor_accounts.json` 补回索引条目 + 详情文件。
+
+## 本地审计快照（Cursor only，2026-06-08）
 
 ```json
 {
@@ -55,12 +72,12 @@ normalize_account_index()
   "file_count": 1242,
   "missing_detail_count": 0,
   "null_usage_files": 19,
-  "quota_error_files": 695,
+  "quota_error_files": 690,
   "backup_count": 0
 }
 ```
 
-结论：**账号文件已齐**；「显示为零」主要是 **未刷新配额** 或 **配额 API 失败**（见根因 2），不是索引未同步。
+结论：Cursor **详情文件与索引对齐**；「显示为零」主要是 **未刷新配额** 或 **配额 API 失败**（见根因 2）。合并重复邮箱后磁盘上可能仍有**多余详情 JSON**（未删文件），计数会大于 UI 行数。
 
 数据目录：`%USERPROFILE%\.antigravity_cockpit`（非 `%LocalAppData%\cockpit-tools`）。
 
