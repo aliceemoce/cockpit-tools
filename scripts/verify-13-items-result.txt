@@ -1,0 +1,24 @@
+=== verify-13-items 2026-06-07T22:59:56.6054680+08:00 ===
+[PASS] 1-email-api
+[PASS] 2-no-restore
+[PASS] 2-upload-hook
+[PASS] 2-upload-repo
+[PASS] 7-path-install
+[PASS] 7-no-header-btn
+[PASS] 9-no-app-install
+[PASS] 11-no-pib file_exists=False
+[PASS] 12-platformInstall
+[PASS] 8-installer
+[PASS] 10-commands
+[PASS] 4-windsurf-cache
+--- npm typecheck ---
+typecheck exit=0
+--- cargo tests ---
+cargo-test exit=1
+--- resolve cursor installer (rust test output grep) ---
+[FAIL] rust-tests-ok
+--- github token ---
+[WARN] no-github-token-upload-untested
+--- app process ---
+[INFO] cockpit-tools running pid=154512
+=== DONE ===

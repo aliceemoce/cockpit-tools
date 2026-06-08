@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "window": "Cockpit Tools",
+  "state_before": "normal",
+  "state_after": "minimized",
+  "success_method": "invoke_minimize_button",
+  "error": null,
+  "rect_after": {
+    "x": 0,
+    "y": 0,
+    "width": 0,
+    "height": 0
+  }
+}

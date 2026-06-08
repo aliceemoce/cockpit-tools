@@ -1,0 +1,71 @@
+{
+  "steps": [
+    {
+      "launch_minimize": true,
+      "state": "minimized"
+    },
+    {
+      "navigate_cursor_sidebar": true
+    }
+  ],
+  "cursor_page": {
+    "png": "C:\\Users\\aliceemoce\\AppData\\Local\\Temp\\acceptance-cursor-page.png",
+    "keyword_hits": {
+      "检测": [],
+      "未检测": [],
+      "Cursor.exe": [
+        "Cursor.exe"
+      ],
+      "按剩余 Credits": [
+        "按剩余 Credits"
+      ],
+      "Cursor 设置": [
+        "Cursor 设置"
+      ],
+      "ERR_CONNECTION": []
+    },
+    "has_credits_sort": true,
+    "has_cursor_settings": true,
+    "has_badge_text": true,
+    "connection_error": false
+  },
+  "quick_settings": {
+    "opened": true,
+    "capture_ok": true,
+    "png": "C:\\Users\\aliceemoce\\AppData\\Local\\Temp\\acceptance-quicksettings.png",
+    "hits": {
+      "Download": [],
+      "path": [
+        "CURSOR 路径",
+        "默认路径"
+      ],
+      "RefreshCw": [
+        "刷新配额",
+        "刷新配额",
+        "刷新配额",
+        "刷新配额",
+        "刷新配额",
+        "刷新配额",
+        "刷新配额",
+        "刷新配额"
+      ]
+    }
+  },
+  "account_audit": {
+    "base": "C:\\Users\\aliceemoce\\.antigravity_cockpit",
+    "index_exists": true,
+    "index_count": 1242,
+    "file_count": 1242,
+    "missing_detail_count": 0,
+    "orphan_file_count": 0,
+    "missing_detail_sample": [],
+    "null_usage_files": 19,
+    "quota_error_files": 690,
+    "backup_count": 0
+  },
+  "bundle_badge": true,
+  "exe": "C:\\Users\\aliceemoce\\dev\\cargo-target\\cockpit-tools\\release\\cockpit-tools.exe",
+  "exe_exists": true,
+  "ok": true,
+  "minimized_after": true
+}
