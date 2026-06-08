@@ -32,11 +32,17 @@ def largest_cockpit_window() -> auto.Control | None:
     best_area = 0
     for w in auto.GetRootControl().GetChildren():
         try:
+            if (w.ControlTypeName or "") != "WindowControl":
+                continue
             name = (w.Name or "").lower()
-            if "cockpit" not in name:
+            if "cockpit" not in name or "siw" in name:
                 continue
             r = w.BoundingRectangle
-            area = max(0, r.width()) * max(0, r.height())
+            width = max(0, r.width())
+            height = max(0, r.height())
+            if width < 400 or height < 400:
+                continue
+            area = width * height
             if area > best_area:
                 best_area = area
                 best = w

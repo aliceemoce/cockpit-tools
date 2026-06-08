@@ -47,9 +47,31 @@ normalize_account_index()
 - Cursor 账号页默认排序：`defaultSortBy: 'credits'`（剩余 Credits 降序）。
 - `quota_query_last_error` 非空的账号在任意排序键下**排在最后**（当前账号仍优先）。
 
+## 本地审计快照（2026-06-08）
+
+```json
+{
+  "index_count": 1242,
+  "file_count": 1242,
+  "missing_detail_count": 0,
+  "null_usage_files": 19,
+  "quota_error_files": 695,
+  "backup_count": 0
+}
+```
+
+结论：**账号文件已齐**；「显示为零」主要是 **未刷新配额** 或 **配额 API 失败**（见根因 2），不是索引未同步。
+
+数据目录：`%USERPROFILE%\.antigravity_cockpit`（非 `%LocalAppData%\cockpit-tools`）。
+
+## Agent 自验失败点
+
+详见同仓库 `docs/agent-verification-failures.md`。
+
 ## 验证清单
 
 1. 打开 Cursor 账号页 → 右上角应出现「检测中」→「Cursor + 可执行文件名」或「未检测到版本」。
-2. 删除单个 `cursor_accounts/<id>.json` 但保留索引 → 刷新列表应从 `cursor_local_import_backups/` 恢复（若备份存在）。
+2. 删除单个 `cursor_accounts/<id>.json` 但保留索引 → 刷新列表应从 `cursor_local_import_backups/` 或 `COCKPIT_CREDENTIALS_DIR` 镜像恢复。
 3. 配置 GitHub Token → `list_cursor_accounts` 应从 `aliceemoce/cockpit-credentials` 拉取缺失邮箱。
 4. 刷新全部后，有 token 的账号应写入 `cursor_usage_raw`；失败账号带 `quota_query_last_error` 且排在列表末尾。
+5. 默认排序「按剩余 Credits」；`quota_query_last_error` 账号始终最后（当前账号除外）。
