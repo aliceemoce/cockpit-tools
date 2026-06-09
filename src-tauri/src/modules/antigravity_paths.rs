@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "windows")]
 fn roaming_app_data_dir() -> Result<PathBuf, String> {
@@ -21,23 +21,82 @@ fn roaming_app_data_dir() -> Result<PathBuf, String> {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn local_programs_dir() -> Option<PathBuf> {
+    std::env::var("LOCALAPPDATA")
+        .ok()
+        .map(|value| PathBuf::from(value).join("Programs"))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_app_root_exists(root_name: &str, exe_names: &[&str]) -> bool {
+    let Some(programs_dir) = local_programs_dir() else {
+        return false;
+    };
+    let root = programs_dir.join(root_name);
+    exe_names
+        .iter()
+        .any(|exe_name| root.join(exe_name).exists())
+}
+
+#[cfg(target_os = "windows")]
+pub fn user_data_dir_candidates(roaming_dir: &Path) -> Vec<PathBuf> {
+    let antigravity_dir = roaming_dir.join("Antigravity");
+    let antigravity_ide_dir = roaming_dir.join("Antigravity IDE");
+
+    if windows_app_root_exists("Antigravity", &["Antigravity.exe", "antigravity.exe"]) {
+        return vec![antigravity_dir, antigravity_ide_dir];
+    }
+
+    vec![antigravity_ide_dir, antigravity_dir]
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn user_data_dir_candidates(_roaming_dir: &Path) -> Vec<PathBuf> {
+    Vec::new()
+}
+
 pub fn default_user_data_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
         let home = dirs::home_dir().ok_or("无法获取 Home 目录")?;
-        return Ok(home.join("Library/Application Support/Antigravity IDE"));
+        let ide_dir = home.join("Library/Application Support/Antigravity IDE");
+        if ide_dir.exists() {
+            return Ok(ide_dir);
+        }
+        let legacy_dir = home.join("Library/Application Support/Antigravity");
+        if legacy_dir.exists() {
+            return Ok(legacy_dir);
+        }
+        return Ok(ide_dir);
     }
 
     #[cfg(target_os = "windows")]
     {
         let roaming_dir = roaming_app_data_dir()?;
-        return Ok(roaming_dir.join("Antigravity IDE"));
+        for candidate in user_data_dir_candidates(&roaming_dir) {
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+        return Ok(user_data_dir_candidates(&roaming_dir)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| roaming_dir.join("Antigravity IDE")));
     }
 
     #[cfg(target_os = "linux")]
     {
         let home = dirs::home_dir().ok_or("无法获取 Home 目录")?;
-        return Ok(home.join(".config/Antigravity IDE"));
+        let ide_dir = home.join(".config/Antigravity IDE");
+        if ide_dir.exists() {
+            return Ok(ide_dir);
+        }
+        let legacy_dir = home.join(".config/Antigravity");
+        if legacy_dir.exists() {
+            return Ok(legacy_dir);
+        }
+        return Ok(ide_dir);
     }
 
     #[allow(unreachable_code)]
@@ -72,7 +131,58 @@ pub fn global_storage_dir() -> Result<PathBuf, String> {
 }
 
 pub fn state_db_path() -> Result<PathBuf, String> {
-    Ok(global_storage_dir()?.join("state.vscdb"))
+    if let Some(path) = resolve_state_db_path() {
+        return Ok(path);
+    }
+    let fallback = global_storage_dir()?.join("state.vscdb");
+    Err(format!("数据库文件不存在: {:?}", fallback))
+}
+
+pub fn resolve_state_db_path() -> Option<PathBuf> {
+    for candidate in state_db_candidates() {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+pub fn state_db_candidates() -> Vec<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let Ok(roaming_dir) = roaming_app_data_dir() else {
+            return Vec::new();
+        };
+        return user_data_dir_candidates(&roaming_dir)
+            .into_iter()
+            .map(|dir| dir.join("User").join("globalStorage").join("state.vscdb"))
+            .collect();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let Some(home) = dirs::home_dir() else {
+            return Vec::new();
+        };
+        return vec![
+            home.join("Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb"),
+            home.join("Library/Application Support/Antigravity/User/globalStorage/state.vscdb"),
+        ];
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let Some(home) = dirs::home_dir() else {
+            return Vec::new();
+        };
+        return vec![
+            home.join(".config/Antigravity IDE/User/globalStorage/state.vscdb"),
+            home.join(".config/Antigravity/User/globalStorage/state.vscdb"),
+        ];
+    }
+
+    #[allow(unreachable_code)]
+    Vec::new()
 }
 
 pub fn storage_json_path() -> Result<PathBuf, String> {

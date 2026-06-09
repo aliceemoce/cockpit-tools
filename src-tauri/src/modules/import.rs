@@ -432,16 +432,33 @@ pub fn resolve_json_import_name(
 
 // ==================== 导入命令逻辑 ====================
 
+fn resolve_legacy_antigravity_tools_dir() -> Option<std::path::PathBuf> {
+    let home = dirs::home_dir()?;
+    let mut candidates = vec![home.join(".antigravity_tools")];
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        candidates.push(std::path::PathBuf::from(appdata).join(".antigravity_tools"));
+    }
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn legacy_antigravity_tools_missing_message() -> String {
+    let home = dirs::home_dir()
+        .map(|dir| dir.join(".antigravity_tools"))
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "~/.antigravity_tools".to_string());
+    format!(
+        "未找到旧版 Antigravity Tools 数据目录（{}）。若从未安装过 Antigravity Tools，请改用「从本地数据库导入」「从插件导入」或 JSON 导入。",
+        home
+    )
+}
+
 /// 从旧版 ~/.antigravity_tools/ 导入账号
 pub async fn import_from_old_tools_logic() -> Result<Vec<models::Account>, String> {
     use std::fs;
 
-    let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
-    let old_dir = home.join(".antigravity_tools");
-
-    if !old_dir.exists() {
-        return Err("未找到旧版数据目录 ~/.antigravity_tools/".to_string());
-    }
+    let old_dir = resolve_legacy_antigravity_tools_dir()
+        .ok_or_else(legacy_antigravity_tools_missing_message)?;
 
     let old_accounts_dir = old_dir.join("accounts");
     if !old_accounts_dir.exists() {
@@ -558,12 +575,8 @@ pub async fn import_from_old_tools_logic() -> Result<Vec<models::Account>, Strin
 pub async fn import_fingerprints_from_old_tools_logic() -> Result<usize, String> {
     use std::fs;
 
-    let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
-    let old_dir = home.join(".antigravity_tools");
-
-    if !old_dir.exists() {
-        return Err("未找到旧版数据目录 ~/.antigravity_tools/".to_string());
-    }
+    let old_dir = resolve_legacy_antigravity_tools_dir()
+        .ok_or_else(legacy_antigravity_tools_missing_message)?;
 
     let old_accounts_dir = old_dir.join("accounts");
     if !old_accounts_dir.exists() {
@@ -741,17 +754,72 @@ pub async fn import_fingerprints_from_json_logic(json_content: String) -> Result
 }
 
 /// 从本地 Antigravity IDE 客户端导入当前账号
+#[cfg(target_os = "windows")]
 pub async fn import_from_local_logic() -> Result<models::Account, String> {
+    modules::logger::log_info("开始从 Windows Credential Manager 导入 Antigravity 账号...");
+    if let Some(system_credential) =
+        modules::antigravity_credential::read_antigravity_system_credential()?
+    {
+        return import_from_refresh_token(
+            system_credential.refresh_token,
+            "Antigravity 系统凭据",
+        )
+        .await;
+    }
+
+    import_from_local_state_db_logic().await
+}
+
+/// 从本地 Antigravity IDE 客户端导入当前账号
+#[cfg(not(target_os = "windows"))]
+pub async fn import_from_local_logic() -> Result<models::Account, String> {
+    import_from_local_state_db_logic().await
+}
+
+async fn import_from_refresh_token(
+    refresh_token: String,
+    source_label: &str,
+) -> Result<models::Account, String> {
+    if refresh_token.trim().is_empty() {
+        return Err(format!("{} refresh_token 为空", source_label));
+    }
+
+    modules::logger::log_info(&format!(
+        "从{}获取到 refresh_token (len={})",
+        source_label,
+        refresh_token.len()
+    ));
+
+    let token_response = modules::oauth::refresh_access_token(&refresh_token).await?;
+    let user_info = modules::oauth::get_user_info(&token_response.access_token).await?;
+    let email = user_info.email.clone();
+
+    let token = models::TokenData::new(
+        token_response.access_token,
+        token_response.refresh_token.unwrap_or(refresh_token),
+        token_response.expires_in,
+        Some(email.clone()),
+        None,
+        None,
+    );
+
+    let account = modules::upsert_account(email.clone(), user_info.get_display_name(), token)?;
+
+    modules::logger::log_info(&format!("本地账号导入成功: {}", email));
+    modules::websocket::broadcast_data_changed("import_from_local");
+
+    Ok(account)
+}
+
+async fn import_from_local_state_db_logic() -> Result<models::Account, String> {
     use base64::{engine::general_purpose, Engine as _};
 
     modules::logger::log_info("开始从本地 Antigravity IDE 客户端导入...");
 
-    // 读取 state.vscdb
     let db_path = modules::db::get_db_path()?;
     let conn =
         rusqlite::Connection::open(&db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
 
-    // 读取新版 Unified State Sync OAuth 数据
     let state_data: String = conn
         .query_row(
             "SELECT value FROM ItemTable WHERE key = ?",
@@ -760,12 +828,10 @@ pub async fn import_from_local_logic() -> Result<models::Account, String> {
         )
         .map_err(|_| "未找到登录状态，请确保 Antigravity IDE 客户端已登录")?;
 
-    // Base64 解码
     let blob = general_purpose::STANDARD
         .decode(&state_data)
         .map_err(|e| format!("Base64 解码失败: {}", e))?;
 
-    // 解析 protobuf 获取 refresh_token
     let refresh_token = utils::protobuf::extract_refresh_token_from_unified_oauth_token(&blob)
         .ok_or("无法从本地数据解析 refresh_token")?;
 
@@ -778,32 +844,7 @@ pub async fn import_from_local_logic() -> Result<models::Account, String> {
         refresh_token.len()
     ));
 
-    // 使用 refresh_token 获取新的 access_token
-    let token_response = modules::oauth::refresh_access_token(&refresh_token).await?;
-
-    // 获取用户信息
-    let user_info = modules::oauth::get_user_info(&token_response.access_token).await?;
-    let email = user_info.email.clone();
-
-    // 构建 TokenData
-    let token = models::TokenData::new(
-        token_response.access_token,
-        token_response.refresh_token.unwrap_or(refresh_token),
-        token_response.expires_in,
-        Some(email.clone()),
-        None,
-        None,
-    );
-
-    // 添加或更新账号
-    let account = modules::upsert_account(email.clone(), user_info.get_display_name(), token)?;
-
-    modules::logger::log_info(&format!("本地账号导入成功: {}", email));
-
-    // 广播数据变更通知
-    modules::websocket::broadcast_data_changed("import_from_local");
-
-    Ok(account)
+    import_from_refresh_token(refresh_token, "Antigravity state.vscdb").await
 }
 
 /// 从 JSON 导入账号

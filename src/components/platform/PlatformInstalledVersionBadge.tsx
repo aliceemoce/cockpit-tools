@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Download, RefreshCw } from 'lucide-react';
 import type { PlatformOverviewHeaderId } from './PlatformOverviewTabsHeader';
 import { getPlatformLabel } from '../../utils/platformMeta';
 import {
@@ -74,7 +73,8 @@ export function PlatformInstalledVersionBadge({
   const [appPath, setAppPath] = useState<string | null>(null);
   const [installSupported, setInstallSupported] = useState(false);
   const [installing, setInstalling] = useState(false);
-  const [installProgress, setInstallProgress] = useState('');
+  const [phase, setPhase] = useState('');
+  const [progress, setProgress] = useState(0);
 
   const reloadPath = useCallback(async () => {
     if (!detectAppId) {
@@ -135,10 +135,12 @@ export function PlatformInstalledVersionBadge({
       return;
     }
     setInstalling(true);
-    setInstallProgress('');
+    setPhase('resolving');
+    setProgress(0);
     try {
       const result = await installMissingPlatform(installAppId, (payload) => {
-        setInstallProgress(payload.message || payload.phase || '');
+        setPhase(payload.phase);
+        setProgress(payload.progress ?? 0);
       });
       const installedPath = (result.installedPath || '').trim();
       if (installedPath) {
@@ -146,32 +148,31 @@ export function PlatformInstalledVersionBadge({
         setAppPath(installedPath);
         return;
       }
-      if (!result.usedManualFallback) {
-        setInstallProgress(
-          t('appPath.install.notDetected', '安装完成但未检测到可执行文件'),
-        );
-      } else {
-        setInstallProgress(result.message);
-      }
     } catch (error) {
       console.warn('[PlatformInstalledVersionBadge] install failed:', error);
-      setInstallProgress(String(error));
     } finally {
       setInstalling(false);
+      setPhase('');
+      setProgress(0);
     }
-  }, [installAppId, installing, t]);
+  }, [installAppId, installing]);
 
   const title = useMemo(() => {
     if (!loaded) {
       return t('runtime.installedVersion.loading', '正在检测安装版本');
     }
+    if (installing) {
+      return phase === 'downloading'
+        ? `${t('appPath.install.downloading', '下载中')} ${progress}%`
+        : t('appPath.install.inProgress', '安装中…');
+    }
     if (!appPath) {
       return installSupported
-        ? t('appPath.install.downloadAndInstall', '下载并静默安装')
+        ? `${productLabel}\n${t('appPath.install.downloadAndInstall', '下载并静默安装')}`
         : t('runtime.installedVersion.missing', '未检测到已安装版本');
     }
-    return `${productLabel}\n${appPath}`;
-  }, [appPath, installSupported, loaded, productLabel, t]);
+    return `${productLabel}\n${appPath}\n${t('appPath.install.clickToReinstall', '点击执行静默安装')}`;
+  }, [appPath, installSupported, loaded, productLabel, t, installing, phase, progress]);
 
   if (!detectAppId) {
     return null;
@@ -188,45 +189,36 @@ export function PlatformInstalledVersionBadge({
     );
   }
 
-  if (!appPath) {
-    return (
-      <div className="installed-version-badge is-missing" title={title}>
-        <span className="installed-version-dot" />
-        <span className="installed-version-value">
-          {t('runtime.installedVersion.notFound', '未检测到版本')}
-        </span>
-        {installSupported && installAppId ? (
-          <button
-            type="button"
-            className="installed-version-install-btn"
-            disabled={installing}
-            title={t('appPath.install.downloadAndInstall', '下载并静默安装')}
-            onClick={() => {
-              void handleSilentInstall();
-            }}
-          >
-            {installing ? (
-              <RefreshCw size={12} className="spin" />
-            ) : (
-              <Download size={12} />
-            )}
-            <span>
-              {installing
-                ? installProgress ||
-                  t('appPath.install.inProgress', '安装中…')
-                : t('appPath.install.downloadAndInstall', '静默安装')}
-            </span>
-          </button>
-        ) : null}
-      </div>
-    );
-  }
+  const isClickable = !installing && !!installAppId;
+  const badgeClass = [
+    'installed-version-badge',
+    loaded && !appPath && 'is-missing',
+    isClickable && 'is-clickable',
+    installing && 'is-installing',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div className="installed-version-badge" title={title}>
+    <div
+      className={badgeClass}
+      title={title}
+      onClick={isClickable ? () => { void handleSilentInstall(); } : undefined}
+    >
+      {installing && phase === 'downloading' && (
+        <div className="installed-version-progress-bg" style={{ width: `${progress}%` }} />
+      )}
       <span className="installed-version-dot" />
       <span className="installed-version-name">{productLabel}</span>
-      <span className="installed-version-value">{basenameFromPath(appPath)}</span>
+      <span className="installed-version-value">
+        {installing
+          ? phase === 'downloading'
+            ? `${t('appPath.install.downloading', '下载中')} ${progress}%`
+            : t('appPath.install.inProgress', '安装中…')
+          : appPath
+            ? basenameFromPath(appPath)
+            : t('runtime.installedVersion.notFound', '未检测到版本')}
+      </span>
     </div>
   );
 }

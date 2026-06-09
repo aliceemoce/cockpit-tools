@@ -127,6 +127,19 @@ fn ensure_profile_global_storage(profile_dir: &Path) -> Result<PathBuf, String> 
     Ok(global_storage)
 }
 
+fn create_empty_state_db(db_path: &Path) -> Result<(), String> {
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建 globalStorage 失败: {}", e))?;
+    }
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| format!("创建数据库失败: {}", e))?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value TEXT)",
+        [],
+    )
+    .map_err(|e| format!("初始化 state.vscdb 失败: {}", e))?;
+    Ok(())
+}
+
 fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> {
     let db_path = profile_dir
         .join("User")
@@ -136,14 +149,30 @@ fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> 
         return Ok(db_path);
     }
 
+    for candidate in modules::antigravity_paths::state_db_candidates() {
+        if candidate.exists() {
+            let _ = ensure_profile_global_storage(profile_dir)?;
+            fs::copy(&candidate, &db_path).map_err(|e| format!("复制 state.vscdb 失败: {}", e))?;
+            break;
+        }
+    }
+
     let default_dir = get_default_user_data_dir()?;
     let default_db = default_dir
         .join("User")
         .join("globalStorage")
         .join("state.vscdb");
-    if default_db.exists() {
+    if !db_path.exists() && default_db.exists() {
         let _ = ensure_profile_global_storage(profile_dir)?;
         fs::copy(&default_db, &db_path).map_err(|e| format!("复制 state.vscdb 失败: {}", e))?;
+    }
+
+    if !db_path.exists() {
+        create_empty_state_db(&db_path)?;
+        modules::logger::log_info(&format!(
+            "已创建空白 state.vscdb 用于账号注入: {:?}",
+            db_path
+        ));
     }
 
     if !db_path.exists() {
@@ -174,7 +203,15 @@ pub fn inject_account_to_profile(profile_dir: &Path, account_id: &str) -> Result
         &account.token.refresh_token,
         account.token.expiry_timestamp,
     )
-    .map(|_| ())
+    .map(|_| ())?;
+
+    #[cfg(target_os = "windows")]
+    {
+        modules::antigravity_credential::write_antigravity_system_credential(&account)
+            .map_err(|e| format!("写入 Antigravity 系统凭据失败: {}", e))?;
+    }
+
+    Ok(())
 }
 
 pub fn create_instance(params: CreateInstanceParams) -> Result<InstanceProfile, String> {

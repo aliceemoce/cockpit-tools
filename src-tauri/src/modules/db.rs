@@ -18,11 +18,18 @@ pub fn get_db_path() -> Result<PathBuf, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let path = crate::modules::antigravity_paths::state_db_path()?;
-        if path.exists() {
+        if let Some(path) = crate::modules::antigravity_paths::resolve_state_db_path() {
             return Ok(path);
         }
-        return Err(format!("数据库文件不存在: {:?}", path));
+        let fallback = crate::modules::antigravity_paths::state_db_candidates()
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| {
+                crate::modules::antigravity_paths::global_storage_dir()
+                    .map(|dir| dir.join("state.vscdb"))
+                    .unwrap_or_else(|_| PathBuf::from("state.vscdb"))
+            });
+        return Err(format!("数据库文件不存在: {:?}", fallback));
     }
 
     #[cfg(target_os = "linux")]
@@ -122,9 +129,28 @@ pub fn inject_unified_oauth_token_to_path(
     Ok(())
 }
 
+fn open_or_create_state_db() -> Result<PathBuf, String> {
+    if let Ok(path) = get_db_path() {
+        return Ok(path);
+    }
+
+    let db_path = crate::modules::antigravity_paths::global_storage_dir()?.join("state.vscdb");
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("创建 globalStorage 失败: {}", e))?;
+    }
+    let conn = Connection::open(&db_path).map_err(|e| format!("创建数据库失败: {}", e))?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value TEXT)",
+        [],
+    )
+    .map_err(|e| format!("初始化 state.vscdb 失败: {}", e))?;
+    Ok(db_path)
+}
+
 /// 写入 serviceMachineId 到数据库
 pub fn write_service_machine_id(service_machine_id: &str) -> Result<(), String> {
-    let db_path = get_db_path()?;
+    let db_path = open_or_create_state_db()?;
     let conn = Connection::open(&db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
 
     conn.execute(
