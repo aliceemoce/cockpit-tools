@@ -47,14 +47,20 @@ def main() -> None:
         "bundle": str(BUNDLE),
         "size": len(text),
         "flows": flows,
-        "ordered_steps_inferred": [
-            "1. taskkill Cursor.exe",
-            "2. resetMachineIdFile (machineid file)",
-            "3. resetStorageJsonIds (telemetry.* in storage.json)",
-            "4. reset state.vscdb ItemTable telemetry + storage.serviceMachineId",
-            "5. optional resetWindowsMachineGuid",
-            "6. patch Cursor workbench main.js -> __cursorAuthBridge.switchAccount(access,refresh,email,signUpType)",
-            "7. launch Cursor",
+        "ordered_steps_traditional_switch": [
+            "1. closeCursor (taskkill Cursor.exe)",
+            "2. switchTokensInDb (delete old cursorAuth, reset vscdb telemetry, write tokens)",
+            "3. resetStorageJsonIds (independent telemetry in storage.json)",
+            "4. resetMachineIdFile (independent UUID in machineId file)",
+            "5. patchCursorMachineId (main.js, NOT workbench)",
+            "6. resetWindowsMachineGuid (Windows, optional on failure)",
+            "7. sleep 1500ms",
+            "8. startCursor",
+        ],
+        "not_in_traditional_switch": [
+            "cleanCursorEnvironment (Vh) — cleaner UI only",
+            "patchCursorWorkbench (Xh) — seamless setup only",
+            "silentSwitch (Zh) — password login path only",
         ],
     }
     OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

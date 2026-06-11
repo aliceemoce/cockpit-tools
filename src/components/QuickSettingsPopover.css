@@ -149,27 +149,6 @@
   flex-shrink: 0;
 }
 
-.qs-section-header-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 6px;
-}
-
-.qs-section-header-icon-btn:hover:not(:disabled) {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
-}
-
-.qs-section-header-icon-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 /* Row */
 .qs-row {
   display: flex;

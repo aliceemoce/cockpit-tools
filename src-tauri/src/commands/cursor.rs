@@ -2,16 +2,10 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 
 use crate::models::cursor::CursorAccount;
-use crate::modules::{cursor_account, cursor_import_backup_sync, cursor_oauth, logger};
+use crate::modules::{cursor_account, cursor_oauth, logger};
 
 #[tauri::command]
-pub async fn list_cursor_accounts() -> Result<Vec<CursorAccount>, String> {
-    if let Err(error) = cursor_import_backup_sync::pull_remote_import_backups().await {
-        logger::log_warn(&format!(
-            "[Cursor Command] 远端账号拉取失败，继续使用本地列表: {}",
-            error
-        ));
-    }
+pub fn list_cursor_accounts() -> Result<Vec<CursorAccount>, String> {
     cursor_account::list_accounts_checked()
 }
 
@@ -57,14 +51,17 @@ pub async fn refresh_cursor_token(
         account_id
     ));
 
-    match cursor_account::refresh_account_async(&account_id).await {
+    match cursor_account::refresh_account_fast_async(&account_id).await {
         Ok(account) => {
             if let Err(e) = cursor_account::run_quota_alert_if_needed() {
                 logger::log_warn(&format!("[QuotaAlert][Cursor] 预警检查失败: {}", e));
             }
-            let _ = crate::modules::tray::update_tray_menu(&app);
+            let app_for_tray = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = crate::modules::tray::update_tray_menu(&app_for_tray);
+            });
             logger::log_info(&format!(
-                "[Cursor Command] 刷新完成: account_id={}, email={}, elapsed={}ms",
+                "[Cursor Command] 刷新完成: account_id={}, email={}, elapsed={}ms, mode=fast_usage_only",
                 account.id,
                 account.email,
                 started_at.elapsed().as_millis()
@@ -100,7 +97,10 @@ pub async fn refresh_all_cursor_tokens(app: AppHandle) -> Result<i32, String> {
         }
     }
 
-    let _ = crate::modules::tray::update_tray_menu(&app);
+    let app_for_tray = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = crate::modules::tray::update_tray_menu(&app_for_tray);
+    });
     logger::log_info(&format!(
         "[Cursor Command] 批量刷新完成: success={}, elapsed={}ms",
         success_count,
@@ -129,7 +129,7 @@ pub fn add_cursor_account_with_token(
         status: None,
         status_reason: None,
     };
-    let account = cursor_account::upsert_account(payload)?;
+    let account = cursor_account::upsert_import_payload(payload)?;
     let _ = crate::modules::tray::update_tray_menu(&app);
     Ok(account)
 }
@@ -163,7 +163,7 @@ pub async fn cursor_oauth_login_complete(
         login_id
     ));
     let payload = cursor_oauth::complete_login(&login_id).await?;
-    let mut account = cursor_account::upsert_account(payload)?;
+    let mut account = cursor_account::upsert_import_payload(payload)?;
 
     match cursor_account::refresh_account_async(&account.id).await {
         Ok(refreshed) => account = refreshed,
@@ -200,31 +200,29 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
     let account = cursor_account::load_account(&account_id)
         .ok_or_else(|| format!("Cursor account not found: {}", account_id))?;
 
-    let launch_warning = match crate::commands::cursor_instance::start_cursor_instance_with_account_switch(
-        "__default__".to_string(),
-        Some(account_id.clone()),
-    )
+    let account_id_for_task = account_id.clone();
+    let launch_warning = match tokio::task::spawn_blocking(move || {
+        cursor_account::nirvana_traditional_switch_and_start(&account_id_for_task)
+    })
     .await
-        {
-            Ok(_) => None,
-            Err(err) => {
-                if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("启动 Cursor 失败") {
-                    logger::log_warn(&format!("Cursor 默认实例启动失败: {}", err));
-                    if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("APP_PATH_NOT_FOUND:")
-                    {
-                        let _ = app.emit(
-                            "app:path_missing",
-                            serde_json::json!({ "app": "cursor", "retry": { "kind": "default" } }),
-                        );
-                    }
-                    Some(err)
-                } else {
-                    return Err(err);
-                }
+    {
+        Ok(Ok(())) => None,
+        Ok(Err(err)) => {
+            if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("启动 Cursor 失败") || err.contains("未找到 Cursor") {
+                Some(err)
+            } else {
+                return Err(err);
             }
-        };
+        }
+        Err(err) => return Err(format!("切号任务异常: {}", err)),
+    };
 
-    let _ = crate::modules::tray::update_tray_menu(&app);
+    let _ = crate::modules::provider_current_state::set_current_account_id("cursor", Some(&account_id));
+
+    let app_for_tray = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = crate::modules::tray::update_tray_menu(&app_for_tray);
+    });
 
     if let Some(err) = launch_warning {
         logger::log_warn(&format!(
@@ -234,6 +232,12 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
             started_at.elapsed().as_millis(),
             err
         ));
+        if err.contains("未找到 Cursor") || err.contains("APP_PATH_NOT_FOUND") {
+            let _ = app.emit(
+                "app:path_missing",
+                serde_json::json!({ "app": "cursor", "retry": { "kind": "default" } }),
+            );
+        }
         Ok(format!("切换完成，但 Cursor 启动失败: {}", err))
     } else {
         logger::log_info(&format!(
@@ -242,6 +246,18 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
             account.email,
             started_at.elapsed().as_millis()
         ));
+        let refresh_account_id = account.id.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(err) =
+                crate::modules::cursor_account::refresh_account_fast_async(&refresh_account_id)
+                    .await
+            {
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 切号后配额刷新失败: account_id={}, error={}",
+                    refresh_account_id, err
+                ));
+            }
+        });
         Ok(format!("切换完成: {}", account.email))
     }
 }

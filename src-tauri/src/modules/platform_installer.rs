@@ -127,16 +127,34 @@ fn lookup_spec(platform_id: &str) -> Result<OsInstallerSpec, String> {
         })
 }
 
-fn guess_filename_from_url(url: &str, platform_id: &str) -> String {
-    if let Ok(parsed) = Url::parse(url) {
+fn guess_filename_from_url(url: &str, platform_id: &str, installer_kind: &str) -> String {
+    let mut filename = if let Ok(parsed) = Url::parse(url) {
         if let Some(segments) = parsed.path_segments() {
             let last = segments.last().unwrap_or_default();
             if !last.is_empty() && last.contains('.') {
-                return last.to_string();
+                last.to_string()
+            } else {
+                format!("{}-installer", platform_id)
             }
+        } else {
+            format!("{}-installer", platform_id)
+        }
+    } else {
+        format!("{}-installer", platform_id)
+    };
+
+    let ext = installer_kind.to_lowercase();
+    if !ext.is_empty() && ext != "unknown" && ext != "store" && ext != "msix-launcher" {
+        let suffix = format!(".{}", ext);
+        if !filename.to_lowercase().ends_with(&suffix) {
+            filename = format!("{}{}", filename, suffix);
+        }
+    } else if ext == "msix-launcher" {
+        if !filename.to_lowercase().ends_with(".exe") {
+            filename = format!("{}.exe", filename);
         }
     }
-    format!("{}-installer.bin", platform_id)
+    filename
 }
 
 fn silent_supported(spec: &OsInstallerSpec) -> bool {
@@ -180,7 +198,7 @@ async fn resolve_download_url(platform_id: &str, spec: &OsInstallerSpec) -> Resu
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
     {
-        let filename = guess_filename_from_url(&direct, platform_id);
+        let filename = guess_filename_from_url(&direct, platform_id, &spec.installer_kind);
         return Ok((direct, filename));
     }
 
@@ -264,7 +282,7 @@ pub fn resolve_platform_installer(platform_id: String) -> Result<ResolvedPlatfor
     let download_page = spec.download_page.clone();
     let filename = download_url
         .as_ref()
-        .map(|url| guess_filename_from_url(url, &platform_id))
+        .map(|url| guess_filename_from_url(url, &platform_id, &spec.installer_kind))
         .unwrap_or_else(|| format!("{}-installer", platform_id));
 
     Ok(ResolvedPlatformInstaller {
@@ -318,6 +336,7 @@ pub async fn download_platform_installer(
     ));
 
     let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|error| format!("Failed to create HTTP client: {}", error))?;
@@ -1061,8 +1080,73 @@ pub async fn install_missing_platform(
         return Err("Auto-install is not available for this platform".to_string());
     }
 
-    let downloaded = download_platform_installer(app.clone(), platform_id.clone()).await?;
-    install_platform_installer(app, platform_id, downloaded).await
+    let downloaded = download_platform_installer(app.clone(), platform_id.clone()).await;
+    match downloaded {
+        Ok(installer_path) => {
+            let res = install_platform_installer(app.clone(), platform_id.clone(), installer_path).await;
+            match res {
+                Ok(install_res) => Ok(install_res),
+                Err(install_error) => {
+                    crate::modules::logger::log_warn(&format!(
+                        "[PlatformInstall] Installation failed, opening fallback download page: platform={}, error={}",
+                        platform_id, install_error
+                    ));
+                    if let Some(page) = spec.download_page.clone() {
+                        use tauri_plugin_opener::OpenerExt;
+                        app.opener()
+                            .open_url(&page, None::<String>)
+                            .map_err(|error| format!("Failed to open download page: {}", error))?;
+                        
+                        emit_progress(
+                            &app,
+                            &platform_id,
+                            "completed_with_manual",
+                            Some(100),
+                            None,
+                        );
+
+                        Ok(PlatformInstallResult {
+                            platform_id,
+                            installed_path: None,
+                            used_manual_fallback: true,
+                            message: format!("Installation failed: {}. Opened download page.", install_error),
+                        })
+                    } else {
+                        Err(format!("Installation failed: {}", install_error))
+                    }
+                }
+            }
+        }
+        Err(download_error) => {
+            crate::modules::logger::log_warn(&format!(
+                "[PlatformInstall] Download failed, opening fallback download page: platform={}, error={}",
+                platform_id, download_error
+            ));
+            if let Some(page) = spec.download_page.clone() {
+                use tauri_plugin_opener::OpenerExt;
+                app.opener()
+                    .open_url(&page, None::<String>)
+                    .map_err(|error| format!("Failed to open download page: {}", error))?;
+                
+                emit_progress(
+                    &app,
+                    &platform_id,
+                    "completed_with_manual",
+                    Some(100),
+                    None,
+                );
+
+                Ok(PlatformInstallResult {
+                    platform_id,
+                    installed_path: None,
+                    used_manual_fallback: true,
+                    message: format!("Download failed: {}. Opened download page.", download_error),
+                })
+            } else {
+                Err(format!("Download failed: {}", download_error))
+            }
+        }
+    }
 }
 
 fn detect_installed_path(platform_id: &str) -> Result<Option<String>, String> {

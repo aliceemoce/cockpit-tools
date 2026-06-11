@@ -40,6 +40,7 @@ import {
   getCursorPlanDisplayName,
   getCursorPlanBadgeClass,
   getCursorAccountDisplayEmail,
+  getCursorAccountQuotaPoolId,
   getCursorOnDemandSummary,
   getCursorUsage,
   formatCursorUsageDollars,
@@ -257,8 +258,47 @@ export function CursorAccountsPage() {
 
   // ─── Platform-specific: Quota ──────────────────────────────────────
 
+  const resolveRemainingQuotaPercent = useCallback((account: CursorAccount): number | null => {
+    if (account.quota_query_last_error?.trim()) {
+      return null;
+    }
+    const usage = getCursorUsage(account);
+    const ratioPct =
+      usage.planUsedCents != null &&
+      usage.planLimitCents != null &&
+      usage.planLimitCents > 0
+        ? (usage.planUsedCents / usage.planLimitCents) * 100
+        : null;
+    const usedCandidates = [
+      usage.inlineSuggestionsUsedPercent ?? usage.totalPercentUsed ?? ratioPct,
+      usage.autoPercentUsed,
+      usage.apiPercentUsed,
+    ].filter((value): value is number => value != null && Number.isFinite(value));
+    if (usedCandidates.length === 0) {
+      return null;
+    }
+    const maxUsed = Math.min(100, Math.max(0, Math.max(...usedCandidates)));
+    return 100 - maxUsed;
+  }, []);
+
+  const compareUsageUpdatedAt = useCallback((a: CursorAccount, b: CursorAccount): number => {
+    const aUpdated = a.usage_updated_at ?? 0;
+    const bUpdated = b.usage_updated_at ?? 0;
+    return bUpdated - aUpdated;
+  }, []);
+
   const resolveTotalQuota = useCallback(
     (account: CursorAccount) => {
+      const quotaError = account.quota_query_last_error?.trim();
+      if (quotaError) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+          costText: null as string | null,
+          stale: true,
+        };
+      }
       const usage = getCursorUsage(account);
       const ratioPct =
         usage.planUsedCents != null &&
@@ -266,7 +306,17 @@ export function CursorAccountsPage() {
         usage.planLimitCents > 0
           ? (usage.planUsedCents / usage.planLimitCents) * 100
           : null;
-      const total = normalizeCursorPercent(usage.totalPercentUsed ?? ratioPct);
+      const totalSource = usage.totalPercentUsed ?? ratioPct ?? usage.inlineSuggestionsUsedPercent;
+      if (totalSource == null && !account.cursor_usage_raw) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+          costText: null,
+          stale: false,
+        };
+      }
+      const total = normalizeCursorPercent(totalSource);
       const costText = usage.planUsedCents != null && usage.planLimitCents != null
         ? `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`
         : null;
@@ -283,6 +333,13 @@ export function CursorAccountsPage() {
   const resolveAutoQuota = useCallback(
     (account: CursorAccount) => {
       const usage = getCursorUsage(account);
+      if (usage.autoPercentUsed == null && !account.cursor_usage_raw) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+        };
+      }
       const auto = normalizeCursorPercent(usage.autoPercentUsed);
       return {
         percentage: auto.bar,
@@ -296,6 +353,13 @@ export function CursorAccountsPage() {
   const resolveApiQuota = useCallback(
     (account: CursorAccount) => {
       const usage = getCursorUsage(account);
+      if (usage.apiPercentUsed == null && !account.cursor_usage_raw) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+        };
+      }
       const api = normalizeCursorPercent(usage.apiPercentUsed);
       return {
         percentage: api.bar,
@@ -456,24 +520,34 @@ export function CursorAccountsPage() {
 
     if (sortBy === 'created_at') {
       const diff = b.created_at - a.created_at;
-      return sortDirection === 'desc' ? diff : -diff;
+      if (diff !== 0) {
+        return sortDirection === 'desc' ? diff : -diff;
+      }
+      return compareUsageUpdatedAt(a, b);
     }
     if (sortBy === 'plan_end') {
       const aReset = getCursorUsage(a).allowanceResetAt ?? null;
       const bReset = getCursorUsage(b).allowanceResetAt ?? null;
-      if (aReset == null && bReset == null) return 0;
+      if (aReset == null && bReset == null) return compareUsageUpdatedAt(a, b);
       if (aReset == null) return 1;
       if (bReset == null) return -1;
       const diff = bReset - aReset;
+      if (diff !== 0) {
+        return sortDirection === 'desc' ? diff : -diff;
+      }
+      return compareUsageUpdatedAt(a, b);
+    }
+    const aValue = resolveRemainingQuotaPercent(a);
+    const bValue = resolveRemainingQuotaPercent(b);
+    if (aValue == null && bValue == null) return compareUsageUpdatedAt(a, b);
+    if (aValue == null) return 1;
+    if (bValue == null) return -1;
+    const diff = bValue - aValue;
+    if (diff !== 0) {
       return sortDirection === 'desc' ? diff : -diff;
     }
-    const aUsage = getCursorUsage(a);
-    const bUsage = getCursorUsage(b);
-    const aValue = 100 - (aUsage.inlineSuggestionsUsedPercent ?? 0);
-    const bValue = 100 - (bUsage.inlineSuggestionsUsedPercent ?? 0);
-    const diff = bValue - aValue;
-    return sortDirection === 'desc' ? diff : -diff;
-  }, [currentAccountId, sortBy, sortDirection]);
+    return compareUsageUpdatedAt(a, b);
+  }, [compareUsageUpdatedAt, currentAccountId, resolveRemainingQuotaPercent, sortBy, sortDirection]);
 
   const sortedAccountsForInstances = useMemo(
     () => [...accounts].sort(compareAccountsBySort),
@@ -489,7 +563,7 @@ export function CursorAccountsPage() {
         const haystacks = [
           getCursorAccountDisplayEmail(account),
           account.id,
-          account.auth_id ?? '',
+          getCursorAccountQuotaPoolId(account),
           account.membership_type ?? '',
           account.subscription_status ?? '',
         ];
@@ -575,7 +649,7 @@ export function CursorAccountsPage() {
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authIdText = (account.auth_id || '').trim();
+      const authIdText = getCursorAccountQuotaPoolId(account);
       const maskedAuthIdText = authIdText ? maskAccountText(authIdText) : '--';
       const planLabel = resolvePlanLabel(account);
       const total = resolveTotalQuota(account);
@@ -742,7 +816,7 @@ export function CursorAccountsPage() {
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authIdText = (account.auth_id || '').trim();
+      const authIdText = getCursorAccountQuotaPoolId(account);
       const maskedAuthIdText = authIdText ? maskAccountText(authIdText) : '--';
       const planLabel = resolvePlanLabel(account);
       const total = resolveTotalQuota(account);

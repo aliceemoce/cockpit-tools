@@ -527,6 +527,20 @@
   transition: width 0.1s linear;
 }
 
+.installed-version-badge.is-install-success .installed-version-progress-bg {
+  background: rgba(34, 197, 94, 0.35);
+}
+
+.installed-version-badge.is-install-failure .installed-version-dot {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
+}
+
+.installed-version-badge.is-install-success .installed-version-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+}
+
 .installed-version-badge > *:not(.installed-version-progress-bg) {
   position: relative;
   z-index: 1;

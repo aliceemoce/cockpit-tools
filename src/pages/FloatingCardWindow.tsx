@@ -1030,14 +1030,16 @@ export function FloatingCardWindow() {
       return;
     }
 
+    const refreshIntervalMs = 60_000;
+
     const timerId = window.setInterval(() => {
       void refreshDisplayedAccount({ silent: true });
-    }, 60_000);
+    }, refreshIntervalMs);
 
     return () => {
       window.clearInterval(timerId);
     };
-  }, [refreshDisplayedAccount, viewedAccount]);
+  }, [refreshDisplayedAccount, selectedPlatform, viewedAccount]);
 
   const handleSwitch = useCallback(async () => {
     if (!viewedAccount || switchingAccountId || isCurrentViewed) return;

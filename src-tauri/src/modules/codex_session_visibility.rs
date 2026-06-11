@@ -1276,7 +1276,9 @@ mod tests {
         )
         .expect("write session index");
         let polluted_modified_at = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
-        fs::File::open(&rollout_path)
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&rollout_path)
             .expect("open rollout")
             .set_modified(polluted_modified_at)
             .expect("set polluted rollout mtime");
@@ -1309,7 +1311,9 @@ mod tests {
             "{\"type\":\"session_meta\",\"payload\":{\"id\":\"s1\",\"model_provider\":\"relay\"}}\n{\"type\":\"event\",\"timestamp\":\"2024-01-01T00:00:00Z\"}\n";
         fs::write(&rollout_path, rollout_content).expect("write rollout");
         let polluted_modified_at = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
-        fs::File::open(&rollout_path)
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&rollout_path)
             .expect("open rollout")
             .set_modified(polluted_modified_at)
             .expect("set polluted rollout mtime");
@@ -1414,6 +1418,7 @@ mod tests {
             )
             .expect("read provider-only row");
         assert_eq!(provider_only, ("relay".to_string(), 0));
+        drop(connection);
 
         fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
     }
@@ -1451,6 +1456,7 @@ mod tests {
             )
             .expect("read old provider");
         assert_eq!(old_provider, "relay");
+        drop(connection);
 
         fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
     }
@@ -1507,6 +1513,7 @@ mod tests {
             )
             .expect("read restored provider");
         assert_eq!(provider, "old");
+        drop(connection);
 
         fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
     }

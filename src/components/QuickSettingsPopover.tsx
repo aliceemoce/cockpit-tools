@@ -3,12 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { Settings, RefreshCw, FolderOpen, Zap, X, Download } from 'lucide-react';
-import {
-  installMissingPlatform,
-  isInstallableAppPath,
-  type InstallableAppPath,
-} from '../utils/platformInstall';
+import { Settings, RefreshCw, FolderOpen, Zap, X } from 'lucide-react';
 import { useEscClose } from '../hooks/useEscClose';
 import * as accountService from '../services/accountService';
 import * as codexService from '../services/codexService';
@@ -61,6 +56,8 @@ interface GeneralConfig {
   ui_scale: number;
   auto_refresh_minutes: number;
   codex_auto_refresh_minutes: number;
+  codex_sync_wsl: boolean;
+  codex_wsl_config_dir: string;
   ghcp_auto_refresh_minutes: number;
   windsurf_auto_refresh_minutes: number;
   kiro_auto_refresh_minutes: number;
@@ -312,8 +309,6 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
   const [config, setConfig] = useState<GeneralConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [pathDetecting, setPathDetecting] = useState(false);
-  const [pathInstalling, setPathInstalling] = useState(false);
-  const [pathInstallProgress, setPathInstallProgress] = useState('');
   const [openingCodexConfig, setOpeningCodexConfig] = useState(false);
   const [codexQuickConfig, setCodexQuickConfig] = useState<CodexQuickConfig | null>(null);
   const [codexQuickConfigPresetId, setCodexQuickConfigPresetId] =
@@ -815,6 +810,8 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
           uiScale: merged.ui_scale,
           autoRefreshMinutes: merged.auto_refresh_minutes,
           codexAutoRefreshMinutes: merged.codex_auto_refresh_minutes,
+          codexSyncWsl: merged.codex_sync_wsl,
+          codexWslConfigDir: merged.codex_wsl_config_dir,
           ghcpAutoRefreshMinutes: merged.ghcp_auto_refresh_minutes,
           windsurfAutoRefreshMinutes: merged.windsurf_auto_refresh_minutes,
           kiroAutoRefreshMinutes: merged.kiro_auto_refresh_minutes,
@@ -966,96 +963,6 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     }
   };
 
-  const resolveAppPathConfigKey = (
-    target:
-      | 'antigravity'
-      | 'codex'
-      | 'vscode'
-      | 'windsurf'
-      | 'kiro'
-      | 'cursor'
-      | 'codebuddy'
-      | 'codebuddy_cn'
-      | 'qoder'
-      | 'trae'
-      | 'workbuddy'
-      | 'zed',
-  ): keyof GeneralConfig => {
-    switch (target) {
-      case 'antigravity':
-        return 'antigravity_app_path';
-      case 'codex':
-        return 'codex_app_path';
-      case 'vscode':
-        return 'vscode_app_path';
-      case 'windsurf':
-        return 'windsurf_app_path';
-      case 'cursor':
-        return 'cursor_app_path';
-      case 'codebuddy':
-        return 'codebuddy_app_path';
-      case 'codebuddy_cn':
-        return 'codebuddy_cn_app_path';
-      case 'qoder':
-        return 'qoder_app_path';
-      case 'trae':
-        return 'trae_app_path';
-      case 'workbuddy':
-        return 'workbuddy_app_path';
-      case 'zed':
-        return 'zed_app_path';
-      default:
-        return 'kiro_app_path';
-    }
-  };
-
-  const handleInstallAppPath = async (target: InstallableAppPath) => {
-    if (pathInstalling || pathDetecting || !config) return;
-    setPathInstalling(true);
-    setPathInstallProgress('');
-    setError(null);
-    try {
-      const result = await installMissingPlatform(target, (payload) => {
-        if (payload.message) {
-          setPathInstallProgress(payload.message);
-        } else if (payload.progress != null) {
-          setPathInstallProgress(`${payload.progress}%`);
-        } else {
-          setPathInstallProgress(payload.phase);
-        }
-      });
-      const installedPath = (result.installedPath || '').trim();
-      if (installedPath) {
-        const key = resolveAppPathConfigKey(target);
-        await invoke('set_app_path', { app: target, path: installedPath });
-        saveConfig({ [key]: installedPath });
-        return;
-      }
-      if (result.usedManualFallback) {
-        setError(result.message);
-        return;
-      }
-      setError(
-        t(
-          target === 'codex'
-            ? 'appPath.install.codexNotDetected'
-            : 'appPath.install.notDetected',
-        ),
-      );
-    } catch (err) {
-      console.error('Failed to install platform:', err);
-      setError(
-        t('quickSettings.error.installPathFailed', {
-          error: String(err),
-          defaultValue: '安装失败：{{error}}',
-        }),
-      );
-    } finally {
-      setPathInstalling(false);
-      setPathInstallProgress('');
-    }
-  };
-
   const handleResetAppPath = async (
     target:
       | 'antigravity'
@@ -1076,7 +983,31 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     try {
       const detected = await invoke<string | null>('detect_app_path', { app: target, force: true });
       const path = detected || '';
-      saveConfig({ [resolveAppPathConfigKey(target)]: path });
+      const key =
+        target === 'antigravity'
+          ? 'antigravity_app_path'
+          : target === 'codex'
+            ? 'codex_app_path'
+            : target === 'vscode'
+              ? 'vscode_app_path'
+              : target === 'windsurf'
+                ? 'windsurf_app_path'
+                : target === 'cursor'
+                  ? 'cursor_app_path'
+                  : target === 'codebuddy'
+                    ? 'codebuddy_app_path'
+                    : target === 'codebuddy_cn'
+                      ? 'codebuddy_cn_app_path'
+                    : target === 'qoder'
+                      ? 'qoder_app_path'
+                    : target === 'trae'
+                      ? 'trae_app_path'
+                    : target === 'workbuddy'
+                      ? 'workbuddy_app_path'
+                    : target === 'zed'
+                      ? 'zed_app_path'
+                      : 'kiro_app_path';
+      saveConfig({ [key]: path });
     } catch (err) {
       console.error('Failed to reset path:', err);
       setError(t('quickSettings.error.resetPathFailed', {
@@ -1857,6 +1788,49 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                     '仅控制 Codex 总览中的 API 服务入口显示，不会停止本地 API 服务；关闭后可在这里重新打开。',
                   )}
                 </div>
+                {isWindows && (
+                  <>
+                    <div className="qs-row" style={{ marginTop: 8 }}>
+                      <div className="qs-row-label">
+                        <span>{t('settings.general.codexSyncWsl', '同步 Codex 到 WSL')}</span>
+                      </div>
+                      <div className="qs-row-control">
+                        <label className="qs-switch">
+                          <input
+                            type="checkbox"
+                            checked={config.codex_sync_wsl}
+                            onChange={(e) =>
+                              saveConfig({ codex_sync_wsl: e.target.checked })
+                            }
+                          />
+                          <span className="qs-switch-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="qs-hint">
+                      {t(
+                        'settings.general.codexSyncWslDesc',
+                        '切换默认 Codex 账号后，同时写入 WSL 的 Codex 配置目录。',
+                      )}
+                    </div>
+                    {config.codex_sync_wsl && (
+                      <div className="qs-path-control" style={{ marginTop: 8 }}>
+                        <input
+                          type="text"
+                          className="qs-path-input"
+                          value={config.codex_wsl_config_dir}
+                          placeholder={t(
+                            'settings.general.codexWslConfigDirPlaceholder',
+                            '\\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex',
+                          )}
+                          onChange={(e) =>
+                            saveConfig({ codex_wsl_config_dir: e.target.value })
+                          }
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -2085,46 +2059,18 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                     </button>
                     <button
                       className="qs-btn"
-                      onClick={() => {
-                        const target = getAppTarget();
-                        if (
-                          isInstallableAppPath(target) &&
-                          !getAppPath().trim()
-                        ) {
-                          void handleInstallAppPath(target as InstallableAppPath);
-                          return;
-                        }
-                        void handleResetAppPath(target);
-                      }}
-                      disabled={pathDetecting || pathInstalling}
+                      onClick={() => handleResetAppPath(getAppTarget())}
+                      disabled={pathDetecting}
                       title={
-                        pathInstalling
-                          ? pathInstallProgress ||
-                            (getAppTarget() === 'codex'
-                              ? t('appPath.install.codexInProgress')
-                              : t('appPath.install.inProgress'))
-                          : isInstallableAppPath(getAppTarget()) && !getAppPath().trim()
-                            ? getAppTarget() === 'codex'
-                              ? t('appPath.install.codexDownloadAndInstall')
-                              : t('appPath.install.downloadAndInstall')
-                            : pathDetecting
-                              ? t('common.loading', '加载中...')
-                              : t('settings.general.codexPathReset', '恢复默认')
+                        pathDetecting
+                          ? t('common.loading', '加载中...')
+                          : t('settings.general.codexPathReset', '恢复默认')
                       }
                     >
-                      {pathInstalling ? (
-                        <RefreshCw size={12} className="spin" />
-                      ) : isInstallableAppPath(getAppTarget()) && !getAppPath().trim() ? (
-                        <Download size={12} />
-                      ) : (
-                        <RefreshCw size={12} className={pathDetecting ? 'spin' : undefined} />
-                      )}
+                      <RefreshCw size={12} className={pathDetecting ? 'spin' : undefined} />
                     </button>
                   </div>
                 </div>
-                {pathInstallProgress ? (
-                  <div className="qs-hint">{pathInstallProgress}</div>
-                ) : null}
 
                 {type === 'codex' && (
                   <>

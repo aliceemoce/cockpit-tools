@@ -55,7 +55,7 @@ import {
   getKiroCreditsSummary,
   isKiroAccountBanned,
 } from '../types/kiro';
-import { CursorAccount, getCursorUsage } from '../types/cursor';
+import { CursorAccount, getCursorUsage, getCursorAccountQuotaPoolId } from '../types/cursor';
 import {
   GeminiAccount,
   getGeminiTierQuotaSummary,
@@ -1882,7 +1882,7 @@ export function DashboardPage({
     if (!account) return <div className="empty-slot">{t('dashboard.noAccount', '无账号')}</div>;
 
     const presentation = buildCursorAccountPresentation(account, t);
-    const authIdText = (account.auth_id || '').trim();
+    const authIdText = getCursorAccountQuotaPoolId(account);
     const maskedAuthIdText = authIdText ? maskAccountText(authIdText) : '--';
     return renderUnifiedAccountCard({
       presentation,

@@ -27,6 +27,7 @@ dist-ssr
 
 # Local AI instructions
 AGENTS.md
+.cursor/.brief-ready
 
 locale-check-report.md
 
@@ -45,6 +46,10 @@ src-tauri/native/macos-native-menu/.build/
 # Rust
 target/
 **/*.rs.bk
+src-tauri/embedded/cursor_backup_token.bin
 docs/plugin-architecture-proposal.md
 .aitasks
 .qoder/
+
+# Auto-generated context docs
+.reposynapse/

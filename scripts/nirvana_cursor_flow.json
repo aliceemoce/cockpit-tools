@@ -47,13 +47,19 @@
       "snippet": "t t = me(\"cursor\"); try { const e = x.join(R.homedir(), \"Library/Saved Application State\"); if (g.existsSync(e)) { const s = g.readdirSync(e); for (const n of s) if (n.toLowerCase().includes(\"cursor\") && n.endsWith(\".savedState\")) { const r = x.join(e, n); try { g.rmSync(r, { recursive: !0, force: !0 }), console.log(`[startCursor] 已清理 Saved Application State: ${n}`); } catch { } } } } catch (e) { console.warn(\"[startCursor] 清理 Saved State 失败（不影响启动）:\", e); } t ? de(\"open\", [\"-n\", \"-a\", t], { detached: !0, stdio: \"ignore\" }) : de(\"open\", [\"-n\", \"-a\", \"Cursor\"], { detached: !0, stdio: \"ignore\" }), console.log(\"[startCursor] macOS: open -n -a Cursor\"); } e"
     }
   ],
-  "ordered_steps_inferred": [
-    "1. taskkill Cursor.exe",
-    "2. resetMachineIdFile (machineid file)",
-    "3. resetStorageJsonIds (telemetry.* in storage.json)",
-    "4. reset state.vscdb ItemTable telemetry + storage.serviceMachineId",
-    "5. optional resetWindowsMachineGuid",
-    "6. patch Cursor workbench main.js -> __cursorAuthBridge.switchAccount(access,refresh,email,signUpType)",
-    "7. launch Cursor"
+  "ordered_steps_traditional_switch": [
+    "1. closeCursor (taskkill Cursor.exe)",
+    "2. switchTokensInDb (delete old cursorAuth, reset vscdb telemetry, write tokens)",
+    "3. resetStorageJsonIds (independent telemetry in storage.json)",
+    "4. resetMachineIdFile (independent UUID in machineId file)",
+    "5. patchCursorMachineId (main.js, NOT workbench)",
+    "6. resetWindowsMachineGuid (Windows, optional on failure)",
+    "7. sleep 1500ms",
+    "8. startCursor"
+  ],
+  "not_in_traditional_switch": [
+    "cleanCursorEnvironment (Vh) — cleaner UI only",
+    "patchCursorWorkbench (Xh) — seamless setup only",
+    "silentSwitch (Zh) — password login path only"
   ]
 }

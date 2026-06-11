@@ -16,14 +16,6 @@
       "start_cursor_instance_with_account_switch": false,
       "inject_bound_account_for_instance_start": true,
       "hard_reset_cursor_fingerprint": false
-    },
-    "src-tauri/src/modules/cursor_account.rs": {
-      "inject_cursor_account": false,
-      "inject_to_cursor": true,
-      "switch_cursor_account_to_profile": false,
-      "start_cursor_instance_with_account_switch": false,
-      "inject_bound_account_for_instance_start": false,
-      "hard_reset_cursor_fingerprint": false
     }
   },
   "local": {

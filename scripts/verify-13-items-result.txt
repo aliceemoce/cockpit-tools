@@ -1,6 +1,6 @@
-=== verify-13-items 2026-06-07T22:59:56.6054680+08:00 ===
+=== verify-13-items 2026-06-10T15:47:31.6422757+08:00 ===
 [PASS] 1-email-api
-[PASS] 2-no-restore
+[FAIL] 2-no-restore
 [PASS] 2-upload-hook
 [PASS] 2-upload-repo
 [PASS] 7-path-install
@@ -14,11 +14,11 @@
 --- npm typecheck ---
 typecheck exit=0
 --- cargo tests ---
-cargo-test exit=1
+cargo-test exit=0
 --- resolve cursor installer (rust test output grep) ---
-[FAIL] rust-tests-ok
+[PASS] rust-tests-ok
 --- github token ---
-[WARN] no-github-token-upload-untested
+[INFO] token-set=GITHUB_TOKEN
 --- app process ---
-[INFO] cockpit-tools running pid=154512
+[INFO] cockpit-tools running pid=3144
 === DONE ===

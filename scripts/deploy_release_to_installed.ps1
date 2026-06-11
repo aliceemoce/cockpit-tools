@@ -1,37 +1,34 @@
-# 将 dev release 覆盖到桌面快捷方式指向的安装目录，并跑最小化验收脚本。
+# 将 S: release 覆盖到安装目录，并跑验收脚本
 $ErrorActionPreference = "Stop"
-$Repo = "C:\Users\aliceemoce\dev\cockpit-tools"
+. "$PSScriptRoot\cockpit-build-paths.ps1"
+Set-CockpitBuildEnvironment
+
 $TargetDir = Join-Path $env:LOCALAPPDATA "Cockpit Tools"
-$Release = "C:\Users\aliceemoce\dev\cargo-target\cockpit-tools\release\cockpit-tools.exe"
 $Installed = Join-Path $TargetDir "cockpit-tools.exe"
 
-Write-Host "==> stop running Cockpit Tools (release + installed paths)"
+Write-Host "==> stop running Cockpit Tools"
 Get-Process -Name "cockpit-tools" -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
 
-Set-Location $Repo
+Set-Location $CockpitRepo
 Write-Host "==> verify_cursor_switch_paths.py"
-python (Join-Path $Repo "scripts\verify_cursor_switch_paths.py")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host "==> npm run build"
-npm run build
+python (Join-Path $CockpitRepo "scripts\verify_cursor_switch_paths.py")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$env:CARGO_TARGET_DIR = "C:\Users\aliceemoce\dev\cargo-target\cockpit-tools"
-Write-Host "==> cargo build --release"
-cargo build --release
+Write-Host "==> build-release.ps1"
+& (Join-Path $CockpitRepo "scripts\build-release.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-if (-not (Test-Path $Release)) {
-    throw "Release exe not found: $Release"
+if (-not (Test-Path $CockpitReleaseExe)) {
+    throw "Release exe not found: $CockpitReleaseExe"
 }
 
 New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
-Copy-Item $Release $Installed -Force
+Copy-Item $CockpitReleaseExe $Installed -Force
 $info = Get-Item $Installed
 Write-Host "Deployed to: $Installed"
 Write-Host "  Length=$($info.Length) LastWriteTime=$($info.LastWriteTime)"
 
 Write-Host "==> verify_acceptance_minimized.py"
-python (Join-Path $Repo "scripts\verify_acceptance_minimized.py")
+python (Join-Path $CockpitRepo "scripts\verify_acceptance_minimized.py")
 exit $LASTEXITCODE

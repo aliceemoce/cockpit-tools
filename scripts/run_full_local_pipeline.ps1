@@ -37,14 +37,15 @@ npm run build 2>&1 | ForEach-Object { Log $_ }
 $npmExit = $LASTEXITCODE
 if ($npmExit -ne 0) { $errors += "npm exit $npmExit" }
 
-$env:CARGO_TARGET_DIR = "C:\Users\aliceemoce\dev\cargo-target\cockpit-tools"
+. (Join-Path $Repo "scripts\cockpit-build-paths.ps1")
+Set-CockpitBuildEnvironment
 Set-Location (Join-Path $Repo "src-tauri")
-Log "STEP: cargo build --release"
+Log "STEP: cargo build --release (target: $env:CARGO_TARGET_DIR)"
 cargo build --release 2>&1 | ForEach-Object { Log $_ }
 $cargoExit = $LASTEXITCODE
 if ($cargoExit -ne 0) { $errors += "cargo exit $cargoExit" }
 
-$Release = "C:\Users\aliceemoce\dev\cargo-target\cockpit-tools\release\cockpit-tools.exe"
+$Release = $CockpitReleaseExe
 $Installed = Join-Path $env:LOCALAPPDATA "Cockpit Tools\cockpit-tools.exe"
 $copyOk = $false
 if (Test-Path $Release) {

@@ -44,14 +44,12 @@ type ProviderMapper<TAccount> = {
   getUsage: (account: TAccount) => ProviderUsage;
 };
 
-type ProviderStoreOptions<TAccount> = {
+type ProviderStoreOptions = {
   platformId: PlatformId;
   currentAccountIdKey?: string;
   resolveCurrentAccountId?: () => Promise<string | null>;
   persistCurrentAccountId?: boolean;
   hydrateCurrentAccountId?: boolean;
-  enableAccountsCache?: boolean;
-  projectAccountsForCache?: (accounts: TAccount[]) => TAccount[];
 };
 
 export interface ProviderAccountStoreState<TAccount> {
@@ -75,7 +73,7 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
   cacheKey: string,
   service: ProviderService<TAccount>,
   mapper: ProviderMapper<TAccount>,
-  options: ProviderStoreOptions<TAccount>,
+  options: ProviderStoreOptions,
 ) {
   const currentAccountIdKey = options?.currentAccountIdKey ?? null;
   const hasCurrentAccountResolver = typeof options?.resolveCurrentAccountId === 'function';
@@ -83,52 +81,25 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
     options?.persistCurrentAccountId ?? !hasCurrentAccountResolver;
   const shouldHydrateCurrentAccountId =
     options?.hydrateCurrentAccountId ?? shouldPersistCurrentAccountId;
-  const shouldUseAccountsCache = options?.enableAccountsCache ?? true;
-  const projectAccountsForCache = options?.projectAccountsForCache;
   let allowNextEmptyAccountList = false;
   let allowNextEmptyCurrentAccountId = false;
 
   const loadCachedAccounts = (): TAccount[] => {
-    if (!shouldUseAccountsCache) {
-      return [];
-    }
-
     try {
       const raw = localStorage.getItem(cacheKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? (parsed as TAccount[]) : [];
-    } catch (error) {
-      console.error(`[Provider Store] Failed to load cache for ${cacheKey}:`, error);
+    } catch {
       return [];
     }
   };
 
   const persistAccountsCache = (accounts: TAccount[]) => {
-    if (!shouldUseAccountsCache) {
-      return;
-    }
-
     try {
-      const cachePayload = projectAccountsForCache ? projectAccountsForCache(accounts) : accounts;
-      const serialized = JSON.stringify(cachePayload);
-      localStorage.setItem(cacheKey, serialized);
-      console.info(
-        `[Provider Store] Cache persisted for ${cacheKey}: accounts=${cachePayload.length}, bytes=${serialized.length}`,
-      );
-    } catch (error) {
-      const fallbackSize = (() => {
-        try {
-          const cachePayload = projectAccountsForCache ? projectAccountsForCache(accounts) : accounts;
-          return JSON.stringify(cachePayload).length;
-        } catch {
-          return -1;
-        }
-      })();
-      console.error(
-        `[Provider Store] Failed to persist cache for ${cacheKey}: accounts=${accounts.length}, bytes=${fallbackSize}`,
-        error,
-      );
+      localStorage.setItem(cacheKey, JSON.stringify(accounts));
+    } catch {
+      // ignore cache write failures
     }
   };
 

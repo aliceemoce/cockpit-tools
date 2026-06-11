@@ -178,6 +178,9 @@ pub fn run() {
                 });
             }
 
+            modules::app_startup_defer::mark_app_started();
+            modules::cursor_account::schedule_index_maintenance_once();
+            modules::cursor_refresh_scheduler::ensure_started();
             modules::provider_token_keeper::ensure_started(app.handle().clone());
             modules::wakeup_scheduler::restore_state_from_disk();
             modules::wakeup_scheduler::ensure_started(app.handle().clone());

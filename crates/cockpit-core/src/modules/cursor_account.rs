@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use uuid::Uuid;
 
 use crate::models::cursor::{CursorAccount, CursorAccountIndex, CursorImportPayload};
 use crate::modules::{account, logger};

@@ -80,6 +80,14 @@ pub fn get_default_cursor_user_data_dir() -> Result<PathBuf, String> {
     cursor_account::get_default_cursor_data_dir()
 }
 
+pub fn is_default_cursor_profile_dir(profile_dir: &Path) -> bool {
+    let Ok(default_dir) = get_default_cursor_user_data_dir() else {
+        return false;
+    };
+    normalize_path_for_compare(&default_dir.to_string_lossy())
+        == normalize_path_for_compare(&profile_dir.to_string_lossy())
+}
+
 pub fn get_default_instances_root_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
@@ -1286,6 +1294,169 @@ pub fn start_cursor_default_with_args_with_new_window(
     )
 }
 
+/// 无忧 `go()`：Windows 用 `explorer.exe [Cursor.exe]`，不用 `--user-data-dir`。
+pub fn start_cursor_nirvana_go() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        let launch_path = resolve_cursor_launch_path_nirvana_go()?;
+        let mut cmd = Command::new("explorer.exe");
+        cmd.arg(&launch_path);
+        cmd.creation_flags(0x08000000);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+        modules::logger::log_info(&format!(
+            "[startCursor] Windows: explorer.exe {}",
+            launch_path.display()
+        ));
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let launch_path = resolve_cursor_launch_path_nirvana_go()?;
+        let app_root = normalize_macos_app_root(&launch_path).unwrap_or(launch_path);
+        if let Ok(saved_state_dir) = dirs::home_dir().map(|home| home.join("Library/Saved Application State")) {
+            if saved_state_dir.is_dir() {
+                if let Ok(entries) = fs::read_dir(&saved_state_dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_lowercase();
+                        if name.contains("cursor") && name.ends_with(".savedstate") {
+                            let _ = fs::remove_dir_all(entry.path());
+                        }
+                    }
+                }
+            }
+        }
+        let mut cmd = Command::new("open");
+        sanitize_macos_gui_launch_env(&mut cmd);
+        cmd.arg("-n").arg("-a").arg(app_root);
+        spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+        modules::logger::log_info("[startCursor] macOS: open -n -a Cursor");
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let launch_path = resolve_cursor_launch_path_nirvana_go()?;
+        let mut cmd = Command::new(launch_path);
+        crate::modules::process::apply_managed_proxy_env_to_command(&mut cmd);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+        modules::logger::log_info("[startCursor] Linux: 直接启动 Cursor");
+        return Ok(());
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        Err("Cursor 启动仅支持 macOS、Windows 和 Linux".to_string())
+    }
+}
+
+fn resolve_cursor_launch_path_nirvana_go() -> Result<PathBuf, String> {
+    if let Ok(path) = resolve_cursor_launch_path() {
+        return Ok(path);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let pf = std::env::var("ProgramFiles").unwrap_or_default();
+        let pfx86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
+        let candidates = [
+            PathBuf::from(&local).join("Programs/Cursor/Cursor.exe"),
+            PathBuf::from(&local).join("Cursor/Cursor.exe"),
+            PathBuf::from(&pf).join("Cursor/Cursor.exe"),
+            PathBuf::from(&pfx86).join("Cursor/Cursor.exe"),
+        ];
+        for candidate in candidates {
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    Err("未找到 Cursor，请在设置中配置 Cursor 安装路径".to_string())
+}
+
+/// 对齐无忧 `closeCursor`（ho）：Windows 上 `taskkill /IM Cursor.exe` 关闭**全部** Cursor 进程。
+pub fn close_cursor_nirvana_style(timeout_secs: u64) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/IM", "Cursor.exe"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
+        let wait_ms = timeout_secs.saturating_mul(1000).min(5000);
+        let mut elapsed_ms = 0u64;
+        while elapsed_ms < wait_ms {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            elapsed_ms += 500;
+            let output = Command::new("tasklist")
+                .args(["/FI", "IMAGENAME eq Cursor.exe", "/FO", "CSV", "/NH"])
+                .output();
+            let still_running = output
+                .map(|out| String::from_utf8_lossy(&out.stdout).to_lowercase().contains("cursor.exe"))
+                .unwrap_or(false);
+            if !still_running {
+                modules::logger::log_info(&format!(
+                    "[Cursor Switch] closeCursor 完成（等待 {}ms）",
+                    elapsed_ms
+                ));
+                break;
+            }
+        }
+
+        if elapsed_ms >= wait_ms {
+            modules::logger::log_warn("[Cursor Switch] closeCursor 等待超时，强制结束 Cursor");
+            let _ = Command::new("taskkill")
+                .args(["/F", "/IM", "Cursor.exe", "/T"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("pkill").args(["-x", "Cursor"]).status();
+        let wait_ms = timeout_secs.saturating_mul(1000).min(5000);
+        let mut elapsed_ms = 0u64;
+        while elapsed_ms < wait_ms {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            elapsed_ms += 200;
+            let status = Command::new("pgrep").args(["-x", "Cursor"]).status();
+            if status.map(|s| !s.success()).unwrap_or(true) {
+                modules::logger::log_info(&format!(
+                    "[Cursor Switch] closeCursor 完成（等待 {}ms）",
+                    elapsed_ms
+                ));
+                break;
+            }
+        }
+        if elapsed_ms >= wait_ms {
+            let _ = Command::new("pkill").args(["-9", "-x", "Cursor"]).status();
+        }
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        let _ = Command::new("pkill").args(["-x", "cursor"]).status();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    let _ = clear_all_pids();
+    Ok(())
+}
+
 pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), String> {
     let target_dirs: HashSet<String> = user_data_dirs
         .iter()
@@ -1352,7 +1523,8 @@ fn ensure_profile_global_storage(profile_dir: &Path) -> Result<PathBuf, String> 
     Ok(global_storage)
 }
 
-fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> {
+/// 切号前确保 profile 已有 state.vscdb（从默认 profile 复制），须在指纹重置之前调用。
+pub fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> {
     let db_path = profile_dir
         .join("User")
         .join("globalStorage")
@@ -1387,14 +1559,5 @@ fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> 
 }
 
 pub fn inject_account_to_profile(profile_dir: &Path, account_id: &str) -> Result<(), String> {
-    let account = cursor_account::load_account(account_id)
-        .ok_or_else(|| format!("绑定账号不存在: {}", account_id))?;
-    let db_path = ensure_state_db_for_injection(profile_dir)?;
-    cursor_account::inject_to_cursor_at_path(&db_path, account_id)?;
-    modules::logger::log_info(&format!(
-        "Cursor 账号注入完成: email={}, db={}",
-        account.email,
-        db_path.to_string_lossy()
-    ));
-    Ok(())
+    cursor_account::switch_cursor_account_to_profile(account_id, profile_dir)
 }

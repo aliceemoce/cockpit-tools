@@ -181,6 +181,9 @@ async fn refresh_due_codex_accounts() -> bool {
 }
 
 async fn refresh_due_cursor_accounts() -> bool {
+    if !crate::modules::app_startup_defer::startup_defer_elapsed() {
+        return false;
+    }
     let accounts = match cursor_account::list_accounts_checked() {
         Ok(accounts) => accounts,
         Err(err) => {
@@ -205,7 +208,7 @@ async fn refresh_due_cursor_accounts() -> bool {
             continue;
         }
 
-        match cursor_account::refresh_account_async(&account.id).await {
+        match cursor_account::refresh_account_fast_async(&account.id).await {
             Ok(updated) => {
                 clear_attempt_backoff(&key);
                 refreshed_any = true;

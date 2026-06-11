@@ -1,14 +1,11 @@
-use std::collections::HashMap;
+//! Cursor 导入备份：仅上传至用户私有 GitHub 仓库，不从仓库拉取。
 
 use base64::Engine as _;
-use serde::{Deserialize, Serialize};
-
-use crate::models::cursor::CursorImportPayload;
+use serde::Serialize;
 
 const DEFAULT_REPO: &str = "aliceemoce/cockpit-credentials";
 const DEFAULT_BRANCH: &str = "master";
 const REMOTE_DIR: &str = "cursor-import-backups";
-const REMOTE_LIST_PAGE_SIZE: usize = 100;
 
 #[derive(Serialize)]
 struct GithubContentsRequest<'a> {
@@ -18,6 +15,10 @@ struct GithubContentsRequest<'a> {
 }
 
 fn resolve_github_token() -> Option<String> {
+    if let Some(token) = crate::modules::cursor_backup_token_embedded::resolve_embedded_github_token() {
+        return Some(token);
+    }
+
     for key in ["COCKPIT_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"] {
         if let Ok(value) = std::env::var(key) {
             let trimmed = value.trim();
@@ -26,6 +27,7 @@ fn resolve_github_token() -> Option<String> {
             }
         }
     }
+
     None
 }
 
@@ -35,23 +37,6 @@ fn resolve_target_repo() -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_REPO.to_string())
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubContentEntry {
-    name: String,
-    path: String,
-    #[serde(rename = "type")]
-    entry_type: String,
-    content: Option<String>,
-    encoding: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RemoteImportBackupSnapshot {
-    created_at_ms: i64,
-    email: String,
-    payload: CursorImportPayload,
 }
 
 fn build_github_client() -> Result<reqwest::Client, String> {
@@ -66,258 +51,6 @@ fn github_auth_headers(token: &str) -> [(&'static str, String); 2] {
         ("Authorization", format!("Bearer {}", token)),
         ("Accept", "application/vnd.github+json".to_string()),
     ]
-}
-
-fn parse_link_next(link_header: &str) -> Option<String> {
-    for segment in link_header.split(',') {
-        let segment = segment.trim();
-        if segment.contains("rel=\"next\"") {
-            let start = segment.find('<')? + 1;
-            let end = segment.find('>')?;
-            return Some(segment[start..end].to_string());
-        }
-    }
-    None
-}
-
-fn normalize_snapshot_email(snapshot: &RemoteImportBackupSnapshot) -> Option<String> {
-    let email = snapshot.email.trim();
-    if email.is_empty() {
-        return None;
-    }
-    let lowered = email.to_lowercase();
-    if lowered.contains('@') {
-        Some(lowered)
-    } else {
-        None
-    }
-}
-
-fn decode_github_content(entry: &GithubContentEntry) -> Result<Vec<u8>, String> {
-    let encoded = entry
-        .content
-        .as_deref()
-        .ok_or_else(|| format!("GitHub 内容缺少 payload: {}", entry.path))?;
-    base64::engine::general_purpose::STANDARD
-        .decode(encoded.replace('\n', ""))
-        .map_err(|error| format!("解码 GitHub 内容失败: path={}, error={}", entry.path, error))
-}
-
-async fn list_remote_backup_entries(
-    client: &reqwest::Client,
-    token: &str,
-    repo: &str,
-) -> Result<Vec<GithubContentEntry>, String> {
-    let mut entries = Vec::new();
-    let mut page = 1usize;
-    let mut next_url: Option<String> = None;
-
-    loop {
-        let url = next_url.clone().unwrap_or_else(|| {
-            format!(
-                "https://api.github.com/repos/{}/contents/{}?ref={}&per_page={}&page={}",
-                repo, REMOTE_DIR, DEFAULT_BRANCH, REMOTE_LIST_PAGE_SIZE, page
-            )
-        });
-
-        let mut request = client.get(&url);
-        for (key, value) in github_auth_headers(token) {
-            request = request.header(key, value);
-        }
-
-        let response = request
-            .send()
-            .await
-            .map_err(|error| format!("列出远端 Cursor 导入备份失败: {}", error))?;
-
-        let status = response.status();
-        if status.as_u16() == 404 {
-            return Ok(Vec::new());
-        }
-        if !status.is_success() {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "<empty>".to_string());
-            return Err(format!(
-                "列出远端 Cursor 导入备份失败: status={}, body={}",
-                status,
-                truncate_for_log(&body, 400)
-            ));
-        }
-
-        let link_header = response
-            .headers()
-            .get("link")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string);
-
-        let body = response
-            .text()
-            .await
-            .map_err(|error| format!("读取远端 Cursor 导入备份列表失败: {}", error))?;
-
-        let page_entries: Vec<GithubContentEntry> =
-            serde_json::from_str(&body).map_err(|error| {
-                format!(
-                    "解析远端 Cursor 导入备份列表失败: page={}, error={}",
-                    page, error
-                )
-            })?;
-
-        let page_len = page_entries.len();
-        entries.extend(
-            page_entries
-                .into_iter()
-                .filter(|entry| entry.entry_type == "file" && entry.name.ends_with(".json")),
-        );
-
-        next_url = link_header.as_deref().and_then(parse_link_next);
-        if next_url.is_some() {
-            continue;
-        }
-        if page_len < REMOTE_LIST_PAGE_SIZE {
-            break;
-        }
-        page += 1;
-    }
-
-    Ok(entries)
-}
-
-async fn fetch_remote_backup_snapshot(
-    client: &reqwest::Client,
-    token: &str,
-    repo: &str,
-    path: &str,
-) -> Result<RemoteImportBackupSnapshot, String> {
-    let url = format!("https://api.github.com/repos/{}/contents/{}?ref={}", repo, path, DEFAULT_BRANCH);
-    let mut request = client.get(&url);
-    for (key, value) in github_auth_headers(token) {
-        request = request.header(key, value);
-    }
-
-    let response = request
-        .send()
-        .await
-        .map_err(|error| format!("下载远端 Cursor 导入备份失败: path={}, error={}", path, error))?;
-
-    let status = response.status();
-    if !status.is_success() {
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<empty>".to_string());
-        return Err(format!(
-            "下载远端 Cursor 导入备份失败: path={}, status={}, body={}",
-            path,
-            status,
-            truncate_for_log(&body, 400)
-        ));
-    }
-
-    let entry = response
-        .json::<GithubContentEntry>()
-        .await
-        .map_err(|error| format!("解析远端 Cursor 导入备份元数据失败: path={}, error={}", path, error))?;
-
-    let bytes = decode_github_content(&entry)?;
-    serde_json::from_slice::<RemoteImportBackupSnapshot>(&bytes).map_err(|error| {
-        format!(
-            "解析远端 Cursor 导入备份 JSON 失败: path={}, error={}",
-            path, error
-        )
-    })
-}
-
-pub async fn pull_remote_import_backups() -> Result<usize, String> {
-    let token = match resolve_github_token() {
-        Some(token) => token,
-        None => {
-            crate::modules::logger::log_warn(
-                "[Cursor Backup Sync] 未配置 GitHub Token，跳过远端账号拉取",
-            );
-            return Ok(0);
-        }
-    };
-
-    let repo = resolve_target_repo();
-    let client = build_github_client()?;
-    let entries = list_remote_backup_entries(&client, &token, &repo).await?;
-    if entries.is_empty() {
-        return Ok(0);
-    }
-
-    let mut latest_by_email = HashMap::<String, RemoteImportBackupSnapshot>::new();
-    for entry in entries {
-        match fetch_remote_backup_snapshot(&client, &token, &repo, entry.path.as_str()).await {
-            Ok(snapshot) => {
-                let Some(email) = normalize_snapshot_email(&snapshot) else {
-                    continue;
-                };
-                let replace = latest_by_email
-                    .get(&email)
-                    .map(|existing| snapshot.created_at_ms >= existing.created_at_ms)
-                    .unwrap_or(true);
-                if replace {
-                    latest_by_email.insert(email, snapshot);
-                }
-            }
-            Err(error) => {
-                crate::modules::logger::log_warn(&format!(
-                    "[Cursor Backup Sync] 跳过损坏的远端备份: path={}, error={}",
-                    entry.path, error
-                ));
-            }
-        }
-    }
-
-    if latest_by_email.is_empty() {
-        return Ok(0);
-    }
-
-    let mut live_emails = crate::modules::cursor_account::collect_live_account_emails();
-    let mut merged = 0usize;
-    let mut merged_emails = Vec::new();
-    let mut snapshots = latest_by_email.into_values().collect::<Vec<_>>();
-    snapshots.sort_by_key(|snapshot| snapshot.created_at_ms);
-
-    for snapshot in snapshots {
-        let Some(email) = normalize_snapshot_email(&snapshot) else {
-            continue;
-        };
-        if live_emails.contains(&email) {
-            continue;
-        }
-        let display_email = snapshot.email.clone();
-        match crate::modules::cursor_account::upsert_import_payload_if_missing_email(
-            snapshot.payload,
-            &live_emails,
-        ) {
-            Ok(true) => {
-                live_emails.insert(email);
-                merged += 1;
-                merged_emails.push(display_email);
-            }
-            Ok(false) => {}
-            Err(error) => {
-                crate::modules::logger::log_warn(&format!(
-                    "[Cursor Backup Sync] 合并远端账号失败: email={}, error={}",
-                    display_email, error
-                ));
-            }
-        }
-    }
-
-    if merged > 0 {
-        crate::modules::logger::log_info(&format!(
-            "[Cursor Backup Sync] 已从私有仓库拉取并合并 {} 个 Cursor 账号: {}",
-            merged,
-            merged_emails.join(",")
-        ));
-    }
-
-    Ok(merged)
 }
 
 pub async fn upload_local_import_backup(backup_path: std::path::PathBuf) -> Result<(), String> {
@@ -432,56 +165,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_link_next_reads_github_pagination() {
-        let header = r#"<https://api.github.com/repos/o/r/contents/cursor-import-backups?per_page=100&page=2>; rel="next", <https://api.github.com/repos/o/r/contents/cursor-import-backups?per_page=100&page=5>; rel="last""#;
-        assert_eq!(
-            parse_link_next(header),
-            Some("https://api.github.com/repos/o/r/contents/cursor-import-backups?per_page=100&page=2".to_string())
-        );
-    }
-
-    #[test]
     fn default_repo_points_to_private_credentials_repo() {
         std::env::remove_var("COCKPIT_CURSOR_BACKUP_REPO");
         assert_eq!(resolve_target_repo(), DEFAULT_REPO);
     }
 
     #[test]
-    fn upload_requires_token_when_missing() {
-        let saved = [
-            "COCKPIT_GITHUB_TOKEN",
-            "GITHUB_TOKEN",
-            "GH_TOKEN",
-        ]
-        .into_iter()
-        .map(|key| (key, std::env::var(key).ok()))
-        .collect::<Vec<_>>();
-        for (key, _) in &saved {
-            std::env::remove_var(key);
-        }
-
-        let backup_path = std::env::temp_dir().join(format!(
-            "cockpit-cursor-backup-test-{}.json",
-            std::process::id()
-        ));
-        std::fs::write(&backup_path, br#"{"ok":true}"#).expect("temp backup");
-
-        let runtime = tokio::runtime::Runtime::new().expect("runtime");
-        let result = runtime.block_on(upload_local_import_backup(backup_path.clone()));
-        let _ = std::fs::remove_file(&backup_path);
-
-        for (key, value) in saved {
-            if let Some(value) = value {
-                std::env::set_var(key, value);
-            }
-        }
-
-        assert!(result.is_err());
-        let message = result.err().unwrap_or_default();
-        assert!(
-            message.contains("TOKEN") || message.contains("未配置"),
-            "expected missing token error, got: {}",
-            message
-        );
+    fn resolve_github_token_uses_embedded_when_present() {
+        std::env::remove_var("COCKPIT_GITHUB_TOKEN");
+        std::env::remove_var("GITHUB_TOKEN");
+        std::env::remove_var("GH_TOKEN");
+        let token = resolve_github_token();
+        assert!(token.is_some(), "嵌入 Token 应可用");
     }
 }
