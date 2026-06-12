@@ -2818,6 +2818,9 @@ export function DashboardPage({
             <button
               className="stat-card stat-card-button"
               key={entryId}
+              id={`cockpit-platform-card-${platformId}`}
+              type="button"
+              aria-label={label}
               onClick={() => navigateToPlatform(platformId)}
               title={
                 groupExtraCount > 0

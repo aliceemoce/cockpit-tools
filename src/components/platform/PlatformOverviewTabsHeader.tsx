@@ -218,6 +218,9 @@ export function PlatformOverviewTabsHeader({
           {tabSpecs.map((tab) => (
             <button
               key={tab.key}
+              id={`cockpit-tab-${platform}-${tab.key}`}
+              type="button"
+              aria-label={tab.label}
               className={`filter-tab${active === tab.key ? ' active' : ''}`}
               onClick={() => onTabChange?.(tab.key)}
             >

@@ -2516,6 +2516,7 @@ export function InstancesManager<TAccount extends AccountLike>({
                   <button
                     className="icon-button"
                     type="button"
+                    id={`cockpit-instance-start-${instance.id}`}
                     aria-label={t("instances.actions.start", "启动")}
                     title={t("instances.actions.start", "启动")}
                     onClick={() => handleStart(instance)}
