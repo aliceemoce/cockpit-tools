@@ -163,6 +163,7 @@ export function PlatformInstalledVersionBadge({
         return;
       }
       setInstallState('failure');
+      setProgress(100);
       window.setTimeout(() => {
         setInstallState('idle');
         setProgress(0);
@@ -170,6 +171,7 @@ export function PlatformInstalledVersionBadge({
     } catch (error) {
       console.warn('[PlatformInstalledVersionBadge] install failed:', error);
       setInstallState('failure');
+      setProgress(100);
       window.setTimeout(() => {
         setInstallState('idle');
         setProgress(0);
@@ -234,13 +236,13 @@ export function PlatformInstalledVersionBadge({
       return `${t('appPath.install.downloading', '下载中')} ${progress}%`;
     }
     if (installState === 'installing') {
-      return t('appPath.install.inProgress', '安装中…');
+      return t('appPath.install.installingBar', '安装中…');
     }
     if (installState === 'success') {
-      return t('appPath.install.success', '安装成功');
+      return t('appPath.install.installSuccess', '安装成功');
     }
     if (installState === 'failure') {
-      return t('appPath.install.failed', '安装失败');
+      return t('appPath.install.installFailed', '安装失败');
     }
     if (appPath) {
       return basenameFromPath(appPath);
@@ -248,14 +250,23 @@ export function PlatformInstalledVersionBadge({
     return t('runtime.installedVersion.notFound', '未检测到版本');
   })();
 
+  const showProgressBar =
+    installState === 'downloading' ||
+    installState === 'installing' ||
+    installState === 'success' ||
+    installState === 'failure';
+
   return (
     <div
       className={badgeClass}
       title={title}
       onClick={isClickable ? () => { void handleSilentInstall(); } : undefined}
     >
-      {(installState === 'downloading' || installState === 'installing' || installState === 'success') && (
-        <div className="installed-version-progress-bg" style={{ width: `${progress}%` }} />
+      {showProgressBar && (
+        <div
+          className="installed-version-progress-bg"
+          style={{ width: installState === 'failure' ? '100%' : `${progress}%` }}
+        />
       )}
       <span className="installed-version-dot" />
       <span className="installed-version-name">{productLabel}</span>

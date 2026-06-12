@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""静态验证：无忧 i() 链是否逐字复制到 Rust（Kh + go + 1500ms）。"""
+"""静态验证：无忧 i() 切号链 + token session 格式 + 10min/分批刷新。"""
 
 from __future__ import annotations
 
@@ -24,49 +24,42 @@ def main() -> int:
     cursor_instance_cmd = read(RUST / "commands" / "cursor_instance.rs")
     cursor_cmd = read(RUST / "commands" / "cursor.rs")
     switch_align = read(RUST / "modules" / "cursor_switch_align.rs")
+    scheduler = read(RUST / "modules" / "cursor_refresh_scheduler.rs")
+    defer = read(RUST / "modules" / "app_startup_defer.rs")
 
-    nirvana_symbols = {
-        "switch_tokens_nirvana_kh": cursor_account,
-        "nirvana_traditional_switch_steps": cursor_account,
-        "nirvana_traditional_switch_and_start": cursor_account,
-        "close_cursor_nirvana_style": cursor_instance,
-        "start_cursor_nirvana_go": cursor_instance,
-        "explorer.exe": cursor_instance,
-        'cachedSignUpType", "Auth_0"': cursor_account,
-    }
-    for name, blob in nirvana_symbols.items():
-        if name not in blob:
-            errors.append(f"缺少无忧复制符号: {name}")
+    required = [
+        ("close_cursor_nirvana_style", cursor_instance),
+        ("switch_tokens_in_profile_db", cursor_account),
+        ("reset_storage_json_ids_for_profile", cursor_account),
+        ("reset_machine_id_file_for_profile", cursor_account),
+        ("apply_nirvana_traditional_switch_patches", cursor_account),
+        ("resolve_vscdb_auth_tokens", cursor_account),
+        ("start_cursor_instance_with_account_switch", cursor_instance_cmd),
+        ("sleep(std::time::Duration::from_millis(1500))", cursor_instance_cmd),
+        ("refresh_all_tokens_batched", cursor_account),
+        ("CURRENT_QUOTA_REFRESH_SECS: u64 = 20", scheduler),
+        ("STARTUP_DEFER_SECS: u64 = 10 * 60", defer),
+    ]
+    for needle, blob in required:
+        if needle not in blob:
+            errors.append(f"缺少: {needle}")
 
-    if "resolve_vscdb_auth_tokens" in cursor_account.split("switch_tokens_nirvana_kh", 1)[-1].split("pub fn switch_tokens_in_profile_db", 1)[0]:
-        errors.append("switch_tokens_nirvana_kh 仍调用 resolve_vscdb_auth_tokens（应直接写原始 token）")
-
-    if "nirvana_traditional_switch_and_start" not in cursor_cmd:
-        errors.append("Play/inject_cursor_account 未走 nirvana_traditional_switch_and_start")
-
-    if "start_cursor_default_with_args_with_new_window" in cursor_instance_cmd.split("skip_prelaunch_close", 1)[-1][:800]:
-        errors.append("默认实例启动仍用 --user-data-dir，未改 explorer.exe go()")
+    if "start_cursor_instance_with_account_switch" not in cursor_cmd:
+        errors.append("Play 未走 start_cursor_instance_with_account_switch")
 
     if re.search(r"多开实例跳过 MachineGuid", switch_align):
         errors.append("仍存在「多开跳过 MachineGuid」")
 
-    if "sleep(std::time::Duration::from_millis(1500))" not in cursor_account:
-        errors.append("nirvana_traditional_switch_and_start 缺少 1500ms")
+    if "pull_remote" in cursor_account:
+        errors.append("仍含 pull_remote")
+
+    if "unwrap_or(&account.access_token)" in cursor_account.split("switch_tokens_in_profile_db")[1][:1200]:
+        errors.append("switch_tokens 仍用 access_token 顶替 refresh（会导致登录页）")
 
     report = {
         "ok": len(errors) == 0,
         "errors": errors,
         "flow_matches_nirvana": len(errors) == 0,
-        "nirvana_i_steps": [
-            "closeCursor",
-            "switchTokensInDb(Kh)",
-            "resetStorageJsonIds(Gh)",
-            "resetMachineIdFile(Jh)",
-            "patchCursorMachineId(Yh)",
-            "resetWindowsMachineGuid(Nc)",
-            "sleep 1500ms",
-            "startCursor(go)=explorer.exe",
-        ],
     }
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -75,7 +68,7 @@ def main() -> int:
         for err in errors:
             print(f"  - {err}")
         return 1
-    print("PASS: 无忧 i() + go() 已复制到 Rust")
+    print("PASS: 无忧切号链 + session token + 10min + 20s + 分批")
     return 0
 
 

@@ -7,7 +7,14 @@ export type InstallableAppPath =
   | 'vscode'
   | 'windsurf'
   | 'kiro'
-  | 'cursor';
+  | 'cursor'
+  | 'gemini'
+  | 'codebuddy'
+  | 'codebuddy_cn'
+  | 'qoder'
+  | 'trae'
+  | 'workbuddy'
+  | 'zed';
 
 export const INSTALLABLE_APP_PATHS: InstallableAppPath[] = [
   'cursor',
@@ -16,6 +23,13 @@ export const INSTALLABLE_APP_PATHS: InstallableAppPath[] = [
   'vscode',
   'codex',
   'antigravity',
+  'gemini',
+  'codebuddy',
+  'codebuddy_cn',
+  'qoder',
+  'trae',
+  'workbuddy',
+  'zed',
 ];
 
 export type PlatformInstallProgress = {

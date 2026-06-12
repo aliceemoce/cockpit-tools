@@ -388,20 +388,21 @@ pub async fn cursor_start_instance_prepared(
             modules::cursor_instance::close_cursor(&[default_dir_str.clone()], 20)?;
         } else {
             modules::logger::log_info(
-                "[Cursor Switch] 切号后跳过二次 close，使用无忧 go() 启动默认 Cursor",
+                "[Cursor Switch] 切号后跳过二次 close，直接启动默认实例",
             );
         }
 
-        modules::cursor_instance::start_cursor_nirvana_go()?;
-        let pid = modules::cursor_instance::resolve_cursor_pid(None, None);
+        let extra_args = modules::process::parse_extra_args(&default_settings.extra_args);
+        let pid = modules::cursor_instance::start_cursor_default_with_args_with_new_window(
+            &extra_args,
+            true,
+        )?;
         let pid_for_store = pid;
-        if let Some(pid_for_store) = pid_for_store {
-            tokio::task::spawn_blocking(move || {
-                let _ = modules::cursor_instance::update_default_pid(Some(pid_for_store));
-            });
-        }
+        tokio::task::spawn_blocking(move || {
+            let _ = modules::cursor_instance::update_default_pid(Some(pid_for_store));
+        });
 
-        let running = pid.is_some();
+        let running = modules::cursor_instance::resolve_cursor_pid(Some(pid), None).is_some();
         return Ok(InstanceProfileView {
             id: DEFAULT_INSTANCE_ID.to_string(),
             name: String::new(),
@@ -411,7 +412,7 @@ pub async fn cursor_start_instance_prepared(
             bind_account_id: default_settings.bind_account_id,
             created_at: 0,
             last_launched_at: None,
-            last_pid: pid,
+            last_pid: Some(pid),
             running,
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,

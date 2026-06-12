@@ -12,6 +12,9 @@ import {
 } from '../utils/platformInstall';
 
 const INSTALLED_VERSION_DEFER_MS = 250;
+const INSTALL_RESULT_DISPLAY_MS = 3000;
+
+type InstallUiState = 'idle' | 'downloading' | 'installing' | 'success' | 'failure';
 
 export function AntigravityInstalledVersionBadge() {
   const { t } = useTranslation();
@@ -19,8 +22,7 @@ export function AntigravityInstalledVersionBadge() {
   const [info, setInfo] = useState<AntigravityInstalledVersionInfo | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [installSupported, setInstallSupported] = useState(false);
-  const [installing, setInstalling] = useState(false);
-  const [phase, setPhase] = useState('');
+  const [installState, setInstallState] = useState<InstallUiState>('idle');
   const [progress, setProgress] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -81,40 +83,65 @@ export function AntigravityInstalledVersionBadge() {
   }, [runtimeTarget, refreshTrigger]);
 
   const handleSilentInstall = useCallback(async () => {
-    if (installing) {
+    if (installState !== 'idle') {
       return;
     }
-    setInstalling(true);
-    setPhase('resolving');
+    setInstallState('downloading');
     setProgress(0);
     try {
       const result = await installMissingPlatform('antigravity', (payload) => {
-        setPhase(payload.phase);
-        setProgress(payload.progress ?? 0);
+        if (payload.phase === 'installing' || payload.phase === 'resolving') {
+          setInstallState('installing');
+          setProgress(100);
+          return;
+        }
+        if (payload.phase === 'downloading') {
+          setInstallState('downloading');
+          setProgress(payload.progress ?? 0);
+        }
       });
       const installedPath = (result.installedPath || '').trim();
       if (installedPath) {
         await invoke('set_app_path', { app: 'antigravity', path: installedPath });
+        setInstallState('success');
+        setProgress(100);
         setRefreshTrigger((prev) => prev + 1);
+        window.setTimeout(() => {
+          setInstallState('idle');
+          setProgress(0);
+        }, INSTALL_RESULT_DISPLAY_MS);
         return;
       }
+      setInstallState('failure');
+      window.setTimeout(() => {
+        setInstallState('idle');
+        setProgress(0);
+      }, INSTALL_RESULT_DISPLAY_MS);
     } catch (error) {
       console.warn('[AntigravityInstalledVersionBadge] install failed:', error);
-    } finally {
-      setInstalling(false);
-      setPhase('');
-      setProgress(0);
+      setInstallState('failure');
+      window.setTimeout(() => {
+        setInstallState('idle');
+        setProgress(0);
+      }, INSTALL_RESULT_DISPLAY_MS);
     }
-  }, [installing]);
+  }, [installState]);
 
   const title = useMemo(() => {
     if (!loaded) {
       return t('runtime.installedVersion.loading', '正在检测安装版本');
     }
-    if (installing) {
-      return phase === 'downloading'
-        ? `${t('appPath.install.downloading', '下载中')} ${progress}%`
-        : t('appPath.install.inProgress', '安装中…');
+    if (installState === 'downloading') {
+      return `${t('appPath.install.downloading', '下载中')} ${progress}%`;
+    }
+    if (installState === 'installing') {
+      return t('appPath.install.inProgress', '安装中…');
+    }
+    if (installState === 'success') {
+      return t('appPath.install.success', '安装成功');
+    }
+    if (installState === 'failure') {
+      return t('appPath.install.failed', '安装失败');
     }
     if (!info?.version) {
       return installSupported
@@ -122,7 +149,7 @@ export function AntigravityInstalledVersionBadge() {
         : t('runtime.installedVersion.missing', '未检测到已安装版本');
     }
     return `${info.product_name || 'Antigravity'} v${info.version}\n${info.app_path || ''}\n${t('appPath.install.clickToReinstall', '点击执行静默安装')}`;
-  }, [info, loaded, t, installSupported, installing, phase, progress]);
+  }, [info, installState, installSupported, loaded, progress, t]);
 
   if (!loaded) {
     return (
@@ -135,15 +162,37 @@ export function AntigravityInstalledVersionBadge() {
     );
   }
 
-  const isClickable = !installing;
+  const isClickable = installState === 'idle';
   const badgeClass = [
     'installed-version-badge',
-    !info?.version && 'is-missing',
+    !info?.version && installState === 'idle' && 'is-missing',
     isClickable && 'is-clickable',
-    installing && 'is-installing',
+    installState === 'downloading' && 'is-installing',
+    installState === 'installing' && 'is-installing',
+    installState === 'success' && 'is-install-success',
+    installState === 'failure' && 'is-install-failure',
   ]
     .filter(Boolean)
     .join(' ');
+
+  const statusText = (() => {
+    if (installState === 'downloading') {
+      return `${t('appPath.install.downloading', '下载中')} ${progress}%`;
+    }
+    if (installState === 'installing') {
+      return t('appPath.install.inProgress', '安装中…');
+    }
+    if (installState === 'success') {
+      return t('appPath.install.success', '安装成功');
+    }
+    if (installState === 'failure') {
+      return t('appPath.install.failed', '安装失败');
+    }
+    if (info?.version) {
+      return `v${info.version}`;
+    }
+    return t('runtime.installedVersion.notFound', '未检测到版本');
+  })();
 
   return (
     <div
@@ -151,20 +200,12 @@ export function AntigravityInstalledVersionBadge() {
       title={title}
       onClick={isClickable ? () => { void handleSilentInstall(); } : undefined}
     >
-      {installing && phase === 'downloading' && (
+      {(installState === 'downloading' || installState === 'installing' || installState === 'success') && (
         <div className="installed-version-progress-bg" style={{ width: `${progress}%` }} />
       )}
       <span className="installed-version-dot" />
       <span className="installed-version-name">{info?.product_name || 'Antigravity'}</span>
-      <span className="installed-version-value">
-        {installing
-          ? phase === 'downloading'
-            ? `${t('appPath.install.downloading', '下载中')} ${progress}%`
-            : t('appPath.install.inProgress', '安装中…')
-          : info?.version
-            ? `v${info.version}`
-            : t('runtime.installedVersion.notFound', '未检测到版本')}
-      </span>
+      <span className="installed-version-value">{statusText}</span>
     </div>
   );
 }

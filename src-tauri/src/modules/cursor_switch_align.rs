@@ -287,10 +287,22 @@ pub fn reset_windows_machine_guid() -> Result<(), String> {
 
 /// 无忧传统切号路径：`patchCursorMachineId` → `resetWindowsMachineGuid`（失败可跳过，与无忧 Nc 一致）。
 pub fn apply_nirvana_traditional_switch_patches(cursor_exe: &Path) {
+    apply_nirvana_traditional_switch_patches_for_profile(cursor_exe, true);
+}
+
+/// 多开 profile 只 patch main.js，不重置全局 MachineGuid（避免影响其它 Cursor 实例）。
+pub fn apply_nirvana_traditional_switch_patches_for_profile(
+    cursor_exe: &Path,
+    is_default_profile: bool,
+) {
     if let Err(err) = patch_cursor_machine_id(cursor_exe) {
         logger::log_warn(&format!("[Cursor Switch] main.js patch 跳过: {}", err));
     }
-    if let Err(err) = reset_windows_machine_guid() {
-        logger::log_warn(&format!("[Cursor Switch] MachineGuid 重置跳过: {}", err));
+    if is_default_profile {
+        if let Err(err) = reset_windows_machine_guid() {
+            logger::log_warn(&format!("[Cursor Switch] MachineGuid 重置跳过: {}", err));
+        }
+    } else {
+        logger::log_info("[Cursor Switch] 多开实例跳过 MachineGuid 重置（全局注册表项）");
     }
 }

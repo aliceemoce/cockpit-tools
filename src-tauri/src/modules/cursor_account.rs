@@ -560,10 +560,9 @@ fn normalize_account_tokens(account: &mut CursorAccount) -> Result<(), String> {
     Ok(())
 }
 
-fn checkpoint_vscdb(conn: &Connection) -> Result<(), String> {
-    conn.execute_batch("PRAGMA wal_checkpoint(FULL);")
-        .map_err(|e| format!("state.vscdb checkpoint 失败: {}", e))
-}
+// checkpoint_vscdb 已移除——13GB+ DB 上 WAL checkpoint 不可靠，
+// 改为在 switch_tokens_in_profile_db / write_cursor_auth_fields_to_conn
+// 中使用 DELETE journal mode + BEGIN/COMMIT 确保写入持久化。
 
 fn decode_access_token_payload(access_token: &str) -> Option<serde_json::Value> {
     let parts: Vec<&str> = access_token.split('.').collect();
@@ -1171,6 +1170,50 @@ pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     Ok(list_accounts_from_index(&index))
 }
 
+/// 返回排序后的账号列表：
+/// 1. 按剩余 Credits 从高到低
+/// 2. 配额查询失败的排到最后
+/// 3. 同额度的按刷新顺序排列，最后刷新的排最前面
+/// 4. 显示真实额度池 ID（auth_id）
+pub fn list_accounts_sorted() -> Vec<CursorAccount> {
+    let mut accounts = list_accounts();
+    sort_accounts_for_display(&mut accounts);
+    accounts
+}
+
+fn sort_accounts_for_display(accounts: &mut [CursorAccount]) {
+    accounts.sort_by(|left, right| {
+        let left_remaining = average_quota_percentage(&extract_quota_metrics(left)) as i32;
+        let right_remaining = average_quota_percentage(&extract_quota_metrics(right)) as i32;
+        let left_failed = has_quota_query_failed(left);
+        let right_failed = has_quota_query_failed(right);
+        // 失败的排最后
+        left_failed.cmp(&right_failed)
+            // 剩余 Credits 从高到低
+            .then_with(|| right_remaining.cmp(&left_remaining))
+            // 同额度的，最后刷新的排最前面
+            .then_with(|| {
+                let left_ts = left.usage_updated_at.unwrap_or(0);
+                let right_ts = right.usage_updated_at.unwrap_or(0);
+                right_ts.cmp(&left_ts)
+            })
+    });
+}
+
+/// 获取账号的真实额度池显示 ID
+pub fn quota_pool_id_display(account: &CursorAccount) -> Option<String> {
+    resolve_quota_pool_id(account)
+        .or_else(|| account.auth_id.clone())
+}
+
+fn has_quota_query_failed(account: &CursorAccount) -> bool {
+    account
+        .quota_query_last_error
+        .as_ref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
 struct UpsertAccountOutcome {
     account: CursorAccount,
     created: bool,
@@ -1696,29 +1739,53 @@ pub fn import_from_local() -> Result<Option<CursorAccount>, String> {
 // ---------------------------------------------------------------------------
 
 fn write_cursor_auth_fields_to_conn(conn: &Connection, account: &CursorAccount) -> Result<(), String> {
-    let (access_jwt, session_token) = resolve_vscdb_auth_tokens(account)?;
-    upsert_vscdb_item(&conn, "cursorAuth/accessToken", &access_jwt)?;
-    upsert_vscdb_item(&conn, "cursorAuth/refreshToken", &session_token)?;
-    upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
-    let sign_up = account
-        .sign_up_type
-        .as_deref()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or("Auth_0");
-    upsert_vscdb_item(&conn, "cursorAuth/cachedSignUpType", sign_up)?;
-    if let Some(ref auth_id) = resolve_quota_pool_id(account) {
-        upsert_vscdb_item(&conn, "cursorAuth/authId", auth_id)?;
-        upsert_vscdb_item(&conn, "cursorAuth/workosId", auth_id)?;
+    // 切换到 DELETE journal mode 确保写入可靠持久化（13GB+ DB 的 WAL checkpoint 不可靠）
+    conn.execute_batch("PRAGMA journal_mode=DELETE;")
+        .map_err(|e| format!("切换 journal_mode=DELETE 失败: {}", e))?;
+    conn.execute_batch("BEGIN;")
+        .map_err(|e| format!("BEGIN transaction 失败: {}", e))?;
+
+    let write_result = (|| {
+        let (access_jwt, session_token) = resolve_vscdb_auth_tokens(account)?;
+        upsert_vscdb_item(conn, "cursorAuth/accessToken", &access_jwt)?;
+        upsert_vscdb_item(conn, "cursorAuth/refreshToken", &session_token)?;
+        upsert_vscdb_item(conn, "cursorAuth/cachedEmail", &account.email)?;
+        let sign_up = account
+            .sign_up_type
+            .as_deref()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or("Auth_0");
+        upsert_vscdb_item(conn, "cursorAuth/cachedSignUpType", sign_up)?;
+        if let Some(ref auth_id) = resolve_quota_pool_id(account) {
+            upsert_vscdb_item(conn, "cursorAuth/authId", auth_id)?;
+            upsert_vscdb_item(conn, "cursorAuth/workosId", auth_id)?;
+        }
+        if let Some(ref mt) = account.membership_type {
+            upsert_vscdb_item(conn, "cursorAuth/stripeMembershipType", mt)?;
+        }
+        if let Some(ref ss) = account.subscription_status {
+            upsert_vscdb_item(conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
+        }
+        upsert_vscdb_item(conn, "cursor.accessToken", &access_jwt)?;
+        upsert_vscdb_item(conn, "cursor.email", &account.email)?;
+        Ok(())
+    })();
+
+    match write_result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT;")
+                .map_err(|e| format!("COMMIT 失败: {}", e))?;
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
+            return Err(e);
+        }
     }
-    if let Some(ref mt) = account.membership_type {
-        upsert_vscdb_item(&conn, "cursorAuth/stripeMembershipType", mt)?;
-    }
-    if let Some(ref ss) = account.subscription_status {
-        upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
-    }
-    upsert_vscdb_item(&conn, "cursor.accessToken", &access_jwt)?;
-    upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
-    checkpoint_vscdb(conn)?;
+
+    // 恢复 WAL mode
+    conn.execute_batch("PRAGMA journal_mode=WAL;")
+        .map_err(|e| format!("恢复 journal_mode=WAL 失败: {}", e))?;
     Ok(())
 }
 
@@ -1853,103 +1920,40 @@ fn remove_vscdb_sidecars(db_path: &Path) {
     let _ = fs::remove_file(format!("{db}-shm"));
 }
 
-/// 无忧 `switchTokensInDb`（Kh）逐字复制：只写 4 个 auth 字段，不做 Cockpit token 变换。
-pub fn switch_tokens_nirvana_kh(account_id: &str) -> Result<(), String> {
-    let account =
-        load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-    let access_token = account.access_token.trim();
-    if access_token.is_empty() {
-        return Err(format!("账号 {} 缺少 accessToken", account.email));
-    }
-    let refresh_token = account
-        .refresh_token
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(access_token);
-
-    let db_path = get_default_cursor_state_db_path()?;
-    if !db_path.exists() {
-        return Err(format!(
-            "Cursor 数据库不存在: {}",
-            db_path.display()
-        ));
-    }
-
-    remove_vscdb_sidecars(&db_path);
-    let conn = Connection::open(&db_path).map_err(|e| {
-        format!(
-            "打开 Cursor state.vscdb 失败({}): {}",
-            db_path.display(),
-            e
-        )
-    })?;
-
-    for key in SWITCH_AUTH_DELETE_KEYS {
-        conn.execute("DELETE FROM ItemTable WHERE key = ?1", [*key])
-            .map_err(|e| format!("删除 {} 失败: {}", key, e))?;
-    }
-
-    upsert_vscdb_item(
-        &conn,
-        "storage.serviceMachineId",
-        &Uuid::new_v4().to_string(),
-    )?;
-    upsert_vscdb_item(&conn, "telemetry.machineId", &random_sha256_hex())?;
-    upsert_vscdb_item(&conn, "telemetry.macMachineId", &random_sha512_hex())?;
-    upsert_vscdb_item(&conn, "telemetry.devDeviceId", &random_dev_device_id())?;
-    upsert_vscdb_item(&conn, "telemetry.sqmId", &random_sqm_id())?;
-
-    upsert_vscdb_item(&conn, "cursorAuth/accessToken", access_token)?;
-    upsert_vscdb_item(&conn, "cursorAuth/refreshToken", refresh_token)?;
-    upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
-    upsert_vscdb_item(&conn, "cursorAuth/cachedSignUpType", "Auth_0")?;
-
-    logger::log_info(&format!(
-        "[Cursor Switch] switchTokensInDb 完成: email={}, db={}",
-        account.email,
-        db_path.display()
-    ));
-    Ok(())
-}
-
-/// 无忧 `cursor:accounts:switch` → `i()` 逐步复制（默认 profile，不含多开扩展）。
-pub fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
+/// 无忧传统切号路径（`i()` 步骤顺序）：只关闭**当前 profile** 的 Cursor，不 taskkill 全部实例。
+pub fn switch_cursor_account_to_profile(
+    account_id: &str,
+    profile_dir: &Path,
+) -> Result<(), String> {
     let account = load_account(account_id)
         .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-    logger::log_info(&format!(
-        "[CursorSwitch] 传统路径切换: {}",
-        account.email
-    ));
+    let profile_dir_str = profile_dir.to_string_lossy().to_string();
 
-    crate::modules::cursor_instance::close_cursor_nirvana_style(20)?;
-    switch_tokens_nirvana_kh(account_id)?;
+    crate::modules::cursor_instance::close_cursor(&[profile_dir_str], 20)?;
+    crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
 
-    let default_dir = get_default_cursor_data_dir()?;
-    reset_storage_json_ids_for_profile(&default_dir)?;
-    reset_machine_id_file_for_profile(&default_dir)?;
+    switch_tokens_in_profile_db(profile_dir, account_id)?;
+    reset_storage_json_ids_for_profile(profile_dir)?;
+    reset_machine_id_file_for_profile(profile_dir)?;
 
     if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches(&cursor_exe);
+        let is_default =
+            crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir);
+        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches_for_profile(
+            &cursor_exe,
+            is_default,
+        );
     }
 
     logger::log_info(&format!(
         "[Cursor Switch] 无忧传统路径换号完成: email={}, profile={}",
         account.email,
-        default_dir.display()
+        profile_dir.display()
     ));
     Ok(())
 }
 
-/// 无忧 `i()` 完整链：切号 → 等 1.5s → `go()` 启动（explorer.exe / open -n）。
-pub fn nirvana_traditional_switch_and_start(account_id: &str) -> Result<(), String> {
-    nirvana_traditional_switch_steps(account_id)?;
-    std::thread::sleep(std::time::Duration::from_millis(1500));
-    crate::modules::cursor_instance::start_cursor_nirvana_go()?;
-    Ok(())
-}
-
-/// 对齐无忧 `switchTokensInDb`（Kh）：删旧 auth → 重置 vscdb telemetry → 写新 token。
+/// 对齐无忧 `switchTokensInDb`（Kh）：删旧 auth → 重置 state.vscdb telemetry → 写 session token。
 pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
@@ -1979,47 +1983,79 @@ pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Resu
         )
     })?;
 
-    for key in SWITCH_AUTH_DELETE_KEYS {
-        conn.execute("DELETE FROM ItemTable WHERE key = ?1", [*key])
-            .map_err(|e| format!("删除 {} 失败: {}", key, e))?;
+    // 切换到 DELETE journal mode：13GB+ 的 DB 在 WAL 模式下 wal_checkpoint 不可靠，
+    // DELETE mode 的写入直接进主 DB 文件，不依赖 checkpoint flush。
+    conn.execute_batch("PRAGMA journal_mode=DELETE;")
+        .map_err(|e| format!("切换 journal_mode=DELETE 失败: {}", e))?;
+    conn.execute_batch("BEGIN;")
+        .map_err(|e| format!("BEGIN transaction 失败: {}", e))?;
+
+    let write_result = (|| {
+        for key in SWITCH_AUTH_DELETE_KEYS {
+            conn.execute("DELETE FROM ItemTable WHERE key = ?1", [*key])
+                .map_err(|e| format!("删除 {} 失败: {}", key, e))?;
+        }
+
+        let ids = build_cursor_fingerprint_ids();
+        upsert_vscdb_item(
+            &conn,
+            "storage.serviceMachineId",
+            &ids["storage.serviceMachineId"],
+        )?;
+        upsert_vscdb_item(&conn, "telemetry.machineId", &ids["telemetry.machineId"])?;
+        upsert_vscdb_item(
+            &conn,
+            "telemetry.macMachineId",
+            &ids["telemetry.macMachineId"],
+        )?;
+        upsert_vscdb_item(
+            &conn,
+            "telemetry.devDeviceId",
+            &ids["telemetry.devDeviceId"],
+        )?;
+        upsert_vscdb_item(&conn, "telemetry.sqmId", &ids["telemetry.sqmId"])?;
+
+        upsert_vscdb_item(&conn, "cursorAuth/accessToken", &access_jwt)?;
+        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", &session_token)?;
+        upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
+        upsert_vscdb_item(&conn, "cursorAuth/cachedSignUpType", "Auth_0")?;
+
+        if let Some(ref auth_id) = resolve_quota_pool_id(&account) {
+            upsert_vscdb_item(&conn, "cursorAuth/authId", auth_id)?;
+            upsert_vscdb_item(&conn, "cursorAuth/workosId", auth_id)?;
+        }
+        if let Some(ref mt) = account.membership_type {
+            upsert_vscdb_item(&conn, "cursorAuth/stripeMembershipType", mt)?;
+        }
+        if let Some(ref ss) = account.subscription_status {
+            upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
+        }
+
+        upsert_vscdb_item(&conn, "cursor.accessToken", &access_jwt)?;
+        upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
+        Ok(())
+    })();
+
+    match write_result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT;")
+                .map_err(|e| format!("COMMIT 失败: {}", e))?;
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
+            return Err(e);
+        }
     }
 
-    upsert_vscdb_item(
-        &conn,
-        "storage.serviceMachineId",
-        &Uuid::new_v4().to_string(),
-    )?;
-    upsert_vscdb_item(&conn, "telemetry.machineId", &random_sha256_hex())?;
-    upsert_vscdb_item(&conn, "telemetry.macMachineId", &random_sha512_hex())?;
-    upsert_vscdb_item(&conn, "telemetry.devDeviceId", &random_dev_device_id())?;
-    upsert_vscdb_item(&conn, "telemetry.sqmId", &random_sqm_id())?;
-
-    upsert_vscdb_item(&conn, "cursorAuth/accessToken", &access_jwt)?;
-    upsert_vscdb_item(&conn, "cursorAuth/refreshToken", &session_token)?;
-    upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
-    let sign_up = account
-        .sign_up_type
-        .as_deref()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or("Auth_0");
-    upsert_vscdb_item(&conn, "cursorAuth/cachedSignUpType", sign_up)?;
-    upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
-    upsert_vscdb_item(&conn, "cursor.accessToken", &access_jwt)?;
-    if let Some(ref mt) = account.membership_type {
-        upsert_vscdb_item(&conn, "cursorAuth/stripeMembershipType", mt)?;
-    }
-    if let Some(ref pool_id) = resolve_quota_pool_id(&account) {
-        upsert_vscdb_item(&conn, "cursorAuth/authId", pool_id)?;
-        upsert_vscdb_item(&conn, "cursorAuth/workosId", pool_id)?;
-    }
-
-    checkpoint_vscdb(&conn)?;
+    // 恢复 WAL mode 供 Cursor 正常使用
+    conn.execute_batch("PRAGMA journal_mode=WAL;")
+        .map_err(|e| format!("恢复 journal_mode=WAL 失败: {}", e))?;
 
     logger::log_info(&format!(
-        "[Cursor Switch] switchTokensInDb 完成: email={}, db={}, refresh_has_session={}",
+        "[Cursor Switch] switchTokensInDb 完成: email={}, db={}, refresh_has_session=true, journal_mode=delete_then_wal",
         account.email,
-        db_path.display(),
-        session_token.contains("::")
+        db_path.display()
     ));
     Ok(())
 }
@@ -2125,37 +2161,6 @@ pub fn hard_reset_cursor_fingerprint_state_for_profile(profile_dir: &Path) -> Re
     )?;
     logger::log_info(&format!(
         "[Cursor Switch] 已执行实例 profile 指纹重置: {}",
-        profile_dir.display()
-    ));
-    Ok(())
-}
-
-/// 无忧传统切号路径。默认 profile 走 `i()` 复制链；多开 profile 才走 profile 注入扩展。
-pub fn switch_cursor_account_to_profile(
-    account_id: &str,
-    profile_dir: &Path,
-) -> Result<(), String> {
-    if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
-        return nirvana_traditional_switch_steps(account_id);
-    }
-
-    let account = load_account(account_id)
-        .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-
-    crate::modules::cursor_instance::close_cursor_nirvana_style(20)?;
-    crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
-
-    switch_tokens_in_profile_db(profile_dir, account_id)?;
-    reset_storage_json_ids_for_profile(profile_dir)?;
-    reset_machine_id_file_for_profile(profile_dir)?;
-
-    if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches(&cursor_exe);
-    }
-
-    logger::log_info(&format!(
-        "[Cursor Switch] 多开 profile 换号完成: email={}, profile={}",
-        account.email,
         profile_dir.display()
     ));
     Ok(())
@@ -2350,6 +2355,7 @@ async fn refresh_account_access_token_with_client(
     account.refresh_token = new_refresh_token.clone();
     upsert_cursor_auth_raw_string(account, "accessToken", Some(new_access_token));
     upsert_cursor_auth_raw_string(account, "refreshToken", new_refresh_token);
+    let _ = normalize_account_tokens(account);
     Ok(true)
 }
 
@@ -2990,26 +2996,25 @@ pub fn pick_highest_remaining_credits_account(exclude_ids: &HashSet<String>) -> 
         .into_iter()
         .filter(|account| !exclude_ids.contains(&account.id))
         .filter(|account| !is_banned_account(account))
-        .filter(|account| {
-            account
-                .quota_query_last_error
-                .as_ref()
-                .map(|value| value.trim().is_empty())
-                .unwrap_or(true)
-        })
-        .filter(|account| !extract_quota_metrics(account).is_empty())
         .collect();
 
     if candidates.is_empty() {
         return None;
     }
 
+    // 排序：剩余 Credits 高 → 低；同额度最后刷新优先；失败排最后
     candidates.sort_by(|left, right| {
-        let (left_remaining, left_refreshed) = remaining_credits_sort_key(left);
-        let (right_remaining, right_refreshed) = remaining_credits_sort_key(right);
-        right_remaining
-            .cmp(&left_remaining)
-            .then_with(|| right_refreshed.cmp(&left_refreshed))
+        let left_remaining = average_quota_percentage(&extract_quota_metrics(left)) as i32;
+        let right_remaining = average_quota_percentage(&extract_quota_metrics(right)) as i32;
+        let left_failed = has_quota_query_failed(left);
+        let right_failed = has_quota_query_failed(right);
+        left_failed.cmp(&right_failed)
+            .then_with(|| right_remaining.cmp(&left_remaining))
+            .then_with(|| {
+                let left_ts = left.usage_updated_at.unwrap_or(0);
+                let right_ts = right.usage_updated_at.unwrap_or(0);
+                right_ts.cmp(&left_ts)
+            })
     });
 
     candidates.first().map(|account| account.id.clone())
@@ -3137,4 +3142,53 @@ pub fn run_quota_alert_if_needed(
 
     crate::modules::account::dispatch_quota_alert(&payload);
     Ok(Some(payload))
+}
+
+#[cfg(test)]
+mod cursor_auth_token_tests {
+    use super::*;
+    use crate::models::cursor::CursorAccount;
+
+    fn sample_jwt() -> String {
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhdXRoMHx1c2VyXzAxSFFGR0g4WjY4WjY4WjY4WiIsImV4cCI6OTk5OTk5OTk5fQ.sig".to_string()
+    }
+
+    #[test]
+    fn builds_session_when_refresh_missing() {
+        let account = CursorAccount {
+            id: "t".into(),
+            email: "a@b.com".into(),
+            auth_id: None,
+            name: None,
+            tags: None,
+            access_token: sample_jwt(),
+            refresh_token: None,
+            membership_type: None,
+            subscription_status: None,
+            sign_up_type: None,
+            cursor_auth_raw: None,
+            cursor_usage_raw: None,
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: None,
+            created_at: 0,
+            last_used: 0,
+        };
+        let (access, session) = resolve_vscdb_auth_tokens(&account).expect("session");
+        assert!(!access.contains("::"));
+        assert!(session.contains("::"));
+        assert!(session.contains("user_"));
+    }
+
+    #[test]
+    fn splits_session_access_token() {
+        let jwt = sample_jwt();
+        let session = format!("user_01TEST::{jwt}");
+        let (access, out) = resolve_vscdb_auth_tokens_from_parts(&session, Some(&session))
+            .expect("ok");
+        assert_eq!(access, jwt);
+        assert_eq!(out, session);
+    }
 }

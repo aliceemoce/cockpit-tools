@@ -6,7 +6,7 @@ use crate::modules::{cursor_account, cursor_oauth, logger};
 
 #[tauri::command]
 pub fn list_cursor_accounts() -> Result<Vec<CursorAccount>, String> {
-    cursor_account::list_accounts_checked()
+    Ok(cursor_account::list_accounts_sorted())
 }
 
 #[tauri::command]
@@ -20,14 +20,45 @@ pub fn delete_cursor_accounts(account_ids: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn import_cursor_from_json(json_content: String) -> Result<Vec<CursorAccount>, String> {
-    cursor_account::import_from_json(&json_content)
+pub async fn import_cursor_from_json(json_content: String) -> Result<Vec<CursorAccount>, String> {
+    let accounts = cursor_account::import_from_json(&json_content)?;
+    // JSON 导入后异步刷新每个账号的在线信息
+    let mut refreshed = Vec::new();
+    for account in accounts {
+        match cursor_account::refresh_account_async(&account.id).await {
+            Ok(r) => refreshed.push(r),
+            Err(e) => {
+                logger::log_warn(&format!(
+                    "[Cursor Import] JSON导入账号在线刷新失败（保留本地字段）: id={}, error={}",
+                    account.id, e
+                ));
+                refreshed.push(account);
+            }
+        }
+    }
+    Ok(refreshed)
 }
 
 #[tauri::command]
-pub fn import_cursor_from_local(app: AppHandle) -> Result<Vec<CursorAccount>, String> {
+pub async fn import_cursor_from_local(app: AppHandle) -> Result<Vec<CursorAccount>, String> {
     match cursor_account::import_from_local()? {
-        Some(account) => {
+        Some(mut account) => {
+            // 本地导入后立即在线拉取完整信息（user_meta + stripe_profile + usage_summary）
+            match cursor_account::refresh_account_async(&account.id).await {
+                Ok(refreshed) => {
+                    account = refreshed;
+                    logger::log_info(&format!(
+                        "[Cursor Import] 本地导入 + 在线全字段刷新成功: id={}, email={}",
+                        account.id, account.email
+                    ));
+                }
+                Err(e) => {
+                    logger::log_warn(&format!(
+                        "[Cursor Import] 本地导入成功但在线刷新失败（已保留本地字段）: id={}, email={}, error={}",
+                        account.id, account.email, e
+                    ));
+                }
+            }
             let _ = crate::modules::tray::update_tray_menu(&app);
             Ok(vec![account])
         }
@@ -200,21 +231,20 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
     let account = cursor_account::load_account(&account_id)
         .ok_or_else(|| format!("Cursor account not found: {}", account_id))?;
 
-    let account_id_for_task = account_id.clone();
-    let launch_warning = match tokio::task::spawn_blocking(move || {
-        cursor_account::nirvana_traditional_switch_and_start(&account_id_for_task)
-    })
+    let launch_warning = match crate::commands::cursor_instance::start_cursor_instance_with_account_switch(
+        "__default__".to_string(),
+        Some(account_id.clone()),
+    )
     .await
     {
-        Ok(Ok(())) => None,
-        Ok(Err(err)) => {
-            if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("启动 Cursor 失败") || err.contains("未找到 Cursor") {
+        Ok(_) => None,
+        Err(err) => {
+            if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("启动 Cursor 失败") {
                 Some(err)
             } else {
                 return Err(err);
             }
         }
-        Err(err) => return Err(format!("切号任务异常: {}", err)),
     };
 
     let _ = crate::modules::provider_current_state::set_current_account_id("cursor", Some(&account_id));

@@ -76,16 +76,18 @@ pub fn update_default_settings(
     Ok(updated)
 }
 
-pub fn get_default_cursor_user_data_dir() -> Result<PathBuf, String> {
-    cursor_account::get_default_cursor_data_dir()
+pub fn is_default_cursor_profile_dir(profile_dir: &Path) -> bool {
+    get_default_cursor_user_data_dir()
+        .ok()
+        .map(|default_dir| {
+            normalize_path_for_compare(&default_dir.to_string_lossy())
+                == normalize_path_for_compare(&profile_dir.to_string_lossy())
+        })
+        .unwrap_or(false)
 }
 
-pub fn is_default_cursor_profile_dir(profile_dir: &Path) -> bool {
-    let Ok(default_dir) = get_default_cursor_user_data_dir() else {
-        return false;
-    };
-    normalize_path_for_compare(&default_dir.to_string_lossy())
-        == normalize_path_for_compare(&profile_dir.to_string_lossy())
+pub fn get_default_cursor_user_data_dir() -> Result<PathBuf, String> {
+    cursor_account::get_default_cursor_data_dir()
 }
 
 pub fn get_default_instances_root_dir() -> Result<PathBuf, String> {
@@ -1156,9 +1158,6 @@ fn spawn_cursor_windows(
     let mut cmd = Command::new(launch_path);
     crate::modules::process::apply_managed_proxy_env_to_command(&mut cmd);
     cmd.creation_flags(0x08000000);
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
     cmd.arg("--user-data-dir").arg(user_data_dir.trim());
     if use_new_window {
         cmd.arg("--new-window");
@@ -1172,6 +1171,19 @@ fn spawn_cursor_windows(
     }
     let child =
         spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+    let probe_started = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(8);
+    while probe_started.elapsed() < timeout {
+        if let Some(resolved_pid) = resolve_cursor_pid(None, Some(user_data_dir)) {
+            return Ok(resolved_pid);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    modules::logger::log_warn(&format!(
+        "[Cursor Start] 启动后 8s 内未匹配到实例 PID，回退 spawn pid={}, user_data_dir={}",
+        child.id(),
+        user_data_dir
+    ));
     Ok(child.id())
 }
 
@@ -1385,6 +1397,8 @@ fn resolve_cursor_launch_path_nirvana_go() -> Result<PathBuf, String> {
 }
 
 /// 对齐无忧 `closeCursor`（ho）：Windows 上 `taskkill /IM Cursor.exe` 关闭**全部** Cursor 进程。
+/// ⚠️ 仅用于「一键关闭所有实例」场景，切号/多开路径不应调用此函数。
+/// 切号请使用 `close_cursor`，它仅关闭指定 user_data_dir 的实例。
 pub fn close_cursor_nirvana_style(timeout_secs: u64) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -1457,6 +1471,9 @@ pub fn close_cursor_nirvana_style(timeout_secs: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// 关闭指定 user_data_dir 对应的 Cursor 进程，绝不关闭其他实例。
+/// 多开场景下：关闭实例 A 不会影响正在运行的实例 B。
+/// 默认实例关闭也不会影响多开实例。
 pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), String> {
     let target_dirs: HashSet<String> = user_data_dirs
         .iter()
@@ -1467,34 +1484,34 @@ pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), 
         return Ok(());
     }
 
-    let default_dir = get_default_cursor_user_data_dir()
-        .ok()
-        .map(|value| normalize_path_for_compare(&value.to_string_lossy()))
-        .filter(|value| !value.is_empty());
-    let allow_none_for_default = default_dir
-        .as_ref()
-        .map(|value| target_dirs.contains(value))
-        .unwrap_or(false);
-
     let entries = collect_cursor_process_entries();
     let mut pids = Vec::new();
+    // 严格按 user_data_dir 匹配：只关闭确认属于目标目录的进程。
+    // 无法解析目录的进程（None）绝不关闭，避免误杀多开实例。
     for (pid, dir) in entries {
-        match dir.as_ref() {
-            Some(value) => {
-                if target_dirs.contains(value) {
-                    pids.push(pid);
-                }
+        if let Some(resolved_dir) = dir.as_ref() {
+            if target_dirs.contains(resolved_dir) {
+                pids.push(pid);
             }
-            None if allow_none_for_default => pids.push(pid),
-            _ => {}
         }
     }
 
     pids.sort();
     pids.dedup();
     if pids.is_empty() {
+        modules::logger::log_info(&format!(
+            "[Cursor Close] 未找到匹配 target_dirs 的 Cursor 进程: {:?}",
+            target_dirs
+        ));
         return Ok(());
     }
+
+    modules::logger::log_info(&format!(
+        "[Cursor Close] 准备关闭 {} 个 Cursor 进程: pids={:?}, target_dirs={:?}",
+        pids.len(),
+        pids,
+        target_dirs
+    ));
 
     for pid in &pids {
         let _ = modules::process::close_pid(*pid, timeout_secs);
@@ -1559,5 +1576,14 @@ pub fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, Stri
 }
 
 pub fn inject_account_to_profile(profile_dir: &Path, account_id: &str) -> Result<(), String> {
-    cursor_account::switch_cursor_account_to_profile(account_id, profile_dir)
+    let account = cursor_account::load_account(account_id)
+        .ok_or_else(|| format!("绑定账号不存在: {}", account_id))?;
+    let db_path = ensure_state_db_for_injection(profile_dir)?;
+    cursor_account::inject_to_cursor_at_path(&db_path, account_id)?;
+    modules::logger::log_info(&format!(
+        "Cursor 账号注入完成: email={}, db={}",
+        account.email,
+        db_path.to_string_lossy()
+    ));
+    Ok(())
 }
