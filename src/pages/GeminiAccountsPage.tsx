@@ -55,6 +55,7 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
+  isAccountSessionExpired,
 } from "../utils/accountValidityFilter";
 import {
   buildPaginatedGroups,
@@ -531,7 +532,8 @@ export function GeminiAccountsPage() {
   const isAbnormalAccount = useCallback(
     (account: GeminiAccount) =>
       isGeminiAccountBanned(account) ||
-      (account.status || "").toLowerCase() === "error",
+      (account.status || "").toLowerCase() === "error" ||
+      isAccountSessionExpired(account.quota_query_last_error),
     [],
   );
 
@@ -676,6 +678,12 @@ export function GeminiAccountsPage() {
 
   const compareAccountsBySort = useCallback(
     (a: GeminiAccount, b: GeminiAccount) => {
+      const aExpired = isAccountSessionExpired(a.quota_query_last_error);
+      const bExpired = isAccountSessionExpired(b.quota_query_last_error);
+      if (aExpired !== bExpired) {
+        return aExpired ? 1 : -1;
+      }
+
       const currentFirstDiff = compareCurrentAccountFirst(
         a.id,
         b.id,
@@ -878,6 +886,8 @@ export function GeminiAccountsPage() {
         statusReason || t("accounts.status.forbidden_tooltip");
       const errorTitle = statusReason || t("accounts.status.refreshFailed");
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <div
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
@@ -908,12 +918,17 @@ export function GeminiAccountsPage() {
                 {t("accounts.status.refreshFailed")}
               </span>
             )}
-            {quotaError && (
+            {isSessionExpired ? (
+              <span className="status-pill forbidden" title={quotaError}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            ) : quotaError ? (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t("common.shared.quota.queryFailed", "配额查询失败")}
               </span>
-            )}
+            ) : null}
             {isBanned && (
               <span className="status-pill forbidden" title={bannedTitle}>
                 <Lock size={12} />
@@ -939,7 +954,11 @@ export function GeminiAccountsPage() {
             </div>
           )}
 
-          {renderQuotaSection(account, "card")}
+          {isSessionExpired ? (
+            <div className="quota-empty" style={{ margin: '12px 16px' }}>{t('accounts.status.sessionExpired', '会话已过期')}</div>
+          ) : (
+            renderQuotaSection(account, "card")
+          )}
 
           <div className="card-footer">
             <span className="card-date">{updatedText}</span>
@@ -1020,6 +1039,7 @@ export function GeminiAccountsPage() {
       const hasStatusError =
         !isBanned && (account.status || "").toLowerCase() === "error";
       const quotaError = account.quota_query_last_error?.trim();
+      const isSessionExpired = isAccountSessionExpired(quotaError);
       const statusReason = account.status_reason ?? null;
       const bannedTitle =
         statusReason || t("accounts.status.forbidden_tooltip");
@@ -1055,7 +1075,7 @@ export function GeminiAccountsPage() {
                   </span>
                 )}
               </div>
-              {(hasStatusError || isBanned) && (
+              {(hasStatusError || isBanned || isSessionExpired) && (
                 <div className="account-sub-line">
                   {hasStatusError && (
                     <span className="status-pill warning" title={errorTitle}>
@@ -1063,20 +1083,23 @@ export function GeminiAccountsPage() {
                       {t("accounts.status.refreshFailed")}
                     </span>
                   )}
+                  {isSessionExpired ? (
+                    <span className="status-pill forbidden" title={quotaError}>
+                      <CircleAlert size={12} />
+                      {t('accounts.status.sessionExpired', '会话已过期')}
+                    </span>
+                  ) : quotaError ? (
+                    <span className="status-pill warning" title={quotaError}>
+                      <CircleAlert size={12} />
+                      {t("common.shared.quota.queryFailed", "配额查询失败")}
+                    </span>
+                  ) : null}
                   {isBanned && (
                     <span className="status-pill forbidden" title={bannedTitle}>
                       <Lock size={12} />
                       {t("accounts.status.forbidden")}
                     </span>
                   )}
-                </div>
-              )}
-              {quotaError && (
-                <div className="account-sub-line">
-                  <span className="status-pill warning" title={quotaError}>
-                    <CircleAlert size={12} />
-                    {t("common.shared.quota.queryFailed", "配额查询失败")}
-                  </span>
                 </div>
               )}
               <div className="account-sub-line">
@@ -1100,7 +1123,11 @@ export function GeminiAccountsPage() {
             </div>
           </td>
           <td className="gemini-quota-table-cell">
-            {renderQuotaSection(account, "table")}
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : (
+              renderQuotaSection(account, "table")
+            )}
           </td>
           <td className="sticky-action-cell table-action-cell">
             <div className="action-buttons">

@@ -49,6 +49,7 @@ import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
 import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -125,7 +126,7 @@ function isZedAccountAbnormal(account: ZedAccount): boolean {
     return true;
   }
   const tone = getZedStatusTone(account.subscription_status);
-  return tone === 'warning' || tone === 'forbidden';
+  return tone === 'warning' || tone === 'forbidden' || isAccountSessionExpired(account.quota_query_last_error);
 }
 
 function formatDateTime(timestamp?: number | null, locale = 'zh-CN'): string {
@@ -437,6 +438,12 @@ export function ZedAccountsPage() {
 
   const compareAccountsBySort = useCallback(
     (left: ZedAccount, right: ZedAccount) => {
+      const leftExpired = isAccountSessionExpired(left.quota_query_last_error);
+      const rightExpired = isAccountSessionExpired(right.quota_query_last_error);
+      if (leftExpired !== rightExpired) {
+        return leftExpired ? 1 : -1;
+      }
+
       const currentFirstDiff = compareCurrentAccountFirst(left.id, right.id, currentAccountId);
       if (currentFirstDiff !== 0) {
         return currentFirstDiff;
@@ -767,6 +774,8 @@ export function ZedAccountsPage() {
         ? getZedStatusTone(account.subscription_status)
         : null;
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <div
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
@@ -784,12 +793,17 @@ export function ZedAccountsPage() {
               {maskAccountText(emailText)}
             </span>
             {isCurrent && <span className="current-tag">{t('accounts.status.current')}</span>}
-            {quotaError && (
+            {isSessionExpired ? (
+              <span className="status-pill forbidden" title={quotaError}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            ) : quotaError ? (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
-            )}
+            ) : null}
             <span className={`tier-badge ${getZedPlanTone(account.plan_raw)}`}>
               {getZedPlanBadge(account)}
             </span>
@@ -813,8 +827,14 @@ export function ZedAccountsPage() {
             </div>
           )}
 
-          {renderUsagePanel(usagePanel)}
-          {renderPlanDetails(cycleDisplay)}
+          {isSessionExpired ? (
+            <div className="quota-empty" style={{ margin: '12px 16px' }}>{t('accounts.status.sessionExpired', '会话已过期')}</div>
+          ) : (
+            <>
+              {renderUsagePanel(usagePanel)}
+              {renderPlanDetails(cycleDisplay)}
+            </>
+          )}
 
           <div className="card-footer">
             <span className="card-date">{formatDate(account.last_used || account.created_at)}</span>
@@ -881,6 +901,8 @@ export function ZedAccountsPage() {
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <tr
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
@@ -908,14 +930,21 @@ export function ZedAccountsPage() {
                     : `@${account.github_login}`}
                 </span>
               </div>
-              {quotaError && (
+              {isSessionExpired ? (
+                <div className="account-sub-line">
+                  <span className="status-pill forbidden" title={quotaError}>
+                    <CircleAlert size={12} />
+                    {t('accounts.status.sessionExpired', '会话已过期')}
+                  </span>
+                </div>
+              ) : quotaError ? (
                 <div className="account-sub-line">
                   <span className="status-pill warning" title={quotaError}>
                     <CircleAlert size={12} />
                     {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </span>
                 </div>
-              )}
+              ) : null}
               {accountTags.length > 0 && (
                 <div className="account-tags-inline">
                   {visibleTags.map((tag, index) => (
@@ -933,8 +962,19 @@ export function ZedAccountsPage() {
               {getZedPlanBadge(account)}
             </span>
           </td>
-          <td>{renderUsagePanel(usagePanel, { compact: true })}</td>
-          <td>{renderPlanDetails(cycleDisplay, { compact: true })}</td>
+          <td>
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : (
+              renderUsagePanel(usagePanel, { compact: true })
+            )}
+          </td>
+          <td>
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : (
+              renderPlanDetails(cycleDisplay, { compact: true })
+            )}</td>
           <td className="sticky-action-cell table-action-cell">
             <div className="action-buttons">
               <button

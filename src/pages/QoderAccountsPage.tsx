@@ -69,6 +69,7 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -633,7 +634,9 @@ export function QoderAccountsPage() {
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [showTagFilter]);
 
-  const isAbnormalAccount = useCallback((_account: QoderAccount) => false, []);
+  const isAbnormalAccount = useCallback((account: QoderAccount) => {
+    return isAccountSessionExpired(account.quota_query_last_error);
+  }, []);
 
   const tierSummary = useMemo(() => {
     const counts = new Map<string, number>();
@@ -702,6 +705,12 @@ export function QoderAccountsPage() {
 
   const compareAccountsBySort = useCallback(
     (a: QoderAccount, b: QoderAccount) => {
+      const aExpired = isAccountSessionExpired(a.quota_query_last_error);
+      const bExpired = isAccountSessionExpired(b.quota_query_last_error);
+      if (aExpired !== bExpired) {
+        return aExpired ? 1 : -1;
+      }
+
       const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
       if (currentFirstDiff !== 0) {
         return currentFirstDiff;
@@ -1518,6 +1527,7 @@ export function QoderAccountsPage() {
         const isRefreshing = refreshing === account.id;
         const isInjecting = injecting === account.id;
         const quotaError = account.quota_query_last_error?.trim();
+        const isSessionExpired = isAccountSessionExpired(quotaError);
 
         return (
           <div
@@ -1535,12 +1545,17 @@ export function QoderAccountsPage() {
               <span className="account-email" title={maskedEmail}>
                 {maskedEmail}
               </span>
-              {quotaError && (
+              {isSessionExpired ? (
+                <span className="status-pill forbidden" title={quotaError || undefined}>
+                  <CircleAlert size={12} />
+                  {t('accounts.status.sessionExpired', '会话已过期')}
+                </span>
+              ) : quotaError ? (
                 <span className="status-pill warning" title={quotaError}>
                   <CircleAlert size={12} />
                   {t('common.shared.quota.queryFailed', '配额查询失败')}
                 </span>
-              )}
+              ) : null}
               <span className={`tier-badge ${planClass} raw-value`}>{plan}</span>
               {isCurrent && <span className="current-tag">{t('accounts.status.current', '当前')}</span>}
             </div>
@@ -1562,7 +1577,13 @@ export function QoderAccountsPage() {
               </div>
             )}
 
-            {renderQuotaSection(account)}
+            {isSessionExpired ? (
+              <div className="ghcp-quota-section qoder-usage-section">
+                <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+              </div>
+            ) : (
+              renderQuotaSection(account)
+            )}
 
             <div className="card-footer">
               <span className="card-date qoder-card-created-at" title={createdAtText}>
@@ -1645,6 +1666,7 @@ export function QoderAccountsPage() {
         const isRefreshing = refreshing === account.id;
         const isInjecting = injecting === account.id;
         const quotaError = account.quota_query_last_error?.trim();
+        const isSessionExpired = isAccountSessionExpired(quotaError);
         return (
           <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={isCurrent ? 'current' : undefined}>
             <td>
@@ -1659,14 +1681,21 @@ export function QoderAccountsPage() {
                 <div className="account-main-line">
                   {maskAccountText(getQoderAccountDisplayEmail(account))}
                 </div>
-                {quotaError && (
+                {isSessionExpired ? (
+                  <div className="account-sub-line">
+                    <span className="status-pill forbidden" title={quotaError || undefined}>
+                      <CircleAlert size={12} />
+                      {t('accounts.status.sessionExpired', '会话已过期')}
+                    </span>
+                  </div>
+                ) : quotaError ? (
                   <div className="account-sub-line">
                     <span className="status-pill warning" title={quotaError}>
                       <CircleAlert size={12} />
                       {t('common.shared.quota.queryFailed', '配额查询失败')}
                     </span>
                   </div>
-                )}
+                ) : null}
               </div>
             </td>
             <td>{maskAccountText(account.user_id || '--')}</td>
@@ -1675,33 +1704,39 @@ export function QoderAccountsPage() {
             </td>
             <td>
               <div className="qoder-table-quota">
-                {quota.items.map((item) => (
-                  <div
-                    key={item.key}
-                    className={`quota-item qoder-table-quota-item ${item.showProgress ? '' : 'is-stat'}`}
-                  >
-                    <div className="qoder-usage-summary-row">
-                      <span className="qoder-usage-label-wrap">
-                        <span className="quota-name qoder-usage-label">{item.label}</span>
-                      </span>
-                      {item.percentageText && (
-                        <span className={`quota-value qoder-table-quota-pct ${item.quotaClass}`}>
-                          {item.percentageText}
-                        </span>
-                      )}
-                      <span className="windsurf-credit-left qoder-table-quota-total">{item.valueText}</span>
-                    </div>
-                    {item.showProgress && (
-                      <div className="quota-progress-track">
-                        <div
-                          className={`quota-progress-bar ${item.quotaClass}`}
-                          style={{ width: `${item.normalizedPercent}%` }}
-                        />
+                {isSessionExpired ? (
+                  <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+                ) : (
+                  <>
+                    {quota.items.map((item) => (
+                      <div
+                        key={item.key}
+                        className={`quota-item qoder-table-quota-item ${item.showProgress ? '' : 'is-stat'}`}
+                      >
+                        <div className="qoder-usage-summary-row">
+                          <span className="qoder-usage-label-wrap">
+                            <span className="quota-name qoder-usage-label">{item.label}</span>
+                          </span>
+                          {item.percentageText && (
+                            <span className={`quota-value qoder-table-quota-pct ${item.quotaClass}`}>
+                              {item.percentageText}
+                            </span>
+                          )}
+                          <span className="windsurf-credit-left qoder-table-quota-total">{item.valueText}</span>
+                        </div>
+                        {item.showProgress && (
+                          <div className="quota-progress-track">
+                            <div
+                              className={`quota-progress-bar ${item.quotaClass}`}
+                              style={{ width: `${item.normalizedPercent}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
-                {quota.resetText && <div className="quota-reset qoder-table-reset">{quota.resetText}</div>}
+                    ))}
+                    {quota.resetText && <div className="quota-reset qoder-table-reset">{quota.resetText}</div>}
+                  </>
+                )}
               </div>
             </td>
             <td>{formatDateTime(account.created_at)}</td>

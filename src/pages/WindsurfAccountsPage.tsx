@@ -58,6 +58,7 @@ import { emitAccountsChanged } from '../utils/accountSyncEvents';
 import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -797,7 +798,7 @@ export function WindsurfAccountsPage() {
     [resolvePresentation],
   );
 
-  const isAbnormalAccount = useCallback((_account: WindsurfAccount) => false, []);
+  const isAbnormalAccount = useCallback((account: WindsurfAccount) => isAccountSessionExpired(account.quota_query_last_error), []);
 
   const formatCreditValue = useCallback(
     (value: number | null | undefined) => {
@@ -1040,6 +1041,12 @@ export function WindsurfAccountsPage() {
 
   // ─── Filtering & Sorting ────────────────────────────────────────────
   const compareAccountsBySort = useCallback((a: WindsurfAccount, b: WindsurfAccount) => {
+    const aExpired = isAccountSessionExpired(a.quota_query_last_error);
+    const bExpired = isAccountSessionExpired(b.quota_query_last_error);
+    if (aExpired !== bExpired) {
+      return aExpired ? 1 : -1;
+    }
+
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;
@@ -1199,18 +1206,25 @@ export function WindsurfAccountsPage() {
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <div key={groupKey ? `${groupKey}-${account.id}` : account.id} className={`ghcp-account-card ${isCurrent ? 'current' : ''} ${isSelected ? 'selected' : ''}`}>
           <div className="card-top">
             <div className="card-select"><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(account.id)} /></div>
             <span className="account-email" title={maskAccountText(emailText)}>{maskAccountText(emailText)}</span>
             {isCurrent && <span className="current-tag">{t('accounts.status.current')}</span>}
-            {quotaError && (
+            {isSessionExpired ? (
+              <span className="status-pill forbidden" title={quotaError}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            ) : quotaError ? (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
-            )}
+            ) : null}
             <span className={`tier-badge ${presentation.planClass}`}>{presentation.planLabel}</span>
           </div>
           {accountTags.length > 0 && (
@@ -1219,8 +1233,14 @@ export function WindsurfAccountsPage() {
               {moreTagCount > 0 && <span className="tag-pill more">+{moreTagCount}</span>}
             </div>
           )}
-          {renderUsagePanel(usagePanel)}
-          {renderPlanDetails(cycleDisplay)}
+          {isSessionExpired ? (
+            <div className="quota-empty" style={{ margin: '12px 16px' }}>{t('accounts.status.sessionExpired', '会话已过期')}</div>
+          ) : (
+            <>
+              {renderUsagePanel(usagePanel)}
+              {renderPlanDetails(cycleDisplay)}
+            </>
+          )}
           <div className="card-footer">
             <span className="card-date">{formatDate(account.created_at)}</span>
             <div className="card-actions">
@@ -1257,6 +1277,7 @@ export function WindsurfAccountsPage() {
       const moreTagCount = Math.max(0, accountTags.length - visibleTags.length);
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
+      const isSessionExpired = isAccountSessionExpired(quotaError);
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={isCurrent ? 'current' : ''}>
           <td><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} /></td>
@@ -1266,14 +1287,21 @@ export function WindsurfAccountsPage() {
                 <span className="account-email-text" title={maskAccountText(emailText)}>{maskAccountText(emailText)}</span>
                 {isCurrent && <span className="mini-tag current">{t('accounts.status.current')}</span>}
               </div>
-              {quotaError && (
+              {isSessionExpired ? (
+                <div className="account-sub-line">
+                  <span className="status-pill forbidden" title={quotaError}>
+                    <CircleAlert size={12} />
+                    {t('accounts.status.sessionExpired', '会话已过期')}
+                  </span>
+                </div>
+              ) : quotaError ? (
                 <div className="account-sub-line">
                   <span className="status-pill warning" title={quotaError}>
                     <CircleAlert size={12} />
                     {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </span>
                 </div>
-              )}
+              ) : null}
               {accountTags.length > 0 && (
                 <div className="account-tags-inline">
                   {visibleTags.map((tag, idx) => (<span key={`${account.id}-inline-${tag}-${idx}`} className="tag-pill">{tag}</span>))}
@@ -1284,10 +1312,18 @@ export function WindsurfAccountsPage() {
           </td>
           <td><span className={`tier-badge ${presentation.planClass}`}>{presentation.planLabel}</span></td>
           <td>
-            {renderUsagePanel(usagePanel, { compact: true })}
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : (
+              renderUsagePanel(usagePanel, { compact: true })
+            )}
           </td>
           <td>
-            {renderPlanDetails(cycleDisplay, { compact: true })}
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : (
+              renderPlanDetails(cycleDisplay, { compact: true })
+            )}
           </td>
           <td className="sticky-action-cell table-action-cell">
             <div className="action-buttons">

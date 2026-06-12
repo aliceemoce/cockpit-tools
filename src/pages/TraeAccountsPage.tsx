@@ -58,6 +58,7 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -299,7 +300,9 @@ export function TraeAccountsPage() {
   const loading = store.loading;
 
   const isAbnormalAccount = useCallback(
-    (account: TraeAccount) => (account.status || '').toLowerCase() === 'error',
+    (account: TraeAccount) =>
+      (account.status || '').toLowerCase() === 'error' ||
+      isAccountSessionExpired(account.quota_query_last_error),
     [],
   );
 
@@ -343,6 +346,12 @@ export function TraeAccountsPage() {
 
   const compareAccountsBySort = useCallback(
     (left: TraeAccount, right: TraeAccount) => {
+      const leftExpired = isAccountSessionExpired(left.quota_query_last_error);
+      const rightExpired = isAccountSessionExpired(right.quota_query_last_error);
+      if (leftExpired !== rightExpired) {
+        return leftExpired ? 1 : -1;
+      }
+
       const currentFirstDiff = compareCurrentAccountFirst(left.id, right.id, currentAccountId);
       if (currentFirstDiff !== 0) {
         return currentFirstDiff;
@@ -652,6 +661,7 @@ export function TraeAccountsPage() {
         const userIdText = account.user_id || '--';
         const quotaError = account.quota_query_last_error?.trim();
         const hasQuotaData = hasTraeQuotaData(account);
+        const isSessionExpired = isAccountSessionExpired(quotaError);
 
         return (
           <div
@@ -681,12 +691,17 @@ export function TraeAccountsPage() {
                   {t('accounts.status.refreshFailed', '刷新失败')}
                 </span>
               )}
-              {quotaError && (
+              {isSessionExpired ? (
+                <span className="status-pill forbidden" title={quotaError}>
+                  <CircleAlert size={12} />
+                  {t('accounts.status.sessionExpired', '会话已过期')}
+                </span>
+              ) : quotaError ? (
                 <span className="status-pill warning" title={quotaError}>
                   <CircleAlert size={12} />
                   {t('common.shared.quota.queryFailed', '配额查询失败')}
                 </span>
-              )}
+              ) : null}
             </div>
 
             <div className="account-sub-line">
@@ -713,7 +728,9 @@ export function TraeAccountsPage() {
             )}
 
             <div className="ghcp-quota-section">
-              {hasQuotaData ? (
+              {isSessionExpired ? (
+                <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+              ) : hasQuotaData ? (
                 renderCompactQuota(quota, 'card')
               ) : (
                 <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
@@ -818,6 +835,8 @@ export function TraeAccountsPage() {
         const quotaError = account.quota_query_last_error?.trim();
         const hasQuotaData = hasTraeQuotaData(account);
 
+        const isSessionExpired = isAccountSessionExpired(quotaError);
+
         return (
           <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={isCurrent ? 'current' : ''}>
             <td>
@@ -848,14 +867,21 @@ export function TraeAccountsPage() {
                     </span>
                   </div>
                 )}
-                {quotaError && (
+                {isSessionExpired ? (
+                  <div className="account-sub-line">
+                    <span className="status-pill forbidden" title={quotaError}>
+                      <CircleAlert size={12} />
+                      {t('accounts.status.sessionExpired', '会话已过期')}
+                    </span>
+                  </div>
+                ) : quotaError ? (
                   <div className="account-sub-line">
                     <span className="status-pill warning" title={quotaError}>
                       <CircleAlert size={12} />
                       {t('common.shared.quota.queryFailed', '配额查询失败')}
                     </span>
                   </div>
-                )}
+                ) : null}
                 <div className="account-sub-line">
                   <span className="kiro-table-subline">
                     {showDisplayEmail && (
@@ -880,7 +906,9 @@ export function TraeAccountsPage() {
               </div>
             </td>
             <td>
-              {hasQuotaData ? (
+              {isSessionExpired ? (
+                <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+              ) : hasQuotaData ? (
                 renderCompactQuota(quota, 'table')
               ) : (
                 <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>

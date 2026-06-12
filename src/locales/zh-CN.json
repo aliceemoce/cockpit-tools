@@ -1020,6 +1020,7 @@
       "current": "当前",
       "disabled": "已禁用",
       "authInvalid": "凭证无效",
+      "sessionExpired": "会话已过期",
       "refreshFailed": "刷新失败",
       "normal": "正常",
       "forbidden": "403",

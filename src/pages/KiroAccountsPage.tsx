@@ -51,6 +51,7 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -235,7 +236,7 @@ export function KiroAccountsPage() {
   const isAbnormalAccount = useCallback(
     (account: KiroAccount) => {
       const presentation = resolvePresentation(account);
-      return presentation.isBanned || presentation.hasStatusError;
+      return presentation.isBanned || presentation.hasStatusError || isAccountSessionExpired(account.quota_query_last_error);
     },
     [resolvePresentation],
   );
@@ -436,6 +437,12 @@ export function KiroAccountsPage() {
 
   // ─── Filtering & Sorting ────────────────────────────────────────────
   const compareAccountsBySort = useCallback((a: KiroAccount, b: KiroAccount) => {
+    const aExpired = isAccountSessionExpired(a.quota_query_last_error);
+    const bExpired = isAccountSessionExpired(b.quota_query_last_error);
+    if (aExpired !== bExpired) {
+      return aExpired ? 1 : -1;
+    }
+
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;
@@ -576,6 +583,7 @@ export function KiroAccountsPage() {
       const isSelected = selected.has(account.id);
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
+      const isSessionExpired = isAccountSessionExpired(quotaError);
       const hasQuotaData = hasKiroQuotaData(account);
       const statusReason = presentation.accountStatusReason;
       const isBanned = presentation.isBanned;
@@ -602,12 +610,17 @@ export function KiroAccountsPage() {
                 {t('accounts.status.refreshFailed')}
               </span>
             )}
-            {quotaError && (
+            {isSessionExpired ? (
+              <span className="status-pill forbidden" title={quotaError || undefined}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            ) : quotaError ? (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
-            )}
+            ) : null}
             {isBanned && (
               <span className="status-pill forbidden" title={bannedTitle}>
                 <Lock size={12} />
@@ -633,7 +646,9 @@ export function KiroAccountsPage() {
           )}
 
           <div className="ghcp-quota-section">
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-credit-item">
                   <div className="quota-header">
@@ -728,6 +743,7 @@ export function KiroAccountsPage() {
       const moreTagCount = Math.max(0, accountTags.length - visibleTags.length);
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
+      const isSessionExpired = isAccountSessionExpired(quotaError);
       const hasQuotaData = hasKiroQuotaData(account);
       const statusReason = presentation.accountStatusReason;
       const isBanned = presentation.isBanned;
@@ -743,18 +759,15 @@ export function KiroAccountsPage() {
                 <span className="account-email-text" title={maskAccountText(emailText)}>{maskAccountText(emailText)}</span>
                 {isCurrent && <span className="mini-tag current">{t('accounts.status.current')}</span>}
               </div>
-              {(hasStatusError || isBanned) && (
+              {(hasStatusError || isBanned || isSessionExpired) && (
                 <div className="account-sub-line">
                   {hasStatusError && (<span className="status-pill warning" title={errorTitle}><CircleAlert size={12} />{t('accounts.status.refreshFailed')}</span>)}
+                  {isSessionExpired ? (
+                    <span className="status-pill forbidden" title={quotaError || undefined}><CircleAlert size={12} />{t('accounts.status.sessionExpired', '会话已过期')}</span>
+                  ) : quotaError ? (
+                    <span className="status-pill warning" title={quotaError}><CircleAlert size={12} />{t('common.shared.quota.queryFailed', '配额查询失败')}</span>
+                  ) : null}
                   {isBanned && (<span className="status-pill forbidden" title={bannedTitle}><Lock size={12} />{t('accounts.status.forbidden')}</span>)}
-                </div>
-              )}
-              {quotaError && (
-                <div className="account-sub-line">
-                  <span className="status-pill warning" title={quotaError}>
-                    <CircleAlert size={12} />
-                    {t('common.shared.quota.queryFailed', '配额查询失败')}
-                  </span>
                 </div>
               )}
               <div className="account-sub-line">
@@ -773,7 +786,9 @@ export function KiroAccountsPage() {
           </td>
           <td><span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span></td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <div className="quota-item windsurf-table-credit-item">
                 <div className="quota-header">
                   <span className="quota-name">{promptMetrics?.label ?? t('common.shared.columns.promptCredits', 'User Prompt credits')}</span>
@@ -792,7 +807,9 @@ export function KiroAccountsPage() {
             )}
           </td>
           <td>
-            {hasQuotaData && showAddOnCredits ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData && showAddOnCredits ? (
               <div className="quota-item windsurf-table-credit-item">
                 <div className="quota-header">
                   <span className="quota-name">{addOnMetrics?.label ?? t('common.shared.columns.addOnPromptCredits', 'Add-on prompt credits')}</span>

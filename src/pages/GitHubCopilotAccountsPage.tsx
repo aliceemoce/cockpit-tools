@@ -48,6 +48,7 @@ import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
 import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -239,7 +240,9 @@ export function GitHubCopilotAccountsPage() {
     return null;
   }, []);
 
-  const isAbnormalAccount = useCallback((_account: GitHubCopilotAccount) => false, []);
+  const isAbnormalAccount = useCallback((account: GitHubCopilotAccount) => {
+    return isAccountSessionExpired(account.quota_query_last_error);
+  }, []);
 
   const tierCounts = useMemo(() => {
     const counts = {
@@ -277,6 +280,12 @@ export function GitHubCopilotAccountsPage() {
   const normalizeTag = (tag: string) => tag.trim().toLowerCase();
 
   const compareAccountsBySort = useCallback((a: GitHubCopilotAccount, b: GitHubCopilotAccount) => {
+    const aExpired = isAccountSessionExpired(a.quota_query_last_error);
+    const bExpired = isAccountSessionExpired(b.quota_query_last_error);
+    if (aExpired !== bExpired) {
+      return aExpired ? 1 : -1;
+    }
+
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;
@@ -419,6 +428,7 @@ export function GitHubCopilotAccountsPage() {
       const chatUsage = presentation.quotaItems.find((item) => item.key === 'chat');
       const premiumUsage = presentation.quotaItems.find((item) => item.key === 'premium');
       const quotaError = resolveQuotaError(account);
+      const isSessionExpired = isAccountSessionExpired(quotaError);
       const hasQuotaData = hasGitHubCopilotQuotaData(account);
 
       return (
@@ -442,12 +452,17 @@ export function GitHubCopilotAccountsPage() {
                 {t('accounts.status.current')}
               </span>
             )}
-            {quotaError && (
+            {isSessionExpired ? (
+              <span className="status-pill forbidden" title={quotaError || undefined}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            ) : quotaError ? (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
-            )}
+            ) : null}
             <span className={`tier-badge ${presentation.planClass}`}>{presentation.planLabel}</span>
           </div>
 
@@ -463,7 +478,9 @@ export function GitHubCopilotAccountsPage() {
           )}
 
           <div className="ghcp-quota-section">
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item">
                   <div className="quota-header">
@@ -590,6 +607,7 @@ export function GitHubCopilotAccountsPage() {
       const chatUsage = presentation.quotaItems.find((item) => item.key === 'chat');
       const premiumUsage = presentation.quotaItems.find((item) => item.key === 'premium');
       const quotaError = resolveQuotaError(account);
+      const isSessionExpired = isAccountSessionExpired(quotaError);
       const hasQuotaData = hasGitHubCopilotQuotaData(account);
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={isCurrent ? 'current' : ''}>
@@ -608,21 +626,30 @@ export function GitHubCopilotAccountsPage() {
                 </span>
                 {isCurrent && <span className="mini-tag current">{t('accounts.status.current')}</span>}
               </div>
-              {quotaError && (
+              {isSessionExpired ? (
+                <div className="account-sub-line">
+                  <span className="status-pill forbidden" title={quotaError || undefined}>
+                    <CircleAlert size={12} />
+                    {t('accounts.status.sessionExpired', '会话已过期')}
+                  </span>
+                </div>
+              ) : quotaError ? (
                 <div className="account-sub-line">
                   <span className="status-pill warning" title={quotaError}>
                     <CircleAlert size={12} />
                     {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </span>
                 </div>
-              )}
+              ) : null}
             </div>
           </td>
           <td>
             <span className={`tier-badge ${presentation.planClass}`}>{presentation.planLabel}</span>
           </td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <div className="quota-item">
                 <div className="quota-header">
                   <span className="quota-name">{inlineUsage?.label ?? t('common.shared.quota.hourly', 'Inline Suggestions')}</span>
@@ -649,7 +676,9 @@ export function GitHubCopilotAccountsPage() {
             )}
           </td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <div className="quota-item">
                 <div className="quota-header">
                   <span className="quota-name">{chatUsage?.label ?? t('common.shared.quota.weekly', 'Chat messages')}</span>
@@ -676,7 +705,9 @@ export function GitHubCopilotAccountsPage() {
             )}
           </td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <div className="quota-item">
                 <div className="quota-header">
                   <span className="quota-name">{premiumUsage?.label ?? t('githubCopilot.columns.premium', 'Premium requests')}</span>

@@ -53,6 +53,7 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -232,7 +233,9 @@ export function CursorAccountsPage() {
 
   const isAbnormalAccount = useCallback(
     (account: CursorAccount) =>
-      isCursorAccountBanned(account) || (account.status || '').toLowerCase() === 'error',
+      isCursorAccountBanned(account) ||
+      (account.status || '').toLowerCase() === 'error' ||
+      isAccountSessionExpired(account.quota_query_last_error),
     [],
   );
 
@@ -507,6 +510,12 @@ export function CursorAccountsPage() {
   // ─── Filtering & Sorting ──────────────────────────────────────────
 
   const compareAccountsBySort = useCallback((a: CursorAccount, b: CursorAccount) => {
+    const aExpired = isAccountSessionExpired(a.quota_query_last_error);
+    const bExpired = isAccountSessionExpired(b.quota_query_last_error);
+    if (aExpired !== bExpired) {
+      return aExpired ? 1 : -1;
+    }
+
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;
@@ -671,6 +680,8 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <div
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
@@ -690,12 +701,17 @@ export function CursorAccountsPage() {
                 {t('accounts.status.refreshFailed')}
               </span>
             )}
-            {quotaError && (
+            {isSessionExpired ? (
+              <span className="status-pill forbidden" title={quotaError}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            ) : quotaError ? (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
-            )}
+            ) : null}
             {isBanned && (
               <span className="status-pill forbidden" title={bannedTitle}>
                 <Lock size={12} />
@@ -721,7 +737,9 @@ export function CursorAccountsPage() {
           )}
 
           <div className="ghcp-quota-section">
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-credit-item">
                   <div className="quota-header">
@@ -837,6 +855,8 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={`${isCurrent ? 'current' : ''} ${isBanned ? 'disabled' : ''}`}>
           <td><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} /></td>
@@ -852,14 +872,21 @@ export function CursorAccountsPage() {
                   {isBanned && (<span className="status-pill forbidden" title={bannedTitle}><Lock size={12} />{t('accounts.status.forbidden')}</span>)}
                 </div>
               )}
-              {quotaError && (
+              {isSessionExpired ? (
+                <div className="account-sub-line">
+                  <span className="status-pill forbidden" title={quotaError}>
+                    <CircleAlert size={12} />
+                    {t('accounts.status.sessionExpired', '会话已过期')}
+                  </span>
+                </div>
+              ) : quotaError ? (
                 <div className="account-sub-line">
                   <span className="status-pill warning" title={quotaError}>
                     <CircleAlert size={12} />
                     {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </span>
                 </div>
-              )}
+              ) : null}
               <div className="account-sub-line">
                 <span className="kiro-table-subline">Auth ID: {maskedAuthIdText}</span>
               </div>
@@ -873,7 +900,9 @@ export function CursorAccountsPage() {
           </td>
           <td><span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span></td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <div className="quota-item windsurf-table-credit-item">
                 <div className="quota-header">
                   <span className="quota-name">Total Usage</span>
@@ -898,7 +927,9 @@ export function CursorAccountsPage() {
             )}
           </td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-table-credit-item">
                   <div className="quota-header">

@@ -119,6 +119,7 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter'
 import {
   FEATURE_UNLOCK_CHANGED_EVENT,
@@ -828,7 +829,8 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       const verificationReason = account.disabled_reason || verificationStatusMap[account.id]
       const hasVerificationIssue =
         verificationReason === 'verification_required' || verificationReason === 'tos_violation'
-      return isDisabled || isForbidden || hasWarning || hasVerificationIssue
+      const isExpired = isAccountSessionExpired(account.quota_error?.message)
+      return isDisabled || isForbidden || hasWarning || hasVerificationIssue || isExpired
     },
     [refreshWarnings, verificationStatusMap]
   )
@@ -2278,6 +2280,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       const isSelected = selected.has(account.id)
       const quotaError = account.quota_error
       const hasQuotaError = Boolean(quotaError?.message)
+      const isSessionExpired = isAccountSessionExpired(quotaError?.message)
       const accountTags = (account.tags || []).map((tag) => tag.trim()).filter(Boolean)
       const visibleTags = accountTags.slice(0, 2)
       const moreTagCount = Math.max(0, accountTags.length - visibleTags.length)
@@ -2324,7 +2327,13 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                 {t('accounts.status.current')}
               </span>
             )}
-            {warning && (
+            {isSessionExpired && (
+              <span className="status-pill forbidden" title={quotaError?.message}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            )}
+            {warning && !isSessionExpired && (
               <span className="status-pill warning" title={warningTitle}>
                 <CircleAlert size={12} />
                 {warningLabel}
@@ -2369,37 +2378,45 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
               </div>
             ) : (
               <>
-                {hasQuotaError && (
+                {isSessionExpired ? (
                   <div className="quota-empty" title={quotaError?.message}>
-                    {t('common.shared.quota.queryFailed', '配额查询失败')}
+                    {t('accounts.status.sessionExpired', '会话已过期')}
                   </div>
-                )}
-                {quotaDisplayItems.map((item) => {
-                  const resetLabel = formatResetTimeDisplay(item.resetTime, t)
-                  return (
-                    <div key={item.key} className="quota-compact-item">
-                      <div className="quota-compact-header">
-                        <span className="model-label">{item.label}</span>
-                        <span
-                          className={`model-pct ${getQuotaClass(item.percentage)}`}
-                        >
-                          {item.percentage}%
-                        </span>
+                ) : (
+                  <>
+                    {hasQuotaError && (
+                      <div className="quota-empty" title={quotaError?.message}>
+                        {t('common.shared.quota.queryFailed', '配额查询失败')}
                       </div>
-                      <div className="quota-compact-bar-track">
-                        <div
-                          className={`quota-compact-bar ${getQuotaClass(item.percentage)}`}
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
-                      {resetLabel && (
-                        <span className="quota-compact-reset">{resetLabel}</span>
-                      )}
-                    </div>
-                  )
-                })}
-                {quotaDisplayItems.length === 0 && (
-                  <div className="quota-empty">{t('overview.noQuotaData')}</div>
+                    )}
+                    {quotaDisplayItems.map((item) => {
+                      const resetLabel = formatResetTimeDisplay(item.resetTime, t)
+                      return (
+                        <div key={item.key} className="quota-compact-item">
+                          <div className="quota-compact-header">
+                            <span className="model-label">{item.label}</span>
+                            <span
+                              className={`model-pct ${getQuotaClass(item.percentage)}`}
+                            >
+                              {item.percentage}%
+                            </span>
+                          </div>
+                          <div className="quota-compact-bar-track">
+                            <div
+                              className={`quota-compact-bar ${getQuotaClass(item.percentage)}`}
+                              style={{ width: `${item.percentage}%` }}
+                            />
+                          </div>
+                          {resetLabel && (
+                            <span className="quota-compact-reset">{resetLabel}</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {quotaDisplayItems.length === 0 && (
+                      <div className="quota-empty">{t('overview.noQuotaData')}</div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -2941,6 +2958,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       const isForbidden = Boolean(account.quota?.is_forbidden)
       const quotaError = account.quota_error
       const hasQuotaError = Boolean(quotaError?.message)
+      const isSessionExpired = isAccountSessionExpired(quotaError?.message)
       const warning = refreshWarnings[account.email]
       const warningLabel =
         warning?.kind === 'auth'
@@ -2990,7 +3008,13 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                     </span>
                   ) : null
                 })()}
-                {warning && (
+                {isSessionExpired && (
+                  <span className="status-pill forbidden" title={quotaError?.message}>
+                    <CircleAlert size={12} />
+                    {t('accounts.status.sessionExpired', '会话已过期')}
+                  </span>
+                )}
+                {warning && !isSessionExpired && (
                   <span className="status-pill warning" title={warningTitle}>
                     <CircleAlert size={12} />
                     {warningLabel}
@@ -3033,34 +3057,42 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                 </div>
               ) : (
                 <>
-                  {hasQuotaError && (
+                  {isSessionExpired ? (
                     <div className="quota-empty" title={quotaError?.message}>
-                      {t('common.shared.quota.queryFailed', '配额查询失败')}
+                      {t('accounts.status.sessionExpired', '会话已过期')}
                     </div>
+                  ) : (
+                    <>
+                      {hasQuotaError && (
+                        <div className="quota-empty" title={quotaError?.message}>
+                          {t('common.shared.quota.queryFailed', '配额查询失败')}
+                        </div>
+                      )}
+                      {quotaDisplayItems.map((item) => (
+                        <div className="quota-item" key={item.key}>
+                          <div className="quota-header">
+                            <span className="quota-name">{item.label}</span>
+                            <span
+                              className={`quota-value ${getQuotaClass(item.percentage)}`}
+                            >
+                              {item.percentage}%
+                            </span>
+                          </div>
+                          <div className="quota-progress-track">
+                            <div
+                              className={`quota-progress-bar ${getQuotaClass(item.percentage)}`}
+                              style={{ width: `${item.percentage}%` }}
+                            />
+                          </div>
+                          <div className="quota-footer">
+                            <span className="quota-reset">
+                              {formatResetTimeDisplay(item.resetTime, t)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   )}
-                  {quotaDisplayItems.map((item) => (
-                    <div className="quota-item" key={item.key}>
-                      <div className="quota-header">
-                        <span className="quota-name">{item.label}</span>
-                        <span
-                          className={`quota-value ${getQuotaClass(item.percentage)}`}
-                        >
-                          {item.percentage}%
-                        </span>
-                      </div>
-                      <div className="quota-progress-track">
-                        <div
-                          className={`quota-progress-bar ${getQuotaClass(item.percentage)}`}
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
-                      <div className="quota-footer">
-                        <span className="quota-reset">
-                          {formatResetTimeDisplay(item.resetTime, t)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
                   {quotaDisplayItems.length === 0 && (
                     <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
                       {t('overview.noQuotaData')}

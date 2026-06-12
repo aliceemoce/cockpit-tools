@@ -1011,6 +1011,7 @@
       "current": "Current",
       "disabled": "Disabled",
       "authInvalid": "Invalid credentials",
+      "sessionExpired": "Session Expired",
       "refreshFailed": "Refresh failed",
       "normal": "Normal",
       "forbidden": "403",
