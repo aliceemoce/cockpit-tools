@@ -50,11 +50,23 @@ def main() -> int:
     if re.search(r"多开实例跳过 MachineGuid", switch_align):
         errors.append("仍存在「多开跳过 MachineGuid」")
 
+    if "switch_tokens_nirvana_kh" in cursor_account:
+        errors.append("仍含错误实现 switch_tokens_nirvana_kh")
+
     if "pull_remote" in cursor_account:
         errors.append("仍含 pull_remote")
 
-    if "unwrap_or(&account.access_token)" in cursor_account.split("switch_tokens_in_profile_db")[1][:1200]:
-        errors.append("switch_tokens 仍用 access_token 顶替 refresh（会导致登录页）")
+    if "apply_pre_inject_cursor_patches" in switch_align:
+        errors.append("仍走实验链 apply_pre_inject（非无忧传统）")
+
+    if "hard_reset_cursor_fingerprint_state_for_profile" in cursor_account.split("switch_cursor_account_to_profile")[1][:1200]:
+        errors.append("switch 仍含 hard_reset 实验链")
+
+    if "nirvana_traditional_switch_steps" not in cursor_account:
+        errors.append("缺少 nirvana_traditional_switch_steps")
+
+    if "apply_nirvana_traditional_switch_patches" not in switch_align:
+        errors.append("缺少 apply_nirvana_traditional_switch_patches")
 
     report = {
         "ok": len(errors) == 0,

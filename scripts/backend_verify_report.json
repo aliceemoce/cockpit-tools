@@ -1,15 +1,5 @@
 {
   "ok": true,
   "errors": [],
-  "flow_matches_nirvana": true,
-  "nirvana_i_steps": [
-    "closeCursor",
-    "switchTokensInDb(Kh)",
-    "resetStorageJsonIds(Gh)",
-    "resetMachineIdFile(Jh)",
-    "patchCursorMachineId(Yh)",
-    "resetWindowsMachineGuid(Nc)",
-    "sleep 1500ms",
-    "startCursor(go)=explorer.exe"
-  ]
+  "flow_matches_nirvana": true
 }
