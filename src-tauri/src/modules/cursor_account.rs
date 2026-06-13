@@ -1746,9 +1746,10 @@ fn write_cursor_auth_fields_to_conn(conn: &Connection, account: &CursorAccount) 
         .map_err(|e| format!("BEGIN transaction 失败: {}", e))?;
 
     let write_result = (|| {
-        let (access_jwt, session_token) = resolve_vscdb_auth_tokens(account)?;
-        upsert_vscdb_item(conn, "cursorAuth/accessToken", &access_jwt)?;
-        upsert_vscdb_item(conn, "cursorAuth/refreshToken", &session_token)?;
+        upsert_vscdb_item(conn, "cursorAuth/accessToken", &account.access_token)?;
+        if let Some(ref rt) = account.refresh_token {
+            upsert_vscdb_item(conn, "cursorAuth/refreshToken", rt)?;
+        }
         upsert_vscdb_item(conn, "cursorAuth/cachedEmail", &account.email)?;
         let sign_up = account
             .sign_up_type
@@ -1756,9 +1757,11 @@ fn write_cursor_auth_fields_to_conn(conn: &Connection, account: &CursorAccount) 
             .filter(|v| !v.trim().is_empty())
             .unwrap_or("Auth_0");
         upsert_vscdb_item(conn, "cursorAuth/cachedSignUpType", sign_up)?;
-        if let Some(ref auth_id) = resolve_quota_pool_id(account) {
-            upsert_vscdb_item(conn, "cursorAuth/authId", auth_id)?;
-            upsert_vscdb_item(conn, "cursorAuth/workosId", auth_id)?;
+        if let Some(ref auth_id) = account.auth_id {
+            if !auth_id.trim().is_empty() {
+                upsert_vscdb_item(conn, "cursorAuth/authId", auth_id)?;
+                upsert_vscdb_item(conn, "cursorAuth/workosId", auth_id)?;
+            }
         }
         if let Some(ref mt) = account.membership_type {
             upsert_vscdb_item(conn, "cursorAuth/stripeMembershipType", mt)?;
@@ -1766,7 +1769,7 @@ fn write_cursor_auth_fields_to_conn(conn: &Connection, account: &CursorAccount) 
         if let Some(ref ss) = account.subscription_status {
             upsert_vscdb_item(conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
         }
-        upsert_vscdb_item(conn, "cursor.accessToken", &access_jwt)?;
+        upsert_vscdb_item(conn, "cursor.accessToken", &account.access_token)?;
         upsert_vscdb_item(conn, "cursor.email", &account.email)?;
         Ok(())
     })();
@@ -1920,7 +1923,36 @@ fn remove_vscdb_sidecars(db_path: &Path) {
     let _ = fs::remove_file(format!("{db}-shm"));
 }
 
-/// 无忧传统切号路径（`i()` 步骤顺序）：只关闭**当前 profile** 的 Cursor，不 taskkill 全部实例。
+/// 切号注入前清理旧 auth 键，避免残留 membership/authId 与新 token 冲突导致登录页。
+fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> {
+    let db_path = profile_dir
+        .join("User")
+        .join("globalStorage")
+        .join("state.vscdb");
+    if !db_path.exists() {
+        return Ok(());
+    }
+
+    remove_vscdb_sidecars(&db_path);
+    let conn = Connection::open(&db_path).map_err(|e| {
+        format!(
+            "打开 Cursor state.vscdb 失败({}): {}",
+            db_path.display(),
+            e
+        )
+    })?;
+
+    for key in SWITCH_AUTH_DELETE_KEYS {
+        conn.execute("DELETE FROM ItemTable WHERE key = ?1", [*key])
+            .map_err(|e| format!("删除 {} 失败: {}", key, e))?;
+    }
+    for key in ["cursorAuth/authId", "cursorAuth/workosId"] {
+        let _ = conn.execute("DELETE FROM ItemTable WHERE key = ?1", [key]);
+    }
+    Ok(())
+}
+
+/// 关闭 Cursor，重置 profile 指纹，注入 token（账号总览 Play 与多开实例共用）
 pub fn switch_cursor_account_to_profile(
     account_id: &str,
     profile_dir: &Path,
@@ -1928,25 +1960,22 @@ pub fn switch_cursor_account_to_profile(
     let account = load_account(account_id)
         .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
     let profile_dir_str = profile_dir.to_string_lossy().to_string();
-
     crate::modules::cursor_instance::close_cursor(&[profile_dir_str], 20)?;
+    // 先确保 vscdb 存在，再重置指纹，避免「storage.json 新 ID + 复制的 vscdb 旧 ID」导致登录闪退
     crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
-
-    switch_tokens_in_profile_db(profile_dir, account_id)?;
-    reset_storage_json_ids_for_profile(profile_dir)?;
-    reset_machine_id_file_for_profile(profile_dir)?;
-
+    hard_reset_cursor_fingerprint_state_for_profile(profile_dir)?;
     if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        let is_default =
+        let reset_machine_guid =
             crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir);
-        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches_for_profile(
+        crate::modules::cursor_switch_align::apply_pre_inject_cursor_patches(
             &cursor_exe,
-            is_default,
+            reset_machine_guid,
         );
     }
-
+    clear_switch_auth_keys_for_profile(profile_dir)?;
+    crate::modules::cursor_instance::inject_account_to_profile(profile_dir, account_id)?;
     logger::log_info(&format!(
-        "[Cursor Switch] 无忧传统路径换号完成: email={}, profile={}",
+        "[Cursor Switch] 已切换账号到 profile: email={}, profile={}",
         account.email,
         profile_dir.display()
     ));

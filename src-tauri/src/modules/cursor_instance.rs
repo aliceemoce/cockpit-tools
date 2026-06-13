@@ -1484,14 +1484,29 @@ pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), 
         return Ok(());
     }
 
+    let default_dir = get_default_cursor_user_data_dir()
+        .ok()
+        .map(|dir| normalize_path_for_compare(&dir.to_string_lossy()));
+    let contains_default = default_dir
+        .as_ref()
+        .map(|def| target_dirs.contains(def))
+        .unwrap_or(false);
+
     let entries = collect_cursor_process_entries();
     let mut pids = Vec::new();
-    // 严格按 user_data_dir 匹配：只关闭确认属于目标目录的进程。
-    // 无法解析目录的进程（None）绝不关闭，避免误杀多开实例。
+    // 严格匹配：如果进程指定了 --user-data-dir，且匹配 target_dirs，则关闭。
+    // 如果进程没有指定 --user-data-dir（为 None），且 target_dirs 包含默认目录，则视其为默认实例并关闭。
     for (pid, dir) in entries {
-        if let Some(resolved_dir) = dir.as_ref() {
-            if target_dirs.contains(resolved_dir) {
-                pids.push(pid);
+        match dir.as_ref() {
+            Some(resolved_dir) => {
+                if target_dirs.contains(resolved_dir) {
+                    pids.push(pid);
+                }
+            }
+            None => {
+                if contains_default {
+                    pids.push(pid);
+                }
             }
         }
     }
@@ -1499,10 +1514,16 @@ pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), 
     pids.sort();
     pids.dedup();
     if pids.is_empty() {
-        modules::logger::log_info(&format!(
-            "[Cursor Close] 未找到匹配 target_dirs 的 Cursor 进程: {:?}",
-            target_dirs
-        ));
+        // 按 user_data_dir 匹配不到任何 PID，但 Cursor.exe 可能确实在运行。
+        // 降级为按镜像名关闭全部 Cursor 进程，避免后续写 state.vscdb 撞锁。
+        if is_any_cursor_process_running() {
+            modules::logger::log_warn(&format!(
+                "[Cursor Close] 按目录匹配未命中，降级为按镜像名关闭: target_dirs={:?}",
+                target_dirs
+            ));
+            close_cursor_nirvana_style(timeout_secs)?;
+            return Ok(());
+        }
         return Ok(());
     }
 
@@ -1529,6 +1550,35 @@ pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), 
     }
 
     Ok(())
+}
+
+/// 检测系统里是否有任何 Cursor.exe 进程在运行。
+fn is_any_cursor_process_running() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq Cursor.exe", "/FO", "CSV", "/NH"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.to_lowercase().contains("cursor.exe");
+        }
+        false
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("pgrep")
+            .args(["-x", "Cursor"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        false
+    }
 }
 
 fn ensure_profile_global_storage(profile_dir: &Path) -> Result<PathBuf, String> {
