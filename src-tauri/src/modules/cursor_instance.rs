@@ -1355,8 +1355,11 @@ fn recent_workspace_from_state_vscdb(profile_dir: &Path) -> Option<PathBuf> {
     None
 }
 
-/// 启动 Cursor 时打开的工作区：实例配置 → 默认 profile 最近路径 → `%USERPROFILE%\\dev`。
-pub fn resolve_launch_workspace(explicit_working_dir: Option<&str>) -> Option<PathBuf> {
+/// 启动 Cursor 时打开的工作区：实例配置 → 指定/默认 profile 最近路径 → `%USERPROFILE%\\dev`。
+pub fn resolve_launch_workspace(
+    explicit_working_dir: Option<&str>,
+    profile_data_dir: Option<&str>,
+) -> Option<PathBuf> {
     if let Some(dir) = explicit_working_dir.and_then(existing_directory) {
         modules::logger::log_info(&format!(
             "[Cursor Start] 使用配置工作区: {}",
@@ -1365,15 +1368,25 @@ pub fn resolve_launch_workspace(explicit_working_dir: Option<&str>) -> Option<Pa
         return Some(dir);
     }
 
-    if let Ok(default_dir) = get_default_cursor_user_data_dir() {
-        if let Some(dir) = recent_workspace_from_state_vscdb(&default_dir) {
+    let profile_dirs: Vec<PathBuf> = profile_data_dir
+        .map(|dir| PathBuf::from(dir))
+        .into_iter()
+        .chain(
+            get_default_cursor_user_data_dir()
+                .ok()
+                .into_iter(),
+        )
+        .collect();
+
+    for profile_dir in &profile_dirs {
+        if let Some(dir) = recent_workspace_from_state_vscdb(profile_dir) {
             modules::logger::log_info(&format!(
                 "[Cursor Start] 使用最近工作区(vscdb): {}",
                 dir.display()
             ));
             return Some(dir);
         }
-        if let Some(dir) = recent_workspace_from_storage_json(&default_dir) {
+        if let Some(dir) = recent_workspace_from_storage_json(profile_dir) {
             modules::logger::log_info(&format!(
                 "[Cursor Start] 使用最近工作区(storage): {}",
                 dir.display()
@@ -1606,7 +1619,8 @@ pub fn start_cursor_default_with_args_with_new_window(
     explicit_working_dir: Option<&str>,
 ) -> Result<u32, String> {
     let default_dir = get_default_cursor_user_data_dir()?;
-    let workspace = resolve_launch_workspace(explicit_working_dir);
+    let default_dir_str = default_dir.to_string_lossy().to_string();
+    let workspace = resolve_launch_workspace(explicit_working_dir, Some(&default_dir_str));
     start_cursor_with_args_with_new_window(
         &default_dir.to_string_lossy(),
         extra_args,

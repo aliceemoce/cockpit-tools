@@ -395,6 +395,7 @@ pub async fn cursor_start_instance_prepared(
         let extra_args = modules::process::parse_extra_args(&default_settings.extra_args);
         let workspace = modules::cursor_instance::resolve_launch_workspace(
             default_settings.working_dir.as_deref(),
+            Some(&default_dir_str),
         );
         let use_new_window =
             modules::cursor_instance::should_use_new_window_for_profile(&default_dir_str);
@@ -452,8 +453,10 @@ pub async fn cursor_start_instance_prepared(
     }
 
     let extra_args = modules::process::parse_extra_args(&instance.extra_args);
-    let workspace =
-        modules::cursor_instance::resolve_launch_workspace(instance.working_dir.as_deref());
+    let workspace = modules::cursor_instance::resolve_launch_workspace(
+        instance.working_dir.as_deref(),
+        Some(&instance.user_data_dir),
+    );
     let use_new_window =
         modules::cursor_instance::should_use_new_window_for_profile(&instance.user_data_dir);
     let pid = modules::cursor_instance::start_cursor_with_args_with_new_window(
