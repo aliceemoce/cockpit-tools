@@ -197,21 +197,7 @@ fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> 
 pub fn inject_account_to_profile(profile_dir: &Path, account_id: &str) -> Result<(), String> {
     let account = modules::load_account(account_id)?;
     let db_path = ensure_state_db_for_injection(profile_dir)?;
-    modules::db::inject_token_to_path(
-        &db_path,
-        &account.token.access_token,
-        &account.token.refresh_token,
-        account.token.expiry_timestamp,
-    )
-    .map(|_| ())?;
-
-    #[cfg(target_os = "windows")]
-    {
-        modules::antigravity_credential::write_antigravity_system_credential(&account)
-            .map_err(|e| format!("写入 Antigravity 系统凭据失败: {}", e))?;
-    }
-
-    Ok(())
+    modules::db::inject_account_token_to_path(&db_path, &account).map(|_| ())
 }
 
 pub fn create_instance(params: CreateInstanceParams) -> Result<InstanceProfile, String> {

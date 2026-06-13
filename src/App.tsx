@@ -14,11 +14,11 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import { FileText, FolderOpen, RefreshCw, X } from 'lucide-react';
 import { SideNav } from './components/layout/SideNav';
 import { GlobalModal } from './components/GlobalModal';
+import { TopCenterPromoBanner } from './components/TopCenterPromoBanner';
 import type { QuickSettingsType } from './components/QuickSettingsPopover';
 import { Page } from './types/navigation';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
@@ -41,10 +41,12 @@ import { useZedAccountStore } from './stores/useZedAccountStore';
 import { useSideNavLayoutStore } from './stores/useSideNavLayoutStore';
 import { usePlatformLayoutStore } from './stores/usePlatformLayoutStore';
 import { useTopRightAdStore } from './stores/useTopRightAdStore';
+import { useSponsorStore } from './stores/useSponsorStore';
 import type { UpdateCheckResult, UpdateInfo } from './components/UpdateNotification';
 import type { Update as UpdaterUpdate } from '@tauri-apps/plugin-updater';
 import { parseUpdaterReleaseNotes, resolveUpdaterDownloadUrl } from './utils/updaterReleaseNotes';
 import { FloatingCardWindow } from './pages/FloatingCardWindow';
+import { initWakeupNotificationListener } from './utils/wakeupNotificationListener';
 import {
   createUpdaterCanceledError,
   isRetryableUpdaterError,
@@ -109,10 +111,7 @@ const WorkbuddyAccountsPage = lazy(() =>
 );
 const ZedAccountsPage = lazy(() =>
   import('./pages/ZedAccountsPage').then((module) => ({ default: module.ZedAccountsPage })),
-);
-const FingerprintsPage = lazy(() =>
-  import('./pages/FingerprintsPage').then((module) => ({ default: module.FingerprintsPage })),
-);
+);;
 const WakeupTasksPage = lazy(() =>
   import('./pages/WakeupTasksPage').then((module) => ({ default: module.WakeupTasksPage })),
 );
@@ -129,6 +128,9 @@ const TwoFactorAuthPage = lazy(() =>
 );
 const ManualPage = lazy(() =>
   import('./pages/ManualPage').then((module) => ({ default: module.ManualPage })),
+);
+const ApiKeyFunPage = lazy(() =>
+  import('./pages/ApiKeyFunPage').then((module) => ({ default: module.ApiKeyFunPage })),
 );
 const InstancesPage = lazy(() =>
   import('./pages/InstancesPage').then((module) => ({ default: module.InstancesPage })),
@@ -165,6 +167,7 @@ interface GeneralConfig extends GeneralConfigTheme {
   antigravity_app_path: string;
   codex_app_path: string;
   codex_launch_on_switch: boolean;
+  top_right_ad_visible?: boolean;
   vscode_app_path: string;
   windsurf_app_path: string;
   kiro_app_path: string;
@@ -534,22 +537,16 @@ function MainApp() {
   const { showModal, closeModal } = useGlobalModal();
   const topRightAdState = useTopRightAdStore((state) => state.state);
   const fetchTopRightAdState = useTopRightAdStore((state) => state.fetchState);
+  const sponsorModuleState = useSponsorStore((state) => state.state);
+  const fetchSponsorModuleState = useSponsorStore((state) => state.fetchState);
+  const sponsorModuleInitialized = useSponsorStore((state) => state.initialized);
+  const sponsorEntryVisible = Boolean(sponsorModuleState.sponsorModule);
+  const [topRightAdVisible, setTopRightAdVisible] = useState(true);
   const trayRefreshInFlightRef = useRef(false);
   const openPlatformLayoutModal = useCallback(() => {
     setPlatformLayoutRequestedGroupId(null);
     setShowPlatformLayoutModal(true);
   }, []);
-  const handleTopRightAdClick = useCallback(async () => {
-    const target = topRightAdState.ad?.ctaUrl?.trim();
-    if (!target || !/^https?:\/\//i.test(target)) {
-      return;
-    }
-    try {
-      await openUrl(target);
-    } catch {
-      window.open(target, '_blank', 'noopener,noreferrer');
-    }
-  }, [topRightAdState.ad?.ctaUrl]);
   const openBreakout = useCallback(() => {
     setHasBreakoutSession(true);
     setShowBreakout(true);
@@ -678,6 +675,11 @@ function MainApp() {
   // 启用自动刷新 hook
   useAutoRefresh();
 
+  // 初始化唤醒通知监听器
+  useEffect(() => {
+    initWakeupNotificationListener();
+  }, []);
+
   useEffect(() => {
     const handleRefreshShortcut = (event: KeyboardEvent) => {
       const isRefreshKey = event.key.toLowerCase() === 'r';
@@ -704,23 +706,53 @@ function MainApp() {
   }, [fetchTopRightAdState]);
 
   useEffect(() => {
+    const loadTopRightAdVisible = async () => {
+      try {
+        const config = await invoke<GeneralConfig>('get_general_config');
+        setTopRightAdVisible(config.top_right_ad_visible ?? true);
+      } catch (error) {
+        console.error('Failed to load top-right ad visibility config:', error);
+        setTopRightAdVisible(true);
+      }
+    };
+
+    void loadTopRightAdVisible();
+    window.addEventListener('config-updated', loadTopRightAdVisible);
+    return () => {
+      window.removeEventListener('config-updated', loadTopRightAdVisible);
+    };
+  }, []);
+
+  useEffect(() => {
+    void fetchSponsorModuleState();
+  }, [fetchSponsorModuleState]);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       void fetchTopRightAdState();
+      void fetchSponsorModuleState();
     }, TOP_RIGHT_AD_REFRESH_INTERVAL_MS);
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [fetchTopRightAdState]);
+  }, [fetchSponsorModuleState, fetchTopRightAdState]);
 
   useEffect(() => {
     const handleLanguageChanged = () => {
       void fetchTopRightAdState();
+      void fetchSponsorModuleState();
     };
     window.addEventListener('general-language-updated', handleLanguageChanged);
     return () => {
       window.removeEventListener('general-language-updated', handleLanguageChanged);
     };
-  }, [fetchTopRightAdState]);
+  }, [fetchSponsorModuleState, fetchTopRightAdState]);
+
+  useEffect(() => {
+    if (sponsorModuleInitialized && page === 'api-relay' && !sponsorEntryVisible) {
+      setPage('dashboard');
+    }
+  }, [page, sponsorEntryVisible, sponsorModuleInitialized]);
 
   useEffect(() => {
     if (sideNavLayoutMode !== 'classic' || sideNavClassicFirstSyncDone) {
@@ -2775,6 +2807,7 @@ function MainApp() {
           const target = String(event.payload || '');
           switch (target) {
             case 'overview':
+            case 'api-relay':
             case 'codex':
             case 'codex-api-service':
             case 'github-copilot':
@@ -3138,6 +3171,7 @@ function MainApp() {
         updateProgress={updateAction.progress}
         onUpdateActionClick={handleQuickUpdateActionClick}
         updateRemindersEnabled={updateRemindersEnabled}
+        sponsorEntryVisible={sponsorEntryVisible}
         onOpenLogViewer={() => setShowLogViewer(true)}
       />
 
@@ -3176,30 +3210,13 @@ function MainApp() {
               onOpenPlatformLayout={openPlatformLayoutModal}
               onEasterEggTriggerClick={handleBreakoutEntryTriggerClick}
               topCenterBanner={
-                topRightAdState.ad ? (
-                  <div
-                    className="global-promo-center"
-                    role="complementary"
-                    aria-label={t('common.topRightAd.ariaLabel', '全局右上角广告位')}
-                  >
-                    <div className="global-promo-slot">
-                      <span className="global-ad-slot-badge">
-                        {topRightAdState.ad.badge || t('common.topRightAd.badge', '广告')}
-                      </span>
-                      <div className="global-promo-main">
-                        <p className="global-promo-text">{topRightAdState.ad.text}</p>
-                      </div>
-                      {topRightAdState.ad.ctaUrl ? (
-                        <button className="global-ad-slot-action" onClick={handleTopRightAdClick}>
-                          {topRightAdState.ad.ctaLabel || t('common.topRightAd.action', '查看详情')}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
+                topRightAdVisible && topRightAdState.ads.length > 0 ? (
+                  <TopCenterPromoBanner reserveWhenEmpty={false} />
                 ) : null
               }
             />
           )}
+          {page === 'api-relay' && <ApiKeyFunPage />}
           {page === 'overview' && <AccountsPage onNavigate={setPage} />}
           {page === 'codex' && <CodexAccountsPage />}
           {page === 'codex-api-service' && <CodexApiServicePage />}
@@ -3215,7 +3232,6 @@ function MainApp() {
           {page === 'workbuddy' && <WorkbuddyAccountsPage />}
           {page === 'zed' && <ZedAccountsPage />}
           {page === 'instances' && <InstancesPage onNavigate={setPage} />}
-          {page === 'fingerprints' && <FingerprintsPage onNavigate={setPage} />}
           {page === 'wakeup' && <WakeupTasksPage onNavigate={setPage} />}
           {page === 'verification' && <WakeupVerificationPage onNavigate={setPage} />}
           {page === '2fa' && <TwoFactorAuthPage />}

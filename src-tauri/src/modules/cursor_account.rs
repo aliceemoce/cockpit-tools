@@ -1952,58 +1952,34 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
     Ok(())
 }
 
-/// 无忧传统切号 `i()`：close → Kh → Gh → Jh → Yh → Nc（默认 profile）。
-fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
-    let account = load_account(account_id)
-        .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-    logger::log_info(&format!("[Cursor Switch] 无忧传统切号: {}", account.email));
-
-    crate::modules::cursor_instance::close_cursor_nirvana_style(20)?;
-
-    let default_dir = get_default_cursor_data_dir()?;
-    switch_tokens_in_profile_db(&default_dir, account_id)?;
-    reset_storage_json_ids_for_profile(&default_dir)?;
-    reset_machine_id_file_for_profile(&default_dir)?;
-
-    if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches(&cursor_exe);
-    }
-
-    logger::log_info(&format!(
-        "[Cursor Switch] 无忧传统路径换号完成: email={}, profile={}",
-        account.email,
-        default_dir.display()
-    ));
-    Ok(())
-}
-
-/// 账号总览 Play 与多开 Start：默认实例走无忧传统链；多开仅关本 profile，不 taskkill 全部 Cursor。
+/// 关闭 Cursor，重置 profile 指纹，注入 token（账号总览 Play 与多开实例共用）。
 pub fn switch_cursor_account_to_profile(
     account_id: &str,
     profile_dir: &Path,
 ) -> Result<(), String> {
-    if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
-        return nirvana_traditional_switch_steps(account_id);
-    }
-
     let account = load_account(account_id)
         .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
     let profile_dir_str = profile_dir.to_string_lossy().to_string();
-    crate::modules::cursor_instance::close_cursor(&[profile_dir_str], 20)?;
+    if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
+        crate::modules::cursor_instance::close_cursor(&[profile_dir_str], 20)?;
+    } else {
+        crate::modules::cursor_instance::close_cursor_profile_strict(&profile_dir_str, 20)?;
+    }
+    // 先确保 vscdb 存在，再重置指纹，避免「storage.json 新 ID + 复制旧 vscdb 旧 ID」导致登录闪退
     crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
-
-    switch_tokens_in_profile_db(profile_dir, account_id)?;
-    reset_storage_json_ids_for_profile(profile_dir)?;
-    reset_machine_id_file_for_profile(profile_dir)?;
-
+    hard_reset_cursor_fingerprint_state_for_profile(profile_dir)?;
     if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches_main_js_only(
+        let reset_machine_guid =
+            crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir);
+        crate::modules::cursor_switch_align::apply_pre_inject_cursor_patches(
             &cursor_exe,
+            reset_machine_guid,
         );
     }
-
+    clear_switch_auth_keys_for_profile(profile_dir)?;
+    crate::modules::cursor_instance::inject_account_to_profile(profile_dir, account_id)?;
     logger::log_info(&format!(
-        "[Cursor Switch] 无忧传统路径换号完成(多开): email={}, profile={}",
+        "[Cursor Switch] 已切换账号到 profile: email={}, profile={}",
         account.email,
         profile_dir.display()
     ));
@@ -2734,7 +2710,7 @@ pub async fn refresh_account_async(account_id: &str) -> Result<CursorAccount, St
     result
 }
 
-/// Nirvana-aligned hot path: token refresh (if needed) + usage-summary only.
+/// UI 热路径：与全量刷新共用 upstream 判定逻辑，避免 quota_only 漏标失败。
 pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorAccount, String> {
     {
         let mut in_flight = CURSOR_REFRESH_IN_FLIGHT
@@ -2749,91 +2725,11 @@ pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorAccoun
         }
     }
 
-    let result = refresh_account_quota_only_async(account_id).await;
+    let result = refresh_account_async(account_id).await;
     CURSOR_REFRESH_IN_FLIGHT
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .remove(account_id);
-    result
-}
-
-/// Batch path: refresh token if needed and pull usage only (skip user meta + stripe).
-async fn refresh_account_quota_only_async_once(account_id: &str) -> Result<CursorAccount, String> {
-    let existing = load_account(account_id).ok_or_else(|| "账号不存在".to_string())?;
-    logger::log_info(&format!(
-        "[Cursor Refresh] 快速刷新(usage-only): id={}, email={}",
-        existing.id, existing.email
-    ));
-    let client = build_cursor_http_client()?;
-    let mut account = existing;
-
-    if account.quota_query_last_error.is_none() {
-        if let Some(updated_at) = account.usage_updated_at {
-            let elapsed = now_ts().saturating_sub(updated_at);
-            if elapsed < CURSOR_USAGE_QUERY_MIN_INTERVAL_SECONDS {
-                logger::log_info(&format!(
-                    "[Cursor Refresh] 跳过配额查询(冷却中): id={}, elapsed={}s",
-                    account.id, elapsed
-                ));
-                return Ok(account);
-            }
-        }
-    }
-
-    if access_token_needs_refresh(&account.access_token) {
-        match refresh_account_access_token_with_client(&client, &mut account).await {
-            Ok(true) => {
-                logger::log_info(&format!(
-                    "[Cursor Refresh] access token 刷新成功: id={}",
-                    account.id
-                ));
-            }
-            Ok(false) => {}
-            Err(err) => {
-                logger::log_warn(&format!(
-                    "[Cursor Refresh] access token 刷新失败，继续使用现有 token: id={}, error={}",
-                    account.id, err
-                ));
-            }
-        }
-    }
-
-    let mut usage_refreshed = false;
-    match fetch_usage_summary_with_client(&client, &account.access_token).await {
-        Ok(usage) => {
-            if let Some(mt) = usage.get("membershipType").and_then(|v| v.as_str()) {
-                if !mt.is_empty() {
-                    account.membership_type = Some(mt.to_string());
-                }
-            }
-            account.cursor_usage_raw = Some(usage);
-            account.quota_query_last_error = None;
-            account.quota_query_last_error_at = None;
-            usage_refreshed = true;
-        }
-        Err(err) => {
-            account.quota_query_last_error = Some(err.clone());
-            account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
-            return Err(err);
-        }
-    }
-
-    let refreshed_at = now_ts();
-    if usage_refreshed {
-        account.usage_updated_at = Some(refreshed_at);
-    }
-    account.last_used = refreshed_at;
-    backfill_quota_pool_auth_id(&mut account);
-    let updated = account.clone();
-    upsert_account_record(account)?;
-    Ok(updated)
-}
-
-pub async fn refresh_account_quota_only_async(account_id: &str) -> Result<CursorAccount, String> {
-    let result = refresh_account_quota_only_async_once(account_id).await;
-    if let Err(err) = &result {
-        persist_quota_query_error(account_id, err);
-    }
     result
 }
 
@@ -2856,7 +2752,7 @@ pub async fn refresh_all_tokens_batched() -> Result<Vec<(String, Result<CursorAc
     let batch_count = active_accounts.len().div_ceil(BATCH_SIZE);
 
     logger::log_info(&format!(
-        "[Cursor Refresh] 分批次刷新开始: total={}, active={}, batches={}, concurrent={}, mode=quota_only",
+        "[Cursor Refresh] 分批次刷新开始: total={}, active={}, batches={}, concurrent={}, mode=full",
         total,
         active_accounts.len(),
         batch_count,
@@ -2888,7 +2784,7 @@ pub async fn refresh_all_tokens_batched() -> Result<Vec<(String, Result<CursorAc
                         .acquire_owned()
                         .await
                         .map_err(|e| format!("获取 Cursor 刷新并发许可失败: {}", e))?;
-                    let result = refresh_account_quota_only_async(&id).await;
+                    let result = refresh_account_async(&id).await;
                     Ok::<(String, Result<CursorAccount, String>), String>((id, result))
                 }
             })

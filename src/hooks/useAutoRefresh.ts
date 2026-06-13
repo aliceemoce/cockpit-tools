@@ -484,8 +484,8 @@ export function useAutoRefresh() {
             {
               key: 'cursor',
               label: 'Cursor',
-              intervalMinutes: 0,
-              currentMinutes: 0,
+              intervalMinutes: config.cursor_auto_refresh_minutes,
+              currentMinutes: resolveCurrentMinutes('cursor', currentAccountEmails.cursor, currentRefreshMinutesMap),
               fullRefreshingRef: cursorRefreshingRef,
               currentRefreshingRef: cursorCurrentRefreshingRef,
               runFullRefresh: async () => {

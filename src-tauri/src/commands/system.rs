@@ -65,6 +65,10 @@ pub struct GeneralConfig {
     pub auto_refresh_minutes: i32,
     /// Codex 自动刷新间隔（分钟），-1 表示禁用
     pub codex_auto_refresh_minutes: i32,
+    /// Codex 切号时是否同步覆盖 WSL 配置 (Windows Only)
+    pub codex_sync_wsl: bool,
+    /// Codex WSL 配置目录 (Windows Only)
+    pub codex_wsl_config_dir: String,
     /// Zed 自动刷新间隔（分钟），-1 表示禁用
     pub zed_auto_refresh_minutes: i32,
     /// GitHub Copilot 自动刷新间隔（分钟），-1 表示禁用
@@ -159,6 +163,8 @@ pub struct GeneralConfig {
     pub codex_restart_specified_app_on_switch: bool,
     /// 是否在 Codex 总览中显示 API 服务入口
     pub codex_local_access_entry_visible: bool,
+    /// 是否显示顶部推广位
+    pub top_right_ad_visible: bool,
     /// Antigravity 切号是否启用“本地落盘 + 扩展无感”且不重启
     pub antigravity_dual_switch_no_restart_enabled: bool,
     /// 是否启用自动切号
@@ -306,6 +312,31 @@ pub struct AutoBackupPlatformEntry {
     pub platform: String,
     /// 账号数量
     pub account_count: u64,
+}
+
+/// WebDAV 备份同步设置（前端使用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebdavSyncSettings {
+    /// 是否启用自动同步
+    pub enabled: bool,
+    /// WebDAV 服务地址
+    pub url: String,
+    /// WebDAV 用户名
+    pub username: String,
+    /// 本地配置中是否已保存密码
+    pub has_password: bool,
+    /// WebDAV 远端备份目录
+    pub remote_dir: String,
+    /// 最近一次上传时间
+    pub last_upload_at: Option<String>,
+    /// 最近一次上传文件名
+    pub last_upload_file_name: Option<String>,
+    /// 最近一次下载时间
+    pub last_download_at: Option<String>,
+    /// 最近一次下载文件名
+    pub last_download_file_name: Option<String>,
+    /// 备份保留天数
+    pub retention_days: i32,
 }
 
 const DEFAULT_UI_SCALE: f64 = 1.0;
@@ -458,24 +489,16 @@ fn find_antigravity_windows_exe(root: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn read_antigravity_windows_exe_metadata(root: &Path) -> Option<AntigravityInstalledVersionInfo> {
-    let exe_path = find_antigravity_windows_exe(root)?;
-    let script = r#"
-$p = $args[0]
-if (-not (Test-Path -LiteralPath $p)) { exit 2 }
-$v = (Get-Item -LiteralPath $p).VersionInfo
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-[pscustomobject]@{
-  ProductName = $v.ProductName
-  ProductVersion = $v.ProductVersion
-  FileVersion = $v.FileVersion
-} | ConvertTo-Json -Compress
-"#;
+fn read_powershell_json_for_antigravity_exe(
+    exe_path: &Path,
+    script: &str,
+) -> Option<serde_json::Value> {
     let mut command = std::process::Command::new("powershell");
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(CREATE_NO_WINDOW);
     }
+
     let output = command
         .args([
             "-NoProfile",
@@ -485,24 +508,110 @@ $v = (Get-Item -LiteralPath $p).VersionInfo
             "-Command",
             script,
         ])
-        .arg(&exe_path)
+        .env("COCKPIT_ANTIGRAVITY_EXE_PATH", exe_path.as_os_str())
         .output()
         .ok()?;
     if !output.status.success() {
+        modules::logger::log_warn(&format!(
+            "[Antigravity] Windows version metadata PowerShell probe failed: status={}",
+            output.status
+        ));
         return None;
     }
 
-    let value = serde_json::from_slice::<serde_json::Value>(&output.stdout).ok()?;
-    let version = json_string_field(&value, &["ProductVersion", "FileVersion"])?;
-    let product_name =
-        json_string_field(&value, &["ProductName"]).unwrap_or_else(|| "Antigravity".to_string());
+    serde_json::from_slice::<serde_json::Value>(&output.stdout).ok()
+}
+
+#[cfg(target_os = "windows")]
+fn build_antigravity_windows_version_info(
+    value: serde_json::Value,
+    exe_path: &Path,
+    source: &str,
+) -> Option<AntigravityInstalledVersionInfo> {
+    let version = json_string_field(&value, &["ProductVersion", "FileVersion", "DisplayVersion"])?;
+    let product_name = json_string_field(&value, &["ProductName", "DisplayName"])
+        .unwrap_or_else(|| "Antigravity".to_string());
 
     Some(AntigravityInstalledVersionInfo {
         product_name,
         version,
         app_path: exe_path.to_string_lossy().to_string(),
-        source: "VersionInfo".to_string(),
+        source: source.to_string(),
     })
+}
+
+#[cfg(target_os = "windows")]
+fn read_antigravity_windows_uninstall_metadata(
+    exe_path: &Path,
+) -> Option<AntigravityInstalledVersionInfo> {
+    let script = r#"
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Normalize-RegistryPath([string]$value) {
+  if ([string]::IsNullOrWhiteSpace($value)) { return $null }
+  $clean = $value.Trim().Trim('"')
+  $clean = $clean -replace ',\d+$',''
+  try { return [System.IO.Path]::GetFullPath($clean) } catch { return $clean }
+}
+
+$exe = [Environment]::GetEnvironmentVariable('COCKPIT_ANTIGRAVITY_EXE_PATH', 'Process')
+if ([string]::IsNullOrWhiteSpace($exe)) { exit 3 }
+$exe = [System.IO.Path]::GetFullPath($exe)
+
+$roots = @(
+  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+  'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+  'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+)
+
+$match = Get-ItemProperty -Path $roots -ErrorAction SilentlyContinue |
+  Where-Object {
+    $_.DisplayName -like 'Antigravity*' -and (
+      ((Normalize-RegistryPath $_.DisplayIcon) -ieq $exe) -or
+      ($_.InstallLocation -and $exe.StartsWith(
+        (Normalize-RegistryPath $_.InstallLocation).TrimEnd('\') + '\',
+        [System.StringComparison]::OrdinalIgnoreCase
+      ))
+    )
+  } |
+  Select-Object -First 1
+
+if (-not $match) { exit 4 }
+
+[pscustomobject]@{
+  DisplayName = $match.DisplayName
+  DisplayVersion = $match.DisplayVersion
+} | ConvertTo-Json -Compress
+"#;
+
+    let value = read_powershell_json_for_antigravity_exe(exe_path, script)?;
+    build_antigravity_windows_version_info(value, exe_path, "UninstallRegistry")
+}
+
+#[cfg(target_os = "windows")]
+fn read_antigravity_windows_exe_metadata(root: &Path) -> Option<AntigravityInstalledVersionInfo> {
+    let exe_path = find_antigravity_windows_exe(root)?;
+    let script = r#"
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$p = [Environment]::GetEnvironmentVariable('COCKPIT_ANTIGRAVITY_EXE_PATH', 'Process')
+if ([string]::IsNullOrWhiteSpace($p)) { exit 3 }
+if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { exit 2 }
+$v = (Get-Item -LiteralPath $p).VersionInfo
+if ([string]::IsNullOrWhiteSpace($v.ProductVersion) -and [string]::IsNullOrWhiteSpace($v.FileVersion)) { exit 4 }
+[pscustomobject]@{
+  ProductName = $v.ProductName
+  ProductVersion = $v.ProductVersion
+  FileVersion = $v.FileVersion
+} | ConvertTo-Json -Compress
+"#;
+
+    read_powershell_json_for_antigravity_exe(&exe_path, script)
+        .and_then(|value| build_antigravity_windows_version_info(value, &exe_path, "VersionInfo"))
+        .or_else(|| read_antigravity_windows_uninstall_metadata(&exe_path))
 }
 
 fn normalize_antigravity_metadata_root(path: &Path) -> Option<PathBuf> {
@@ -628,6 +737,26 @@ fn antigravity_metadata_candidates(
             _ => &[
                 "/Applications/Antigravity.app",
                 "/Applications/Antigravity IDE.app",
+            ],
+        };
+        for path in paths {
+            let path = PathBuf::from(path);
+            if path.exists() {
+                push_unique_antigravity_candidate(&mut candidates, path);
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let paths: &[&str] = match normalize_antigravity_metadata_target(target) {
+            Some("antigravity") => &["/usr/share/antigravity", "/opt/antigravity"],
+            Some("antigravity_ide") => &["/usr/share/antigravity-ide", "/opt/antigravity-ide"],
+            _ => &[
+                "/usr/share/antigravity",
+                "/usr/share/antigravity-ide",
+                "/opt/antigravity",
+                "/opt/antigravity-ide",
             ],
         };
         for path in paths {
@@ -860,6 +989,63 @@ fn build_auto_backup_settings(config: &UserConfig) -> Result<AutoBackupSettings,
         last_backup_at: config.auto_backup_last_backup_at.clone(),
         directory_path: get_auto_backup_dir_path()?.to_string_lossy().to_string(),
     })
+}
+
+fn build_webdav_sync_settings(config: &UserConfig) -> WebdavSyncSettings {
+    let url = modules::webdav_sync::normalize_base_url(&config.webdav_sync_url)
+        .unwrap_or_else(|_| config::default_webdav_sync_url());
+    let remote_dir = modules::webdav_sync::normalize_remote_dir(&config.webdav_sync_remote_dir)
+        .unwrap_or_else(|_| config::default_webdav_sync_remote_dir());
+
+    WebdavSyncSettings {
+        enabled: config.webdav_sync_enabled,
+        url,
+        username: config.webdav_sync_username.clone(),
+        has_password: !config.webdav_sync_password.is_empty(),
+        remote_dir,
+        last_upload_at: config.webdav_sync_last_upload_at.clone(),
+        last_upload_file_name: config.webdav_sync_last_upload_file_name.clone(),
+        last_download_at: config.webdav_sync_last_download_at.clone(),
+        last_download_file_name: config.webdav_sync_last_download_file_name.clone(),
+        retention_days: config.webdav_sync_retention_days,
+    }
+}
+
+fn resolve_webdav_password_update(
+    current_password: &str,
+    password: Option<String>,
+    clear_password: Option<bool>,
+) -> String {
+    if clear_password.unwrap_or(false) {
+        return String::new();
+    }
+    password
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| current_password.to_string())
+}
+
+fn validate_webdav_sync_config(
+    enabled: bool,
+    url: &str,
+    username: &str,
+    password: &str,
+    remote_dir: &str,
+) -> Result<(String, String, String), String> {
+    let normalized_url = modules::webdav_sync::normalize_base_url(url)?;
+    let normalized_remote_dir = modules::webdav_sync::normalize_remote_dir(remote_dir)?;
+    let normalized_username = username.trim().to_string();
+
+    if enabled {
+        if normalized_username.is_empty() {
+            return Err("启用 WebDAV 同步时账号不能为空".to_string());
+        }
+        if password.is_empty() {
+            return Err("启用 WebDAV 同步时应用密码不能为空".to_string());
+        }
+    }
+
+    Ok((normalized_url, normalized_username, normalized_remote_dir))
 }
 
 fn sanitize_auto_backup_file_name(file_name: &str) -> Result<String, String> {
@@ -1506,6 +1692,156 @@ pub fn open_auto_backup_dir() -> Result<(), String> {
     open_path_in_system(path.as_path())
 }
 
+#[tauri::command]
+pub fn get_webdav_sync_settings() -> Result<WebdavSyncSettings, String> {
+    let config = config::get_user_config();
+    Ok(build_webdav_sync_settings(&config))
+}
+
+#[tauri::command]
+pub fn save_webdav_sync_settings(
+    enabled: bool,
+    url: String,
+    username: String,
+    password: Option<String>,
+    clear_password: Option<bool>,
+    remote_dir: String,
+    retention_days: i32,
+) -> Result<WebdavSyncSettings, String> {
+    let current = config::get_user_config();
+    let next_password =
+        resolve_webdav_password_update(&current.webdav_sync_password, password, clear_password);
+    let (next_url, next_username, next_remote_dir) =
+        validate_webdav_sync_config(enabled, &url, &username, &next_password, &remote_dir)?;
+
+    let new_config = UserConfig {
+        webdav_sync_enabled: enabled,
+        webdav_sync_url: next_url,
+        webdav_sync_username: next_username,
+        webdav_sync_password: next_password,
+        webdav_sync_remote_dir: next_remote_dir,
+        webdav_sync_retention_days: config::sanitize_webdav_sync_retention_days(retention_days),
+        ..current
+    };
+    config::save_user_config(&new_config)?;
+    Ok(build_webdav_sync_settings(&new_config))
+}
+
+#[tauri::command]
+pub async fn test_webdav_sync_connection(
+    url: String,
+    username: String,
+    password: Option<String>,
+    clear_password: Option<bool>,
+    remote_dir: String,
+) -> Result<modules::webdav_sync::WebdavTestResult, String> {
+    let current = config::get_user_config();
+    let next_password =
+        resolve_webdav_password_update(&current.webdav_sync_password, password, clear_password);
+    let connection =
+        modules::webdav_sync::connection_from_parts(&url, &username, &next_password, &remote_dir)?;
+    modules::webdav_sync::test_connection(&connection).await
+}
+
+#[tauri::command]
+pub async fn upload_auto_backup_to_webdav(
+    file_name: String,
+) -> Result<modules::webdav_sync::WebdavUploadResult, String> {
+    let config = config::get_user_config();
+    if !config.webdav_sync_enabled {
+        return Err("WebDAV 同步未启用".to_string());
+    }
+
+    let connection = modules::webdav_sync::connection_from_config(&config)?;
+    let safe_name = sanitize_auto_backup_file_name(&file_name)?;
+    if !safe_name.ends_with(".json") {
+        return Err("WebDAV 同步入口文件必须为 JSON 备份".to_string());
+    }
+
+    let archive_name = auto_backup_archive_file_name(&safe_name)
+        .ok_or_else(|| "无法获取对应的压缩包名称".to_string())?;
+    let archive_path = resolve_auto_backup_file_path(&archive_name)?;
+    if !archive_path.exists() {
+        return Err("本地备份压缩包不存在".to_string());
+    }
+
+    let archive_bytes =
+        fs::read(&archive_path).map_err(|err| format!("读取本地备份压缩包失败: {}", err))?;
+
+    let sync_client = modules::webdav_sync::WebdavSyncClient::new(&connection)?;
+
+    let mut uploaded_files = Vec::new();
+    uploaded_files.push(
+        sync_client.upload_backup_bytes(
+            &archive_name,
+            archive_bytes,
+        )
+        .await?,
+    );
+
+    let deleted_files = sync_client.cleanup_remote_backups(
+        config::sanitize_webdav_sync_retention_days(config.webdav_sync_retention_days),
+    )
+    .await?;
+    let uploaded_at = chrono::Utc::now().to_rfc3339();
+    let remote_dir = connection.remote_dir.clone();
+
+    let new_config = UserConfig {
+        webdav_sync_last_upload_at: Some(uploaded_at.clone()),
+        webdav_sync_last_upload_file_name: Some(archive_name),
+        ..config
+    };
+    config::save_user_config(&new_config)?;
+
+    Ok(modules::webdav_sync::WebdavUploadResult {
+        uploaded_files,
+        deleted_files,
+        uploaded_at,
+        remote_dir,
+    })
+}
+
+#[tauri::command]
+pub async fn list_webdav_backup_files(
+) -> Result<Vec<modules::webdav_sync::WebdavBackupFileEntry>, String> {
+    let config = config::get_user_config();
+    let connection = modules::webdav_sync::connection_from_config(&config)?;
+    modules::webdav_sync::list_remote_backups(&connection).await
+}
+
+#[tauri::command]
+pub async fn read_webdav_backup_file(file_name: String) -> Result<String, String> {
+    let config = config::get_user_config();
+    let safe_name = sanitize_auto_backup_file_name(&file_name)?;
+    let connection = modules::webdav_sync::connection_from_config(&config)?;
+    
+    let downloaded_at = chrono::Utc::now().to_rfc3339();
+    let content = if safe_name.ends_with(".zip") {
+        let bytes = modules::webdav_sync::read_remote_backup_bytes(&connection, &safe_name).await?;
+        backup_json_from_zip_bytes(&bytes)?
+    } else if safe_name.ends_with(".json") {
+        modules::webdav_sync::read_remote_backup(&connection, &safe_name).await?
+    } else {
+        return Err("不支持的备份文件格式".to_string());
+    };
+
+    let new_config = UserConfig {
+        webdav_sync_last_download_at: Some(downloaded_at),
+        webdav_sync_last_download_file_name: Some(safe_name),
+        ..config
+    };
+    config::save_user_config(&new_config)?;
+    Ok(content)
+}
+
+#[tauri::command]
+pub async fn delete_webdav_backup_file(file_name: String) -> Result<(), String> {
+    let config = config::get_user_config();
+    let safe_name = sanitize_auto_backup_file_name(&file_name)?;
+    let connection = modules::webdav_sync::connection_from_config(&config)?;
+    modules::webdav_sync::delete_remote_backup(&connection, &safe_name).await
+}
+
 /// 获取网络服务配置
 #[tauri::command]
 pub fn get_network_config() -> Result<NetworkConfig, String> {
@@ -1587,6 +1923,8 @@ pub fn save_network_config(
         ui_scale: current.ui_scale,
         auto_refresh_minutes: current.auto_refresh_minutes,
         codex_auto_refresh_minutes: current.codex_auto_refresh_minutes,
+        codex_sync_wsl: current.codex_sync_wsl,
+        codex_wsl_config_dir: current.codex_wsl_config_dir,
         zed_auto_refresh_minutes: current.zed_auto_refresh_minutes,
         ghcp_auto_refresh_minutes: current.ghcp_auto_refresh_minutes,
         windsurf_auto_refresh_minutes: current.windsurf_auto_refresh_minutes,
@@ -1617,6 +1955,16 @@ pub fn save_network_config(
         auto_backup_retention_days: current.auto_backup_retention_days,
         auto_backup_retention_days_migrated: current.auto_backup_retention_days_migrated,
         auto_backup_last_backup_at: current.auto_backup_last_backup_at,
+        webdav_sync_enabled: current.webdav_sync_enabled,
+        webdav_sync_url: current.webdav_sync_url,
+        webdav_sync_username: current.webdav_sync_username,
+        webdav_sync_password: current.webdav_sync_password,
+        webdav_sync_remote_dir: current.webdav_sync_remote_dir,
+        webdav_sync_retention_days: current.webdav_sync_retention_days,
+        webdav_sync_last_upload_at: current.webdav_sync_last_upload_at,
+        webdav_sync_last_upload_file_name: current.webdav_sync_last_upload_file_name,
+        webdav_sync_last_download_at: current.webdav_sync_last_download_at,
+        webdav_sync_last_download_file_name: current.webdav_sync_last_download_file_name,
         floating_card_position_x: current.floating_card_position_x,
         floating_card_position_y: current.floating_card_position_y,
         opencode_app_path: current.opencode_app_path,
@@ -1642,6 +1990,7 @@ pub fn save_network_config(
         codex_launch_on_switch: current.codex_launch_on_switch,
         codex_restart_specified_app_on_switch: current.codex_restart_specified_app_on_switch,
         codex_local_access_entry_visible: current.codex_local_access_entry_visible,
+        top_right_ad_visible: current.top_right_ad_visible,
         antigravity_dual_switch_no_restart_enabled: current
             .antigravity_dual_switch_no_restart_enabled,
         auto_switch_enabled: current.auto_switch_enabled,
@@ -1853,6 +2202,8 @@ pub fn get_general_config(app: tauri::AppHandle) -> Result<GeneralConfig, String
         ui_scale: user_config.ui_scale,
         auto_refresh_minutes: user_config.auto_refresh_minutes,
         codex_auto_refresh_minutes: user_config.codex_auto_refresh_minutes,
+        codex_sync_wsl: user_config.codex_sync_wsl,
+        codex_wsl_config_dir: user_config.codex_wsl_config_dir,
         zed_auto_refresh_minutes: user_config.zed_auto_refresh_minutes,
         ghcp_auto_refresh_minutes: user_config.ghcp_auto_refresh_minutes,
         windsurf_auto_refresh_minutes: user_config.windsurf_auto_refresh_minutes,
@@ -1904,6 +2255,7 @@ pub fn get_general_config(app: tauri::AppHandle) -> Result<GeneralConfig, String
         codex_launch_on_switch: user_config.codex_launch_on_switch,
         codex_restart_specified_app_on_switch: user_config.codex_restart_specified_app_on_switch,
         codex_local_access_entry_visible: user_config.codex_local_access_entry_visible,
+        top_right_ad_visible: user_config.top_right_ad_visible,
         antigravity_dual_switch_no_restart_enabled: user_config
             .antigravity_dual_switch_no_restart_enabled,
         auto_switch_enabled: user_config.auto_switch_enabled,
@@ -1981,6 +2333,8 @@ pub fn save_general_config(
     ui_scale: Option<f64>,
     auto_refresh_minutes: i32,
     codex_auto_refresh_minutes: i32,
+    codex_sync_wsl: Option<bool>,
+    codex_wsl_config_dir: Option<String>,
     zed_auto_refresh_minutes: Option<i32>,
     ghcp_auto_refresh_minutes: Option<i32>,
     windsurf_auto_refresh_minutes: Option<i32>,
@@ -2028,6 +2382,7 @@ pub fn save_general_config(
     codex_launch_on_switch: bool,
     codex_restart_specified_app_on_switch: Option<bool>,
     codex_local_access_entry_visible: Option<bool>,
+    top_right_ad_visible: Option<bool>,
     antigravity_dual_switch_no_restart_enabled: Option<bool>,
     auto_switch_enabled: Option<bool>,
     auto_switch_threshold: Option<i32>,
@@ -2078,6 +2433,9 @@ pub fn save_general_config(
     let normalized_codex_specified_app_path = codex_specified_app_path
         .map(|value| value.trim().to_string())
         .unwrap_or_else(|| current.codex_specified_app_path.clone());
+    let normalized_codex_wsl_config_dir = codex_wsl_config_dir
+        .map(|value| value.trim().to_string())
+        .unwrap_or_else(|| current.codex_wsl_config_dir.clone());
     let normalized_zed_path = zed_app_path
         .map(|value| value.trim().to_string())
         .unwrap_or_else(|| current.zed_app_path.clone());
@@ -2186,6 +2544,8 @@ pub fn save_general_config(
         ui_scale: normalized_ui_scale,
         auto_refresh_minutes,
         codex_auto_refresh_minutes,
+        codex_sync_wsl: codex_sync_wsl.unwrap_or(current.codex_sync_wsl),
+        codex_wsl_config_dir: normalized_codex_wsl_config_dir,
         zed_auto_refresh_minutes: zed_auto_refresh_minutes
             .unwrap_or(current.zed_auto_refresh_minutes),
         ghcp_auto_refresh_minutes: ghcp_auto_refresh_minutes
@@ -2249,6 +2609,7 @@ pub fn save_general_config(
             .unwrap_or(current.codex_restart_specified_app_on_switch),
         codex_local_access_entry_visible: codex_local_access_entry_visible
             .unwrap_or(current.codex_local_access_entry_visible),
+        top_right_ad_visible: top_right_ad_visible.unwrap_or(current.top_right_ad_visible),
         antigravity_dual_switch_no_restart_enabled: antigravity_dual_switch_no_restart_enabled
             .unwrap_or(current.antigravity_dual_switch_no_restart_enabled),
         auto_switch_enabled: auto_switch_enabled.unwrap_or(current.auto_switch_enabled),
@@ -2347,6 +2708,16 @@ pub fn save_general_config(
         auto_backup_retention_days: current.auto_backup_retention_days,
         auto_backup_retention_days_migrated: current.auto_backup_retention_days_migrated,
         auto_backup_last_backup_at: current.auto_backup_last_backup_at,
+        webdav_sync_enabled: current.webdav_sync_enabled,
+        webdav_sync_url: current.webdav_sync_url,
+        webdav_sync_username: current.webdav_sync_username,
+        webdav_sync_password: current.webdav_sync_password,
+        webdav_sync_remote_dir: current.webdav_sync_remote_dir,
+        webdav_sync_retention_days: current.webdav_sync_retention_days,
+        webdav_sync_last_upload_at: current.webdav_sync_last_upload_at,
+        webdav_sync_last_upload_file_name: current.webdav_sync_last_upload_file_name,
+        webdav_sync_last_download_at: current.webdav_sync_last_download_at,
+        webdav_sync_last_download_file_name: current.webdav_sync_last_download_file_name,
     };
 
     config::save_user_config(&new_config)?;

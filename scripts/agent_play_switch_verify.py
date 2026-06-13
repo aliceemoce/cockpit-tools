@@ -15,7 +15,7 @@ import uiautomation as auto
 import win32con
 import win32gui
 
-INSTALLED = Path.home() / "AppData/Local/Cockpit Tools/cockpit-tools.exe"
+INSTALLED = Path.home() / "AppData/Local/Cockpit Tools/cockpit-tools-fork-exp.exe"
 REPORT = Path(__file__).resolve().parent / "agent_play_switch_report.json"
 LOG_DIR = Path.home() / ".antigravity_cockpit/logs"
 
@@ -286,11 +286,11 @@ def try_accounts_page_play(win: auto.Control) -> tuple[bool, str]:
 def ensure_running() -> None:
     """仅当未运行时启动；禁止 taskkill 用户正在用的实例。"""
     r = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq cockpit-tools.exe", "/FO", "CSV", "/NH"],
+        ["tasklist", "/FI", "IMAGENAME eq cockpit-tools-fork-exp.exe", "/FO", "CSV", "/NH"],
         capture_output=True,
         text=True,
     )
-    if "cockpit-tools.exe" in (r.stdout or "").lower():
+    if "cockpit-tools-fork-exp.exe" in (r.stdout or "").lower():
         return
     if not INSTALLED.is_file():
         return

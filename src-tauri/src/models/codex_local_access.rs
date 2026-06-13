@@ -26,6 +26,20 @@ pub enum CodexLocalAccessScope {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CodexLocalAccessClientBaseUrlHost {
+    #[serde(rename = "localhost")]
+    Localhost,
+    #[serde(rename = "127.0.0.1")]
+    Ipv4Loopback,
+}
+
+impl Default for CodexLocalAccessClientBaseUrlHost {
+    fn default() -> Self {
+        Self::Localhost
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CodexLocalAccessImageGenerationMode {
     Enabled,
@@ -106,6 +120,14 @@ fn default_custom_routing_weight() -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessAccountModelRule {
+    pub account_id: String,
+    #[serde(default)]
+    pub excluded_models: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CodexLocalAccessModelAlias {
     pub source_model: String,
     pub alias: String,
@@ -133,12 +155,225 @@ fn default_max_retry_interval_ms() -> u64 {
     3 * 1000
 }
 
+fn default_legacy_request_read_timeout_ms() -> u64 {
+    60 * 1000
+}
+
+fn default_legacy_upstream_connect_timeout_ms() -> u64 {
+    60 * 1000
+}
+
+fn default_legacy_stream_idle_timeout_ms() -> u64 {
+    120 * 1000
+}
+
+fn default_legacy_stream_total_timeout_ms() -> u64 {
+    300 * 1000
+}
+
+fn default_sidecar_stream_open_timeout_ms() -> u64 {
+    60 * 1000
+}
+
+fn default_sidecar_stream_idle_timeout_ms() -> u64 {
+    120 * 1000
+}
+
+fn default_sidecar_image_stream_open_timeout_ms() -> u64 {
+    60 * 1000
+}
+
+fn default_sidecar_image_stream_idle_timeout_ms() -> u64 {
+    180 * 1000
+}
+
+fn default_sidecar_stream_open_max_attempts() -> u8 {
+    1
+}
+
+fn default_sidecar_stream_keepalive_seconds() -> u16 {
+    15
+}
+
+fn default_websocket_connect_timeout_ms() -> u64 {
+    30 * 1000
+}
+
+fn default_websocket_initial_message_timeout_ms() -> u64 {
+    30 * 1000
+}
+
+fn default_websocket_idle_timeout_ms() -> u64 {
+    5 * 60 * 1000
+}
+
+#[cfg(not(test))]
+fn default_websocket_heartbeat_interval_ms() -> u64 {
+    30 * 1000
+}
+
+#[cfg(test)]
+fn default_websocket_heartbeat_interval_ms() -> u64 {
+    25
+}
+
+fn default_upstream_send_retry_attempts() -> u8 {
+    3
+}
+
+fn default_upstream_send_retry_base_delay_ms() -> u64 {
+    200
+}
+
+fn default_upstream_send_retry_max_delay_ms() -> u64 {
+    1200
+}
+
+fn default_single_account_status_retry_attempts() -> u8 {
+    2
+}
+
+fn default_single_account_status_retry_base_delay_ms() -> u64 {
+    300
+}
+
+fn default_single_account_status_retry_max_delay_ms() -> u64 {
+    1500
+}
+
+fn default_sidecar_streaming_bootstrap_retries() -> u8 {
+    1
+}
+
+fn default_timeout_preset_long_wait() -> String {
+    "long_wait".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessTimeouts {
+    #[serde(default = "default_legacy_request_read_timeout_ms")]
+    pub legacy_request_read_timeout_ms: u64,
+    #[serde(default = "default_legacy_upstream_connect_timeout_ms")]
+    pub legacy_upstream_connect_timeout_ms: u64,
+    #[serde(default = "default_legacy_stream_idle_timeout_ms")]
+    pub legacy_stream_idle_timeout_ms: u64,
+    #[serde(default = "default_legacy_stream_total_timeout_ms")]
+    pub legacy_stream_total_timeout_ms: u64,
+    #[serde(default = "default_sidecar_stream_open_timeout_ms")]
+    pub sidecar_stream_open_timeout_ms: u64,
+    #[serde(default = "default_sidecar_stream_idle_timeout_ms")]
+    pub sidecar_stream_idle_timeout_ms: u64,
+    #[serde(default = "default_sidecar_image_stream_open_timeout_ms")]
+    pub sidecar_image_stream_open_timeout_ms: u64,
+    #[serde(default = "default_sidecar_image_stream_idle_timeout_ms")]
+    pub sidecar_image_stream_idle_timeout_ms: u64,
+    #[serde(default = "default_sidecar_stream_open_max_attempts")]
+    pub sidecar_stream_open_max_attempts: u8,
+    #[serde(default = "default_sidecar_stream_keepalive_seconds")]
+    pub sidecar_stream_keepalive_seconds: u16,
+    #[serde(default = "default_websocket_connect_timeout_ms")]
+    pub websocket_connect_timeout_ms: u64,
+    #[serde(default = "default_websocket_initial_message_timeout_ms")]
+    pub websocket_initial_message_timeout_ms: u64,
+    #[serde(default = "default_websocket_idle_timeout_ms")]
+    pub websocket_idle_timeout_ms: u64,
+    #[serde(default = "default_websocket_heartbeat_interval_ms")]
+    pub websocket_heartbeat_interval_ms: u64,
+    #[serde(default = "default_upstream_send_retry_attempts")]
+    pub upstream_send_retry_attempts: u8,
+    #[serde(default = "default_upstream_send_retry_base_delay_ms")]
+    pub upstream_send_retry_base_delay_ms: u64,
+    #[serde(default = "default_upstream_send_retry_max_delay_ms")]
+    pub upstream_send_retry_max_delay_ms: u64,
+    #[serde(default = "default_single_account_status_retry_attempts")]
+    pub single_account_status_retry_attempts: u8,
+    #[serde(default = "default_single_account_status_retry_base_delay_ms")]
+    pub single_account_status_retry_base_delay_ms: u64,
+    #[serde(default = "default_single_account_status_retry_max_delay_ms")]
+    pub single_account_status_retry_max_delay_ms: u64,
+    #[serde(default = "default_sidecar_streaming_bootstrap_retries")]
+    pub sidecar_streaming_bootstrap_retries: u8,
+}
+
+impl Default for CodexLocalAccessTimeouts {
+    fn default() -> Self {
+        Self {
+            legacy_request_read_timeout_ms: default_legacy_request_read_timeout_ms(),
+            legacy_upstream_connect_timeout_ms: default_legacy_upstream_connect_timeout_ms(),
+            legacy_stream_idle_timeout_ms: default_legacy_stream_idle_timeout_ms(),
+            legacy_stream_total_timeout_ms: default_legacy_stream_total_timeout_ms(),
+            sidecar_stream_open_timeout_ms: default_sidecar_stream_open_timeout_ms(),
+            sidecar_stream_idle_timeout_ms: default_sidecar_stream_idle_timeout_ms(),
+            sidecar_image_stream_open_timeout_ms: default_sidecar_image_stream_open_timeout_ms(),
+            sidecar_image_stream_idle_timeout_ms: default_sidecar_image_stream_idle_timeout_ms(),
+            sidecar_stream_open_max_attempts: default_sidecar_stream_open_max_attempts(),
+            sidecar_stream_keepalive_seconds: default_sidecar_stream_keepalive_seconds(),
+            websocket_connect_timeout_ms: default_websocket_connect_timeout_ms(),
+            websocket_initial_message_timeout_ms: default_websocket_initial_message_timeout_ms(),
+            websocket_idle_timeout_ms: default_websocket_idle_timeout_ms(),
+            websocket_heartbeat_interval_ms: default_websocket_heartbeat_interval_ms(),
+            upstream_send_retry_attempts: default_upstream_send_retry_attempts(),
+            upstream_send_retry_base_delay_ms: default_upstream_send_retry_base_delay_ms(),
+            upstream_send_retry_max_delay_ms: default_upstream_send_retry_max_delay_ms(),
+            single_account_status_retry_attempts: default_single_account_status_retry_attempts(),
+            single_account_status_retry_base_delay_ms:
+                default_single_account_status_retry_base_delay_ms(),
+            single_account_status_retry_max_delay_ms:
+                default_single_account_status_retry_max_delay_ms(),
+            sidecar_streaming_bootstrap_retries: default_sidecar_streaming_bootstrap_retries(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessTimeoutPreset {
+    pub id: String,
+    pub name: String,
+    pub timeouts: CodexLocalAccessTimeouts,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessProviderGatewayModelCapability {
+    #[serde(default)]
+    pub supports_vision: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessProviderGateway {
+    pub base_url: String,
+    pub api_key: String,
+    pub upstream_model: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub upstream_models: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wire_api: Option<String>,
+    #[serde(default)]
+    pub supports_vision: bool,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub model_capabilities:
+        std::collections::HashMap<String, CodexLocalAccessProviderGatewayModelCapability>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vision_routing_model: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexLocalAccessApiKey {
     pub id: String,
     pub label: String,
     pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_gateway: Option<CodexLocalAccessProviderGateway>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub account_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_prefix: Option<String>,
     #[serde(default)]
@@ -170,6 +405,8 @@ pub struct CodexLocalAccessCollection {
     #[serde(default = "default_access_scope_for_existing_config")]
     pub access_scope: CodexLocalAccessScope,
     #[serde(default)]
+    pub client_base_url_host: CodexLocalAccessClientBaseUrlHost,
+    #[serde(default)]
     pub image_generation_mode: CodexLocalAccessImageGenerationMode,
     #[serde(default)]
     pub gateway_mode: CodexLocalAccessGatewayMode,
@@ -179,6 +416,8 @@ pub struct CodexLocalAccessCollection {
     pub routing_strategy: CodexLocalAccessRoutingStrategy,
     #[serde(default)]
     pub custom_routing_rules: Vec<CodexLocalAccessCustomRoutingRule>,
+    #[serde(default)]
+    pub account_model_rules: Vec<CodexLocalAccessAccountModelRule>,
     #[serde(default)]
     pub model_aliases: Vec<CodexLocalAccessModelAlias>,
     #[serde(default)]
@@ -193,6 +432,12 @@ pub struct CodexLocalAccessCollection {
     pub max_retry_credentials: u16,
     #[serde(default = "default_max_retry_interval_ms")]
     pub max_retry_interval_ms: u64,
+    #[serde(default)]
+    pub timeouts: CodexLocalAccessTimeouts,
+    #[serde(default = "default_timeout_preset_long_wait")]
+    pub active_timeout_preset_id: String,
+    #[serde(default)]
+    pub timeout_presets: Vec<CodexLocalAccessTimeoutPreset>,
     #[serde(default)]
     pub disable_cooling: bool,
     #[serde(default = "default_restrict_free_accounts")]
@@ -215,6 +460,12 @@ pub struct CodexLocalAccessUsageStats {
     pub success_count: u64,
     #[serde(default)]
     pub failure_count: u64,
+    #[serde(default)]
+    pub client_canceled_count: u64,
+    #[serde(default)]
+    pub upstream_response_failed_count: u64,
+    #[serde(default)]
+    pub stream_incomplete_count: u64,
     #[serde(default)]
     pub total_latency_ms: u64,
     #[serde(default)]
@@ -443,7 +694,6 @@ pub struct CodexLocalAccessTestFailure {
     pub status: Option<u16>,
     pub model_id: Option<String>,
     pub detail: Option<String>,
-    pub cli_output: Option<String>,
     pub gateway_output: Option<String>,
 }
 
@@ -451,6 +701,22 @@ pub struct CodexLocalAccessTestFailure {
 #[serde(rename_all = "camelCase")]
 pub struct CodexLocalAccessTestResult {
     pub model_id: Option<String>,
+    pub latency_ms: Option<u64>,
+    pub output: Option<String>,
+    pub failure: Option<CodexLocalAccessTestFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessChatResult {
+    pub model_id: String,
     pub latency_ms: Option<u64>,
     pub output: Option<String>,
     pub failure: Option<CodexLocalAccessTestFailure>,

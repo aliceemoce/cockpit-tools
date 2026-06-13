@@ -35,13 +35,40 @@ A **universal AI IDE account management tool**, currently supporting **Antigravi
 
 > Designed to help users efficiently manage multiple AI IDE accounts, this tool supports one-click switching, quota monitoring, wake-up tasks, and multi-instance parallel runs, helping you fully utilize resources from different accounts.
 
-**Features**: One-click Switch · Multi-account Management · Multi-instance · Quota Monitoring · Wake-up Tasks · Device Fingerprints · Plugin Integration · GitHub Copilot Management · Windsurf Management · Kiro Management · Cursor Management · Gemini Cli Management · CodeBuddy Management · CodeBuddy CN Management · Qoder Management · Trae Management · Zed Management
+**Features**: One-click Switch · Multi-account Management · Multi-instance · Quota Monitoring · Wake-up Tasks · Plugin Integration · GitHub Copilot Management · Windsurf Management · Kiro Management · Cursor Management · Gemini Cli Management · CodeBuddy Management · CodeBuddy CN Management · Qoder Management · Trae Management · Zed Management
 
 **Languages**: Supports 18 languages
 
 🇺🇸 English · 🇨🇳 简体中文 · 繁體中文 · 🇯🇵 日本語 · 🇩🇪 Deutsch · 🇪🇸 Español · 🇫🇷 Français · 🇮🇹 Italiano · 🇰🇷 한국어 · 🇧🇷 Português · 🇷🇺 Русский · 🇹🇷 Türkçe · 🇵🇱 Polski · 🇨🇿 Čeština · 🇸🇦 العربية · 🇻🇳 Tiếng Việt · 🇮🇩 Bahasa Indonesia
 
 **Officially supported platforms**: macOS, Windows, and Linux (upstream v0.24.x restores Linux builds; this fork primarily ships Windows builds).
+
+---
+
+## Sponsors
+
+<table>
+  <tr>
+    <td width="120" align="center">
+      <a href="https://apikey.fun/register?aff=COCKPIT">
+        <img src="src/assets/icons/apikey-fun.png" alt="APIKEY.FUN" width="72" />
+      </a>
+    </td>
+    <td>
+      <a href="https://apikey.fun/register?aff=COCKPIT"><strong>APIKEY.FUN</strong></a> is a professional enterprise-grade AI relay focused on stable, efficient, and low-cost AI model API access for companies and individual developers. It supports popular models such as Claude, OpenAI, and Gemini, with prices as low as 7% of official pricing. Register through this project <a href="https://apikey.fun/register?aff=COCKPIT"><strong>exclusive link</strong></a> to receive an exclusive <strong>permanent 5% top-up discount</strong>.
+    </td>
+  </tr>
+  <tr>
+    <td width="120" align="center">
+      <a href="https://roxybrowser.cn?code=0326VTDA">
+        <img src="src/assets/icons/roxybrowser.jpg" alt="RoxyBrowser" width="96" />
+      </a>
+    </td>
+    <td>
+      <a href="https://roxybrowser.cn?code=0326VTDA"><strong>RoxyBrowser</strong></a> is an anti-detect browser for multi-account operations and AI automation, supporting isolated browser fingerprint environments, Cookie / storage isolation, Roxy native residential IPs, team collaboration, and API / MCP automation. It helps users manage AI account matrices, reduce account association risk, and improve long-term stability. Register or purchase through the Cockpit <a href="https://roxybrowser.cn?code=0326VTDA"><strong>invite link</strong></a> to get a 10% fan discount.
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -63,13 +90,11 @@ A brand new visual dashboard providing a one-stop status overview:
 - **One-Click Switch**: Switch the currently active account instantly without manual login/logout
 - **Multiple Import Methods**: OAuth, Refresh Token, Plugin Sync
 - **Wake-up Tasks**: Schedule AI model wake-ups to trigger quota reset cycles in advance
-- **Device Fingerprints**: Generate, manage, and bind device fingerprints to reduce risk
 
 > ![Antigravity IDE Accounts](docs/images/antigravity_list.png)
 >
-> *(Wakeup Tasks & Device Fingerprints)*
+> *(Wakeup Tasks)*
 > ![Wakeup Tasks](docs/images/wakeup_detail.png)
-> ![Device Fingerprints](docs/images/fingerprint_detail.png)
 
 #### 2.1 Antigravity IDE Multi-Instance
 
@@ -370,8 +395,11 @@ npm run tauri build
 
 ## Acknowledgments
 
-- Antigravity IDE account switching logic based on: [Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
-- Codex API service sidecar integration: [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+- Antigravity account switching logic references: [Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
+- Codex API service references and integrates: [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+- Codex API service protocol compatibility direction references: [codex-proxy](https://github.com/icebear0828/codex-proxy)
+- Codex third-party provider presets reference: [CC Switch](https://github.com/farion1231/cc-switch)
+- Codex model catalog and frontend model display ideas reference: [CodexPlusPlus](https://github.com/BigPizzaV3/CodexPlusPlus)
 
 Thanks to the upstream author for the open-source work.
 

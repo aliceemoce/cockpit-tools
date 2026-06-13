@@ -1,4 +1,5 @@
 export type CodexApiProviderMode = "openai_builtin" | "custom";
+export type CodexProviderWireApi = "responses" | "chat_completions";
 
 export interface CodexQuickConfig {
   context_window_1m: boolean;
@@ -24,6 +25,11 @@ export interface CodexAccount {
   api_provider_mode?: CodexApiProviderMode;
   api_provider_id?: string;
   api_provider_name?: string;
+  api_model_catalog?: string[];
+  api_wire_api?: CodexProviderWireApi | null;
+  api_supports_vision?: boolean;
+  api_model_vision_support?: Record<string, boolean>;
+  api_vision_routing_model?: string | null;
   bound_oauth_account_id?: string | null;
   user_id?: string;
   plan_type?: string;
@@ -154,6 +160,7 @@ export interface CodexSessionVisibilityRepairItem {
   targetProvider: string;
   changedRolloutFileCount: number;
   updatedSqliteRowCount: number;
+  addedSessionIndexEntryCount: number;
   skippedSqliteFile: boolean;
   backupDir?: string | null;
   running: boolean;
@@ -164,6 +171,7 @@ export interface CodexSessionVisibilityRepairSummary {
   mutatedInstanceCount: number;
   changedRolloutFileCount: number;
   updatedSqliteRowCount: number;
+  addedSessionIndexEntryCount: number;
   skippedSqliteFileCount: number;
   items: CodexSessionVisibilityRepairItem[];
   backupDirs: string[];

@@ -277,7 +277,6 @@
     "overview": "Antigravity IDE",
     "accounts": "Accounts",
     "wakeup": "Wakeup Tasks",
-    "fingerprints": "Fingerprints",
     "settings": "Settings",
     "codex": "Codex",
     "zed": "Zed",
@@ -290,6 +289,9 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "logs": "Logs",
+    "sponsors": "Sponsors",
+    "sponsorAppreciation": "Sponsor",
+    "apiRelay": "Relay",
     "instances": "Multi-Instance",
     "manual": "User Manual",
     "quickUpdate": {
@@ -307,13 +309,148 @@
     "switchClassicLayoutConfirm": "Switch now",
     "2faManager": "2FA"
   },
+  "sponsors": {
+    "pageTitle": "Sponsors",
+    "pageDesc": "Thanks to these sponsors for supporting Cockpit Tools.",
+    "loading": "Loading sponsors...",
+    "emptyTitle": "No sponsors yet",
+    "emptyDesc": "The remote sponsor module is currently disabled.",
+    "listAriaLabel": "Sponsor list",
+    "defaultDescription": "Thanks for supporting Cockpit Tools.",
+    "openSponsor": "Open"
+  },
+  "relay": {
+    "pageTitle": "Exclusive Relay",
+    "pageDesc": "A partnered API service for Cockpit Tools users that can be used with Codex API Key accounts.",
+    "loading": "Loading relay...",
+    "emptyTitle": "Relay disabled",
+    "emptyDesc": "The remote configuration has not enabled the exclusive relay.",
+    "defaultDescription": "Partnered API relay service.",
+    "getApiKey": "Get API Key",
+    "configTitle": "Enable in Codex",
+    "apiKeyLabel": "API Key",
+    "apiKeyPlaceholder": "Paste the API Key from the relay",
+    "apiKeyRequired": "Enter an API Key.",
+    "baseUrl": "Base URL",
+    "protocol": "Protocol",
+    "vision": "Vision",
+    "testConnection": "Test connection",
+    "saveAndEnable": "Save and enable",
+    "goCodex": "Go to Codex",
+    "statusUnavailable": "The relay configuration is unavailable.",
+    "testing": "Testing connection...",
+    "testSuccess": "Connection test passed. This API Key can be used with the relay.",
+    "testFailed": "Connection test failed.",
+    "saving": "Saving and enabling in Codex...",
+    "saveSuccess": "Relay configuration saved. You can use it on the Codex accounts page.",
+    "saveFailed": "Failed to save relay configuration.",
+    "savedProvider": "Saved provider: {{name}}",
+    "modelsTitle": "Supported models",
+    "modelsEmpty": "No fixed model list is configured remotely. After saving, Codex can use the service capabilities."
+  },
+  "apiKeyFun": {
+    "eyebrow": "Relay",
+    "title": "APIKEY.FUN",
+    "description": "The official Cockpit partner relay, providing stable, open, and cost-effective large-model API access. It supports mainstream models such as Claude, OpenAI, and Gemini, and is suitable for unified configuration across Codex, Gemini CLI, Claude Code, and other developer tools. Register through the Cockpit exclusive link to get a permanent top-up discount of up to 5%.",
+    "register": "Exclusive signup",
+    "docs": "Official docs",
+    "viewNow": "View now",
+    "queryTitle": "Key Quota Lookup",
+    "queryDesc": "Enter an APIKEY.FUN API Key to query quota automatically.",
+    "keyNotSet": "No key entered",
+    "apiKeyLabel": "API Key",
+    "apiKeyPlaceholder": "Paste the API Key created in the APIKEY.FUN console",
+    "hideKey": "Hide",
+    "showKey": "Show",
+    "endpointLabel": "Endpoint",
+    "protocolLabel": "Codex protocol",
+    "queryUsage": "Check quota",
+    "querying": "Checking",
+    "saveToCodex": "Write to Codex",
+    "saving": "Writing",
+    "saveSuccess": "Written to Codex Provider: {{name}}",
+    "toolsTitle": "Write Client Config",
+    "toolsDesc": "Write local client config files directly, following the APIKEY.FUN docs and CC Switch file layout.",
+    "endpoint": {
+      "global": "Global",
+      "globalDesc": "Official default API Base for most network environments.",
+      "direct": "Direct Line",
+      "directDesc": "Better for latency-sensitive use."
+    },
+    "wireApi": {
+      "responses": "Responses",
+      "responsesDesc": "Preferred for Codex, using the OpenAI Responses protocol directly.",
+      "chatCompletions": "Chat Completions",
+      "chatCompletionsDesc": "Uses the local gateway to support Chat Completions."
+    },
+    "usage": {
+      "remaining": "Remaining",
+      "used": "Used",
+      "todayRequests": "Today",
+      "todayTokens": "Today tokens",
+      "totalRequests": "Total requests",
+      "totalTokens": "Total tokens"
+    },
+    "tool": {
+      "codexTitle": "Codex Provider",
+      "codexDesc": "Writes a model Provider with the current endpoint's /v1 Base URL.",
+      "envTitle": "Environment",
+      "envDesc": "Reference for OpenAI-compatible entries such as Claude Code, Gemini CLI, and Hermes.",
+      "curlTitle": "API Script",
+      "curlDesc": "Quickly verify a Responses-compatible request."
+    },
+    "docTool": {
+      "codex": "Can be written directly into Codex Provider.",
+      "claudeCode": "Copy Anthropic Messages compatible parameters.",
+      "geminiCli": "Copy the OpenAI-compatible Base URL and API Key.",
+      "traeSolo": "Copy the relay parameters required by the official docs.",
+      "openClaw": "Copy OpenAI-compatible connection parameters.",
+      "hermes": "Copy parameters for the Hermes models page.",
+      "apiScript": "Copy the base parameters for script integration."
+    },
+    "apply": {
+      "codexTitle": "Codex",
+      "codexDesc": "Writes ~/.codex/config.toml and auth.json with the Responses protocol and current API Key.",
+      "geminiTitle": "Gemini CLI",
+      "geminiDesc": "Writes ~/.gemini/.env and sets settings.json auth mode to gemini-api-key.",
+      "openclawTitle": "OpenClaw",
+      "openclawDesc": "Writes models.providers.apikeyfun in ~/.openclaw/openclaw.json.",
+      "hermesTitle": "Hermes",
+      "hermesDesc": "Writes custom_providers in ~/.hermes/config.yaml and switches to the apikeyfun default model.",
+      "button": "Write config",
+      "applying": "Writing",
+      "success": "Config files written: {{paths}}",
+      "failed": "Config write failed: {{error}}"
+    },
+    "error": {
+      "missingApiKey": "Enter an API Key.",
+      "queryFailed": "Quota check failed: {{error}}",
+      "saveFailed": "Write-in failed: {{error}}"
+    },
+    "copyKey": "Copy Key",
+    "clearKey": "Clear input",
+    "keyManager": {
+      "title": "Key Manager",
+      "desc": "Save API Keys for quick switching and automatic quota checks.",
+      "saveButton": "Save key",
+      "savedButton": "Saved",
+      "empty": "No saved keys.",
+      "lastRemaining": "Last balance {{value}}",
+      "notQueried": "Not checked",
+      "deleteButton": "Delete",
+      "editAlias": "Edit alias",
+      "renamePlaceholder": "Enter alias...",
+      "createdAt": "Added {{time}}",
+      "saveFlash": "Just saved"
+    }
+  },
   "platformLayout": {
     "title": "Platform Layout",
     "sidebarSelected": "Sidebar selected {{count}}/{{max}}",
     "sidebarSelectedUnlimited": "Sidebar selected {{count}}",
     "reset": "Reset to default",
     "tip": "Drag to reorder. Up to three platforms can be shown in the sidebar. If only one is selected, only one is shown.",
-    "tipWithGroups": "Drag to reorder. Up to three entries can appear in the sidebar. Group children do not have sidebar/dashboard toggles and are only used for tray visibility and default-platform switching.",
+    "tipWithGroups": "Drag to reorder. Up to {{max}} entries can appear in the sidebar. Group children do not have sidebar/dashboard toggles and are only used for tray visibility and default-platform switching.",
     "tipWithGroupsUnlimited": "Drag to reorder. Any number of entries can appear in the sidebar. Group children do not have sidebar/dashboard toggles and are only used for tray visibility and default-platform switching.",
     "addGroup": "Add group",
     "editGroup": "Edit",
@@ -322,6 +459,7 @@
     "sidebarToggle": "Show in sidebar",
     "dashboardToggle": "Show in dashboard",
     "trayToggle": "Show in tray",
+    "apiRelayTrayDisabled": "Relay cannot be shown in the tray yet",
     "groupDefault": "Default platform",
     "groupName": "Group name",
     "groupNamePlaceholder": "Example: CodeBuddy Suite",
@@ -505,7 +643,9 @@
       "pathRequired": "Please select an instance directory",
       "bindRequired": "Please select an account to bind",
       "appSpeed": "Speed",
-      "appSpeedDesc": "Writes the selected speed before starting official Codex"
+      "appSpeedDesc": "Writes the selected speed before starting official Codex",
+      "autoSyncThreads": "Auto-sync sessions",
+      "autoSyncThreadsDesc": "Off keeps multi-instance sessions isolated. When enabled, starting or closing an instance automatically merges local session records only after all Codex instances are stopped."
     },
     "quota": {
       "unbound": "No bound account",
@@ -593,7 +733,8 @@
     "tabs": {
       "general": "General",
       "network": "Network",
-      "about": "About"
+      "about": "About",
+      "data": "Data"
     },
     "transfer": {
       "backup": {
@@ -757,8 +898,8 @@
       "floatingCardShowNowAction": "Show floating card",
       "dataDir": "Data Directory",
       "dataDirDesc": "Storage location for accounts and configuration files.",
-      "fpDir": "Antigravity IDE Storage",
-      "fpDirDesc": "Storage location for Antigravity IDE data files.",
+      "topRightAdVisible": "Show top promo",
+      "topRightAdVisibleDesc": "Hide the top promo slot in the app. The Sponsors page is not affected.",
       "opencodeTitle": "OpenCode Integration",
       "opencodeAuthOverwrite": "Overwrite OpenCode login when switching Codex",
       "opencodeAuthOverwriteDesc": "When off, only Codex is switched and OpenCode keeps its current login state",
@@ -776,6 +917,11 @@
       "codexAppPathPlaceholder": "Default path",
       "codexPathSelect": "Select",
       "codexPathReset": "Reset to default",
+      "codexSyncWsl": "Sync Codex to WSL",
+      "codexSyncWslDesc": "After switching the default Codex account, also write auth.json and config.toml to the WSL Codex directory.",
+      "codexWslConfigDir": "WSL Codex Directory",
+      "codexWslConfigDirDesc": "Enter the .codex directory inside WSL. \\\\wsl.localhost\\ paths are supported.",
+      "codexWslConfigDirPlaceholder": "Example: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
       "vscodeTitle": "VS Code Launch",
       "vscodeAppPath": "VS Code App Path",
       "vscodeAppPathDesc": "Leave empty to use default path",
@@ -972,7 +1118,67 @@
       "releaseHistorySectionRemoved": "Removed",
       "downloadThisVersion": "Download"
     },
-    "saveSettings": "Save Settings"
+    "saveSettings": "Save Settings",
+    "webdav": {
+      "groupTitle": "WebDAV Sync",
+      "enabledTitle": "WebDAV Backup Sync",
+      "enabledDesc": "Defaults to Jianguoyun and can be changed to any WebDAV service.",
+      "urlTitle": "Service URL",
+      "urlDesc": "Jianguoyun default: https://dav.jianguoyun.com/dav/",
+      "usernameTitle": "Account",
+      "usernameDesc": "Jianguoyun uses your account email.",
+      "usernamePlaceholder": "Email or username",
+      "passwordTitle": "App Password",
+      "passwordDesc": "Saved locally; leave blank to keep the saved password.",
+      "passwordPlaceholder": "Jianguoyun third-party app password",
+      "passwordSavedPlaceholder": "Saved; leave blank to keep it",
+      "clearPassword": "Clear",
+      "remoteDirTitle": "Remote Folder",
+      "remoteDirDesc": "Only Cockpit backup files in this folder are managed.",
+      "statusTitle": "Sync Status",
+      "statusDesc": "Remote restore requires a manual selection and never silently overwrites local data.",
+      "lastUpload": "Last upload: {{time}}",
+      "lastDownload": "Last restore: {{time}}",
+      "never": "Not synced yet",
+      "testAction": "Test/Save Config",
+      "uploadAction": "Create & Upload",
+      "syncAction": "Sync Config",
+      "syncLatestConfirm": "Are you sure you want to pull the latest remote backup {{name}} and sync to local? This will overwrite existing local data.",
+      "remoteListTitle": "Remote Backups",
+      "remoteListDesc": "Only JSON and ZIP files matching Cockpit auto/manual backup names are shown.",
+      "emptyTitle": "No remote backups",
+      "emptyDesc": "Save settings, then create and upload a backup.",
+      "unknownTime": "Unknown",
+      "restoreAction": "Restore",
+      "restoreConfirm": "Restore data from remote backup {{name}}?",
+      "deleteConfirm": "Delete remote backup {{name}}?",
+      "feedback": {
+        "testingAndSaving": "Saving and testing WebDAV connection...",
+        "saveAndTestSuccess": "Configuration saved and connection test succeeded!",
+        "saveSuccessTestFailed": "Configuration saved, but connection test failed: {{message}}",
+        "saveAndTestFailed": "Failed to save and test connection: {{error}}",
+        "uploading": "Creating and uploading backup...",
+        "uploadSuccess": "Uploaded {{count}} file(s), cleaned {{deleted}} expired remote backup(s)",
+        "uploadFailed": "WebDAV upload failed: {{error}}",
+        "listFailed": "Failed to load remote backups: {{error}}",
+        "loadSettingsFailed": "Failed to load WebDAV settings: {{error}}",
+        "restoring": "Reading remote backup and importing...",
+        "restoreEmpty": "No data was restored from the remote backup",
+        "deleteSuccess": "Remote backup deleted",
+        "deleteFailed": "Failed to delete remote backup: {{error}}",
+        "syncingLatest": "Syncing latest remote configuration...",
+        "syncFailed": "Failed to sync latest configuration: {{error}}",
+        "noRemoteBackup": "No restorable backup files found on remote"
+      },
+      "errors": {
+        "notEnabled": "Enable WebDAV sync first"
+      },
+      "retentionTitle": "Remote Retention Days",
+      "retentionDesc": "Backups older than this on the cloud will be removed during the next sync.",
+      "retentionUnit": "days",
+      "collapseAll": "Collapse remote backups",
+      "expandAll": "Expand all remote backups ({{count}} more)"
+    }
   },
   "appPath": {
     "missing": {
@@ -1003,7 +1209,6 @@
       "email": "Email",
       "subscription": "Subscription",
       "quota": "Quota Status",
-      "fingerprint": "Fingerprint",
       "lastUsed": "Last Used",
       "actions": "Actions"
     },
@@ -1090,10 +1295,8 @@
     "actions": {
       "viewDetails": "View details",
       "viewError": "View error",
-      "fingerprint": "Fingerprint",
       "switch": "Switch account",
       "switchTo": "Switch to this account",
-      "selectFingerprint": "Select fingerprint",
       "delete": "Delete",
       "deleteSelected": "Delete Selected",
       "export": "Export",
@@ -1242,106 +1445,8 @@
     "currentAccount": "Currently in use",
     "switchTo": "Switch to this account",
     "switching": "Switching...",
-    "fingerprint": "Fingerprint",
     "bound": "Bound",
     "brandTitle": "Antigravity IDE Account"
-  },
-  "fingerprints": {
-    "title": "Fingerprints",
-    "subtitle": "Manage device fingerprints bound to accounts.",
-    "toolbar": {
-      "generate": "Generate New",
-      "capture": "Capture Current",
-      "import": "Import",
-      "deleteUnbound": "Delete Unbound",
-      "folder": "Folder",
-      "delete": "Delete"
-    },
-    "table": {
-      "name": "Fingerprint Name",
-      "machineId": "Machine ID",
-      "accounts": "Bound Accounts",
-      "actions": "Actions",
-      "accountCount": "{{count}} accounts",
-      "apply": "Apply",
-      "noData": "No fingerprint data",
-      "preview": "Preview",
-      "rename": "Rename"
-    },
-    "modals": {
-      "generate": {
-        "title": "Generate Fingerprint",
-        "btn": "Generate"
-      },
-      "capture": {
-        "title": "Capture Fingerprint",
-        "btn": "Capture"
-      },
-      "rename": {
-        "title": "Rename Fingerprint",
-        "label": "Fingerprint Name"
-      },
-      "import": {
-        "title": "Import Fingerprints",
-        "fromTools": "Import from Antigravity Tools",
-        "desc": "Import from ~/.antigravity_tools/",
-        "fromJsonBtn": "Import from JSON",
-        "jsonExample": "Example format:",
-        "jsonPlaceholder": "Work fingerprint",
-        "orPasteJson": "Or paste JSON"
-      },
-      "bound": {
-        "title": "Bound Accounts",
-        "add": "Add Accounts",
-        "empty": "No accounts bound",
-        "emptyAll": "All accounts are bound",
-        "select": "Select accounts to add",
-        "from": "From: {{name}}",
-        "back": "Back"
-      },
-      "detail": {
-        "title": "Fingerprint Details",
-        "created": "Created at {{time}}"
-      }
-    },
-    "messages": {
-      "deleteConfirm": "Delete this fingerprint? Accounts bound to it will revert to original.",
-      "batchDeleteConfirm": "Delete {{count}} fingerprints? Accounts bound to them will revert to original.",
-      "deleteUnboundConfirm": "Delete {{count}} fingerprints with no bound accounts?",
-      "generated": "New fingerprint generated",
-      "captured": "Current fingerprint captured",
-      "renamed": "Renamed",
-      "deleted": "Fingerprint deleted",
-      "deletedUnbound": "Deleted {{count}} unbound fingerprints",
-      "imported": "Imported {{count}} fingerprints",
-      "noUnboundToDelete": "No unbound fingerprints to delete",
-      "addedAccounts": "Added {{count}} accounts",
-      "enterName": "Enter fingerprint name",
-      "previewNotReady": "Preview not ready, please wait",
-      "duplicate": "Duplicate fingerprint exists: {{name}}",
-      "autoGeneratedSuffix": "(Missing in source, auto-generated)",
-      "readOnly": "Read-only",
-      "current": "Current",
-      "addCount": "Added {{count}} accounts",
-      "addFailed": "Add failed",
-      "adding": "Adding...",
-      "applyFailed": "Apply failed",
-      "boundCount": "Bound {{count}} accounts",
-      "captureFailed": "Capture failed",
-      "count": "{{count}}",
-      "deleteFailed": "Delete failed",
-      "fpLabel": "Fingerprint:",
-      "generateFailed": "Generate failed",
-      "importFailed": "Import failed",
-      "importPartialFailed": "{{failCount}} failed: {{failList}}",
-      "refreshingQuota": "Refreshing quota {{done}}/{{total}} (you may close this dialog)",
-      "quotaRefreshDone": "Quota refresh complete",
-      "importing": "Importing...",
-      "loadFailed": "Failed to load fingerprint list",
-      "processing": "Processing...",
-      "renameFailed": "Rename failed",
-      "serviceMachineIdEmpty": "Empty"
-    }
   },
   "modals": {
     "addAccount": {
@@ -1377,15 +1482,6 @@
       "fromFilesDesc": "Select JSON files to import accounts (multiple formats supported)",
       "importingFiles": "Importing {{count}} file(s)..."
     },
-    "fingerprint": {
-      "title": "Select Fingerprint",
-      "desc": "Select fingerprint for account <1>{{email}}</1>",
-      "original": "Original Fingerprint",
-      "new": "Add New Fingerprint",
-      "bind": "Confirm Bind",
-      "selectLabel": "Select Fingerprint",
-      "boundCount": "accounts"
-    },
     "quota": {
       "title": "Quota Details",
       "noData": "No quota data",
@@ -1410,6 +1506,12 @@
   "messages": {
     "deleteConfirm": "Are you sure you want to delete this account?",
     "batchDeleteConfirm": "Are you sure you want to delete {{count}} selected accounts?",
+    "cleanErrorAccountsAction": "Clean ERROR Accounts",
+    "cleanErrorAccountsConfirm": "Delete {{count}} ERROR account(s) in the current scope?",
+    "selectAllFilteredAccounts": "Select all matching {{count}}",
+    "selectedAllFilteredAccounts": "All matching {{count}} selected",
+    "deleteFilteredAccountsConfirm": "This will delete {{count}} Codex accounts matching the current filters, not just this page. Continue?",
+    "clearSelection": "Clear selection",
     "switched": "Switched to {{email}}",
     "switchFailed": "Switch failed: {{error}}",
     "antigravityLegacyUnsupported": "Antigravity 2.0.0 and later is not supported here. Choose an Antigravity version below 2.0.0, or use Antigravity IDE.",
@@ -1622,7 +1724,11 @@
       "timeWindowFrom": "From",
       "timeWindowTo": "To",
       "fallbackTimes": "Fallback times",
-      "saveTask": "Save task"
+      "saveTask": "Save task",
+      "executionMode": "Execution mode",
+      "executionModeAuto": "Run directly",
+      "executionModeConfirm": "Require confirmation",
+      "confirmTimeout": "Confirmation timeout"
     },
     "test": {
       "modelsLabel": "Models to trigger",
@@ -1697,11 +1803,28 @@
       "comingSoon": "Multi-Instance Coming Soon",
       "comingSoonDesc": "Run multiple Codex.app instances with different accounts simultaneously, stay tuned.",
       "unsupported": {
-        "desc": "Codex multi-instance is available only on macOS and Windows."
+        "desc": "Codex multi-instance is available only on macOS and Windows.",
+        "title": "Unsupported on this system"
       },
       "quota": {
         "hourly": "5h",
         "weekly": "Weekly"
+      },
+      "syncAllRecords": {
+        "action": "Sync All Instance Records",
+        "autoAction": "Auto Sync All Instance Records",
+        "autoDisabled": "Auto sync for all instance records is off",
+        "autoEnabled": "Auto sync for all instance records is on",
+        "autoTooltip": "Auto sync all instance records",
+        "autoDesc": "Off keeps multi-instance records isolated. When enabled, starting or closing an instance automatically merges local records only after all Codex instances are stopped.",
+        "closeFirst": "Close all Codex instances before syncing records to prevent running instances from writing old records back.",
+        "confirmMessage": "This will fully sync local session records across all Codex instances. Sessions with the same ID are merged at the event level, and target key files plus old session files are backed up before writing. Continue?",
+        "needTwo": "At least two instances are required to sync records",
+        "settingsSection": "Sync Settings",
+        "settingsSubtitle": "Manage Codex multi-instance record sync behavior",
+        "settingsTitle": "Instance Record Settings",
+        "title": "Sync All Instance Records",
+        "tooltip": "Sync all instance records"
       },
       "restartStrategy": {
         "safe": {
@@ -1729,6 +1852,7 @@
       "refreshTokenExpired": "Codex login authorization has expired and cannot be refreshed automatically. Sign in to the Codex account again.",
       "refreshTokenInvalidated": "Codex login authorization was revoked by the service and cannot be refreshed automatically. Sign in to the Codex account again.",
       "invalidGrant": "Codex login authorization is invalid and cannot be refreshed automatically. Sign in to the Codex account again.",
+      "staleAccount": "This account is no longer in the local account store. The account list was refreshed. Re-import or sign in to this Codex account again.",
       "unsupportedCountryRegion": "The current network region does not support refreshing Codex authorization. OpenAI authorization rejected this network exit. Switch to a supported region and retry."
     },
     "apiSwitchNotice": {
@@ -1862,19 +1986,18 @@
       "enableService": "Enable Service",
       "testAction": "Test",
       "testDialogTitle": "Test API Service",
-      "testDialogDesc": "Send one real request through Codex CLI to verify the local service, key, and upstream response.",
+      "testDialogDesc": "Start a real playground-style chat through the current API service to check the model, account routing, and upstream response.",
       "testProgressTitle": "Testing service",
       "testProgressDesc": "Sending a real request to the local API service. Please wait.",
       "testOutputTitle": "Returned result",
       "testResultTitle": "Service check result",
-      "testSuccess": "Service check passed: local service, key, and upstream response are healthy ({{model}}, {{latency}}). If Codex still returns 502, check Codex Base URL, API Key, or runtime environment.",
+      "testSuccess": "Service check passed: local service, key, and upstream response are healthy ({{model}}, {{latency}}). If the client still fails, check the Base URL, API Key, or proxy settings.",
       "testFailureStage": "Failure stage",
       "testFailureCause": "Failure reason",
       "testFailureSuggestion": "Suggested fix",
       "testFailureStatus": "HTTP status",
       "testFailureModel": "Test model",
       "testFailureDetail": "Diagnostic details",
-      "testFailureCliOutput": "CLI output",
       "testFailureGatewayOutput": "Gateway response",
       "testTimeout": "Real request check timed out. Check the local service, proxy, or upstream network.",
       "testUnavailable": "The current API service URL is unavailable",
@@ -1968,6 +2091,13 @@
         "modalTitle": "API Service Quota Pool",
         "empty": "No quota stats yet"
       },
+      "accountPoolHealth": {
+        "title": "Account Pool",
+        "allAvailable": "All OK {{count}}",
+        "availableRatio": "OK {{available}}/{{total}}",
+        "issueSummary": "Bad {{abnormal}} · Cool {{cooldown}}",
+        "detail": "OK {{available}}/{{total}}, bad {{abnormal}}, cooldown {{cooldown}}, missing {{missing}}, auth {{authError}}, quota {{quotaLimited}}"
+      },
       "memberTitle": "Collection Members",
       "routingStrategy": {
         "auto": "Auto (Recommended)",
@@ -1986,7 +2116,7 @@
       },
       "stats": {
         "requests": "Requests",
-        "requestsDetail": "Success {{success}} / Failed {{failed}}",
+        "requestsDetail": "OK {{success}} / Fail {{failed}} / Cancel {{canceled}} / Upstream {{upstreamFailed}} / Incomplete {{incomplete}}",
         "tokens": "Tokens",
         "tokensDetail": "Input {{input}} / Output {{output}}",
         "estimatedCost": "Estimated Value",
@@ -2006,6 +2136,7 @@
         "title": "Add to API Service",
         "desc": "Choose Codex OAuth or API Key accounts to include in the API service collection. Added accounts are hidden from the regular overview and managed only from the API service card.",
         "restrictFreeToggle": "Limit Free Accounts",
+        "chatApiKeyUnsupported": "Chat Completions unsupported",
         "freeNoticeRestricted": "Free accounts are limited. Turn this off to select them.",
         "freeNoticeUnstable": "Free-account proxying can be unstable. Use with caution.",
         "restrictFreeDisableConfirmTitle": "Allow Free Accounts",
@@ -2019,7 +2150,7 @@
         "save": "Save Collection"
       },
       "oauthBinding": {
-        "desc": "Optional. Only OAuth accounts with a subscription term marker can be selected; expired terms are allowed. Without a link, the API service keeps the original API-key flow; after linking, sign-in uses the OAuth account and Provider uses the API service config.",
+        "desc": "Optional. Only OAuth accounts with a refresh_token can be selected. Without a link, the API service keeps the original API-key flow; after linking, sign-in uses the OAuth account and Provider uses the API service config.",
         "currentService": "API Service: {{name}}"
       },
       "customRoutingEdit": "Edit Custom Routing",
@@ -2065,7 +2196,20 @@
       "debugLogsDisableConfirmMessage": "Turning this off stops API service debug logs, reducing log noise and extra overhead. You can turn it on again when diagnosing gateway, proxy, or streaming response issues. Turn it off?",
       "debugLogsDisableConfirmAction": "Turn Off",
       "debugLogsEnabledSuccess": "Debug logs enabled",
-      "debugLogsDisabledSuccess": "Debug logs disabled"
+      "debugLogsDisabledSuccess": "Debug logs disabled",
+      "clientBaseUrlHostLabel": "Client address",
+      "clientBaseUrlHostDesc": "Only affects the Base URL written to the Codex Provider and copied to clients. It does not change the service bind address.",
+      "clientBaseUrlHostSaveSuccess": "Client address updated",
+      "testChatModel": "Model",
+      "testChatClear": "Clear chat",
+      "testChatEmpty": "Send a message to start a real chat through the current API service.",
+      "testChatLatency": "{{latency}} elapsed",
+      "testChatSending": "Requesting API service",
+      "testChatInputPlaceholder": "Type a test message, Enter to send",
+      "testChatSend": "Send",
+      "testChatInputRequired": "Enter a test message",
+      "testChatModelRequired": "Select a model ID",
+      "testChatEmptyResponse": "Empty response"
     },
     "api": {
       "baseUrl": "Base URL",
@@ -2163,13 +2307,13 @@
         "action": "Link OAuth",
         "actionShort": "Link",
         "title": "Link OAuth Account",
-        "desc": "Optional. Only OAuth accounts with a subscription term marker can be selected; expired terms are allowed. Without a link, this account switches with the original API-key flow; after linking, sign-in uses the OAuth account and Provider uses this API-key config.",
+        "desc": "Optional. Only OAuth accounts with a refresh_token can be selected. Without a link, this account switches with the original API-key flow; after linking, sign-in uses the OAuth account and Provider uses this API-key config.",
         "currentAccount": "API-key account: {{name}}",
         "selectLabel": "Select OAuth account",
         "empty": "No OAuth accounts yet. Add an OAuth-authorized account first.",
-        "emptyEligible": "No OAuth accounts with a subscription term. Refresh quota or add an eligible OAuth account first.",
+        "emptyEligible": "No OAuth accounts with a refresh_token. Reauthorize with OAuth or add an eligible OAuth account first.",
         "validationRequired": "Select an OAuth account.",
-        "validationSubscriptionRequired": "Only OAuth accounts with a subscription term can be linked.",
+        "validationSubscriptionRequired": "Only OAuth accounts with a refresh_token can be linked.",
         "saveSuccess": "OAuth link updated.",
         "saveFailed": "Failed to link OAuth: {{error}}",
         "switchRequiresBinding": "Link an OAuth account first.",
@@ -2202,6 +2346,9 @@
       "emptyTitle": "No model providers yet",
       "emptyDesc": "Click \"Add Provider\" in the top right to start.",
       "baseUrl": "Base URL",
+      "modelCatalog": "Models",
+      "modelCatalogEmpty": "No model catalog",
+      "gatewayHint": "Third-party providers start through the local gateway for instance isolation and protocol conversion. Official OpenAI providers stay direct.",
       "website": "Website",
       "apiKeyPage": "API Key Page",
       "apiKeysCount": "{{count}} API Keys",
@@ -2213,10 +2360,16 @@
       "fields": {
         "name": "Provider Name",
         "baseUrl": "Base URL",
+        "modelCatalog": "Model Catalog",
         "website": "Website (Optional)",
         "apiKeyUrl": "API Key Page (Optional)",
+        "wireApi": "Protocol",
+        "enableMode": "Enable Mode",
         "newApiKeyName": "New Key Name (Optional)",
-        "newApiKey": "New API Key"
+        "newApiKey": "New API Key",
+        "visionCapability": "Image Input",
+        "visionModels": "Vision Models",
+        "visionRoutingModel": "Image Route Model"
       },
       "validation": {
         "nameRequired": "Provider name is required.",
@@ -2231,6 +2384,25 @@
       "confirmDelete": "Delete provider \"{{name}}\"?",
       "deleteFailed": "Failed to delete provider: {{error}}",
       "deleteApiKeyFailed": "Failed to delete API Key: {{error}}",
+      "enableAsBackend": "Use as Codex Backend",
+      "enabling": "Enabling...",
+      "enableSuccess": "{{name}} enabled and {{instance}} started.",
+      "enableFailed": "Failed to enable provider: {{error}}",
+      "status": {
+        "active": "Current Backend",
+        "available": "Ready"
+      },
+      "enableMode": {
+        "label": "Connection Mode",
+        "gatewayMode": "Gateway Mode",
+        "directMode": "Direct Mode"
+      },
+      "wireApi": {
+        "help": "Use Responses for most providers. Switch to Chat Completions only when the provider explicitly supports only that protocol. If unsure, choose Responses first.",
+        "helpAria": "View protocol help",
+        "responses": "Responses Native",
+        "chatCompletions": "Chat Completions"
+      },
       "selectSavedProvider": "Saved Providers",
       "selectSavedApiKey": "Saved API Keys",
       "noSavedProviders": "No saved providers yet. You can fill in fields directly and it will be saved automatically.",
@@ -2288,6 +2460,98 @@
           "contextWindowInvalid": "Context window must be an integer greater than 0.",
           "autoCompactInvalid": "Auto-compact limit must be an integer greater than 0."
         }
+      },
+      "testing": "Testing...",
+      "testSuccess": "Provider connection is healthy: {{protocol}}, {{model}}, {{latency}}.",
+      "testFailed": "Failed to test provider: {{error}}",
+      "testFailure": {
+        "credential": "API Key unavailable",
+        "url": "Invalid Base URL",
+        "network": "Network connection failed",
+        "models": "Models endpoint failed",
+        "parse": "Response parse failed",
+        "httpStatus": "HTTP {{status}}",
+        "message": "{{title}}: {{detail}}. {{suggestion}}"
+      },
+      "testSuggestion": {
+        "addApiKey": "Add an API Key for this provider before testing.",
+        "checkBaseUrl": "Check that the Base URL includes the correct version path, such as /v1.",
+        "checkNetwork": "Check the provider URL, proxy, firewall, or upstream service status.",
+        "checkApiKey": "Check whether the API Key is valid and allowed to access the models endpoint.",
+        "checkProviderStatus": "Check the provider service status, proxy, or API compatibility.",
+        "checkModelsApi": "Confirm this provider returns an OpenAI-compatible models response."
+      },
+      "enableAndStart": "Start",
+      "instance": {
+        "label": "Launch Instance",
+        "default": "Default Instance",
+        "running": "Running",
+        "targetHint": "Target: {{instance}}",
+        "uninitializedHint": "Target instance is not initialized. Start it once from Multi-Instance first.",
+        "shortLabel": "Instance",
+        "saveFailed": "Failed to save instance binding: {{error}}"
+      },
+      "vision": {
+        "providerDefault": "This provider supports image input by default",
+        "providerDefaultHint": "When off, only the models listed below can receive image input; other models are rejected by the local gateway.",
+        "modelsHint": "One model per line. Use this when only some models in the provider support pasted images.",
+        "routingModelHint": "When the current model cannot read images, image requests use this model; blank uses the only vision model automatically.",
+        "allModels": "Images",
+        "partialModels": "Some Images",
+        "textOnly": "Text Only"
+      },
+      "sponsorRecommended": "Relay Pick",
+      "builtinProviders": "Built-in Providers",
+      "sponsorHint": "The exclusive relay service URL has been filled in. After you enter an API Key, the card will query balance and usage automatically.",
+      "integration": {
+        "sub2api": "Sub2API Compatible",
+        "newApi": "New API Compatible"
+      },
+      "usage": {
+        "title": "Quota Overview",
+        "remaining": "Remaining",
+        "today": "Today",
+        "total": "Total",
+        "requests": "Today Requests",
+        "loading": "Querying quota...",
+        "failed": "Quota query failed: {{error}}",
+        "pending": "Waiting to query quota",
+        "noKey": "No queryable quota",
+        "used": "Used",
+        "limit": "Limit",
+        "viewDetail": "Details",
+        "detailTitle": "Service Panel",
+        "rawFields": "Service Data",
+        "fields": {
+          "status": "Status",
+          "planName": "Plan",
+          "remaining": "Remaining",
+          "balance": "Balance",
+          "todayRequests": "Today Requests",
+          "todayTokens": "Today Tokens",
+          "todayCost": "Today Cost",
+          "totalRequests": "Total Requests",
+          "totalTokens": "Total Tokens",
+          "totalCost": "Total Cost",
+          "hardLimitUsd": "Hard Limit",
+          "softLimitUsd": "Soft Limit",
+          "systemHardLimitUsd": "System Limit",
+          "accessUntil": "Access Until",
+          "totalUsage": "Total Usage",
+          "quotaUnlimited": "Unlimited",
+          "expiresAt": "Expires At",
+          "totalGranted": "Granted",
+          "totalAvailable": "Available",
+          "modelLimitsEnabled": "Model Limits"
+        },
+        "accountBalance": "Account Balance",
+        "unlimitedQuota": "Unlimited",
+        "booleanTrue": "Yes",
+        "booleanFalse": "No"
+      },
+      "oauthBinding": {
+        "desc": "Optional. Any OAuth account with a refresh_token can be linked. Without a link, the provider continues to run with its original API-key flow.",
+        "currentProvider": "Provider: {{name}}"
       }
     },
     "quickSwitch": {
@@ -2407,32 +2671,36 @@
     "editTags": "Edit Tags",
     "wakeup": {
       "tab": "Wakeup Tasks",
-      "subtitle": "Schedule Codex wakeup jobs, test the CLI path, and review execution history.",
+      "subtitle": "Schedule Codex wakeup jobs, test official chat, and review execution history.",
       "heroTitle": "Codex Wakeup Tasks",
       "heroSubtitle": "Create time-based wakeup jobs for OAuth Codex accounts, run ad-hoc tests, and inspect every trigger in one place.",
-      "runtimeReady": "Codex CLI ready",
-      "runtimeMissing": "Codex CLI required",
-      "runtimeCardTitle": "Codex CLI",
+      "runtimeReady": "Official direct ready",
+      "runtimeMissing": "Official direct unavailable",
+      "runtimeCardTitle": "Execution method",
       "runtimeUnknownPath": "Path not detected",
+      "officialChatRuntimeTitle": "Official direct",
+      "officialChatRuntimePath": "ChatGPT official Codex chat",
+      "officialChatRuntimeSource": "Official direct",
+      "officialChatRuntimeMessage": "Direct OAuth account chat",
       "runtimeUnchecked": "Recheck to fetch the latest status",
       "runtimeVersion": "Version {{version}}",
-      "installTitle": "Install Codex CLI first",
-      "installSubtitle": "Before testing or running jobs, the app must be able to resolve the `codex` command.",
-      "installFootnote": "Recheck after install. You can also customize the Codex CLI and node paths above.",
-      "runtimeConfigTitle": "Custom runtime paths",
-      "runtimeConfigHint": "Use either an executable path or a directory path. Leave blank to auto-detect from system PATH.",
-      "runtimeConfigCodexCliLabel": "Codex CLI path",
-      "runtimeConfigCodexCliPlaceholder": "e.g. /opt/homebrew/bin/codex",
-      "runtimeConfigNodeLabel": "node path",
-      "runtimeConfigNodePlaceholder": "e.g. /opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "Click \"Recheck CLI\" to save changes and apply them immediately.",
+      "installTitle": "Check official direct",
+      "installSubtitle": "Wakeup tasks need access to the ChatGPT official Codex service.",
+      "installFootnote": "Check network, proxy, and account status, then retry.",
+      "runtimeConfigTitle": "Official direct status",
+      "runtimeConfigHint": "Wakeup tasks use the OAuth account to call ChatGPT official Codex chat directly.",
+      "runtimeConfigCodexCliLabel": "Official route",
+      "runtimeConfigCodexCliPlaceholder": "ChatGPT official Codex chat",
+      "runtimeConfigNodeLabel": "Network environment",
+      "runtimeConfigNodePlaceholder": "Use the current system network and proxy",
+      "runtimeConfigApplyHint": "Recheck refreshes the current official connection status.",
       "copyCommand": "Copy command",
       "copied": "Copied",
       "addTask": "Add task",
       "testNow": "Test wakeup",
       "enableAll": "Enable all tasks",
       "disableAll": "Disable all tasks",
-      "refreshRuntime": "Recheck CLI",
+      "refreshRuntime": "Recheck",
       "statsEnabledTasks": "Enabled tasks",
       "statsHistory": "History records",
       "statsSuccess": "Successful runs",
@@ -2662,6 +2930,21 @@
         "logs": "Stats & Logs"
       },
       "healthTitle": "Service Health",
+      "compat": {
+        "title": "Protocol Compat",
+        "desc": "The same API service URL supports OpenAI Chat, Responses, Anthropic Messages, Gemini, and Ollama entries.",
+        "openaiTitle": "OpenAI Compatible",
+        "openaiNote": "Base URL uses /v1.",
+        "responsesTitle": "Responses",
+        "responsesNote": "Codex-native Responses entry.",
+        "anthropicTitle": "Anthropic Messages",
+        "anthropicNote": "Use the same service key.",
+        "geminiTitle": "Gemini",
+        "geminiNote": "Base URL uses /v1beta.",
+        "ollamaTitle": "Ollama Bridge",
+        "ollamaNote": "Use Authorization: Bearer.",
+        "modelCatalogLabel": "Model Catalog"
+      },
       "health": {
         "availableAccounts": "Available Accounts",
         "cooldowns": "Cooldowns",
@@ -2671,6 +2954,18 @@
       "accountHealth": {
         "failures": "{{count}} consecutive failure(s)",
         "image": "Images {{status}}"
+      },
+      "accountModelRules": {
+        "action": "Block Models",
+        "title": "Account Model Blocks",
+        "desc": "Accounts matching these rules are skipped for that model request. Use one model or wildcard per line.",
+        "bulkLabel": "Bulk Rules",
+        "placeholder": "gpt-5.4-mini\ngpt-5.3-*",
+        "applySelected": "Apply to Selected",
+        "selectAll": "Select Accounts",
+        "clearSelection": "Clear Selection",
+        "saveSuccess": "Account model blocks saved",
+        "cardCount": "{{count}} blocked"
       },
       "models": {
         "availableTitle": "Available Models",
@@ -2722,6 +3017,54 @@
         "saveOptions": "Save Options",
         "optionsSaved": "Routing options saved"
       },
+      "timeouts": {
+        "entryLabel": "Advanced",
+        "openAction": "Timeouts & Retries",
+        "title": "Timeouts & Retries",
+        "desc": "Values are in seconds. Saving restarts or reloads the API service for the current gateway mode.",
+        "sidecarTitle": "New API Service",
+        "legacyTitle": "Old API Service",
+        "streamOpen": "Stream Open",
+        "streamIdle": "Stream Idle",
+        "imageOpen": "Image Open",
+        "imageIdle": "Image Idle",
+        "openAttempts": "Open Attempts",
+        "keepalive": "Keep-alive",
+        "requestRead": "Request Read",
+        "connect": "Upstream Connect",
+        "streamTotal": "Stream Total",
+        "resetDefaults": "Reset Defaults",
+        "saved": "Timeouts and retries saved",
+        "totalGteIdle": "Old API stream total timeout cannot be less than stream idle timeout",
+        "bootstrapRetries": "Bootstrap retries",
+        "websocketTitle": "WebSocket",
+        "websocketConnect": "Connect timeout",
+        "websocketInitial": "First message timeout",
+        "websocketIdle": "Idle timeout",
+        "websocketHeartbeat": "Heartbeat interval",
+        "sendRetryAttempts": "Send retries",
+        "sendRetryBaseDelay": "Send base delay (ms)",
+        "sendRetryMaxDelay": "Send max delay (ms)",
+        "singleStatusAttempts": "Single-account retries",
+        "singleStatusBaseDelay": "Single base delay (ms)",
+        "singleStatusMaxDelay": "Single max delay (ms)",
+        "maxDelayGteBase": "Max delay cannot be less than base delay",
+        "longWaitPreset": "Long wait preset",
+        "shortWaitPreset": "Short wait preset",
+        "presetTitle": "Parameter preset",
+        "presetSelect": "Select preset",
+        "presetName": "Preset name",
+        "presetNamePlaceholder": "New custom preset",
+        "saveAsPreset": "Save as preset",
+        "updatePreset": "Update preset",
+        "deletePreset": "Delete preset",
+        "presetSaved": "Preset saved",
+        "presetUpdated": "Preset updated",
+        "presetDeleted": "Preset deleted",
+        "presetNameRequired": "Enter a preset name",
+        "deletePresetConfirm": "Delete this custom preset?",
+        "deletePresetTitle": "Delete preset"
+      },
       "validation": {
         "numberRange": "Enter a number from {{min}} to {{max}}"
       },
@@ -2746,6 +3089,46 @@
         "loading": "Loading request logs",
         "gatewayModeUnknown": "Unknown Mode"
       }
+    },
+    "apiKey": {
+      "renameSuccess": "Renamed",
+      "renameFailed": "Rename failed"
+    },
+    "batchImport": {
+      "title": "Codex Batch Import",
+      "resultSubtitle": "Import result",
+      "previewSubtitle": "Select accounts to save",
+      "scanSubtitle": "Scanning and checking accounts one by one",
+      "parseSubtitle": "Parsing account files",
+      "cancelling": "Cancelling...",
+      "scanDone": "Scan complete",
+      "parseDone": "Parse complete",
+      "scanning": "Scanning",
+      "parsing": "Parsing",
+      "current": "Current",
+      "imported": "Imported",
+      "failed": "Failed",
+      "quotaOk": "Account OK",
+      "quotaFailed": "Exception",
+      "checkQuotaToggle": "Check accounts",
+      "preparing": "Preparing import task...",
+      "importSelected": "Import selected accounts",
+      "noSelection": "Select accounts to import first",
+      "groups": {
+        "ready": "Ready",
+        "quotaFailed": "Exception",
+        "existing": "Existing",
+        "invalid": "Invalid"
+      },
+      "cancelScan": "Cancel scan",
+      "cancelParse": "Cancel parse",
+      "cancelled": "Cancelled",
+      "resumeScan": "Resume scan",
+      "resumeParse": "Resume parse",
+      "selectedCount": "Selected {{count}}/{{total}}",
+      "selectAllAccounts": "Select all accounts",
+      "selectReady": "Select OK accounts",
+      "clearSelection": "Clear selection"
     }
   },
   "codebuddy": {
@@ -2908,6 +3291,13 @@
   },
   "dashboard": {
     "title": "Account Dashboard",
+    "apiRelay": {
+      "localConfig": "Local config",
+      "localConfigDesc": "Manage local relay settings, API key lookup, and one-click client setup.",
+      "status": "Config status",
+      "enabledByConfig": "Enabled by remote config",
+      "openLocalConfig": "Open local config"
+    },
     "summary": {
       "label": "Overview",
       "title": "Account Snapshot",
@@ -3497,7 +3887,6 @@
       "goAntigravity": "Go to Antigravity IDE",
       "goCodex": "Go to Codex",
       "goDashboard": "Go to Dashboard",
-      "goFingerprints": "Go to Device Fingerprints",
       "goGitHubCopilot": "Go to GitHub Copilot",
       "goInstances": "Go to Multi-Instance",
       "goKiro": "Go to Kiro",
@@ -3593,28 +3982,6 @@
       "desc": "Try different keywords, for example \"instance\", \"switch\", \"settings\", \"export\".",
       "title": "No matching content"
     },
-    "fingerprints": {
-      "cautions": {
-        "0": "Before deleting a fingerprint, check bound account count first to avoid affecting production accounts by mistake."
-      },
-      "keywords": {
-        "0": "fingerprint",
-        "1": "binding",
-        "2": "import",
-        "3": "capture"
-      },
-      "outcomes": {
-        "0": "Generate/capture new fingerprints and maintain metadata.",
-        "1": "View accounts bound to a fingerprint and add/remove bindings."
-      },
-      "steps": {
-        "0": "Create or import fingerprints first.",
-        "1": "Open details and confirm fingerprint info is correct.",
-        "2": "In binding management, bind accounts to target fingerprints."
-      },
-      "summary": "Manage fingerprint templates and account bindings. Supports generation, capture, import, and binding maintenance.",
-      "title": "Device Fingerprints"
-    },
     "instances": {
       "cautions": {
         "0": "Before copying from source instance, close the source first to avoid data inconsistency.",
@@ -3694,7 +4061,7 @@
     },
     "resultCount": "{{count}} sections total",
     "searchAria": "Search manual",
-    "searchPlaceholder": "Search feature, scenario, or keyword (for example: multi-instance, inject, wakeup, fingerprint)",
+    "searchPlaceholder": "Search feature, scenario, or keyword (for example: multi-instance, inject, wakeup)",
     "settings": {
       "cautions": {
         "0": "When path detection fails, manually selecting executable path is the safest option.",

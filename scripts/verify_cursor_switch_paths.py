@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""静态验证：无忧 i() 切号链 + token session 格式 + 10min/分批刷新。"""
+"""静态验证：0.24.8 bridge 切号链 + upstream 全量 refresh + 10min/分批刷新。"""
 
 from __future__ import annotations
 
@@ -28,15 +28,14 @@ def main() -> int:
     defer = read(RUST / "modules" / "app_startup_defer.rs")
 
     required = [
-        ("close_cursor_nirvana_style", cursor_instance),
-        ("switch_tokens_in_profile_db", cursor_account),
-        ("reset_storage_json_ids_for_profile", cursor_account),
-        ("reset_machine_id_file_for_profile", cursor_account),
-        ("apply_nirvana_traditional_switch_patches", cursor_account),
-        ("resolve_vscdb_auth_tokens", cursor_account),
+        ("apply_pre_inject_cursor_patches", switch_align),
+        ("hard_reset_cursor_fingerprint_state_for_profile", cursor_account),
+        ("clear_switch_auth_keys_for_profile", cursor_account),
+        ("inject_account_to_profile", cursor_instance),
+        ("ensure_state_db_for_injection", cursor_instance),
         ("start_cursor_instance_with_account_switch", cursor_instance_cmd),
-        ("sleep(std::time::Duration::from_millis(1500))", cursor_instance_cmd),
         ("refresh_all_tokens_batched", cursor_account),
+        ("mode=full", cursor_account),
         ("CURRENT_QUOTA_REFRESH_SECS: u64 = 20", scheduler),
         ("STARTUP_DEFER_SECS: u64 = 10 * 60", defer),
     ]
@@ -47,31 +46,27 @@ def main() -> int:
     if "start_cursor_instance_with_account_switch" not in cursor_cmd:
         errors.append("Play 未走 start_cursor_instance_with_account_switch")
 
-    if re.search(r"多开实例跳过 MachineGuid", switch_align):
-        errors.append("仍存在「多开跳过 MachineGuid」")
+    if "nirvana_traditional_switch_steps" in cursor_account:
+        errors.append("仍含 nirvana_traditional_switch_steps")
 
-    if "switch_tokens_nirvana_kh" in cursor_account:
-        errors.append("仍含错误实现 switch_tokens_nirvana_kh")
+    if "apply_nirvana_traditional_switch_patches" in switch_align:
+        errors.append("仍含 apply_nirvana_traditional_switch_patches")
 
-    if "pull_remote" in cursor_account:
-        errors.append("仍含 pull_remote")
+    if "refresh_account_quota_only_async" in cursor_account:
+        errors.append("仍含 refresh_account_quota_only_async")
 
-    if "apply_pre_inject_cursor_patches" in switch_align:
-        errors.append("仍走实验链 apply_pre_inject（非无忧传统）")
+    switch_body = cursor_account.split("pub fn switch_cursor_account_to_profile", 1)
+    if len(switch_body) > 1 and "apply_pre_inject_cursor_patches" not in switch_body[1][:1500]:
+        errors.append("switch_cursor_account_to_profile 未走 bridge 链")
 
-    if "hard_reset_cursor_fingerprint_state_for_profile" in cursor_account.split("switch_cursor_account_to_profile")[1][:1200]:
-        errors.append("switch 仍含 hard_reset 实验链")
-
-    if "nirvana_traditional_switch_steps" not in cursor_account:
-        errors.append("缺少 nirvana_traditional_switch_steps")
-
-    if "apply_nirvana_traditional_switch_patches" not in switch_align:
-        errors.append("缺少 apply_nirvana_traditional_switch_patches")
+    if "refresh_account_async(&id)" not in cursor_account and "refresh_account_async(&account_id)" not in cursor_account:
+        if "refresh_account_async(&id)" not in cursor_account:
+            errors.append("分批次刷新未调用 refresh_account_async")
 
     report = {
         "ok": len(errors) == 0,
         "errors": errors,
-        "flow_matches_nirvana": len(errors) == 0,
+        "flow_matches_bridge": len(errors) == 0,
     }
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -80,7 +75,7 @@ def main() -> int:
         for err in errors:
             print(f"  - {err}")
         return 1
-    print("PASS: 无忧切号链 + session token + 10min + 20s + 分批")
+    print("PASS: bridge 切号链 + upstream refresh + 10min + 20s + 分批")
     return 0
 
 

@@ -393,9 +393,17 @@ pub async fn cursor_start_instance_prepared(
         }
 
         let extra_args = modules::process::parse_extra_args(&default_settings.extra_args);
-        let pid = modules::cursor_instance::start_cursor_default_with_args_with_new_window(
+        let workspace = modules::cursor_instance::resolve_launch_workspace(
+            default_settings.working_dir.as_deref(),
+            Some(&default_dir_str),
+        );
+        let use_new_window =
+            modules::cursor_instance::should_use_new_window_for_profile(&default_dir_str);
+        let pid = modules::cursor_instance::start_cursor_with_args_with_new_window(
+            &default_dir_str,
             &extra_args,
-            true,
+            use_new_window,
+            workspace.as_deref(),
         )?;
         let pid_for_store = pid;
         tokio::task::spawn_blocking(move || {
@@ -436,7 +444,7 @@ pub async fn cursor_start_instance_prepared(
             let _ = modules::cursor_instance::update_instance_pid(&instance.id, None)?;
         }
 
-        modules::cursor_instance::close_cursor(&[instance.user_data_dir.clone()], 20)?;
+        modules::cursor_instance::close_cursor_profile_strict(&instance.user_data_dir, 20)?;
     } else {
         modules::logger::log_info(&format!(
             "[Cursor Switch] 切号后跳过二次 close，直接启动实例: {}",
@@ -445,10 +453,17 @@ pub async fn cursor_start_instance_prepared(
     }
 
     let extra_args = modules::process::parse_extra_args(&instance.extra_args);
+    let workspace = modules::cursor_instance::resolve_launch_workspace(
+        instance.working_dir.as_deref(),
+        Some(&instance.user_data_dir),
+    );
+    let use_new_window =
+        modules::cursor_instance::should_use_new_window_for_profile(&instance.user_data_dir);
     let pid = modules::cursor_instance::start_cursor_with_args_with_new_window(
         &instance.user_data_dir,
         &extra_args,
-        true,
+        use_new_window,
+        workspace.as_deref(),
     )?;
     let instance_id_for_store = instance.id.clone();
     let pid_for_store = pid;

@@ -40,7 +40,7 @@ fn windows_app_root_exists(root_name: &str, exe_names: &[&str]) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-pub fn user_data_dir_candidates(roaming_dir: &Path) -> Vec<PathBuf> {
+fn windows_user_data_candidates(roaming_dir: &std::path::Path) -> Vec<PathBuf> {
     let antigravity_dir = roaming_dir.join("Antigravity");
     let antigravity_ide_dir = roaming_dir.join("Antigravity IDE");
 
@@ -49,11 +49,6 @@ pub fn user_data_dir_candidates(roaming_dir: &Path) -> Vec<PathBuf> {
     }
 
     vec![antigravity_ide_dir, antigravity_dir]
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn user_data_dir_candidates(_roaming_dir: &Path) -> Vec<PathBuf> {
-    Vec::new()
 }
 
 pub fn default_user_data_dir() -> Result<PathBuf, String> {
@@ -74,12 +69,12 @@ pub fn default_user_data_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     {
         let roaming_dir = roaming_app_data_dir()?;
-        for candidate in user_data_dir_candidates(&roaming_dir) {
+        for candidate in windows_user_data_candidates(&roaming_dir) {
             if candidate.exists() {
                 return Ok(candidate);
             }
         }
-        return Ok(user_data_dir_candidates(&roaming_dir)
+        return Ok(windows_user_data_candidates(&roaming_dir)
             .into_iter()
             .next()
             .unwrap_or_else(|| roaming_dir.join("Antigravity IDE")));

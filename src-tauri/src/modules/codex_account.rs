@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use toml_edit::{value, Document};
 
@@ -21,6 +21,10 @@ static CODEX_TOKEN_REFRESH_LOCKS: std::sync::LazyLock<
     Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 > = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 static CODEX_AUTO_SWITCH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static CODEX_BATCH_IMPORT_COUNTER: AtomicU64 = AtomicU64::new(1);
+static CODEX_BATCH_IMPORT_SESSIONS: std::sync::LazyLock<
+    Mutex<HashMap<String, CodexBatchImportSession>>,
+> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 const CODEX_QUOTA_ALERT_COOLDOWN_SECONDS: i64 = 300;
 const ACCOUNT_CHECK_URL: &str = "https://chatgpt.com/backend-api/wham/accounts/check";
 const API_KEY_LOGIN_PLAN_TYPE: &str = "API_KEY";
@@ -32,6 +36,7 @@ const CODEX_CONFIG_FILE_NAME: &str = "config.toml";
 const CODEX_CONFIG_OPENAI_BASE_URL_KEY: &str = "openai_base_url";
 const CODEX_CONFIG_MODEL_PROVIDER_KEY: &str = "model_provider";
 const CODEX_CONFIG_MODEL_PROVIDERS_KEY: &str = "model_providers";
+const CODEX_CONFIG_MODEL_CATALOG_JSON_KEY: &str = "model_catalog_json";
 const CODEX_CONFIG_EXPERIMENTAL_BEARER_TOKEN_KEY: &str = "experimental_bearer_token";
 const CODEX_CONFIG_MODEL_CONTEXT_WINDOW_KEY: &str = "model_context_window";
 const CODEX_CONFIG_MODEL_AUTO_COMPACT_TOKEN_LIMIT_KEY: &str = "model_auto_compact_token_limit";
@@ -43,6 +48,7 @@ const CODEX_RUNTIME_MODEL_PROVIDER_ID: &str = "codex_local_access";
 const CODEX_LEGACY_API_KEY_OPENAI_PROVIDER_ID: &str = "openai_api_key";
 const CODEX_DEFAULT_RUNTIME_PROVIDER_NAME: &str = "OpenAI Official";
 const CODEX_PROVIDER_WIRE_API: &str = "responses";
+const APIKEY_FUN_PROVIDER_BASE_URL: &str = "https://api.apikey.fun/v1";
 const CODEX_CONTEXT_WINDOW_1M_VALUE: i64 = 1_000_000;
 const CODEX_AUTO_COMPACT_DEFAULT_LIMIT: i64 = 900_000;
 #[cfg(target_os = "macos")]
@@ -308,10 +314,56 @@ fn build_api_key_account_id(api_key: &str) -> String {
     format!("codex_apikey_{:x}", md5::compute(api_key.as_bytes()))
 }
 
+fn normalize_api_model_catalog(models: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut values = Vec::new();
+    for model in models {
+        let model = model.trim();
+        if model.is_empty() || !seen.insert(model.to_ascii_lowercase()) {
+            continue;
+        }
+        values.push(model.to_string());
+    }
+    values
+}
+
+fn normalize_api_wire_api(value: Option<String>) -> Option<String> {
+    value
+        .map(|item| item.trim().to_ascii_lowercase())
+        .filter(|item| item == "responses" || item == "chat_completions")
+}
+
+fn is_apikey_fun_base_url(raw: Option<&str>) -> bool {
+    let Some(actual) = normalize_api_base_url_for_match(raw) else {
+        return false;
+    };
+    let Some(expected) = normalize_api_base_url_for_match(Some(APIKEY_FUN_PROVIDER_BASE_URL))
+    else {
+        return false;
+    };
+    actual == expected
+}
+
+fn migrate_apikey_fun_wire_api(account: &mut CodexAccount) -> bool {
+    if !account.is_api_key_auth() || !is_apikey_fun_base_url(account.api_base_url.as_deref()) {
+        return false;
+    }
+    if account.api_wire_api.as_deref() != Some("chat_completions") {
+        return false;
+    }
+    account.api_wire_api = Some("responses".to_string());
+    true
+}
+
 fn apply_api_key_fields(
     account: &mut CodexAccount,
     api_key: &str,
     provider_config: ApiProviderConfig,
+    api_model_catalog: Vec<String>,
+    api_wire_api: Option<String>,
+    api_supports_vision: bool,
+    api_model_vision_support: std::collections::HashMap<String, bool>,
+    api_vision_routing_model: Option<String>,
 ) {
     let is_cockpit_api = provider_config
         .provider_id
@@ -331,6 +383,11 @@ fn apply_api_key_fields(
     account.api_provider_mode = provider_config.mode;
     account.api_provider_id = provider_config.provider_id;
     account.api_provider_name = provider_config.provider_name;
+    account.api_model_catalog = normalize_api_model_catalog(api_model_catalog);
+    account.api_wire_api = normalize_api_wire_api(api_wire_api);
+    account.api_supports_vision = api_supports_vision;
+    account.api_model_vision_support = normalize_api_model_vision_support(api_model_vision_support);
+    account.api_vision_routing_model = normalize_optional_value(api_vision_routing_model);
     account.email = build_api_key_email(api_key);
     if is_cockpit_api && normalize_optional_ref(account.account_name.as_deref()).is_none() {
         account.account_name = Some(COCKPIT_API_DEFAULT_ACCOUNT_NAME.to_string());
@@ -348,6 +405,22 @@ fn apply_api_key_fields(
     account.account_structure = None;
     account.quota = None;
     account.quota_error = None;
+}
+
+fn normalize_api_model_vision_support(
+    values: std::collections::HashMap<String, bool>,
+) -> std::collections::HashMap<String, bool> {
+    values
+        .into_iter()
+        .filter_map(|(model, supports)| {
+            let model = model.trim().to_lowercase();
+            if model.is_empty() {
+                None
+            } else {
+                Some((model, supports))
+            }
+        })
+        .collect()
 }
 
 fn extract_api_key_from_auth_file(auth_file: &CodexAuthFile) -> Option<String> {
@@ -713,7 +786,7 @@ fn write_quick_config_to_config_toml(
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建 config.toml 目录失败: {}", e))?;
     }
-    let content = doc.to_string();
+    let content = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
     crate::modules::atomic_write::write_string_atomic(&config_path, &content)
         .map_err(|e| format!("写入 config.toml 失败: {}", e))?;
 
@@ -775,6 +848,14 @@ fn read_api_provider_from_config_toml(base_dir: &Path) -> ApiProviderConfig {
     );
 
     if let Some(provider_id) = model_provider {
+        if provider_id == CODEX_OPENAI_PROVIDER_ID {
+            return infer_api_provider_config(
+                openai_base_url.as_deref(),
+                Some(CodexApiProviderMode::OpenaiBuiltin),
+                None,
+                None,
+            );
+        }
         let provider_base_url = doc
             .get(CODEX_CONFIG_MODEL_PROVIDERS_KEY)
             .and_then(|item| item.get(provider_id.as_str()))
@@ -826,8 +907,14 @@ fn write_api_provider_to_config_toml(
 
     match provider_config.mode {
         CodexApiProviderMode::OpenaiBuiltin => {
+            let _ = doc.remove(CODEX_CONFIG_MODEL_CATALOG_JSON_KEY);
             let _ = doc.remove(CODEX_CONFIG_MODEL_PROVIDER_KEY);
             remove_managed_api_key_model_providers_from_doc(&mut doc);
+            #[cfg(target_os = "windows")]
+            {
+                write_windows_builtin_openai_provider_to_doc(&mut doc, normalized.as_deref())?;
+            }
+            #[cfg(not(target_os = "windows"))]
             match normalized.as_deref() {
                 Some(base_url) => {
                     doc[CODEX_CONFIG_OPENAI_BASE_URL_KEY] = value(base_url);
@@ -838,6 +925,7 @@ fn write_api_provider_to_config_toml(
             }
         }
         CodexApiProviderMode::Custom => {
+            let _ = doc.remove(CODEX_CONFIG_MODEL_CATALOG_JSON_KEY);
             let _ = doc.remove(CODEX_CONFIG_OPENAI_BASE_URL_KEY);
             let provider_id = provider_config
                 .provider_id
@@ -874,7 +962,7 @@ fn write_api_provider_to_config_toml(
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建 config.toml 目录失败: {}", e))?;
     }
-    let content = doc.to_string();
+    let content = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
     crate::modules::atomic_write::write_string_atomic(&config_path, &content)
         .map_err(|e| format!("写入 config.toml 失败: {}", e))
 }
@@ -916,6 +1004,34 @@ fn remove_managed_api_key_model_providers_from_doc(doc: &mut Document) {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn write_windows_builtin_openai_provider_to_doc(
+    doc: &mut Document,
+    base_url: Option<&str>,
+) -> Result<(), String> {
+    doc[CODEX_CONFIG_MODEL_PROVIDER_KEY] = value(CODEX_OPENAI_PROVIDER_ID);
+    match base_url {
+        Some(base_url) if base_url != CODEX_DEFAULT_OPENAI_BASE_URL => {
+            doc[CODEX_CONFIG_OPENAI_BASE_URL_KEY] = value(base_url);
+        }
+        _ => {
+            let _ = doc.remove(CODEX_CONFIG_OPENAI_BASE_URL_KEY);
+        }
+    }
+    let should_remove_model_providers = doc
+        .get_mut(CODEX_CONFIG_MODEL_PROVIDERS_KEY)
+        .and_then(|item| item.as_table_mut())
+        .map(|model_providers| {
+            let _ = model_providers.remove(CODEX_OPENAI_PROVIDER_ID);
+            model_providers.is_empty()
+        })
+        .unwrap_or(false);
+    if should_remove_model_providers {
+        let _ = doc.remove(CODEX_CONFIG_MODEL_PROVIDERS_KEY);
+    }
+    Ok(())
+}
+
 fn write_api_key_provider_to_config_toml(
     base_dir: &Path,
     provider_config: &ApiProviderConfig,
@@ -943,13 +1059,16 @@ fn write_api_key_provider_to_config_toml(
             .map_err(|e| format!("解析 config.toml 失败: {}", e))?
     };
 
-    let _ = doc.remove(CODEX_CONFIG_OPENAI_BASE_URL_KEY);
     doc[CODEX_CONFIG_MODEL_PROVIDER_KEY] = value(CODEX_RUNTIME_MODEL_PROVIDER_ID);
-    doc[CODEX_CONFIG_MODEL_PROVIDERS_KEY] = toml_edit::table();
+    if doc.get(CODEX_CONFIG_MODEL_PROVIDERS_KEY).is_none() {
+        doc[CODEX_CONFIG_MODEL_PROVIDERS_KEY] = toml_edit::table();
+    }
     let model_providers = doc[CODEX_CONFIG_MODEL_PROVIDERS_KEY]
         .as_table_mut()
         .ok_or("config.toml 中 model_providers 不是合法表结构")?;
-    model_providers[CODEX_RUNTIME_MODEL_PROVIDER_ID] = toml_edit::table();
+    if !model_providers.contains_key(CODEX_RUNTIME_MODEL_PROVIDER_ID) {
+        model_providers[CODEX_RUNTIME_MODEL_PROVIDER_ID] = toml_edit::table();
+    }
     let provider_table = model_providers[CODEX_RUNTIME_MODEL_PROVIDER_ID]
         .as_table_mut()
         .ok_or("config.toml 中目标 provider 不是合法表结构")?;
@@ -963,7 +1082,7 @@ fn write_api_key_provider_to_config_toml(
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建 config.toml 目录失败: {}", e))?;
     }
-    let content = doc.to_string();
+    let content = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
     crate::modules::atomic_write::write_string_atomic(&config_path, &content)
         .map_err(|e| format!("写入 config.toml 失败: {}", e))
 }
@@ -1261,7 +1380,7 @@ fn is_missing_refresh_token_reason(reason: &str) -> bool {
     reason.contains("缺少 refresh_token")
 }
 
-fn account_has_refresh_token(account: &CodexAccount) -> bool {
+pub(crate) fn account_has_refresh_token(account: &CodexAccount) -> bool {
     account
         .tokens
         .refresh_token
@@ -1285,6 +1404,16 @@ fn clear_stale_missing_refresh_token_reauth(account: &mut CodexAccount) -> Resul
     account.requires_reauth = false;
     account.reauth_reason = None;
     save_account(account)
+}
+
+fn retain_existing_refresh_token_if_missing(
+    mut tokens: CodexTokens,
+    existing: Option<&CodexAccount>,
+) -> CodexTokens {
+    tokens.refresh_token = normalize_optional_value(tokens.refresh_token).or_else(|| {
+        existing.and_then(|account| normalize_optional_ref(account.tokens.refresh_token.as_deref()))
+    });
+    tokens
 }
 
 pub fn extract_chatgpt_account_id_from_access_token(access_token: &str) -> Option<String> {
@@ -1629,6 +1758,10 @@ pub fn save_account_index(index: &CodexAccountIndex) -> Result<(), String> {
 fn repair_account_index_from_details(reason: &str) -> Option<CodexAccountIndex> {
     let index_path = get_accounts_storage_path();
     let accounts_dir = get_accounts_dir();
+    let previous_current_account_id = fs::read_to_string(&index_path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<CodexAccountIndex>(&content).ok())
+        .and_then(|index| index.current_account_id);
     logger::log_warn(&format!(
         "[Codex Account][Repair] 检测到索引异常，开始按详情文件重建: reason={}, index_path={}, accounts_dir={}",
         reason,
@@ -1685,7 +1818,11 @@ fn repair_account_index_from_details(reason: &str) -> Option<CodexAccountIndex> 
             last_used: account.last_used,
         })
         .collect();
-    index.current_account_id = None;
+    index.current_account_id = previous_current_account_id.filter(|current_id| {
+        accounts
+            .iter()
+            .any(|account| account.id.as_str() == current_id.as_str())
+    });
 
     logger::log_info(&format!(
         "[Codex Account][Repair] 索引重建完成，准备写回本地文件: recovered_accounts={}, current_account_id={}",
@@ -1880,6 +2017,7 @@ fn parse_codex_account_compat(
             provider_config.base_url,
             provider_config.provider_id,
             provider_config.provider_name,
+            Vec::new(),
         );
         apply_compat_account_metadata(&mut account, &value, summary);
         account.plan_type = Some(API_KEY_LOGIN_PLAN_TYPE.to_string());
@@ -1915,6 +2053,31 @@ pub fn load_account(account_id: &str) -> Option<CodexAccount> {
     load_account_with_summary(account_id, None).ok().flatten()
 }
 
+fn load_account_after_index_repair(account_id: &str) -> Option<CodexAccount> {
+    if let Some(account) = load_account(account_id) {
+        return Some(account);
+    }
+
+    logger::log_warn(&format!(
+        "[Codex Account][Repair] 切号目标账号详情缺失，尝试按详情文件重建索引后重试: account_id={}",
+        account_id
+    ));
+    let repaired = repair_account_index_from_details("切号目标账号不存在")?;
+    if !repaired
+        .accounts
+        .iter()
+        .any(|summary| summary.id == account_id)
+    {
+        logger::log_warn(&format!(
+            "[Codex Account][Repair] 重建索引后仍未找到切号目标账号: account_id={}",
+            account_id
+        ));
+        return None;
+    }
+
+    load_account(account_id)
+}
+
 fn load_account_with_summary(
     account_id: &str,
     summary: Option<&CodexAccountSummary>,
@@ -1926,14 +2089,23 @@ fn load_account_with_summary(
 
     let content = fs::read_to_string(&path)
         .map_err(|error| format!("读取账号详情失败 ({}): {}", path.display(), error))?;
-    if let Ok(account) = serde_json::from_str::<CodexAccount>(&content) {
+    if let Ok(mut account) = serde_json::from_str::<CodexAccount>(&content) {
+        if migrate_apikey_fun_wire_api(&mut account) {
+            if let Err(error) = save_account(&account) {
+                logger::log_warn(&format!(
+                    "[Codex Account][Migration] APIKEY.FUN 协议迁移写回失败: account_id={}, error={}",
+                    account.id, error
+                ));
+            }
+        }
         return Ok(Some(account));
     }
 
     let value = serde_json::from_str::<serde_json::Value>(&content)
         .map_err(|error| format!("账号详情不是有效 JSON ({}): {}", path.display(), error))?;
-    let account = parse_codex_account_compat(value, account_id, summary)?
+    let mut account = parse_codex_account_compat(value, account_id, summary)?
         .ok_or_else(|| format!("账号详情缺少可识别凭据 ({})", path.display()))?;
+    let _ = migrate_apikey_fun_wire_api(&mut account);
 
     if let Err(error) = save_account(&account) {
         logger::log_warn(&format!(
@@ -2072,6 +2244,12 @@ pub fn upsert_api_key_account(
     api_provider_mode: Option<CodexApiProviderMode>,
     api_provider_id: Option<String>,
     api_provider_name: Option<String>,
+    api_model_catalog: Vec<String>,
+    api_wire_api: Option<String>,
+    api_supports_vision: bool,
+    api_model_vision_support: std::collections::HashMap<String, bool>,
+    api_vision_routing_model: Option<String>,
+    account_name: Option<String>,
 ) -> Result<CodexAccount, String> {
     let (api_key, api_base_url) = validate_api_key_credentials(&api_key, api_base_url.as_deref())?;
     let provider_config = resolve_api_provider_config(
@@ -2081,6 +2259,7 @@ pub fn upsert_api_key_account(
         api_provider_name.as_deref(),
     )?;
     let account_id = build_api_key_account_id(&api_key);
+    let account_name = normalize_optional_value(account_name);
     let mut index = load_account_index();
     let existing = index.accounts.iter().position(|item| item.id == account_id);
 
@@ -2095,11 +2274,26 @@ pub fn upsert_api_key_account(
                 provider_config.base_url.clone(),
                 provider_config.provider_id.clone(),
                 provider_config.provider_name.clone(),
+                normalize_api_model_catalog(api_model_catalog.clone()),
             )
         });
-        apply_api_key_fields(&mut acc, &api_key, provider_config.clone());
+        apply_api_key_fields(
+            &mut acc,
+            &api_key,
+            provider_config.clone(),
+            api_model_catalog.clone(),
+            api_wire_api.clone(),
+            api_supports_vision,
+            api_model_vision_support.clone(),
+            api_vision_routing_model.clone(),
+        );
         if acc.email.trim().is_empty() {
             acc.email = build_api_key_email(&api_key);
+        }
+        if let Some(name) = account_name.clone() {
+            if normalize_optional_ref(acc.account_name.as_deref()).is_none() {
+                acc.account_name = Some(name);
+            }
         }
         acc.update_last_used();
         acc
@@ -2112,8 +2306,14 @@ pub fn upsert_api_key_account(
             provider_config.base_url.clone(),
             provider_config.provider_id.clone(),
             provider_config.provider_name.clone(),
+            normalize_api_model_catalog(api_model_catalog.clone()),
         );
         acc.plan_type = Some(API_KEY_LOGIN_PLAN_TYPE.to_string());
+        acc.account_name = account_name;
+        acc.api_wire_api = normalize_api_wire_api(api_wire_api.clone());
+        acc.api_supports_vision = api_supports_vision;
+        acc.api_model_vision_support = normalize_api_model_vision_support(api_model_vision_support);
+        acc.api_vision_routing_model = normalize_optional_value(api_vision_routing_model);
         index.accounts.push(CodexAccountSummary {
             id: account_id.clone(),
             email: acc.email.clone(),
@@ -2156,7 +2356,7 @@ pub fn upsert_api_key_account(
 }
 
 fn upsert_account_with_hints(
-    tokens: CodexTokens,
+    mut tokens: CodexTokens,
     account_id_hint: Option<String>,
     organization_id_hint: Option<String>,
 ) -> Result<CodexAccount, String> {
@@ -2198,6 +2398,7 @@ fn upsert_account_with_hints(
         let existing_id = index.accounts[pos].id.clone();
         let mut acc = load_account(&existing_id)
             .unwrap_or_else(|| CodexAccount::new(existing_id, email.clone(), tokens.clone()));
+        tokens = retain_existing_refresh_token_if_missing(tokens, Some(&acc));
         acc.tokens = tokens;
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
@@ -2216,6 +2417,7 @@ fn upsert_account_with_hints(
         acc
     } else {
         // 创建新账号
+        tokens = retain_existing_refresh_token_if_missing(tokens, None);
         let mut acc = CodexAccount::new(existing_id.clone(), email.clone(), tokens);
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
@@ -2290,38 +2492,37 @@ pub fn update_account_plan_type_in_index(
 
 /// 删除账号
 pub fn remove_account(account_id: &str) -> Result<(), String> {
-    let mut index = load_account_index();
-
-    // 从索引中移除
-    index.accounts.retain(|a| a.id != account_id);
-
-    // 如果删除的是当前账号，清除 current_account_id
-    if index.current_account_id.as_deref() == Some(account_id) {
-        index.current_account_id = None;
-    }
-
-    save_account_index(&index)?;
-    delete_account_file(account_id)?;
-
-    for mut account in list_accounts() {
-        if account.bound_oauth_account_id.as_deref() == Some(account_id) {
-            account.bound_oauth_account_id = None;
-            if let Err(err) = save_account(&account) {
-                logger::log_warn(&format!(
-                    "清理 Codex API Key 账号 OAuth 绑定失败: api_account_id={}, removed_oauth_account_id={}, error={}",
-                    account.id, account_id, err
-                ));
-            }
-        }
-    }
-
-    Ok(())
+    remove_accounts(&[account_id.to_string()])
 }
 
 /// 批量删除账号
 pub fn remove_accounts(account_ids: &[String]) -> Result<(), String> {
-    for id in account_ids {
-        remove_account(id)?;
+    let remove_ids: HashSet<String> = account_ids
+        .iter()
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .collect();
+    if remove_ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut index = load_account_index();
+    index
+        .accounts
+        .retain(|account| !remove_ids.contains(&account.id));
+    if index
+        .current_account_id
+        .as_ref()
+        .map(|current_id| remove_ids.contains(current_id))
+        .unwrap_or(false)
+    {
+        index.current_account_id = None;
+    }
+    save_account_index(&index)?;
+
+    for account_id in remove_ids {
+        delete_account_file(&account_id)?;
     }
     Ok(())
 }
@@ -2922,7 +3123,7 @@ fn build_auth_file_value(account: &CodexAccount) -> Result<serde_json::Value, St
         tokens: Some(CodexAuthTokens {
             id_token: account.tokens.id_token.clone(),
             access_token: account.tokens.access_token.clone(),
-            refresh_token: Some(account.tokens.refresh_token.clone().unwrap_or_default()),
+            refresh_token: normalize_optional_ref(account.tokens.refresh_token.as_deref()),
             account_id: account.account_id.clone(),
         }),
         last_refresh: Some(serde_json::Value::String(
@@ -3123,6 +3324,8 @@ pub fn write_auth_file_to_dir(base_dir: &Path, account: &CodexAccount) -> Result
         auth_path.display()
     ));
 
+    crate::modules::codex_local_access::cleanup_provider_gateway_profile_model_overrides(base_dir)?;
+
     let auth_file = build_auth_file_value(account)?;
     let content =
         serde_json::to_string_pretty(&auth_file).map_err(|e| format!("序列化失败: {}", e))?;
@@ -3208,6 +3411,9 @@ fn validate_api_key_bound_oauth_account(
     if oauth_account.is_api_key_auth() {
         return Err("只能绑定 OAuth 账号，不能绑定 API Key 账号".to_string());
     }
+    if !account_has_refresh_token(&oauth_account) {
+        return Err("只能绑定带 refresh_token 的 OAuth 账号".to_string());
+    }
 
     Ok(oauth_account)
 }
@@ -3258,6 +3464,17 @@ fn write_api_key_account_bundle_with_oauth_to_dir(
         return Err("API Key 账号绑定的 OAuth 账号不匹配".to_string());
     }
 
+    if oauth_account.tokens.id_token.trim().is_empty() {
+        write_prepared_account_bundle_to_dir(base_dir, api_key_account)?;
+        logger::log_info(&format!(
+            "[Codex切号] 已写入 API Key 账号配置，绑定 OAuth 缺少 id_token，跳过 OAuth 登录态投影: api_account_id={}, oauth_account_id={}, target_dir={}",
+            api_key_account.id,
+            oauth_account.id,
+            base_dir.display()
+        ));
+        return Ok(());
+    }
+
     write_prepared_account_bundle_to_dir(base_dir, oauth_account)?;
     let provider_config =
         write_api_key_provider_override_to_config_toml(base_dir, api_key_account)?;
@@ -3285,6 +3502,60 @@ pub fn write_account_bundle_to_dir(base_dir: &Path, account: &CodexAccount) -> R
 
     let account = resolve_account_for_bundle_write(base_dir, account)?;
     write_prepared_account_bundle_to_dir(base_dir, &account)
+}
+
+fn configured_codex_wsl_config_dir() -> Option<PathBuf> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let cfg = crate::modules::config::get_user_config();
+        if !cfg.codex_sync_wsl {
+            return None;
+        }
+        let trimmed = cfg.codex_wsl_config_dir.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        Some(PathBuf::from(trimmed))
+    }
+}
+
+fn sync_default_codex_account_to_wsl<F>(account_id: &str, write_bundle: F)
+where
+    F: FnOnce(&Path) -> Result<(), String>,
+{
+    let Some(wsl_dir) = configured_codex_wsl_config_dir() else {
+        return;
+    };
+
+    match write_bundle(&wsl_dir) {
+        Ok(()) => logger::log_info(&format!(
+            "[Codex切号] 已同步默认账号到 WSL 配置目录: account_id={}, target_dir={}",
+            account_id,
+            wsl_dir.display()
+        )),
+        Err(err) => logger::log_warn(&format!(
+            "[Codex切号] 同步默认账号到 WSL 配置目录失败，默认实例切号已完成: account_id={}, target_dir={}, error={}",
+            account_id,
+            wsl_dir.display(),
+            err
+        )),
+    }
+}
+
+fn is_default_codex_projection_dir(dir: &Path) -> bool {
+    if projection_dirs_equal(dir, &get_codex_home()) {
+        return true;
+    }
+
+    configured_codex_wsl_config_dir()
+        .as_deref()
+        .map(|wsl_dir| projection_dirs_equal(dir, wsl_dir))
+        .unwrap_or(false)
 }
 
 fn is_bound_api_key_account_id(
@@ -3319,6 +3590,9 @@ fn managed_projection_dirs_for_account(account_id: &str) -> Vec<PathBuf> {
         )
     {
         dirs.push(get_codex_home());
+        if let Some(wsl_dir) = configured_codex_wsl_config_dir() {
+            dirs.push(wsl_dir);
+        }
     }
 
     match crate::modules::codex_instance::load_instance_store() {
@@ -3379,7 +3653,7 @@ fn load_bound_api_key_account_for_projection_dir(
     };
 
     let index = load_account_index();
-    if projection_dirs_equal(dir, &get_codex_home()) {
+    if is_default_codex_projection_dir(dir) {
         if let Some(account) = index
             .current_account_id
             .as_deref()
@@ -3736,6 +4010,9 @@ fn switch_account_with_prepared(
         codex_home.display(),
         auth_path.display()
     ));
+    sync_default_codex_account_to_wsl(&account_for_write.id, |wsl_dir| {
+        write_prepared_account_bundle_to_dir(wsl_dir, &account_for_write)
+    });
 
     // 更新索引中的 current_account_id
     let mut index = load_account_index();
@@ -3752,11 +4029,33 @@ fn switch_account_with_prepared(
     Ok(updated_account)
 }
 
+async fn activate_provider_gateway_after_switch_if_needed(
+    base_dir: &Path,
+    account: &CodexAccount,
+) -> Result<(), String> {
+    if !crate::modules::codex_local_access::account_requires_provider_gateway(account) {
+        return Ok(());
+    }
+
+    logger::log_info(&format!(
+        "[Codex切号] API Key 账号使用 Chat Completions 协议，启用本地供应商网关: account_id={}, target_dir={}",
+        account.id,
+        base_dir.display()
+    ));
+    crate::modules::codex_local_access::activate_provider_gateway_for_dir(base_dir, &account.id)
+        .await?;
+    Ok(())
+}
+
 pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, String> {
-    let account = load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
+    let account = load_account_after_index_repair(account_id)
+        .ok_or_else(|| format!("账号不存在: {}", account_id))?;
     if account.is_api_key_auth() {
         if normalize_optional_ref(account.bound_oauth_account_id.as_deref()).is_none() {
-            return switch_account_with_prepared(account_id, account);
+            let updated_account = switch_account_with_prepared(account_id, account)?;
+            let codex_home = get_codex_home();
+            activate_provider_gateway_after_switch_if_needed(&codex_home, &updated_account).await?;
+            return Ok(updated_account);
         }
         let oauth_account = refresh_bound_oauth_account_for_api_key(&account, "switch").await?;
         let codex_home = get_codex_home();
@@ -3773,6 +4072,9 @@ pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, St
             codex_home.display(),
             auth_path.display()
         ));
+        sync_default_codex_account_to_wsl(&account.id, |wsl_dir| {
+            write_api_key_account_bundle_with_oauth_to_dir(wsl_dir, &account, &oauth_account)
+        });
 
         let mut index = load_account_index();
         index.current_account_id = Some(account_id.to_string());
@@ -3786,6 +4088,8 @@ pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, St
             "已切换到 Codex API Key 账号: {}，登录态绑定 OAuth: {}",
             updated_account.email, oauth_account.email
         ));
+
+        activate_provider_gateway_after_switch_if_needed(&codex_home, &updated_account).await?;
 
         return Ok(updated_account);
     }
@@ -3827,6 +4131,12 @@ pub fn import_from_local() -> Result<CodexAccount, String> {
             Some(fallback_provider.mode),
             fallback_provider.provider_id.clone(),
             fallback_provider.provider_name.clone(),
+            Vec::new(),
+            None,
+            false,
+            std::collections::HashMap::new(),
+            None,
+            None,
         );
     }
 
@@ -3841,6 +4151,12 @@ pub fn import_from_local() -> Result<CodexAccount, String> {
             Some(fallback_provider.mode),
             fallback_provider.provider_id.clone(),
             fallback_provider.provider_name.clone(),
+            Vec::new(),
+            None,
+            false,
+            std::collections::HashMap::new(),
+            None,
+            None,
         );
     }
 
@@ -3851,21 +4167,52 @@ fn import_account_struct(account: CodexAccount) -> Result<CodexAccount, String> 
     if account.is_api_key_auth() || account.openai_api_key.is_some() {
         let api_key = normalize_optional_ref(account.openai_api_key.as_deref())
             .ok_or("API Key 账号缺少 OPENAI_API_KEY")?;
-        return upsert_api_key_account(
+        let mut api_acc = upsert_api_key_account(
             api_key,
             account.api_base_url.clone(),
             Some(account.api_provider_mode),
             account.api_provider_id.clone(),
             account.api_provider_name.clone(),
-        );
+            account.api_model_catalog.clone(),
+            account.api_wire_api.clone(),
+            account.api_supports_vision,
+            account.api_model_vision_support.clone(),
+            account.api_vision_routing_model.clone(),
+            account.account_name.clone(),
+        )?;
+        let mut changed = false;
+        if let Some(tags) = account.tags {
+            api_acc.tags = Some(tags);
+            changed = true;
+        }
+        if let Some(note) = account.account_note {
+            api_acc.account_note = Some(note);
+            changed = true;
+        }
+        if changed {
+            save_account(&api_acc)?;
+        }
+        return Ok(api_acc);
     }
 
     let imported_auth_file_plan_type =
         normalize_auth_file_plan_type(account.auth_file_plan_type.as_deref());
     let mut imported = upsert_account(account.tokens)?;
-    if apply_auth_file_plan_type(&mut imported, imported_auth_file_plan_type) {
+    let mut changed = apply_auth_file_plan_type(&mut imported, imported_auth_file_plan_type);
+
+    if let Some(tags) = account.tags {
+        imported.tags = Some(tags);
+        changed = true;
+    }
+    if let Some(note) = account.account_note {
+        imported.account_note = Some(note);
+        changed = true;
+    }
+
+    if changed {
         save_account(&imported)?;
     }
+
     Ok(imported)
 }
 
@@ -4105,7 +4452,7 @@ fn upsert_account_from_access_token(
         .or_else(|| account_id.as_ref().map(|value| format!("codex-{}", value)))
         .or_else(|| user_id.as_ref().map(|value| format!("codex-{}", value)))
         .unwrap_or_else(|| format!("codex-access-{}", access_token_fingerprint(&access_token)));
-    let tokens = CodexTokens {
+    let mut tokens = CodexTokens {
         id_token: String::new(),
         access_token,
         refresh_token: None,
@@ -4130,6 +4477,7 @@ fn upsert_account_from_access_token(
         let existing_id = index.accounts[pos].id.clone();
         let mut acc = load_account(&existing_id)
             .unwrap_or_else(|| CodexAccount::new(existing_id, email.clone(), tokens.clone()));
+        tokens = retain_existing_refresh_token_if_missing(tokens, Some(&acc));
         acc.tokens = tokens;
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
@@ -4150,6 +4498,7 @@ fn upsert_account_from_access_token(
         acc.update_last_used();
         acc
     } else {
+        tokens = retain_existing_refresh_token_if_missing(tokens, None);
         let mut acc = CodexAccount::new(existing_id.clone(), email.clone(), tokens);
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
@@ -4345,6 +4694,12 @@ async fn import_account_from_json_value(
                     .get("api_provider_name")
                     .and_then(|value| value.as_str())
                     .map(|value| value.to_string()),
+                Vec::new(),
+                None,
+                false,
+                std::collections::HashMap::new(),
+                None,
+                None,
             )?;
             apply_api_key_import_metadata(&mut account, &value);
             save_account(&account)?;
@@ -4440,6 +4795,12 @@ pub async fn import_from_json(json_content: &str) -> Result<Vec<CodexAccount>, S
                 Some(fallback_provider.mode),
                 fallback_provider.provider_id.clone(),
                 fallback_provider.provider_name.clone(),
+                Vec::new(),
+                None,
+                false,
+                std::collections::HashMap::new(),
+                None,
+                None,
             )?;
             if let Some(value) = raw_value.as_ref() {
                 apply_api_key_import_metadata(&mut account, value);
@@ -4465,6 +4826,12 @@ pub async fn import_from_json(json_content: &str) -> Result<Vec<CodexAccount>, S
                 Some(fallback_provider.mode),
                 fallback_provider.provider_id.clone(),
                 fallback_provider.provider_name.clone(),
+                Vec::new(),
+                None,
+                false,
+                std::collections::HashMap::new(),
+                None,
+                None,
             )?;
             if let Some(value) = raw_value.as_ref() {
                 apply_api_key_import_metadata(&mut account, value);
@@ -4551,6 +4918,960 @@ pub struct CodexFileImportResult {
 pub struct CodexFileImportFailure {
     pub email: String,
     pub error: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexBatchImportStartResult {
+    pub session_id: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexBatchImportItem {
+    pub item_id: String,
+    pub source: String,
+    pub label: String,
+    pub account_id: Option<String>,
+    pub email: Option<String>,
+    pub account_type: String,
+    pub provider: Option<String>,
+    pub quota_status: String,
+    pub quota_error: Option<String>,
+    pub status: String,
+    pub error: Option<String>,
+    pub default_selected: bool,
+    pub selectable: bool,
+    pub existing: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexBatchImportProgress {
+    pub session_id: String,
+    pub phase: String,
+    pub check_quota: bool,
+    pub current: usize,
+    pub total: usize,
+    pub success: usize,
+    pub failed: usize,
+    pub quota_failed: usize,
+    pub existing: usize,
+    pub current_label: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexBatchImportPreview {
+    pub session_id: String,
+    pub status: String,
+    pub check_quota: bool,
+    pub total: usize,
+    pub items: Vec<CodexBatchImportItem>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexBatchImportConfirmResult {
+    pub imported: Vec<CodexAccount>,
+    pub failed: Vec<CodexFileImportFailure>,
+}
+
+#[derive(Clone)]
+struct CodexBatchImportSession {
+    status: String,
+    check_quota: bool,
+    cancel: Arc<AtomicBool>,
+    source_items: Vec<CodexBatchImportSourceItem>,
+    next_index: usize,
+    total: usize,
+    items: Vec<CodexBatchImportCachedItem>,
+}
+
+#[derive(Clone)]
+struct CodexBatchImportSourceItem {
+    source: String,
+    value: serde_json::Value,
+}
+
+#[derive(Clone)]
+struct CodexBatchImportCachedItem {
+    preview: CodexBatchImportItem,
+    draft: Option<CodexBatchImportDraft>,
+    quota: Option<crate::models::codex::CodexQuota>,
+}
+
+#[derive(Clone)]
+enum CodexBatchImportDraft {
+    Account(CodexAccount),
+    FullToken {
+        tokens: CodexTokens,
+        account_id_hint: Option<String>,
+        account_note: Option<String>,
+    },
+    AccessToken {
+        access_token: String,
+        account_note: Option<String>,
+    },
+}
+
+fn next_codex_batch_import_session_id() -> String {
+    let id = CODEX_BATCH_IMPORT_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!(
+        "codex-import-{}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        id
+    )
+}
+
+fn emit_codex_batch_import_progress(app: &tauri::AppHandle, payload: CodexBatchImportProgress) {
+    use tauri::Emitter;
+    let _ = app.emit("codex:batch-import-progress", payload);
+}
+
+fn emit_codex_batch_import_completed(app: &tauri::AppHandle, payload: CodexBatchImportPreview) {
+    use tauri::Emitter;
+    let _ = app.emit("codex:batch-import-completed", payload);
+}
+
+fn emit_codex_batch_import_preview(app: &tauri::AppHandle, payload: CodexBatchImportPreview) {
+    use tauri::Emitter;
+    let _ = app.emit("codex:batch-import-preview", payload);
+}
+
+fn codex_batch_import_preview_from_session(
+    session_id: &str,
+    session: &CodexBatchImportSession,
+) -> CodexBatchImportPreview {
+    CodexBatchImportPreview {
+        session_id: session_id.to_string(),
+        status: session.status.clone(),
+        check_quota: session.check_quota,
+        total: session.total,
+        items: session
+            .items
+            .iter()
+            .map(|item| item.preview.clone())
+            .collect(),
+    }
+}
+
+fn codex_batch_import_progress_from_items(
+    session_id: &str,
+    phase: &str,
+    check_quota: bool,
+    current: usize,
+    total: usize,
+    items: &[CodexBatchImportCachedItem],
+    current_label: Option<String>,
+) -> CodexBatchImportProgress {
+    CodexBatchImportProgress {
+        session_id: session_id.to_string(),
+        phase: phase.to_string(),
+        check_quota,
+        current,
+        total,
+        success: items
+            .iter()
+            .filter(|item| item.preview.status == "ready")
+            .count(),
+        failed: items
+            .iter()
+            .filter(|item| item.preview.status == "invalid")
+            .count(),
+        quota_failed: items
+            .iter()
+            .filter(|item| item.preview.status == "quota_failed")
+            .count(),
+        existing: items.iter().filter(|item| item.preview.existing).count(),
+        current_label,
+    }
+}
+
+fn preview_account_from_full_tokens(
+    mut tokens: CodexTokens,
+    account_id_hint: Option<String>,
+    account_note: Option<String>,
+) -> Result<CodexAccount, String> {
+    let (
+        email,
+        user_id,
+        plan_type,
+        subscription_active_until,
+        id_token_account_id,
+        id_token_org_id,
+    ) = extract_user_info(&tokens.id_token)?;
+    let account_id = normalize_optional_value(
+        extract_chatgpt_account_id_from_access_token(&tokens.access_token)
+            .or(id_token_account_id)
+            .or(account_id_hint),
+    );
+    let organization_id = normalize_optional_value(
+        extract_chatgpt_organization_id_from_access_token(&tokens.access_token).or(id_token_org_id),
+    );
+    tokens = retain_existing_refresh_token_if_missing(tokens, None);
+    let storage_id =
+        build_account_storage_id(&email, account_id.as_deref(), organization_id.as_deref());
+    let mut account = CodexAccount::new(storage_id, email, tokens);
+    mark_token_chain_updated(&mut account);
+    account.auth_mode = CodexAuthMode::OAuth;
+    account.user_id = user_id;
+    account.plan_type = plan_type;
+    account.subscription_active_until = subscription_active_until;
+    account.account_id = account_id;
+    account.organization_id = organization_id;
+    account.account_note = account_note;
+    Ok(account)
+}
+
+fn preview_account_from_access_token(
+    access_token: String,
+    account_note: Option<String>,
+) -> Result<CodexAccount, String> {
+    let access_token =
+        normalize_optional_value(Some(access_token)).ok_or("accessToken 不能为空")?;
+    let (email, user_id, plan_type, subscription_active_until, account_id, organization_id) =
+        extract_access_token_identity(&access_token);
+    let email = email
+        .or_else(|| account_id.as_ref().map(|value| format!("codex-{}", value)))
+        .or_else(|| user_id.as_ref().map(|value| format!("codex-{}", value)))
+        .unwrap_or_else(|| format!("codex-access-{}", access_token_fingerprint(&access_token)));
+    let tokens = CodexTokens {
+        id_token: String::new(),
+        access_token,
+        refresh_token: None,
+    };
+    let storage_id =
+        build_account_storage_id(&email, account_id.as_deref(), organization_id.as_deref());
+    let mut account = CodexAccount::new(storage_id, email, tokens);
+    mark_token_chain_updated(&mut account);
+    account.auth_mode = CodexAuthMode::OAuth;
+    account.user_id = user_id;
+    account.plan_type = plan_type;
+    account.subscription_active_until = subscription_active_until;
+    account.account_id = account_id;
+    account.organization_id = organization_id;
+    account.account_note = account_note;
+    Ok(account)
+}
+
+fn preview_account_for_draft(draft: &CodexBatchImportDraft) -> Result<CodexAccount, String> {
+    match draft {
+        CodexBatchImportDraft::Account(account) => Ok(account.clone()),
+        CodexBatchImportDraft::FullToken {
+            tokens,
+            account_id_hint,
+            account_note,
+        } => preview_account_from_full_tokens(
+            tokens.clone(),
+            account_id_hint.clone(),
+            account_note.clone(),
+        ),
+        CodexBatchImportDraft::AccessToken {
+            access_token,
+            account_note,
+        } => preview_account_from_access_token(access_token.clone(), account_note.clone()),
+    }
+}
+
+fn codex_batch_import_draft_from_candidate(
+    candidate: CodexJsonImportCandidate,
+) -> CodexBatchImportDraft {
+    match candidate {
+        CodexJsonImportCandidate::FullToken {
+            tokens,
+            account_id_hint,
+            account_note,
+        } => CodexBatchImportDraft::FullToken {
+            tokens,
+            account_id_hint,
+            account_note,
+        },
+        CodexJsonImportCandidate::AccessToken {
+            access_token,
+            account_note,
+        } => CodexBatchImportDraft::AccessToken {
+            access_token,
+            account_note,
+        },
+        CodexJsonImportCandidate::RefreshToken { .. } => {
+            unreachable!("refresh_token candidates are resolved before creating a draft")
+        }
+    }
+}
+
+fn api_key_draft_from_value(
+    value: &serde_json::Value,
+    fallback_id: Option<String>,
+) -> Result<Option<CodexBatchImportDraft>, String> {
+    if !is_auth_mode_apikey(
+        value
+            .get("auth_mode")
+            .and_then(|value| value.as_str())
+            .or_else(|| value.get("authMode").and_then(|value| value.as_str())),
+    ) {
+        return Ok(None);
+    }
+    let Some(api_key) = value
+        .get("OPENAI_API_KEY")
+        .and_then(|value| value.as_str())
+        .and_then(normalize_api_key)
+    else {
+        return Ok(None);
+    };
+    let (api_key, api_base_url) = validate_api_key_credentials(
+        &api_key,
+        extract_api_base_url_from_json_value(value).as_deref(),
+    )?;
+    let provider_config = resolve_api_provider_config(
+        api_base_url.as_deref(),
+        read_codex_api_provider_mode(value),
+        value
+            .get("api_provider_id")
+            .and_then(|value| value.as_str()),
+        value
+            .get("api_provider_name")
+            .and_then(|value| value.as_str()),
+    )?;
+    let mut account = CodexAccount::new_api_key(
+        fallback_id.unwrap_or_else(|| build_api_key_account_id(&api_key)),
+        read_json_string(value, &["email", "account_email"])
+            .unwrap_or_else(|| build_api_key_email(&api_key)),
+        api_key,
+        provider_config.mode,
+        provider_config.base_url,
+        provider_config.provider_id,
+        provider_config.provider_name,
+        Vec::new(),
+    );
+    apply_api_key_import_metadata(&mut account, value);
+    Ok(Some(CodexBatchImportDraft::Account(account)))
+}
+
+async fn codex_batch_import_draft_from_value(
+    value: serde_json::Value,
+) -> Result<Option<CodexBatchImportDraft>, String> {
+    if let Ok(auth_file) = serde_json::from_value::<CodexAuthFile>(value.clone()) {
+        let fallback_api_key = extract_api_key_from_auth_file(&auth_file);
+        let fallback_provider = infer_api_provider_config(
+            extract_api_base_url_from_auth_file(&auth_file).as_deref(),
+            read_codex_api_provider_mode(&value),
+            value.get("api_provider_id").and_then(|item| item.as_str()),
+            value
+                .get("api_provider_name")
+                .and_then(|item| item.as_str()),
+        );
+        if is_auth_mode_apikey(auth_file.auth_mode.as_deref()) {
+            let api_key = fallback_api_key.ok_or("auth.json 缺少 OPENAI_API_KEY")?;
+            let mut account = CodexAccount::new_api_key(
+                build_api_key_account_id(&api_key),
+                build_api_key_email(&api_key),
+                api_key,
+                fallback_provider.mode,
+                fallback_provider.base_url,
+                fallback_provider.provider_id,
+                fallback_provider.provider_name,
+                Vec::new(),
+            );
+            apply_api_key_import_metadata(&mut account, &value);
+            return Ok(Some(CodexBatchImportDraft::Account(account)));
+        }
+        if let Some(tokens) = auth_file.tokens {
+            let account_id_hint = tokens.account_id.clone();
+            let tokens = CodexTokens {
+                id_token: tokens.id_token,
+                access_token: tokens.access_token,
+                refresh_token: tokens.refresh_token,
+            };
+            if normalize_optional_ref(Some(&tokens.id_token)).is_none()
+                && decode_jwt_payload_value(&tokens.access_token).is_some()
+            {
+                return Ok(Some(CodexBatchImportDraft::AccessToken {
+                    access_token: tokens.access_token,
+                    account_note: None,
+                }));
+            }
+            return Ok(Some(CodexBatchImportDraft::FullToken {
+                tokens,
+                account_id_hint,
+                account_note: None,
+            }));
+        }
+        if let Some(api_key) = fallback_api_key {
+            let mut account = CodexAccount::new_api_key(
+                build_api_key_account_id(&api_key),
+                build_api_key_email(&api_key),
+                api_key,
+                fallback_provider.mode,
+                fallback_provider.base_url,
+                fallback_provider.provider_id,
+                fallback_provider.provider_name,
+                Vec::new(),
+            );
+            apply_api_key_import_metadata(&mut account, &value);
+            return Ok(Some(CodexBatchImportDraft::Account(account)));
+        }
+    }
+
+    if let Some(draft) = api_key_draft_from_value(&value, None)? {
+        return Ok(Some(draft));
+    }
+
+    if let Some(candidate) = extract_codex_import_candidate_from_value(&value) {
+        return match candidate {
+            CodexJsonImportCandidate::RefreshToken {
+                refresh_token,
+                account_note,
+            } => {
+                let tokens = codex_oauth::refresh_access_token(&refresh_token).await?;
+                Ok(Some(CodexBatchImportDraft::FullToken {
+                    tokens,
+                    account_id_hint: None,
+                    account_note,
+                }))
+            }
+            other => Ok(Some(codex_batch_import_draft_from_candidate(other))),
+        };
+    }
+
+    if let Ok(account) = serde_json::from_value::<CodexAccount>(value) {
+        return Ok(Some(CodexBatchImportDraft::Account(account)));
+    }
+
+    Ok(None)
+}
+
+fn codex_batch_import_values_from_content(content: &str) -> Result<Vec<serde_json::Value>, String> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+        let mut values = Vec::new();
+        for line in trimmed
+            .lines()
+            .filter_map(|line| normalize_optional_ref(Some(line)))
+        {
+            match serde_json::from_str::<serde_json::Value>(&line) {
+                Ok(serde_json::Value::Array(items)) => values.extend(items),
+                Ok(value) => values.push(value),
+                Err(_) => values.push(serde_json::Value::String(line)),
+            }
+        }
+        return Ok(values);
+    }
+
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(value) => {
+            if looks_like_sub2api_export(&value) {
+                let accounts = value
+                    .get("accounts")
+                    .and_then(|item| item.as_array())
+                    .ok_or("Sub2API JSON 缺少 accounts 数组")?;
+                return Ok(accounts
+                    .iter()
+                    .filter(|item| is_sub2api_codex_oauth_account(item))
+                    .cloned()
+                    .collect());
+            }
+            match value {
+                serde_json::Value::Array(items) => Ok(items),
+                other => Ok(vec![other]),
+            }
+        }
+        Err(_) => parse_line_delimited_json_values(trimmed).map(|items| items.unwrap_or_default()),
+    }
+}
+
+fn codex_batch_import_account_type(account: &CodexAccount) -> String {
+    if account.is_api_key_auth() {
+        "API Key".to_string()
+    } else if normalize_optional_ref(account.tokens.refresh_token.as_deref()).is_some() {
+        "OAuth".to_string()
+    } else {
+        "Access Token".to_string()
+    }
+}
+
+async fn build_codex_batch_import_item(
+    session_id: &str,
+    index: usize,
+    source: String,
+    value: serde_json::Value,
+    check_quota: bool,
+) -> CodexBatchImportCachedItem {
+    let item_id = format!("{}-item-{}", session_id, index + 1);
+    let draft = match codex_batch_import_draft_from_value(value).await {
+        Ok(Some(draft)) => draft,
+        Ok(None) => {
+            return CodexBatchImportCachedItem {
+                preview: CodexBatchImportItem {
+                    item_id,
+                    source,
+                    label: "未识别账号".to_string(),
+                    account_id: None,
+                    email: None,
+                    account_type: "-".to_string(),
+                    provider: None,
+                    quota_status: "skipped".to_string(),
+                    quota_error: None,
+                    status: "invalid".to_string(),
+                    error: Some("未找到有效的 Codex 账号凭据".to_string()),
+                    default_selected: false,
+                    selectable: false,
+                    existing: false,
+                },
+                draft: None,
+                quota: None,
+            };
+        }
+        Err(error) => {
+            return CodexBatchImportCachedItem {
+                preview: CodexBatchImportItem {
+                    item_id,
+                    source,
+                    label: "解析失败".to_string(),
+                    account_id: None,
+                    email: None,
+                    account_type: "-".to_string(),
+                    provider: None,
+                    quota_status: "skipped".to_string(),
+                    quota_error: None,
+                    status: "invalid".to_string(),
+                    error: Some(error),
+                    default_selected: false,
+                    selectable: false,
+                    existing: false,
+                },
+                draft: None,
+                quota: None,
+            };
+        }
+    };
+
+    let account = match preview_account_for_draft(&draft) {
+        Ok(account) => account,
+        Err(error) => {
+            return CodexBatchImportCachedItem {
+                preview: CodexBatchImportItem {
+                    item_id,
+                    source,
+                    label: "解析失败".to_string(),
+                    account_id: None,
+                    email: None,
+                    account_type: "-".to_string(),
+                    provider: None,
+                    quota_status: "skipped".to_string(),
+                    quota_error: None,
+                    status: "invalid".to_string(),
+                    error: Some(error),
+                    default_selected: false,
+                    selectable: false,
+                    existing: false,
+                },
+                draft: None,
+                quota: None,
+            };
+        }
+    };
+
+    let existing = load_account(&account.id).is_some();
+    let (quota_status, quota_error, quota, status) = if check_quota {
+        let quota_result = crate::modules::codex_quota::probe_import_account_quota(&account).await;
+        let (quota_status, quota_error, quota) = match quota_result {
+            Ok(quota) => ("success".to_string(), None, Some(quota)),
+            Err(error) => ("failed".to_string(), Some(error), None),
+        };
+        let status = if quota_status == "failed" {
+            "quota_failed".to_string()
+        } else if existing {
+            "existing".to_string()
+        } else {
+            "ready".to_string()
+        };
+        (quota_status, quota_error, quota, status)
+    } else if existing {
+        ("skipped".to_string(), None, None, "existing".to_string())
+    } else {
+        ("skipped".to_string(), None, None, "ready".to_string())
+    };
+    let default_selected = status == "ready" || status == "existing";
+    CodexBatchImportCachedItem {
+        preview: CodexBatchImportItem {
+            item_id,
+            source,
+            label: account
+                .account_name
+                .clone()
+                .unwrap_or_else(|| account.email.clone()),
+            account_id: Some(account.id.clone()),
+            email: Some(account.email.clone()),
+            account_type: codex_batch_import_account_type(&account),
+            provider: account
+                .api_provider_name
+                .clone()
+                .or(account.api_provider_id.clone())
+                .or(account.api_base_url.clone()),
+            quota_status,
+            quota_error,
+            status,
+            error: None,
+            default_selected,
+            selectable: true,
+            existing,
+        },
+        draft: Some(draft),
+        quota,
+    }
+}
+
+async fn run_codex_batch_import_scan(
+    app: tauri::AppHandle,
+    session_id: String,
+    file_paths: Vec<String>,
+    check_quota: bool,
+) {
+    let cancel = {
+        let sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .map(|session| session.cancel.clone())
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(true)))
+    };
+    let mut values: Vec<CodexBatchImportSourceItem> = Vec::new();
+    let mut read_failures: Vec<CodexBatchImportCachedItem> = Vec::new();
+
+    for file_path in file_paths {
+        if cancel.load(Ordering::SeqCst) {
+            break;
+        }
+        let path = Path::new(&file_path);
+        let source = path
+            .file_name()
+            .and_then(|item| item.to_str())
+            .unwrap_or(&file_path)
+            .to_string();
+        match fs::read_to_string(path) {
+            Ok(content) => match codex_batch_import_values_from_content(&content) {
+                Ok(items) => {
+                    values.extend(items.into_iter().map(|item| CodexBatchImportSourceItem {
+                        source: source.clone(),
+                        value: item,
+                    }));
+                }
+                Err(error) => read_failures.push(CodexBatchImportCachedItem {
+                    preview: CodexBatchImportItem {
+                        item_id: format!("{}-file-error-{}", session_id, read_failures.len() + 1),
+                        source,
+                        label: "文件解析失败".to_string(),
+                        account_id: None,
+                        email: None,
+                        account_type: "-".to_string(),
+                        provider: None,
+                        quota_status: "skipped".to_string(),
+                        quota_error: None,
+                        status: "invalid".to_string(),
+                        error: Some(error),
+                        default_selected: false,
+                        selectable: false,
+                        existing: false,
+                    },
+                    draft: None,
+                    quota: None,
+                }),
+            },
+            Err(error) => read_failures.push(CodexBatchImportCachedItem {
+                preview: CodexBatchImportItem {
+                    item_id: format!("{}-file-error-{}", session_id, read_failures.len() + 1),
+                    source,
+                    label: "文件读取失败".to_string(),
+                    account_id: None,
+                    email: None,
+                    account_type: "-".to_string(),
+                    provider: None,
+                    quota_status: "skipped".to_string(),
+                    quota_error: None,
+                    status: "invalid".to_string(),
+                    error: Some(error.to_string()),
+                    default_selected: false,
+                    selectable: false,
+                    existing: false,
+                },
+                draft: None,
+                quota: None,
+            }),
+        }
+    }
+
+    let total = values.len() + read_failures.len();
+    {
+        let mut sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        if let Some(session) = sessions.get_mut(&session_id) {
+            session.source_items = values;
+            session.next_index = 0;
+            session.total = total;
+            session.items = read_failures;
+            session.check_quota = check_quota;
+        }
+    }
+    run_codex_batch_import_resume(app, session_id).await;
+}
+
+async fn run_codex_batch_import_resume(app: tauri::AppHandle, session_id: String) {
+    let (cancel, check_quota, source_items, start_index, mut items, total) = {
+        let mut sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        let Some(session) = sessions.get_mut(&session_id) else {
+            return;
+        };
+        session.cancel.store(false, Ordering::SeqCst);
+        session.status = "scanning".to_string();
+        (
+            session.cancel.clone(),
+            session.check_quota,
+            session.source_items.clone(),
+            session.next_index,
+            session.items.clone(),
+            session.total,
+        )
+    };
+
+    emit_codex_batch_import_progress(
+        &app,
+        codex_batch_import_progress_from_items(
+            &session_id,
+            "scanning",
+            check_quota,
+            items.len(),
+            total,
+            &items,
+            None,
+        ),
+    );
+
+    for (index, source_item) in source_items.into_iter().enumerate().skip(start_index) {
+        if cancel.load(Ordering::SeqCst) {
+            break;
+        }
+        let cached = build_codex_batch_import_item(
+            &session_id,
+            index,
+            source_item.source,
+            source_item.value,
+            check_quota,
+        )
+        .await;
+        let current_label = Some(cached.preview.label.clone());
+        items.push(cached);
+        {
+            let mut sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+            if let Some(session) = sessions.get_mut(&session_id) {
+                session.next_index = index + 1;
+                session.items = items.clone();
+            }
+        }
+        emit_codex_batch_import_progress(
+            &app,
+            codex_batch_import_progress_from_items(
+                &session_id,
+                "scanning",
+                check_quota,
+                items.len(),
+                total,
+                &items,
+                current_label,
+            ),
+        );
+        let preview = {
+            let sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+            sessions
+                .get(&session_id)
+                .map(|session| codex_batch_import_preview_from_session(&session_id, session))
+        };
+        if let Some(preview) = preview {
+            emit_codex_batch_import_preview(&app, preview);
+        }
+    }
+
+    let status = if cancel.load(Ordering::SeqCst) {
+        "cancelled"
+    } else if {
+        let sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .map(|session| session.next_index < session.source_items.len())
+            .unwrap_or(false)
+    } {
+        "cancelled"
+    } else {
+        "ready"
+    };
+    let preview = {
+        let mut sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        let session =
+            sessions
+                .entry(session_id.clone())
+                .or_insert_with(|| CodexBatchImportSession {
+                    status: status.to_string(),
+                    check_quota,
+                    cancel: cancel.clone(),
+                    source_items: Vec::new(),
+                    next_index: 0,
+                    total: items.len(),
+                    items: Vec::new(),
+                });
+        session.status = status.to_string();
+        session.items = items;
+        codex_batch_import_preview_from_session(&session_id, session)
+    };
+    emit_codex_batch_import_completed(&app, preview);
+}
+
+pub fn start_codex_batch_import_from_files(
+    app: tauri::AppHandle,
+    file_paths: Vec<String>,
+    check_quota: bool,
+) -> Result<CodexBatchImportStartResult, String> {
+    if file_paths.is_empty() {
+        return Err("未选择任何文件".to_string());
+    }
+    ensure_storage_writable_for_import()?;
+    let session_id = next_codex_batch_import_session_id();
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        sessions.insert(
+            session_id.clone(),
+            CodexBatchImportSession {
+                status: "scanning".to_string(),
+                check_quota,
+                cancel,
+                source_items: Vec::new(),
+                next_index: 0,
+                total: 0,
+                items: Vec::new(),
+            },
+        );
+    }
+    let task_session_id = session_id.clone();
+    tauri::async_runtime::spawn(async move {
+        run_codex_batch_import_scan(app, task_session_id, file_paths, check_quota).await;
+    });
+    Ok(CodexBatchImportStartResult { session_id })
+}
+
+pub fn cancel_codex_batch_import(session_id: &str) -> Result<(), String> {
+    let sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+    let session = sessions
+        .get(session_id)
+        .ok_or_else(|| "导入会话不存在".to_string())?;
+    session.cancel.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+pub fn resume_codex_batch_import(app: tauri::AppHandle, session_id: &str) -> Result<(), String> {
+    {
+        let mut sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| "导入会话不存在".to_string())?;
+        if session.status != "cancelled" {
+            return Err("只有已取消的导入会话可以继续".to_string());
+        }
+        if session.next_index >= session.source_items.len() {
+            session.status = "ready".to_string();
+            return Ok(());
+        }
+        session.cancel.store(false, Ordering::SeqCst);
+        session.status = "scanning".to_string();
+    }
+
+    let task_session_id = session_id.to_string();
+    tauri::async_runtime::spawn(async move {
+        run_codex_batch_import_resume(app, task_session_id).await;
+    });
+    Ok(())
+}
+
+pub fn get_codex_batch_import_preview(session_id: &str) -> Result<CodexBatchImportPreview, String> {
+    let sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+    let session = sessions
+        .get(session_id)
+        .ok_or_else(|| "导入会话不存在".to_string())?;
+    Ok(codex_batch_import_preview_from_session(session_id, session))
+}
+
+pub fn confirm_codex_batch_import(
+    session_id: &str,
+    item_ids: &[String],
+) -> Result<CodexBatchImportConfirmResult, String> {
+    ensure_storage_writable_for_import()?;
+    let selected: HashSet<String> = item_ids.iter().cloned().collect();
+    let cached_items = {
+        let sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| "导入会话不存在".to_string())?;
+        session.items.clone()
+    };
+
+    let mut imported = Vec::new();
+    let mut failed = Vec::new();
+    for cached in cached_items {
+        if !selected.contains(&cached.preview.item_id) {
+            continue;
+        }
+        let Some(draft) = cached.draft else {
+            failed.push(CodexFileImportFailure {
+                email: cached.preview.label,
+                error: cached
+                    .preview
+                    .error
+                    .unwrap_or_else(|| "无可导入账号".to_string()),
+            });
+            continue;
+        };
+        let result = match draft {
+            CodexBatchImportDraft::Account(account) => import_account_struct(account),
+            CodexBatchImportDraft::FullToken {
+                tokens,
+                account_id_hint,
+                account_note,
+            } => {
+                let mut account = upsert_account_with_hints(tokens, account_id_hint, None)?;
+                if account_note.is_some() {
+                    account.account_note = account_note;
+                    save_account(&account)?;
+                }
+                Ok(account)
+            }
+            CodexBatchImportDraft::AccessToken {
+                access_token,
+                account_note,
+            } => upsert_account_from_access_token(access_token, account_note),
+        };
+        match result {
+            Ok(mut account) => {
+                if let Some(quota) = cached.quota.clone() {
+                    account.quota = Some(quota);
+                    account.quota_error = None;
+                    account.usage_updated_at = Some(chrono::Utc::now().timestamp());
+                    save_account(&account)?;
+                }
+                imported.push(account);
+            }
+            Err(error) => failed.push(CodexFileImportFailure {
+                email: cached.preview.label,
+                error,
+            }),
+        }
+    }
+
+    {
+        let mut sessions = CODEX_BATCH_IMPORT_SESSIONS.lock().unwrap();
+        sessions.remove(session_id);
+    }
+
+    Ok(CodexBatchImportConfirmResult { imported, failed })
 }
 
 fn normalize_auth_file_plan_type(value: Option<&str>) -> Option<String> {
@@ -4687,8 +6008,8 @@ mod tests {
         read_api_provider_from_config_toml, read_quick_config_from_config_toml,
         resolve_api_provider_config, save_account, save_account_index,
         should_accept_authority_snapshot, sync_account_from_auth_dir,
-        sync_managed_projection_from_auth_dir, upsert_account_from_access_token,
-        upsert_account_from_auth_tokens, validate_api_key_credentials,
+        sync_managed_projection_from_auth_dir, upsert_account, upsert_account_from_access_token,
+        upsert_account_from_auth_tokens, validate_api_key_credentials, write_account_bundle_to_dir,
         write_api_key_provider_to_config_toml, write_api_provider_to_config_toml,
         write_managed_projection_to_dir, write_quick_config_to_config_toml, ApiProviderConfig,
         CodexAccountIndex, CodexAccountSummary, CodexAuthFile, CodexAuthTokens,
@@ -4990,7 +6311,7 @@ mod tests {
     }
 
     #[test]
-    fn build_auth_file_value_keeps_empty_refresh_token_field_for_cpa_accounts() {
+    fn build_auth_file_value_omits_refresh_token_when_account_has_none() {
         let mut account = CodexAccount::new(
             "codex-cpa-account".to_string(),
             "cpa@example.com".to_string(),
@@ -5008,11 +6329,7 @@ mod tests {
             .and_then(|value| value.as_object())
             .expect("tokens object");
 
-        assert!(tokens.contains_key("refresh_token"));
-        assert_eq!(
-            tokens.get("refresh_token").and_then(|value| value.as_str()),
-            Some("")
-        );
+        assert!(!tokens.contains_key("refresh_token"));
     }
 
     #[test]
@@ -5381,6 +6698,75 @@ mod tests {
     }
 
     #[test]
+    fn upsert_existing_account_keeps_own_refresh_token_when_import_has_none() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = TestEnvGuard::new("codex-preserve-refresh-token-test");
+        let existing = seed_oauth_account(make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "old",
+            "rt-existing",
+        ));
+        let mut imported_tokens = make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "new",
+            "rt-unused",
+        );
+        let imported_access_token = imported_tokens.access_token.clone();
+        imported_tokens.refresh_token = None;
+
+        let account = upsert_account(imported_tokens).expect("upsert existing account");
+
+        assert_eq!(account.id, existing.id);
+        assert_eq!(account.tokens.access_token, imported_access_token);
+        assert_eq!(account.tokens.refresh_token.as_deref(), Some("rt-existing"));
+        let persisted = load_account(&account.id).expect("persisted account");
+        assert_eq!(
+            persisted.tokens.refresh_token.as_deref(),
+            Some("rt-existing")
+        );
+    }
+
+    #[test]
+    fn upsert_access_token_only_existing_account_keeps_own_refresh_token() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = TestEnvGuard::new("codex-access-token-preserve-refresh-test");
+        let existing = upsert_account(make_codex_tokens(
+            "access@example.com",
+            "acc-access",
+            "org-access",
+            "old",
+            "rt-existing",
+        ))
+        .expect("seed existing account");
+        let access_token = make_jwt(serde_json::json!({
+            "email": "access@example.com",
+            "sub": "user-access-new",
+            "https://api.openai.com/auth": {
+                "chatgpt_account_id": "acc-access",
+                "chatgpt_user_id": "user-access-new",
+                "chatgpt_plan_type": "team",
+                "poid": "org-access"
+            }
+        }));
+
+        let account =
+            upsert_account_from_access_token(access_token.clone(), None).expect("upsert AT only");
+
+        assert_eq!(account.id, existing.id);
+        assert_eq!(account.tokens.access_token, access_token);
+        assert_eq!(account.tokens.refresh_token.as_deref(), Some("rt-existing"));
+        let persisted = load_account(&account.id).expect("persisted account");
+        assert_eq!(
+            persisted.tokens.refresh_token.as_deref(),
+            Some("rt-existing")
+        );
+    }
+
+    #[test]
     fn extracts_email_from_openai_profile_claim() {
         let id_token = make_jwt(serde_json::json!({
             "aud": ["https://api.openai.com/v1"],
@@ -5723,6 +7109,7 @@ mod tests {
             &config_path,
             r#"model_provider = "codex_local_access"
 openai_base_url = "https://legacy.example.com/v1"
+model_catalog_json = "cockpit-provider-model-catalog.json"
 model_context_window = 1000000
 
 [model_providers.codex_local_access]
@@ -5769,6 +7156,7 @@ requires_openai_auth = false
         assert!(!content.contains("[model_providers.cockpit_api]"));
         assert!(!content.contains("[model_providers.openai_api_key]"));
         assert!(content.contains("[model_providers.user_manual_provider_not_managed]"));
+        assert!(!content.contains("model_catalog_json"));
         assert!(!content.contains("openai_base_url"));
         assert!(content.contains("model_context_window = 1000000"));
         assert_eq!(
@@ -5899,13 +7287,118 @@ requires_openai_auth = false
     }
 
     #[test]
-    fn api_key_config_toml_cleans_legacy_model_provider_sections() {
+    fn api_key_bundle_bound_to_empty_id_token_oauth_writes_api_key_auth_file() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let env = TestEnvGuard::new("codex-api-key-bound-oauth-auth-file-test");
+        let mut oauth_tokens = make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "empty-id-token",
+            "rt-empty-id-token",
+        );
+        oauth_tokens.id_token = String::new();
+        let oauth_account = seed_oauth_account(oauth_tokens);
+
+        let mut api_key_account = CodexAccount::new_api_key(
+            "local-access-runtime".to_string(),
+            "api-service-local".to_string(),
+            "local-service-key".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("http://127.0.0.1:14998/v1".to_string()),
+            Some("codex_local_access".to_string()),
+            Some("Codex API Service".to_string()),
+            Vec::new(),
+        );
+        api_key_account.bound_oauth_account_id = Some(oauth_account.id.clone());
+        let profile_dir = env.home_dir.join("managed-profile");
+
+        write_account_bundle_to_dir(&profile_dir, &api_key_account).expect("write account bundle");
+
+        let auth_file: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(profile_dir.join("auth.json")).expect("read auth file"),
+        )
+        .expect("parse auth file");
+        assert_eq!(
+            auth_file.get("auth_mode").and_then(|value| value.as_str()),
+            Some("apikey")
+        );
+        assert_eq!(
+            auth_file
+                .get("OPENAI_API_KEY")
+                .and_then(|value| value.as_str()),
+            Some("local-service-key")
+        );
+        assert!(
+            auth_file.get("tokens").is_none(),
+            "API-key local access profile should not write OAuth tokens: {}",
+            auth_file
+        );
+
+        let config = fs::read_to_string(profile_dir.join("config.toml")).expect("read config");
+        assert!(config.contains("model_provider = \"codex_local_access\""));
+        assert!(config.contains("base_url = \"http://127.0.0.1:14998/v1\""));
+        assert!(config.contains("experimental_bearer_token = \"local-service-key\""));
+    }
+
+    #[test]
+    fn api_key_bundle_bound_to_full_oauth_keeps_oauth_auth_file() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let env = TestEnvGuard::new("codex-api-key-bound-full-oauth-auth-file-test");
+        let oauth_account = seed_oauth_account(make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "full",
+            "rt-full",
+        ));
+
+        let mut api_key_account = CodexAccount::new_api_key(
+            "local-access-runtime".to_string(),
+            "api-service-local".to_string(),
+            "local-service-key".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("http://127.0.0.1:14998/v1".to_string()),
+            Some("codex_local_access".to_string()),
+            Some("Codex API Service".to_string()),
+            Vec::new(),
+        );
+        api_key_account.bound_oauth_account_id = Some(oauth_account.id.clone());
+        let profile_dir = env.home_dir.join("managed-profile");
+
+        write_account_bundle_to_dir(&profile_dir, &api_key_account).expect("write account bundle");
+
+        let auth_file: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(profile_dir.join("auth.json")).expect("read auth file"),
+        )
+        .expect("parse auth file");
+        assert!(auth_file.get("auth_mode").is_none());
+        assert_eq!(
+            auth_file.get("OPENAI_API_KEY"),
+            Some(&serde_json::Value::Null)
+        );
+        assert_eq!(
+            auth_file
+                .get("tokens")
+                .and_then(|value| value.get("id_token"))
+                .and_then(|value| value.as_str()),
+            Some(oauth_account.tokens.id_token.as_str())
+        );
+
+        let config = fs::read_to_string(profile_dir.join("config.toml")).expect("read config");
+        assert!(config.contains("model_provider = \"codex_local_access\""));
+        assert!(config.contains("experimental_bearer_token = \"local-service-key\""));
+    }
+
+    #[test]
+    fn api_key_config_toml_only_updates_codex_local_access() {
         let base_dir = make_temp_dir("codex-config-clean-provider-test");
         let config_path = base_dir.join("config.toml");
         fs::write(
             &config_path,
             r#"model_provider = "mimo"
 openai_base_url = "https://legacy.example.com/v1"
+model_catalog_json = "cockpit-provider-model-catalog.json"
 model_context_window = 1000000
 
 [model_providers.mimo]
@@ -5914,11 +7407,34 @@ base_url = "https://mimo.example.com/v1"
 wire_api = "responses"
 requires_openai_auth = true
 
+[model_providers.cockpit_api]
+name = "Cockpit Api"
+base_url = "https://chongcodex.cn/v1"
+wire_api = "responses"
+requires_openai_auth = false
+
+[model_providers.openai_api_key]
+name = "OpenAI Official"
+base_url = "https://api.openai.com/v1"
+wire_api = "responses"
+requires_openai_auth = false
+
+[model_providers.codex_local_access]
+name = "Old Local Access"
+base_url = "https://old-local.example.com/v1"
+wire_api = "responses"
+requires_openai_auth = true
+experimental_bearer_token = "sk-old"
+custom_flag = "keep-me"
+
 [model_providers.relay]
 name = "Relay"
 base_url = "https://relay.example.com/v1"
 wire_api = "responses"
 requires_openai_auth = true
+
+[features]
+multi_agent = true
 "#,
         )
         .expect("write legacy config");
@@ -5936,10 +7452,17 @@ requires_openai_auth = true
         let content = fs::read_to_string(&config_path).expect("read config");
         assert!(content.contains("model_provider = \"codex_local_access\""));
         assert!(content.contains("[model_providers.codex_local_access]"));
-        assert!(!content.contains("[model_providers.mimo]"));
-        assert!(!content.contains("[model_providers.relay]"));
-        assert!(!content.contains("openai_base_url"));
+        assert!(content.contains("base_url = \"https://api.openai.com/v1\""));
+        assert!(content.contains("experimental_bearer_token = \"sk-test\""));
+        assert!(content.contains("custom_flag = \"keep-me\""));
+        assert!(content.contains("[model_providers.mimo]"));
+        assert!(content.contains("[model_providers.cockpit_api]"));
+        assert!(content.contains("[model_providers.openai_api_key]"));
+        assert!(content.contains("[model_providers.relay]"));
+        assert!(content.contains("model_catalog_json = \"cockpit-provider-model-catalog.json\""));
+        assert!(content.contains("openai_base_url = \"https://legacy.example.com/v1\""));
         assert!(content.contains("model_context_window = 1000000"));
+        assert!(content.contains("[features]"));
 
         fs::remove_dir_all(&base_dir).expect("cleanup temp dir");
     }
@@ -6385,6 +7908,11 @@ pub fn update_api_key_credentials(
     api_provider_mode: Option<CodexApiProviderMode>,
     api_provider_id: Option<String>,
     api_provider_name: Option<String>,
+    api_model_catalog: Vec<String>,
+    api_wire_api: Option<String>,
+    api_supports_vision: bool,
+    api_model_vision_support: std::collections::HashMap<String, bool>,
+    api_vision_routing_model: Option<String>,
 ) -> Result<CodexAccount, String> {
     let mut account =
         load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
@@ -6416,7 +7944,16 @@ pub fn update_api_key_credentials(
         account.id = new_id.clone();
     }
 
-    apply_api_key_fields(&mut account, &normalized_key, provider_config);
+    apply_api_key_fields(
+        &mut account,
+        &normalized_key,
+        provider_config,
+        api_model_catalog,
+        api_wire_api,
+        api_supports_vision,
+        api_model_vision_support,
+        api_vision_routing_model,
+    );
     account.update_last_used();
     save_account(&account)?;
 

@@ -26,7 +26,7 @@ pub fn ensure_started() {
         loop {
             if let Some(account_id) = cursor_account::resolve_current_account_id_for_refresh() {
                 if let Err(err) =
-                    cursor_account::refresh_account_quota_only_async(&account_id).await
+                    cursor_account::refresh_account_async(&account_id).await
                 {
                     logger::log_warn(&format!(
                         "[Cursor Refresh] 当前账号配额刷新失败: id={}, error={}",
