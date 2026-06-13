@@ -1952,34 +1952,58 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
     Ok(())
 }
 
-/// 关闭 Cursor，重置 profile 指纹，注入 token（账号总览 Play 与多开实例共用）。
+/// 无忧传统切号 `i()`：close → Kh → Gh → Jh → Yh → Nc（默认 profile）。
+fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
+    let account = load_account(account_id)
+        .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    logger::log_info(&format!("[Cursor Switch] 无忧传统切号: {}", account.email));
+
+    crate::modules::cursor_instance::close_cursor_nirvana_style(20)?;
+
+    let default_dir = get_default_cursor_data_dir()?;
+    switch_tokens_in_profile_db(&default_dir, account_id)?;
+    reset_storage_json_ids_for_profile(&default_dir)?;
+    reset_machine_id_file_for_profile(&default_dir)?;
+
+    if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
+        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches(&cursor_exe);
+    }
+
+    logger::log_info(&format!(
+        "[Cursor Switch] 无忧传统路径换号完成: email={}, profile={}",
+        account.email,
+        default_dir.display()
+    ));
+    Ok(())
+}
+
+/// 账号总览 Play 与多开 Start：默认实例走无忧传统链；多开仅关闭本 profile（strict），不 taskkill 全部 Cursor。
 pub fn switch_cursor_account_to_profile(
     account_id: &str,
     profile_dir: &Path,
 ) -> Result<(), String> {
+    if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
+        return nirvana_traditional_switch_steps(account_id);
+    }
+
     let account = load_account(account_id)
         .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
     let profile_dir_str = profile_dir.to_string_lossy().to_string();
-    if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
-        crate::modules::cursor_instance::close_cursor(&[profile_dir_str], 20)?;
-    } else {
-        crate::modules::cursor_instance::close_cursor_profile_strict(&profile_dir_str, 20)?;
-    }
-    // 先确保 vscdb 存在，再重置指纹，避免「storage.json 新 ID + 复制旧 vscdb 旧 ID」导致登录闪退
+    crate::modules::cursor_instance::close_cursor_profile_strict(&profile_dir_str, 20)?;
     crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
-    hard_reset_cursor_fingerprint_state_for_profile(profile_dir)?;
+
+    switch_tokens_in_profile_db(profile_dir, account_id)?;
+    reset_storage_json_ids_for_profile(profile_dir)?;
+    reset_machine_id_file_for_profile(profile_dir)?;
+
     if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        let reset_machine_guid =
-            crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir);
-        crate::modules::cursor_switch_align::apply_pre_inject_cursor_patches(
+        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches_main_js_only(
             &cursor_exe,
-            reset_machine_guid,
         );
     }
-    clear_switch_auth_keys_for_profile(profile_dir)?;
-    crate::modules::cursor_instance::inject_account_to_profile(profile_dir, account_id)?;
+
     logger::log_info(&format!(
-        "[Cursor Switch] 已切换账号到 profile: email={}, profile={}",
+        "[Cursor Switch] 无忧传统路径换号完成(多开): email={}, profile={}",
         account.email,
         profile_dir.display()
     ));
