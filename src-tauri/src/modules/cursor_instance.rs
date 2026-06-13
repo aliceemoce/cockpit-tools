@@ -1256,6 +1256,17 @@ fn is_valid_launch_workspace(path: &Path) -> bool {
     if path_belongs_to_other_local_user(&path.to_string_lossy()) {
         return false;
     }
+    let lower = normalized.as_str();
+    for blocked in [
+        r"c:\program files",
+        r"c:\program files (x86)",
+        r"c:\windows",
+        r"c:\users\public",
+    ] {
+        if lower.starts_with(blocked) {
+            return false;
+        }
+    }
     let parts: Vec<_> = path.components().collect();
     if parts.len() <= 3 {
         return false;
@@ -1346,7 +1357,9 @@ fn recent_workspace_from_state_vscdb(profile_dir: &Path) -> Option<PathBuf> {
             for field in ["folderUri", "fileUri"] {
                 if let Some(uri) = entry.get(field).and_then(|v| v.as_str()) {
                     if let Some(path) = folder_from_uri(uri) {
-                        return Some(path);
+                        if is_valid_launch_workspace(&path) {
+                            return Some(path);
+                        }
                     }
                 }
             }
