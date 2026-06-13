@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -20,6 +21,7 @@ LOG_DIR = Path.home() / ".antigravity_cockpit" / "logs"
 INSTANCES_JSON = Path.home() / ".antigravity_cockpit" / "cursor_instances.json"
 ACCOUNTS_JSON = Path.home() / ".antigravity_cockpit" / "cursor_accounts.json"
 DEFAULT_PROFILE = Path.home() / "AppData/Roaming/Cursor"
+FORK_EXP = Path.home() / "AppData/Local/Cockpit Tools/cockpit-tools-fork-exp.exe"
 
 # 全部启动后的 Tauri 原生确认框（不在 WebView 树内）
 BULK_START_CONFIRM_TEXTS = (
@@ -223,6 +225,119 @@ def click_native_confirm(timeout_s: float = 12.0) -> tuple[bool, str]:
     return False, ""
 
 
+def click_named_button(win: auto.Control, labels: tuple[str, ...]) -> tuple[bool, str]:
+    for c in walk(win):
+        try:
+            n = (c.Name or "").strip()
+            if c.ControlTypeName != "ButtonControl":
+                continue
+            if n in labels or any(lb in n for lb in labels):
+                if control_visible(c) and ui_invoke(c):
+                    return True, n
+        except Exception:
+            pass
+    return False, ""
+
+
+def collect_visible_button_names(win: auto.Control, limit: int = 40) -> list[str]:
+    names: list[str] = []
+    for c in walk(win):
+        try:
+            if c.ControlTypeName != "ButtonControl":
+                continue
+            n = (c.Name or "").strip()
+            if n and control_visible(c):
+                names.append(n)
+        except Exception:
+            pass
+        if len(names) >= limit:
+            break
+    return names
+
+
+def ensure_fork_exp_running(wait_s: float = 18.0) -> None:
+    r = subprocess.run(
+        ["tasklist", "/FI", "IMAGENAME eq cockpit-tools-fork-exp.exe", "/FO", "CSV", "/NH"],
+        capture_output=True,
+        text=True,
+    )
+    if "cockpit-tools-fork-exp.exe" not in (r.stdout or "").lower():
+        if not FORK_EXP.is_file():
+            return
+        os.environ.setdefault(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--force-renderer-accessibility"
+        )
+        subprocess.Popen([str(FORK_EXP)], env=os.environ.copy())
+        time.sleep(wait_s)
+        return
+    # 已在跑：若树为空则带无障碍参数重启一次
+    wins = list_cockpit_windows()
+    if wins:
+        prepare_visible(max(wins, key=lambda w: w.BoundingRectangle.width() * w.BoundingRectangle.height()))
+        if collect_visible_button_names(wins[0], 5):
+            return
+    subprocess.run(
+        ["powershell", "-NoProfile", "-Command", "Get-Process cockpit-tools-fork-exp -EA SilentlyContinue | Stop-Process -Force"],
+        capture_output=True,
+    )
+    time.sleep(2)
+    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--force-renderer-accessibility"
+    subprocess.Popen([str(FORK_EXP)], env=os.environ.copy())
+    time.sleep(wait_s)
+
+
+def navigate_cursor_sidebar(win: auto.Control) -> bool:
+    ok, _ = click_named_button(win, ("Cursor",))
+    if ok:
+        time.sleep(2.5)
+        return True
+    ok, _ = click_named_button(win, ("更多平台", "More Platforms"))
+    if ok:
+        time.sleep(1.5)
+        ok2, _ = click_named_button(win, ("Cursor",))
+        if ok2:
+            time.sleep(2.5)
+            return True
+    return False
+
+
+def navigate_to_instances_tab(win: auto.Control) -> tuple[bool, str]:
+    for attempt in range(3):
+        prepare_visible(win)
+        dismiss_stray_modals(win)
+        ok, label = find_clickable(win, ("多开实例",), exact=True)
+        if ok:
+            return True, label
+        if attempt == 0 or not navigate_cursor_sidebar(win):
+            navigate_cursor_sidebar(win)
+        time.sleep(2.0)
+        prepare_visible(win)
+        ok, label = find_clickable(win, ("多开实例",), exact=True)
+        if ok:
+            return True, label
+        ok, label = click_named_button(win, ("多开实例",))
+        if ok:
+            return True, label
+        time.sleep(2.0)
+    return False, ""
+
+
+def stop_profile_cursor(profile_dir: str) -> list[int]:
+    norm = profile_dir.replace("/", "\\").lower()
+    killed: list[int] = []
+    for pid, cmd in collect_cursor_cmdlines():
+        extracted = extract_user_data_dir(cmd)
+        if not extracted:
+            continue
+        if extracted.replace("/", "\\").lower() != norm:
+            continue
+        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
+        killed.append(pid)
+    if killed:
+        time.sleep(3)
+    return killed
+
+
 def dismiss_stray_modals(win: auto.Control) -> None:
     for _ in range(3):
         ok, _ = find_clickable(win, ("关闭", "取消", "知道了"), exact=True)
@@ -323,6 +438,84 @@ def cmdline_has_workspace(cmdline: str) -> bool:
     return any(c.lower() in lowered for c in candidates)
 
 
+LOGIN_PAGE_MARKERS = (
+    "sign in to cursor",
+    "welcome to cursor",
+    "welcome back",
+    "the best way to code with ai",
+    "登录",
+    "登录以继续",
+)
+
+
+def is_login_page_blob(blob: str) -> bool:
+    lowered = blob.lower()
+    if any(m in lowered for m in LOGIN_PAGE_MARKERS):
+        return True
+    return "log in" in lowered and "sign up" in lowered
+
+
+def main_cursor_pids_for_profile(profile_dir: str) -> list[int]:
+    norm = profile_dir.replace("/", "\\").lower()
+    pids: list[int] = []
+    for pid, cmd in collect_cursor_cmdlines():
+        extracted = extract_user_data_dir(cmd)
+        if not extracted:
+            continue
+        if extracted.replace("/", "\\").lower() != norm:
+            continue
+        if "--type=" in cmd.lower():
+            continue
+        pids.append(pid)
+    return pids
+
+
+def collect_names_for_pid(pid: int) -> list[str]:
+    names: list[str] = []
+    for w in auto.GetRootControl().GetChildren():
+        try:
+            if int(w.ProcessId or 0) != pid:
+                continue
+            for c in walk(w):
+                n = (c.Name or "").strip()
+                if n:
+                    names.append(n)
+        except Exception:
+            continue
+    return names
+
+
+def check_not_login_page(profile_dir: str) -> tuple[bool, dict]:
+    """多开主进程窗口树中不应出现登录页关键字，且应出现工作区相关文本。"""
+    pids = main_cursor_pids_for_profile(profile_dir)
+    all_names: list[str] = []
+    for pid in pids:
+        all_names.extend(collect_names_for_pid(pid))
+    blob = "\n".join(all_names).lower()
+    login_hits = [m for m in LOGIN_PAGE_MARKERS if m in blob]
+    if is_login_page_blob(blob):
+        if not login_hits:
+            login_hits = ["log_in+sign_up"]
+    workspace_hit = "cockpit-tools" in blob or str(Path.home() / "dev").lower() in blob
+    ok = not login_hits and (workspace_hit or len(pids) > 0)
+    return ok, {
+        "pids": pids,
+        "login_hits": login_hits,
+        "workspace_hit": workspace_hit,
+        "sample_names": all_names[:20],
+    }
+
+
+def load_fixed_bind_accounts() -> dict:
+    inst = json.loads(INSTANCES_JSON.read_text(encoding="utf-8"))
+    multi = inst.get("instances", [{}])[0] if inst.get("instances") else {}
+    return {
+        "default_account_id": inst.get("defaultSettings", {}).get("bindAccountId"),
+        "instance_account_id": multi.get("bindAccountId"),
+        "written_at": datetime.now(timezone.utc).astimezone().isoformat(),
+    }
+
+
 def load_expected() -> dict:
     inst = json.loads(INSTANCES_JSON.read_text(encoding="utf-8"))
     accounts = {
@@ -357,8 +550,19 @@ def tail_switch_logs(since_prefix: str) -> list[str]:
 
 def main() -> int:
     since = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%dT%H:%M")
-    report: dict = {"ok": False, "since": since, "expected": load_expected()}
+    report: dict = {
+        "ok": False,
+        "since": since,
+        "expected": load_expected(),
+        "fixed_bind_accounts": load_fixed_bind_accounts(),
+    }
+    ensure_fork_exp_running()
+    inst_profile = report["expected"].get("instance_profile") or ""
+    if inst_profile:
+        report["stopped_multi_pids"] = stop_profile_cursor(str(inst_profile))
+
     report["default_pids_before"] = snapshot_default_pids()
+    report["default_email_before"] = read_email_from_vscdb(DEFAULT_PROFILE)
 
     wins = list_cockpit_windows()
     if not wins:
@@ -375,15 +579,10 @@ def main() -> int:
 
     dismiss_stray_modals(main_win)
 
-    ok, label = find_clickable(main_win, ("多开实例",), exact=True)
+    ok, label = navigate_to_instances_tab(main_win)
     report["nav_instances"] = {"ok": ok, "label": label}
     if not ok:
-        ok_side, label_side = find_clickable(main_win, ("Cursor",), exact=True)
-        report["nav_cursor_sidebar"] = {"ok": ok_side, "label": label_side}
-        time.sleep(2)
-        prepare_visible(main_win)
-        ok, label = find_clickable(main_win, ("多开实例",), exact=True)
-        report["nav_instances"] = {"ok": ok, "label": label}
+        report["visible_buttons_sample"] = collect_visible_button_names(main_win)
     time.sleep(2)
     prepare_visible(main_win)
 
@@ -416,10 +615,14 @@ def main() -> int:
     default_email = read_email_from_vscdb(DEFAULT_PROFILE)
     inst_profile = Path(report["expected"].get("instance_profile") or "")
     instance_email = read_email_from_vscdb(inst_profile) if inst_profile else None
+    report["default_email_after"] = default_email
     report["vscdb_emails"] = {
         "default": default_email,
         "instance": instance_email,
     }
+
+    not_login_ok, not_login_detail = check_not_login_page(str(inst_profile))
+    report["not_login_page"] = {"ok": not_login_ok, **not_login_detail}
 
     dirs = {p.get("user_data_dir") for p in report["cursor_processes"] if p.get("user_data_dir")}
     report["distinct_profiles"] = len(dirs)
@@ -454,17 +657,32 @@ def main() -> int:
     preserved = [pid for pid in report["default_pids_before"] if pid in report["default_pids_after"]]
     report["default_pids_preserved_count"] = len(preserved)
     default_preserved = len(preserved) == len(report["default_pids_before"]) and len(preserved) > 0
+    default_email_unchanged = (
+        bool(report.get("default_email_before"))
+        and report.get("default_email_before") == default_email
+    )
 
     start_flow_ok = report["click_start_all"]["ok"] and report["confirm_start_all"]["ok"]
-    report["ok"] = bool(
-        start_flow_ok
-        and report["nav_instances"]["ok"]
-        and dual_proc
-        and email_ok
-        and workspace_ok
-        and no_mass_kill
-        and default_preserved
-    )
+    failed = [
+        k
+        for k, v in {
+            "nav_instances": report["nav_instances"]["ok"],
+            "start_all_clicked": report["click_start_all"]["ok"],
+            "confirm_dialog_clicked": report["confirm_start_all"]["ok"],
+            "dual_processes": dual_proc,
+            "emails_match_bind": email_ok,
+            "multi_has_workspace": multi_workspace_ok,
+            "default_profile_online": default_profile_ok,
+            "default_pids_preserved": default_preserved,
+            "default_email_unchanged": default_email_unchanged,
+            "not_login_page": not_login_ok,
+            "no_mass_close": no_mass_kill,
+        }.items()
+        if not v
+    ]
+    report["failed_checks"] = failed
+
+    report["ok"] = bool(start_flow_ok and not failed)
     report["checks"] = {
         "nav_instances": report["nav_instances"]["ok"],
         "start_all_clicked": report["click_start_all"]["ok"],
@@ -474,8 +692,35 @@ def main() -> int:
         "multi_has_workspace": multi_workspace_ok,
         "default_profile_online": default_profile_ok,
         "default_pids_preserved": default_preserved,
+        "default_email_unchanged": default_email_unchanged,
+        "not_login_page": not_login_ok,
         "no_mass_close": no_mass_kill,
     }
+
+    src_candidates = [
+        Path(__file__).resolve().parents[1] / "src-tauri" / "target" / "release" / "cockpit-tools.exe",
+        Path(__file__).resolve().parents[1] / "target" / "release" / "cockpit-tools.exe",
+    ]
+    src_exe = next((p for p in src_candidates if p.is_file()), None)
+    dst_exe = Path.home() / "AppData/Local/Cockpit Tools/cockpit-tools-fork-exp.exe"
+    if src_exe and dst_exe.is_file():
+        report["deploy_proof"] = {
+            "src_path": str(src_exe),
+            "src_size": src_exe.stat().st_size,
+            "dst_size": dst_exe.stat().st_size,
+            "sizes_match": src_exe.stat().st_size == dst_exe.stat().st_size,
+        }
+    report["github_url"] = (
+        "https://github.com/aliceemoce/cockpit-tools/commits/fork-on-upstream-0256"
+    )
+    report["cockpit_running"] = bool(
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "(Get-Process cockpit-tools-fork-exp -EA SilentlyContinue).Count"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        not in ("", "0")
+    )
 
     show_main_window(main_win)
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
