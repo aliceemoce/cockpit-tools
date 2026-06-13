@@ -40,6 +40,7 @@ import {
   getCursorPlanDisplayName,
   getCursorPlanBadgeClass,
   getCursorAccountDisplayEmail,
+  getCursorAccountQuotaPoolId,
   getCursorOnDemandSummary,
   getCursorUsage,
   formatCursorUsageDollars,
@@ -52,6 +53,7 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
+  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -84,6 +86,7 @@ const CURSOR_KNOWN_PLAN_FILTERS = [
   'ULTRA',
 ] as const;
 const CURSOR_TOKEN_SINGLE_EXAMPLE = `eyJhbGciOiJIUzI1NiIs...`;
+const CURSOR_TOKEN_DASHED_EXAMPLE = `glaring-menisci-5o@icloud.com----auth0|user_xxx----eyJaccess...----eyJrefresh...`;
 const CURSOR_TOKEN_BATCH_EXAMPLE = `[
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"a@example.com"},
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"b@example.com"}
@@ -158,6 +161,7 @@ export function CursorAccountsPage() {
       injectToVSCode: cursorService.injectCursorAccount,
     },
     getDisplayEmail: (account) => getCursorAccountDisplayEmail(account),
+    defaultSortBy: 'credits',
   });
 
   const {
@@ -229,7 +233,9 @@ export function CursorAccountsPage() {
 
   const isAbnormalAccount = useCallback(
     (account: CursorAccount) =>
-      isCursorAccountBanned(account) || (account.status || '').toLowerCase() === 'error',
+      isCursorAccountBanned(account) ||
+      (account.status || '').toLowerCase() === 'error' ||
+      isAccountSessionExpired(account.quota_query_last_error),
     [],
   );
 
@@ -255,8 +261,47 @@ export function CursorAccountsPage() {
 
   // ─── Platform-specific: Quota ──────────────────────────────────────
 
+  const resolveRemainingQuotaPercent = useCallback((account: CursorAccount): number | null => {
+    if (account.quota_query_last_error?.trim()) {
+      return null;
+    }
+    const usage = getCursorUsage(account);
+    const ratioPct =
+      usage.planUsedCents != null &&
+      usage.planLimitCents != null &&
+      usage.planLimitCents > 0
+        ? (usage.planUsedCents / usage.planLimitCents) * 100
+        : null;
+    const usedCandidates = [
+      usage.inlineSuggestionsUsedPercent ?? usage.totalPercentUsed ?? ratioPct,
+      usage.autoPercentUsed,
+      usage.apiPercentUsed,
+    ].filter((value): value is number => value != null && Number.isFinite(value));
+    if (usedCandidates.length === 0) {
+      return null;
+    }
+    const maxUsed = Math.min(100, Math.max(0, Math.max(...usedCandidates)));
+    return 100 - maxUsed;
+  }, []);
+
+  const compareUsageUpdatedAt = useCallback((a: CursorAccount, b: CursorAccount): number => {
+    const aUpdated = a.usage_updated_at ?? 0;
+    const bUpdated = b.usage_updated_at ?? 0;
+    return bUpdated - aUpdated;
+  }, []);
+
   const resolveTotalQuota = useCallback(
     (account: CursorAccount) => {
+      const quotaError = account.quota_query_last_error?.trim();
+      if (quotaError) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+          costText: null as string | null,
+          stale: true,
+        };
+      }
       const usage = getCursorUsage(account);
       const ratioPct =
         usage.planUsedCents != null &&
@@ -264,7 +309,17 @@ export function CursorAccountsPage() {
         usage.planLimitCents > 0
           ? (usage.planUsedCents / usage.planLimitCents) * 100
           : null;
-      const total = normalizeCursorPercent(usage.totalPercentUsed ?? ratioPct);
+      const totalSource = usage.totalPercentUsed ?? ratioPct ?? usage.inlineSuggestionsUsedPercent;
+      if (totalSource == null && !account.cursor_usage_raw) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+          costText: null,
+          stale: false,
+        };
+      }
+      const total = normalizeCursorPercent(totalSource);
       const costText = usage.planUsedCents != null && usage.planLimitCents != null
         ? `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`
         : null;
@@ -281,6 +336,13 @@ export function CursorAccountsPage() {
   const resolveAutoQuota = useCallback(
     (account: CursorAccount) => {
       const usage = getCursorUsage(account);
+      if (usage.autoPercentUsed == null && !account.cursor_usage_raw) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+        };
+      }
       const auto = normalizeCursorPercent(usage.autoPercentUsed);
       return {
         percentage: auto.bar,
@@ -294,6 +356,13 @@ export function CursorAccountsPage() {
   const resolveApiQuota = useCallback(
     (account: CursorAccount) => {
       const usage = getCursorUsage(account);
+      if (usage.apiPercentUsed == null && !account.cursor_usage_raw) {
+        return {
+          percentage: 0,
+          quotaClass: 'unknown',
+          valueText: '—',
+        };
+      }
       const api = normalizeCursorPercent(usage.apiPercentUsed);
       return {
         percentage: api.bar,
@@ -441,31 +510,53 @@ export function CursorAccountsPage() {
   // ─── Filtering & Sorting ──────────────────────────────────────────
 
   const compareAccountsBySort = useCallback((a: CursorAccount, b: CursorAccount) => {
+    const aExpired = isAccountSessionExpired(a.quota_query_last_error);
+    const bExpired = isAccountSessionExpired(b.quota_query_last_error);
+    if (aExpired !== bExpired) {
+      return aExpired ? 1 : -1;
+    }
+
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;
     }
 
+    const aQuotaFailed = Boolean(a.quota_query_last_error?.trim());
+    const bQuotaFailed = Boolean(b.quota_query_last_error?.trim());
+    if (aQuotaFailed !== bQuotaFailed) {
+      return aQuotaFailed ? 1 : -1;
+    }
+
     if (sortBy === 'created_at') {
       const diff = b.created_at - a.created_at;
-      return sortDirection === 'desc' ? diff : -diff;
+      if (diff !== 0) {
+        return sortDirection === 'desc' ? diff : -diff;
+      }
+      return compareUsageUpdatedAt(a, b);
     }
     if (sortBy === 'plan_end') {
       const aReset = getCursorUsage(a).allowanceResetAt ?? null;
       const bReset = getCursorUsage(b).allowanceResetAt ?? null;
-      if (aReset == null && bReset == null) return 0;
+      if (aReset == null && bReset == null) return compareUsageUpdatedAt(a, b);
       if (aReset == null) return 1;
       if (bReset == null) return -1;
       const diff = bReset - aReset;
+      if (diff !== 0) {
+        return sortDirection === 'desc' ? diff : -diff;
+      }
+      return compareUsageUpdatedAt(a, b);
+    }
+    const aValue = resolveRemainingQuotaPercent(a);
+    const bValue = resolveRemainingQuotaPercent(b);
+    if (aValue == null && bValue == null) return compareUsageUpdatedAt(a, b);
+    if (aValue == null) return 1;
+    if (bValue == null) return -1;
+    const diff = bValue - aValue;
+    if (diff !== 0) {
       return sortDirection === 'desc' ? diff : -diff;
     }
-    const aUsage = getCursorUsage(a);
-    const bUsage = getCursorUsage(b);
-    const aValue = 100 - (aUsage.inlineSuggestionsUsedPercent ?? 0);
-    const bValue = 100 - (bUsage.inlineSuggestionsUsedPercent ?? 0);
-    const diff = bValue - aValue;
-    return sortDirection === 'desc' ? diff : -diff;
-  }, [currentAccountId, sortBy, sortDirection]);
+    return compareUsageUpdatedAt(a, b);
+  }, [compareUsageUpdatedAt, currentAccountId, resolveRemainingQuotaPercent, sortBy, sortDirection]);
 
   const sortedAccountsForInstances = useMemo(
     () => [...accounts].sort(compareAccountsBySort),
@@ -481,7 +572,7 @@ export function CursorAccountsPage() {
         const haystacks = [
           getCursorAccountDisplayEmail(account),
           account.id,
-          account.auth_id ?? '',
+          getCursorAccountQuotaPoolId(account),
           account.membership_type ?? '',
           account.subscription_status ?? '',
         ];
@@ -567,7 +658,7 @@ export function CursorAccountsPage() {
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authIdText = (account.auth_id || '').trim();
+      const authIdText = getCursorAccountQuotaPoolId(account);
       const maskedAuthIdText = authIdText ? maskAccountText(authIdText) : '--';
       const planLabel = resolvePlanLabel(account);
       const total = resolveTotalQuota(account);
@@ -589,6 +680,8 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <div
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
@@ -608,12 +701,17 @@ export function CursorAccountsPage() {
                 {t('accounts.status.refreshFailed')}
               </span>
             )}
-            {quotaError && (
+            {isSessionExpired ? (
+              <span className="status-pill forbidden" title={quotaError}>
+                <CircleAlert size={12} />
+                {t('accounts.status.sessionExpired', '会话已过期')}
+              </span>
+            ) : quotaError ? (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
-            )}
+            ) : null}
             {isBanned && (
               <span className="status-pill forbidden" title={bannedTitle}>
                 <Lock size={12} />
@@ -639,7 +737,9 @@ export function CursorAccountsPage() {
           )}
 
           <div className="ghcp-quota-section">
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-credit-item">
                   <div className="quota-header">
@@ -734,7 +834,7 @@ export function CursorAccountsPage() {
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authIdText = (account.auth_id || '').trim();
+      const authIdText = getCursorAccountQuotaPoolId(account);
       const maskedAuthIdText = authIdText ? maskAccountText(authIdText) : '--';
       const planLabel = resolvePlanLabel(account);
       const total = resolveTotalQuota(account);
@@ -755,6 +855,8 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
 
+      const isSessionExpired = isAccountSessionExpired(quotaError);
+
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={`${isCurrent ? 'current' : ''} ${isBanned ? 'disabled' : ''}`}>
           <td><input type="checkbox" checked={selected.has(account.id)} onChange={() => toggleSelect(account.id)} /></td>
@@ -770,14 +872,21 @@ export function CursorAccountsPage() {
                   {isBanned && (<span className="status-pill forbidden" title={bannedTitle}><Lock size={12} />{t('accounts.status.forbidden')}</span>)}
                 </div>
               )}
-              {quotaError && (
+              {isSessionExpired ? (
+                <div className="account-sub-line">
+                  <span className="status-pill forbidden" title={quotaError}>
+                    <CircleAlert size={12} />
+                    {t('accounts.status.sessionExpired', '会话已过期')}
+                  </span>
+                </div>
+              ) : quotaError ? (
                 <div className="account-sub-line">
                   <span className="status-pill warning" title={quotaError}>
                     <CircleAlert size={12} />
                     {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </span>
                 </div>
-              )}
+              ) : null}
               <div className="account-sub-line">
                 <span className="kiro-table-subline">Auth ID: {maskedAuthIdText}</span>
               </div>
@@ -791,7 +900,9 @@ export function CursorAccountsPage() {
           </td>
           <td><span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span></td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <div className="quota-item windsurf-table-credit-item">
                 <div className="quota-header">
                   <span className="quota-name">Total Usage</span>
@@ -816,7 +927,9 @@ export function CursorAccountsPage() {
             )}
           </td>
           <td>
-            {hasQuotaData ? (
+            {isSessionExpired ? (
+              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-table-credit-item">
                   <div className="quota-header">
@@ -1138,7 +1251,7 @@ export function CursorAccountsPage() {
       />
 
       {showAddModal && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={closeAddModal}>
           <div className="modal-content ghcp-add-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{t('cursor.addModal.title', '添加 Cursor 账号')}</h2>
@@ -1225,14 +1338,18 @@ export function CursorAccountsPage() {
 
               {addTab === 'token' && (
                 <div className="add-section">
-                  <p className="section-desc">{t('cursor.token.desc', '粘贴您的 Cursor Access Token（JWT）或导出的 JSON 数据。')}</p>
+                  <p className="section-desc">{t('cursor.token.desc', '粘贴 Cursor Access Token（JWT）、导出的 JSON，或 邮箱----auth_id----access_token----refresh_token。')}</p>
                   <details className="token-format-collapse">
                     <summary className="token-format-collapse-summary">{t('cursor.token.formatHint', '必填字段与示例（点击展开）')}</summary>
                     <div className="token-format">
-                      <p className="token-format-required">{t('cursor.token.formatRequired', '单条 Token 直接粘贴 JWT；批量导入使用 JSON 数组格式')}</p>
+                      <p className="token-format-required">{t('cursor.token.formatRequired', '支持三种格式：单条 JWT、JSON、以及 邮箱----auth_id----access_token----refresh_token')}</p>
                       <div className="token-format-group">
                         <div className="token-format-label">{t('cursor.token.singleExample', '单条示例（JWT）')}</div>
                         <pre className="token-format-code">{CURSOR_TOKEN_SINGLE_EXAMPLE}</pre>
+                      </div>
+                      <div className="token-format-group">
+                        <div className="token-format-label">{t('cursor.token.dashedExample', '单条示例（分隔格式）')}</div>
+                        <pre className="token-format-code">{CURSOR_TOKEN_DASHED_EXAMPLE}</pre>
                       </div>
                       <div className="token-format-group">
                         <div className="token-format-label">{t('cursor.token.batchExample', '批量示例（JSON）')}</div>

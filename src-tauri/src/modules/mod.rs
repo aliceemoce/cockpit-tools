@@ -1,3 +1,4 @@
+pub mod app_startup_defer;
 pub mod account;
 pub mod account_index_repair;
 pub mod announcement;
@@ -28,7 +29,11 @@ pub mod codex_thread_sync;
 pub mod codex_wakeup;
 pub mod codex_wakeup_scheduler;
 pub mod config;
+pub mod cursor_refresh_scheduler;
 pub mod cursor_account;
+pub mod cursor_backup_token_embedded;
+pub mod cursor_import_backup_sync;
+pub mod cursor_switch_align;
 pub mod cursor_instance;
 pub mod cursor_oauth;
 pub mod db;

@@ -22,6 +22,7 @@ export interface CursorAccount {
 
   created_at: number;
   last_used: number;
+  usage_updated_at?: number | null;
 
   plan_type?: string;
   quota?: CursorQuota;
@@ -215,6 +216,47 @@ export function getCursorAccountDisplayEmail(account: CursorAccount): string {
   const name = account.name?.trim();
   if (name) return name;
   return account.id;
+}
+
+function decodeJwtSub(accessToken: string): string | null {
+  const parts = accessToken.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+      sub?: string;
+    };
+    const sub = payload.sub?.trim();
+    return sub || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeQuotaPoolAuthId(value: string | null | undefined): string | null {
+  const trimmed = (value || '').trim();
+  if (!trimmed || trimmed.startsWith('user_cursor_')) return null;
+  if (trimmed.startsWith('auth0|')) {
+    const userId = trimmed.split('|').pop();
+    if (userId?.startsWith('user_')) return userId;
+  }
+  if (trimmed.startsWith('user_')) return trimmed;
+  return trimmed;
+}
+
+/** 真实 Cursor 额度池 ID（workosId / JWT sub），忽略 user_cursor_ 占位符。 */
+export function getCursorAccountQuotaPoolId(account: CursorAccount): string {
+  const fromRaw = normalizeQuotaPoolAuthId(
+    getCursorAuthRawString(account, 'workosId', 'workos_id', 'authId', 'auth_id'),
+  );
+  if (fromRaw) return fromRaw;
+
+  const fromJwt = normalizeQuotaPoolAuthId(decodeJwtSub(account.access_token));
+  if (fromJwt?.startsWith('user_')) return fromJwt.split('|').pop() || fromJwt;
+
+  const fromField = normalizeQuotaPoolAuthId(account.auth_id);
+  if (fromField) return fromField;
+
+  return '';
 }
 
 export type CursorUsage = {

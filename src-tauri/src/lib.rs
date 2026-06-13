@@ -1,7 +1,7 @@
-mod commands;
+pub mod commands;
 pub mod error;
 mod models;
-mod modules;
+pub mod modules;
 mod utils;
 
 use modules::config::CloseWindowBehavior;
@@ -226,6 +226,8 @@ pub fn run() {
                 });
             }
 
+            modules::app_startup_defer::mark_app_started();
+            modules::cursor_refresh_scheduler::ensure_started();
             modules::provider_token_keeper::ensure_started(app.handle().clone());
             modules::wakeup_scheduler::restore_state_from_disk();
             modules::wakeup_scheduler::ensure_started(app.handle().clone());

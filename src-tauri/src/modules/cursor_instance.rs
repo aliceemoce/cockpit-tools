@@ -33,7 +33,101 @@ fn instances_path() -> Result<PathBuf, String> {
 
 pub fn load_instance_store() -> Result<InstanceStore, String> {
     let path = instances_path()?;
-    instance_store::load_instance_store(&path, CURSOR_INSTANCES_FILE)
+    let mut store = instance_store::load_instance_store(&path, CURSOR_INSTANCES_FILE)?;
+    if repair_instance_profile_paths(&mut store)? {
+        save_instance_store(&store)?;
+    }
+    Ok(store)
+}
+
+fn path_belongs_to_other_local_user(path: &str) -> bool {
+    let current = match std::env::var("USERNAME") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return false,
+    };
+    let lower = path.to_lowercase();
+    let own_prefix = format!(r"c:\users\{}\", current.to_lowercase());
+    if lower.starts_with(&own_prefix) {
+        return false;
+    }
+    lower.starts_with(r"c:\users\")
+}
+
+fn copy_profile_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.is_dir() {
+        return Err(format!("源 profile 不是目录: {}", src.display()));
+    }
+    fs::create_dir_all(dst).map_err(|e| format!("创建目标 profile 失败: {}", e))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("读取 profile 目录失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取 profile 条目失败: {}", e))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("读取 profile 条目类型失败: {}", e))?;
+        let target = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_profile_dir_recursive(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), &target)
+                .map_err(|e| format!("复制 profile 文件失败: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+/// 将 credential 同步来的他机用户路径（如 `C:\\Users\\alice\\...`）迁到本机 `%APPDATA%\\.antigravity_cockpit\\instances\\cursor`。
+pub fn repair_instance_profile_paths(store: &mut InstanceStore) -> Result<bool, String> {
+    let mut changed = false;
+    let local_root = get_default_instances_root_dir()?;
+
+    for instance in &mut store.instances {
+        let old_path = instance.user_data_dir.trim().to_string();
+        if old_path.is_empty() || !path_belongs_to_other_local_user(&old_path) {
+            continue;
+        }
+
+        let folder_name = PathBuf::from(&old_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+            .ok_or_else(|| format!("无法解析实例目录名: {}", old_path))?;
+        let new_path = local_root.join(&folder_name);
+        let new_path_str = new_path.to_string_lossy().to_string();
+        if normalize_path_for_compare(&old_path) == normalize_path_for_compare(&new_path_str) {
+            continue;
+        }
+
+        let old_pb = PathBuf::from(&old_path);
+        if new_path.exists() {
+            modules::logger::log_info(&format!(
+                "[Cursor Instance] 本机 profile 已存在，仅更新 JSON 指针: {} -> {}",
+                old_path, new_path_str
+            ));
+        } else if old_pb.is_dir() {
+            if let Err(err) = fs::rename(&old_pb, &new_path) {
+                modules::logger::log_warn(&format!(
+                    "[Cursor Instance] rename 失败，尝试复制 profile: {}",
+                    err
+                ));
+                copy_profile_dir_recursive(&old_pb, &new_path)?;
+            }
+            modules::logger::log_info(&format!(
+                "[Cursor Instance] 已迁移实例 profile: {} -> {}",
+                old_path, new_path_str
+            ));
+        } else {
+            fs::create_dir_all(&new_path)
+                .map_err(|e| format!("创建实例 profile 目录失败: {}", e))?;
+            modules::logger::log_info(&format!(
+                "[Cursor Instance] 已创建本机实例 profile 目录: {}",
+                new_path_str
+            ));
+        }
+
+        instance.user_data_dir = new_path_str;
+        changed = true;
+    }
+
+    Ok(changed)
 }
 
 pub fn save_instance_store(store: &InstanceStore) -> Result<(), String> {
@@ -74,6 +168,16 @@ pub fn update_default_settings(
     let updated = settings.clone();
     save_instance_store(&store)?;
     Ok(updated)
+}
+
+pub fn is_default_cursor_profile_dir(profile_dir: &Path) -> bool {
+    get_default_cursor_user_data_dir()
+        .ok()
+        .map(|default_dir| {
+            normalize_path_for_compare(&default_dir.to_string_lossy())
+                == normalize_path_for_compare(&profile_dir.to_string_lossy())
+        })
+        .unwrap_or(false)
 }
 
 pub fn get_default_cursor_user_data_dir() -> Result<PathBuf, String> {
@@ -1104,7 +1208,7 @@ pub fn detect_and_save_cursor_launch_path(force: bool) -> Option<String> {
     Some(normalized)
 }
 
-fn resolve_cursor_launch_path() -> Result<PathBuf, String> {
+pub fn resolve_cursor_launch_path() -> Result<PathBuf, String> {
     let config = modules::config::get_user_config();
     if let Some(custom) = normalize_custom_path(&config.cursor_app_path) {
         if let Some(exec) = resolve_macos_exec_path(&custom) {
@@ -1136,21 +1240,218 @@ fn sanitize_macos_gui_launch_env(cmd: &mut Command) {
 #[cfg(target_os = "linux")]
 fn sanitize_macos_gui_launch_env(_cmd: &mut Command) {}
 
+fn is_valid_launch_workspace(path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+    if let Some(home) = dirs::home_dir() {
+        if path == home {
+            return false;
+        }
+    }
+    let normalized = normalize_path_for_compare(&path.to_string_lossy());
+    if normalized.is_empty() {
+        return false;
+    }
+    if path_belongs_to_other_local_user(&path.to_string_lossy()) {
+        return false;
+    }
+    let parts: Vec<_> = path.components().collect();
+    if parts.len() <= 3 {
+        return false;
+    }
+    true
+}
+
+fn existing_directory(path: &str) -> Option<PathBuf> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let candidate = PathBuf::from(trimmed);
+    if is_valid_launch_workspace(&candidate) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn folder_from_uri(uri: &str) -> Option<PathBuf> {
+    let trimmed = uri.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(rest) = trimmed.strip_prefix("file:///") {
+        let decoded = urlencoding::decode(rest).ok()?.into_owned();
+        #[cfg(windows)]
+        let decoded = decoded.trim_start_matches('/').replace('/', "\\");
+        return existing_directory(&decoded);
+    }
+    existing_directory(trimmed)
+}
+
+fn recent_workspace_from_storage_json(profile_dir: &Path) -> Option<PathBuf> {
+    let storage_json = profile_dir.join("User").join("globalStorage").join("storage.json");
+    let text = fs::read_to_string(&storage_json).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let backup = value.get("backupWorkspaces")?;
+    for key in ["folders", "workspaces"] {
+        let Some(items) = backup.get(key).and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for item in items {
+            if let Some(uri) = item.as_str() {
+                if let Some(path) = folder_from_uri(uri) {
+                    return Some(path);
+                }
+            }
+            for field in ["folderUri", "fileUri"] {
+                if let Some(uri) = item.get(field).and_then(|v| v.as_str()) {
+                    if let Some(path) = folder_from_uri(uri) {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn recent_workspace_from_state_vscdb(profile_dir: &Path) -> Option<PathBuf> {
+    use rusqlite::Connection;
+
+    let db_path = profile_dir
+        .join("User")
+        .join("globalStorage")
+        .join("state.vscdb");
+    if !db_path.is_file() {
+        return None;
+    }
+    let conn = Connection::open(&db_path).ok()?;
+    for key in ["history.recentlyOpenedPathsList", "openedPathsList"] {
+        let Ok(text) = conn.query_row(
+            "SELECT value FROM ItemTable WHERE key = ?1",
+            [key],
+            |row| row.get::<_, String>(0),
+        ) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        let Some(entries) = value.get("entries").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for entry in entries {
+            for field in ["folderUri", "fileUri"] {
+                if let Some(uri) = entry.get(field).and_then(|v| v.as_str()) {
+                    if let Some(path) = folder_from_uri(uri) {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 启动 Cursor 时打开的工作区：实例配置 → 默认 profile 最近路径 → `%USERPROFILE%\\dev`。
+pub fn resolve_launch_workspace(explicit_working_dir: Option<&str>) -> Option<PathBuf> {
+    if let Some(dir) = explicit_working_dir.and_then(existing_directory) {
+        modules::logger::log_info(&format!(
+            "[Cursor Start] 使用配置工作区: {}",
+            dir.display()
+        ));
+        return Some(dir);
+    }
+
+    if let Ok(default_dir) = get_default_cursor_user_data_dir() {
+        if let Some(dir) = recent_workspace_from_state_vscdb(&default_dir) {
+            modules::logger::log_info(&format!(
+                "[Cursor Start] 使用最近工作区(vscdb): {}",
+                dir.display()
+            ));
+            return Some(dir);
+        }
+        if let Some(dir) = recent_workspace_from_storage_json(&default_dir) {
+            modules::logger::log_info(&format!(
+                "[Cursor Start] 使用最近工作区(storage): {}",
+                dir.display()
+            ));
+            return Some(dir);
+        }
+    }
+
+    let home = dirs::home_dir()?;
+    for candidate in [
+        home.join("dev").join("cockpit-tools"),
+        home.join("dev"),
+    ] {
+        if is_valid_launch_workspace(&candidate) {
+            modules::logger::log_info(&format!(
+                "[Cursor Start] 回退工作区: {}",
+                candidate.display()
+            ));
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+/// 同一 profile 已有 Cursor 进程时复用窗口，避免空白欢迎页。
+pub fn should_use_new_window_for_profile(user_data_dir: &str) -> bool {
+    let target = normalize_path_for_compare(user_data_dir);
+    if target.is_empty() {
+        return true;
+    }
+    for (_, dir) in collect_cursor_process_entries() {
+        if dir.as_ref().is_some_and(|resolved| resolved == &target) {
+            modules::logger::log_info(&format!(
+                "[Cursor Start] profile 已有进程，使用 --reuse-window: {}",
+                user_data_dir
+            ));
+            return false;
+        }
+    }
+    true
+}
+
+fn append_workspace_arg(cmd: &mut Command, workspace: Option<&Path>) {
+    if let Some(path) = workspace {
+        if path.is_dir() {
+            cmd.arg(path);
+        }
+    }
+}
+
+fn foreign_cursor_profiles_running(
+    target_dirs: &HashSet<String>,
+    contains_default: bool,
+) -> bool {
+    for (_, dir) in collect_cursor_process_entries() {
+        match dir {
+            Some(resolved) if !target_dirs.contains(&resolved) => return true,
+            None if !contains_default => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 #[cfg(target_os = "windows")]
 fn spawn_cursor_windows(
     launch_path: &Path,
     user_data_dir: &str,
     extra_args: &[String],
     use_new_window: bool,
+    workspace: Option<&Path>,
 ) -> Result<u32, String> {
     use std::os::windows::process::CommandExt;
 
     let mut cmd = Command::new(launch_path);
     crate::modules::process::apply_managed_proxy_env_to_command(&mut cmd);
     cmd.creation_flags(0x08000000);
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
     cmd.arg("--user-data-dir").arg(user_data_dir.trim());
     if use_new_window {
         cmd.arg("--new-window");
@@ -1162,8 +1463,22 @@ fn spawn_cursor_windows(
             cmd.arg(arg.trim());
         }
     }
+    append_workspace_arg(&mut cmd, workspace);
     let child =
         spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+    let probe_started = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(8);
+    while probe_started.elapsed() < timeout {
+        if let Some(resolved_pid) = resolve_cursor_pid(None, Some(user_data_dir)) {
+            return Ok(resolved_pid);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    modules::logger::log_warn(&format!(
+        "[Cursor Start] 启动后 8s 内未匹配到实例 PID，回退 spawn pid={}, user_data_dir={}",
+        child.id(),
+        user_data_dir
+    ));
     Ok(child.id())
 }
 
@@ -1173,6 +1488,7 @@ fn spawn_cursor_macos_open(
     user_data_dir: &str,
     extra_args: &[String],
     use_new_window: bool,
+    workspace: Option<&Path>,
 ) -> Result<u32, String> {
     let app_root = normalize_macos_app_root(launch_path).ok_or("APP_PATH_NOT_FOUND:cursor")?;
     let target = user_data_dir.trim();
@@ -1193,6 +1509,7 @@ fn spawn_cursor_macos_open(
             cmd.arg(arg.trim());
         }
     }
+    append_workspace_arg(&mut cmd, workspace);
 
     let child =
         spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
@@ -1218,6 +1535,7 @@ fn spawn_cursor_unix(
     user_data_dir: &str,
     extra_args: &[String],
     use_new_window: bool,
+    workspace: Option<&Path>,
 ) -> Result<u32, String> {
     let mut cmd = Command::new(launch_path);
     crate::modules::process::apply_managed_proxy_env_to_command(&mut cmd);
@@ -1236,6 +1554,7 @@ fn spawn_cursor_unix(
             cmd.arg(arg.trim());
         }
     }
+    append_workspace_arg(&mut cmd, workspace);
     let child =
         spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
     Ok(child.id())
@@ -1245,31 +1564,38 @@ pub fn start_cursor_with_args_with_new_window(
     user_data_dir: &str,
     extra_args: &[String],
     use_new_window: bool,
+    workspace: Option<&Path>,
 ) -> Result<u32, String> {
     let target = user_data_dir.trim();
     if target.is_empty() {
         return Err("实例目录为空，无法启动".to_string());
     }
     let launch_path = resolve_cursor_launch_path()?;
+    if let Some(ws) = workspace {
+        modules::logger::log_info(&format!(
+            "[Cursor Start] CLI 工作区: {}",
+            ws.display()
+        ));
+    }
 
     #[cfg(target_os = "windows")]
     {
-        return spawn_cursor_windows(&launch_path, target, extra_args, use_new_window);
+        return spawn_cursor_windows(&launch_path, target, extra_args, use_new_window, workspace);
     }
 
     #[cfg(target_os = "macos")]
     {
-        return spawn_cursor_macos_open(&launch_path, target, extra_args, use_new_window);
+        return spawn_cursor_macos_open(&launch_path, target, extra_args, use_new_window, workspace);
     }
 
     #[cfg(target_os = "linux")]
     {
-        return spawn_cursor_unix(&launch_path, target, extra_args, use_new_window);
+        return spawn_cursor_unix(&launch_path, target, extra_args, use_new_window, workspace);
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
-        let _ = (target, extra_args, use_new_window);
+        let _ = (target, extra_args, use_new_window, workspace);
         Err("Cursor 多开实例仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
@@ -1277,15 +1603,237 @@ pub fn start_cursor_with_args_with_new_window(
 pub fn start_cursor_default_with_args_with_new_window(
     extra_args: &[String],
     use_new_window: bool,
+    explicit_working_dir: Option<&str>,
 ) -> Result<u32, String> {
     let default_dir = get_default_cursor_user_data_dir()?;
+    let workspace = resolve_launch_workspace(explicit_working_dir);
     start_cursor_with_args_with_new_window(
         &default_dir.to_string_lossy(),
         extra_args,
         use_new_window,
+        workspace.as_deref(),
     )
 }
 
+/// 无忧 `go()`：Windows 用 `explorer.exe [Cursor.exe]`，不用 `--user-data-dir`。
+pub fn start_cursor_nirvana_go() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        let launch_path = resolve_cursor_launch_path_nirvana_go()?;
+        let mut cmd = Command::new("explorer.exe");
+        cmd.arg(&launch_path);
+        cmd.creation_flags(0x08000000);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+        modules::logger::log_info(&format!(
+            "[startCursor] Windows: explorer.exe {}",
+            launch_path.display()
+        ));
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let launch_path = resolve_cursor_launch_path_nirvana_go()?;
+        let app_root = normalize_macos_app_root(&launch_path).unwrap_or(launch_path);
+        if let Ok(saved_state_dir) = dirs::home_dir().map(|home| home.join("Library/Saved Application State")) {
+            if saved_state_dir.is_dir() {
+                if let Ok(entries) = fs::read_dir(&saved_state_dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_lowercase();
+                        if name.contains("cursor") && name.ends_with(".savedstate") {
+                            let _ = fs::remove_dir_all(entry.path());
+                        }
+                    }
+                }
+            }
+        }
+        let mut cmd = Command::new("open");
+        sanitize_macos_gui_launch_env(&mut cmd);
+        cmd.arg("-n").arg("-a").arg(app_root);
+        spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+        modules::logger::log_info("[startCursor] macOS: open -n -a Cursor");
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let launch_path = resolve_cursor_launch_path_nirvana_go()?;
+        let mut cmd = Command::new(launch_path);
+        crate::modules::process::apply_managed_proxy_env_to_command(&mut cmd);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+        modules::logger::log_info("[startCursor] Linux: 直接启动 Cursor");
+        return Ok(());
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        Err("Cursor 启动仅支持 macOS、Windows 和 Linux".to_string())
+    }
+}
+
+fn resolve_cursor_launch_path_nirvana_go() -> Result<PathBuf, String> {
+    if let Ok(path) = resolve_cursor_launch_path() {
+        return Ok(path);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let pf = std::env::var("ProgramFiles").unwrap_or_default();
+        let pfx86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
+        let candidates = [
+            PathBuf::from(&local).join("Programs/Cursor/Cursor.exe"),
+            PathBuf::from(&local).join("Cursor/Cursor.exe"),
+            PathBuf::from(&pf).join("Cursor/Cursor.exe"),
+            PathBuf::from(&pfx86).join("Cursor/Cursor.exe"),
+        ];
+        for candidate in candidates {
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    Err("未找到 Cursor，请在设置中配置 Cursor 安装路径".to_string())
+}
+
+/// 对齐无忧 `closeCursor`（ho）：Windows 上 `taskkill /IM Cursor.exe` 关闭**全部** Cursor 进程。
+/// ⚠️ 仅用于「一键关闭所有实例」场景，切号/多开路径不应调用此函数。
+/// 切号请使用 `close_cursor`，它仅关闭指定 user_data_dir 的实例。
+pub fn close_cursor_nirvana_style(timeout_secs: u64) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/IM", "Cursor.exe"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
+        let wait_ms = timeout_secs.saturating_mul(1000).min(5000);
+        let mut elapsed_ms = 0u64;
+        while elapsed_ms < wait_ms {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            elapsed_ms += 500;
+            let output = Command::new("tasklist")
+                .args(["/FI", "IMAGENAME eq Cursor.exe", "/FO", "CSV", "/NH"])
+                .output();
+            let still_running = output
+                .map(|out| String::from_utf8_lossy(&out.stdout).to_lowercase().contains("cursor.exe"))
+                .unwrap_or(false);
+            if !still_running {
+                modules::logger::log_info(&format!(
+                    "[Cursor Switch] closeCursor 完成（等待 {}ms）",
+                    elapsed_ms
+                ));
+                break;
+            }
+        }
+
+        if elapsed_ms >= wait_ms {
+            modules::logger::log_warn("[Cursor Switch] closeCursor 等待超时，强制结束 Cursor");
+            let _ = Command::new("taskkill")
+                .args(["/F", "/IM", "Cursor.exe", "/T"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("pkill").args(["-x", "Cursor"]).status();
+        let wait_ms = timeout_secs.saturating_mul(1000).min(5000);
+        let mut elapsed_ms = 0u64;
+        while elapsed_ms < wait_ms {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            elapsed_ms += 200;
+            let status = Command::new("pgrep").args(["-x", "Cursor"]).status();
+            if status.map(|s| !s.success()).unwrap_or(true) {
+                modules::logger::log_info(&format!(
+                    "[Cursor Switch] closeCursor 完成（等待 {}ms）",
+                    elapsed_ms
+                ));
+                break;
+            }
+        }
+        if elapsed_ms >= wait_ms {
+            let _ = Command::new("pkill").args(["-9", "-x", "Cursor"]).status();
+        }
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        let _ = Command::new("pkill").args(["-x", "cursor"]).status();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    let _ = clear_all_pids();
+    Ok(())
+}
+
+/// 多开实例切号：仅关闭 `--user-data-dir` 精确匹配的进程，永不 taskkill 全杀。
+pub fn close_cursor_profile_strict(user_data_dir: &str, timeout_secs: u64) -> Result<(), String> {
+    let target = normalize_path_for_compare(user_data_dir);
+    if target.is_empty() {
+        return Ok(());
+    }
+
+    let mut pids = Vec::new();
+    for (pid, dir) in collect_cursor_process_entries() {
+        if dir.as_ref().is_some_and(|resolved| resolved == &target) {
+            pids.push(pid);
+        }
+    }
+
+    pids.sort();
+    pids.dedup();
+    if pids.is_empty() {
+        if is_any_cursor_process_running() {
+            modules::logger::log_warn(&format!(
+                "[Cursor Close] strict 未匹配到 profile 进程，跳过关闭（保护其他实例）: {}",
+                user_data_dir
+            ));
+        }
+        return Ok(());
+    }
+
+    modules::logger::log_info(&format!(
+        "[Cursor Close] strict 准备关闭 {} 个 Cursor 进程: pids={:?}, profile={}",
+        pids.len(),
+        pids,
+        user_data_dir
+    ));
+
+    for pid in &pids {
+        let _ = modules::process::close_pid(*pid, timeout_secs);
+    }
+
+    let still_running: Vec<u32> = pids
+        .into_iter()
+        .filter(|pid| modules::process::is_pid_running(*pid))
+        .collect();
+    if !still_running.is_empty() {
+        return Err(format!(
+            "无法关闭 Cursor 多开实例进程，请手动关闭后重试: {}",
+            modules::process::summarize_pid_list_for_log(&still_running)
+        ));
+    }
+
+    Ok(())
+}
+
+/// 关闭指定 user_data_dir 对应的 Cursor 进程，绝不关闭其他实例。
+/// 多开场景下：关闭实例 A 不会影响正在运行的实例 B。
+/// 默认实例关闭也不会影响多开实例。
 pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), String> {
     let target_dirs: HashSet<String> = user_data_dirs
         .iter()
@@ -1298,32 +1846,60 @@ pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), 
 
     let default_dir = get_default_cursor_user_data_dir()
         .ok()
-        .map(|value| normalize_path_for_compare(&value.to_string_lossy()))
-        .filter(|value| !value.is_empty());
-    let allow_none_for_default = default_dir
+        .map(|dir| normalize_path_for_compare(&dir.to_string_lossy()));
+    let contains_default = default_dir
         .as_ref()
-        .map(|value| target_dirs.contains(value))
+        .map(|def| target_dirs.contains(def))
         .unwrap_or(false);
 
     let entries = collect_cursor_process_entries();
     let mut pids = Vec::new();
+    // 严格匹配：如果进程指定了 --user-data-dir，且匹配 target_dirs，则关闭。
+    // 如果进程没有指定 --user-data-dir（为 None），且 target_dirs 包含默认目录，则视其为默认实例并关闭。
     for (pid, dir) in entries {
         match dir.as_ref() {
-            Some(value) => {
-                if target_dirs.contains(value) {
+            Some(resolved_dir) => {
+                if target_dirs.contains(resolved_dir) {
                     pids.push(pid);
                 }
             }
-            None if allow_none_for_default => pids.push(pid),
-            _ => {}
+            None => {
+                if contains_default {
+                    pids.push(pid);
+                }
+            }
         }
     }
 
     pids.sort();
     pids.dedup();
     if pids.is_empty() {
+        // 按 user_data_dir 匹配不到任何 PID，但 Cursor.exe 可能确实在运行。
+        // 若存在其他 profile 的进程，禁止降级全杀（保护双开）。
+        if is_any_cursor_process_running() {
+            if foreign_cursor_profiles_running(&target_dirs, contains_default) {
+                modules::logger::log_warn(&format!(
+                    "[Cursor Close] 按目录匹配未命中，但检测到其他 profile 的 Cursor 进程，跳过全杀: target_dirs={:?}",
+                    target_dirs
+                ));
+                return Ok(());
+            }
+            modules::logger::log_warn(&format!(
+                "[Cursor Close] 按目录匹配未命中，降级为按镜像名关闭: target_dirs={:?}",
+                target_dirs
+            ));
+            close_cursor_nirvana_style(timeout_secs)?;
+            return Ok(());
+        }
         return Ok(());
     }
+
+    modules::logger::log_info(&format!(
+        "[Cursor Close] 准备关闭 {} 个 Cursor 进程: pids={:?}, target_dirs={:?}",
+        pids.len(),
+        pids,
+        target_dirs
+    ));
 
     for pid in &pids {
         let _ = modules::process::close_pid(*pid, timeout_secs);
@@ -1343,6 +1919,35 @@ pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), 
     Ok(())
 }
 
+/// 检测系统里是否有任何 Cursor.exe 进程在运行。
+fn is_any_cursor_process_running() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq Cursor.exe", "/FO", "CSV", "/NH"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.to_lowercase().contains("cursor.exe");
+        }
+        false
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("pgrep")
+            .args(["-x", "Cursor"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        false
+    }
+}
+
 fn ensure_profile_global_storage(profile_dir: &Path) -> Result<PathBuf, String> {
     let global_storage = profile_dir.join("User").join("globalStorage");
     if !global_storage.exists() {
@@ -1352,19 +1957,18 @@ fn ensure_profile_global_storage(profile_dir: &Path) -> Result<PathBuf, String> 
     Ok(global_storage)
 }
 
-fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> {
+/// 切号前确保 profile 已有 state.vscdb（从默认 profile 复制），须在指纹重置之前调用。
+pub fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> {
     let db_path = profile_dir
         .join("User")
         .join("globalStorage")
         .join("state.vscdb");
-    if db_path.exists() {
-        return Ok(db_path);
-    }
-
-    let default_db = cursor_account::get_default_cursor_state_db_path()?;
-    if default_db.exists() {
-        let _ = ensure_profile_global_storage(profile_dir)?;
-        fs::copy(&default_db, &db_path).map_err(|e| format!("复制 state.vscdb 失败: {}", e))?;
+    if !db_path.exists() {
+        let default_db = cursor_account::get_default_cursor_state_db_path()?;
+        if default_db.exists() {
+            let _ = ensure_profile_global_storage(profile_dir)?;
+            fs::copy(&default_db, &db_path).map_err(|e| format!("复制 state.vscdb 失败: {}", e))?;
+        }
     }
 
     if !db_path.exists() {
@@ -1380,6 +1984,7 @@ fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> 
         .join("globalStorage")
         .join("storage.json");
     if default_storage.exists() && !target_storage.exists() {
+        let _ = ensure_profile_global_storage(profile_dir)?;
         let _ = fs::copy(&default_storage, &target_storage);
     }
 

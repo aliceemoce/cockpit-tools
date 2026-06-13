@@ -21,7 +21,6 @@ import {
   X,
   Search,
   ArrowDownWideNarrow,
-  RefreshCw,
   ExternalLink,
   Eye,
   EyeOff,
@@ -30,8 +29,6 @@ import { confirm as confirmDialog, open } from "@tauri-apps/plugin-dialog";
 import md5 from "blueimp-md5";
 import {
   CODEX_API_SERVICE_BIND_ID,
-  CODEX_PROVIDER_GATEWAY_BIND_PREFIX,
-  buildCodexProviderGatewayBindId,
   InstanceInitMode,
   InstanceLaunchMode,
   InstanceProfile,
@@ -60,14 +57,7 @@ import { CodexSpeedSelect } from "./codex/CodexSpeedSelect";
 import type { CodexAppSpeed } from "../types/codex";
 
 type MessageState = { text: string; tone?: "error" };
-type AccountLike = {
-  id: string;
-  email: string;
-  tags?: string[] | null;
-  auth_mode?: string;
-  api_wire_api?: string | null;
-  api_base_url?: string | null;
-};
+type AccountLike = { id: string; email: string; tags?: string[] | null };
 type InstanceSortField = "createdAt" | "lastLaunchedAt";
 type SortDirection = "asc" | "desc";
 type StartInstanceOutcome =
@@ -420,74 +410,19 @@ export function InstancesManager<TAccount extends AccountLike>({
       isCodexApp && value === CODEX_API_SERVICE_BIND_ID,
     [isCodexApp],
   );
-  const parseProviderGatewayBindAccountId = useCallback(
-    (value?: string | null) => {
-      if (!isCodexApp) return null;
-      const trimmed = value?.trim() || "";
-      if (!trimmed.startsWith(CODEX_PROVIDER_GATEWAY_BIND_PREFIX)) return null;
-      const accountId = trimmed.slice(CODEX_PROVIDER_GATEWAY_BIND_PREFIX.length).trim();
-      return accountId || null;
-    },
-    [isCodexApp],
-  );
-  const shouldBindAccountViaProviderGateway = useCallback(
-    (account?: TAccount | null) =>
-      isCodexApp &&
-      account?.auth_mode === "apikey" &&
-      account.api_wire_api === "chat_completions",
-    [isCodexApp],
-  );
-  const resolveBindAccountValue = useCallback(
-    (accountId?: string | null) => {
-      if (!accountId) return null;
-      if (isApiServiceBindId(accountId)) return accountId;
-      if (parseProviderGatewayBindAccountId(accountId)) return accountId;
-      const account = accounts.find((item) => item.id === accountId) || null;
-      if (account && shouldBindAccountViaProviderGateway(account)) {
-        return buildCodexProviderGatewayBindId(account.id);
-      }
-      return accountId;
-    },
-    [
-      accounts,
-      isApiServiceBindId,
-      parseProviderGatewayBindAccountId,
-      shouldBindAccountViaProviderGateway,
-    ],
-  );
   const resolveBoundAccount = useCallback(
     (bindAccountId?: string | null) => {
       if (!bindAccountId) {
-        return {
-          account: null,
-          accountId: null,
-          missing: false,
-          isApiService: false,
-          isProviderGateway: false,
-        };
+        return { account: null, missing: false, isApiService: false };
       }
       if (isApiServiceBindId(bindAccountId)) {
-        return {
-          account: null,
-          accountId: null,
-          missing: false,
-          isApiService: true,
-          isProviderGateway: false,
-        };
+        return { account: null, missing: false, isApiService: true };
       }
-      const providerGatewayAccountId = parseProviderGatewayBindAccountId(bindAccountId);
-      const targetAccountId = providerGatewayAccountId || bindAccountId;
       const account =
-        accounts.find((item) => item.id === targetAccountId) || null;
-      return {
-        account,
-        accountId: targetAccountId,
-        missing: !account,
-        isApiService: false,
-        isProviderGateway: Boolean(providerGatewayAccountId),
-      };
+        accounts.find((item) => item.id === bindAccountId) || null;
+      return { account, missing: !account, isApiService: false };
     },
-    [accounts, isApiServiceBindId, parseProviderGatewayBindAccountId],
+    [accounts, isApiServiceBindId],
   );
 
   const markInstanceStarting = useCallback((instanceId: string) => {
@@ -862,7 +797,7 @@ export function InstancesManager<TAccount extends AccountLike>({
           editing.initialized === false && !isEditingDefault
         );
         if (canEditBind) {
-          const nextBindId = resolveBindAccountValue(formBindAccountId);
+          const nextBindId = formBindAccountId;
           updatePayload.bindAccountId = nextBindId;
         }
         if (isEditingDefault) {
@@ -888,9 +823,7 @@ export function InstancesManager<TAccount extends AccountLike>({
           initMode: formInitMode,
           launchMode: nextLaunchMode,
           appSpeed: isCodexApp ? formAppSpeed : undefined,
-          bindAccountId: isCreateEmpty
-            ? null
-            : resolveBindAccountValue(formBindAccountId),
+          bindAccountId: isCreateEmpty ? null : formBindAccountId,
           copySourceInstanceId: formCopySourceInstanceId || defaultInstanceId,
         });
         setMessage({
@@ -1093,8 +1026,8 @@ export function InstancesManager<TAccount extends AccountLike>({
   };
 
   const handleShowFloatingCard = async (instance: InstanceProfile) => {
-    const { accountId, missing } = resolveAccount(instance);
-    if (!instance.bindAccountId || !accountId || missing) {
+    const { account, missing } = resolveAccount(instance);
+    if (!instance.bindAccountId || !account || missing) {
       return;
     }
     try {
@@ -1104,7 +1037,7 @@ export function InstancesManager<TAccount extends AccountLike>({
         instanceName: instance.isDefault
           ? t("instances.defaultName", "默认实例")
           : instance.name || t("instances.defaultName", "默认实例"),
-        boundAccountId: accountId,
+        boundAccountId: instance.bindAccountId,
       });
     } catch (e) {
       setMessage({ text: String(e), tone: "error" });
@@ -1632,33 +1565,31 @@ export function InstancesManager<TAccount extends AccountLike>({
           </span>
         </button>
       )}
-      {visibleAccounts.map((account) => {
-        const bindValue = resolveBindAccountValue(account.id) ?? account.id;
-        const active = value === bindValue && !isFollowingCurrent;
-        return (
-          <button
-            type="button"
-            key={account.id}
-            className={`account-select-item ${active ? "active" : ""}`}
-            data-account-select-active={active ? "true" : undefined}
-            onClick={() => {
-              onChange(bindValue);
-              onClose();
-            }}
-          >
-            <span className="account-select-email-row">
-              <span
-                className="account-select-email"
-                title={maskAccountText(account.email)}
-              >
-                {maskAccountText(account.email)}
-              </span>
-              {renderAccountBadge?.(account)}
+      {visibleAccounts.map((account) => (
+        <button
+          type="button"
+          key={account.id}
+          className={`account-select-item ${value === account.id && !isFollowingCurrent ? "active" : ""}`}
+          data-account-select-active={
+            value === account.id && !isFollowingCurrent ? "true" : undefined
+          }
+          onClick={() => {
+            onChange(account.id);
+            onClose();
+          }}
+        >
+          <span className="account-select-email-row">
+            <span
+              className="account-select-email"
+              title={maskAccountText(account.email)}
+            >
+              {maskAccountText(account.email)}
             </span>
-            {renderAccountQuotaPreview(account)}
-          </button>
-        );
-      })}
+            {renderAccountBadge?.(account)}
+          </span>
+          {renderAccountQuotaPreview(account)}
+        </button>
+      ))}
       {visibleAccounts.length === 0 &&
       !isCodexApp &&
       !allowUnbound &&
@@ -2212,7 +2143,7 @@ export function InstancesManager<TAccount extends AccountLike>({
   };
 
   const handleFormAccountChange = (nextId: string | null) => {
-    setFormBindAccountId(resolveBindAccountValue(nextId) ?? "");
+    setFormBindAccountId(nextId ?? "");
   };
 
   const handleInitGuideStart = async () => {
@@ -2242,14 +2173,13 @@ export function InstancesManager<TAccount extends AccountLike>({
       return;
     }
     if (!nextId) return;
-    const normalizedNextId = resolveBindAccountValue(nextId);
-    const sameSelection = (instance.bindAccountId || null) === normalizedNextId;
+    const sameSelection = (instance.bindAccountId || null) === nextId;
     if (sameSelection && !instance.followLocalAccount) return;
     setActionLoading(instance.id);
     try {
       await updateInstance({
         instanceId: instance.id,
-        bindAccountId: normalizedNextId,
+        bindAccountId: nextId,
         followLocalAccount: instance.isDefault ? false : undefined,
       });
     } catch (e) {
@@ -2347,44 +2277,39 @@ export function InstancesManager<TAccount extends AccountLike>({
           </button>
         </div>
         <div className="toolbar-right">
+          {toolbarExtraActions}
           <button
-            className="btn btn-primary icon-only"
+            className="btn btn-primary"
             onClick={openCreateModal}
             title={t("instances.actions.create", "新建实例")}
-            aria-label={t("instances.actions.create", "新建实例")}
           >
             <Plus size={16} />
           </button>
           <button
-            className="btn btn-secondary icon-only"
+            className="btn btn-secondary"
             onClick={handleStartAll}
             disabled={bulkActionLoading || restartingAll}
             title={t("instances.actions.startAll", "全部启动")}
-            aria-label={t("instances.actions.startAll", "全部启动")}
           >
             <Play size={16} />
           </button>
           {supportsStopControl && (
             <button
-              className="btn btn-secondary icon-only"
+              className="btn btn-secondary"
               onClick={handleCloseAll}
               disabled={bulkActionLoading || restartingAll}
               title={t("instances.actions.stopAll", "全部关闭")}
-              aria-label={t("instances.actions.stopAll", "全部关闭")}
             >
               <Square size={16} />
             </button>
           )}
           <button
-            className="btn btn-secondary icon-only"
+            className="btn btn-secondary"
             onClick={handleRefresh}
             disabled={refreshing || bulkActionLoading || restartingAll}
-            title={t("instances.actions.refresh", "刷新")}
-            aria-label={t("instances.actions.refresh", "刷新")}
           >
-            <RefreshCw size={16} className={refreshing ? "icon-spin" : ""} />
+            {t("instances.actions.refresh", "刷新")}
           </button>
-          {toolbarExtraActions}
         </div>
       </div>
 
@@ -2590,6 +2515,9 @@ export function InstancesManager<TAccount extends AccountLike>({
                   </button>
                   <button
                     className="icon-button"
+                    type="button"
+                    id={`cockpit-instance-start-${instance.id}`}
+                    aria-label={t("instances.actions.start", "启动")}
                     title={t("instances.actions.start", "启动")}
                     onClick={() => handleStart(instance)}
                     disabled={
@@ -3127,7 +3055,7 @@ export function InstancesManager<TAccount extends AccountLike>({
                       missing={Boolean(
                         formBindAccountId &&
                         !isApiServiceBindId(formBindAccountId) &&
-                        resolveBoundAccount(formBindAccountId).missing,
+                        !accounts.find((item) => item.id === formBindAccountId),
                       )}
                     />
                   )}
