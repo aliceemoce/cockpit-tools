@@ -206,9 +206,12 @@ async fn refresh_due_cursor_accounts() -> bool {
         }
 
         match cursor_account::refresh_account_async(&account.id).await {
-            Ok(updated) => {
+            Ok(refreshed) => {
                 clear_attempt_backoff(&key);
-                refreshed_any = true;
+                if refreshed.persisted {
+                    refreshed_any = true;
+                }
+                let updated = refreshed.account;
                 if current_id.as_deref() == Some(updated.id.as_str()) {
                     if let Err(err) = cursor_account::inject_to_cursor(&updated.id) {
                         logger::log_warn(&format!(

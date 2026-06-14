@@ -1,4 +1,4 @@
-//! Cursor 导入备份：仅上传至用户私有 GitHub 仓库，不从仓库拉取。
+//! Cursor 本机导入备份：仅在本机导入时上传至用户私有 GitHub 仓库；每次追加新文件，不从仓库拉取、不覆盖已有备份。
 
 use base64::Engine as _;
 use serde::Serialize;

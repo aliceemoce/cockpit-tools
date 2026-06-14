@@ -905,13 +905,16 @@ export function InstancesManager<TAccount extends AccountLike>({
         showRunningNotice?: boolean;
         showSuccessMessage?: boolean;
         preMarkedStarting?: boolean;
+        /** Cursor：已运行时仍走 startInstance（= 账号总览 inject 同链 start_cursor_instance_with_account_switch） */
+        restartWhenRunning?: boolean;
       },
     ): Promise<StartInstanceOutcome> => {
       const showRunningNotice = options?.showRunningNotice ?? false;
       const showSuccessMessage = options?.showSuccessMessage ?? true;
       const preMarkedStarting = options?.preMarkedStarting ?? false;
+      const restartWhenRunning = options?.restartWhenRunning ?? false;
 
-      if (instance.running) {
+      if (instance.running && !restartWhenRunning) {
         if (showRunningNotice) {
           setRunningNoticeInstance(instance);
         }
@@ -966,9 +969,15 @@ export function InstancesManager<TAccount extends AccountLike>({
   );
 
   const handleStart = async (instance: InstanceProfile) => {
+    const isCursorRestart =
+      appType === "cursor" && instance.running;
     await startStoppedInstance(instance, {
-      showRunningNotice: supportsStopControl && !usesTerminalLaunch(instance),
+      showRunningNotice:
+        !isCursorRestart &&
+        supportsStopControl &&
+        !usesTerminalLaunch(instance),
       showSuccessMessage: true,
+      restartWhenRunning: isCursorRestart,
     });
   };
 

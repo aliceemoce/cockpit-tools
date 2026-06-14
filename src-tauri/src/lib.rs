@@ -226,8 +226,6 @@ pub fn run() {
                 });
             }
 
-            modules::app_startup_defer::mark_app_started();
-            modules::cursor_refresh_scheduler::ensure_started();
             modules::provider_token_keeper::ensure_started(app.handle().clone());
             modules::wakeup_scheduler::restore_state_from_disk();
             modules::wakeup_scheduler::ensure_started(app.handle().clone());
@@ -323,6 +321,10 @@ pub fn run() {
                 modules::floating_card_window::show_floating_card_window_on_startup(&app.handle())
             {
                 logger::log_warn(&format!("[FloatingCard] 启动时显示悬浮卡片失败: {}", err));
+            }
+
+            if let Err(err) = modules::floating_card_window::show_main_window(&app.handle()) {
+                logger::log_warn(&format!("[Window] 启动时显示主窗口失败: {}", err));
             }
 
             let startup_args: Vec<String> = std::env::args().collect();

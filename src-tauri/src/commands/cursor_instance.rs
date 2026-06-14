@@ -62,16 +62,26 @@ fn resolve_instance_switch_account_id(
     instance_id: &str,
     bind_account_id: Option<&str>,
 ) -> Result<String, String> {
+    let exclude = collect_reserved_account_ids(instance_id);
+
     if let Some(bind_id) = bind_account_id.map(str::trim).filter(|value| !value.is_empty()) {
-        if modules::cursor_account::load_account(bind_id).is_some() {
+        let account = modules::cursor_account::load_account(bind_id)
+            .ok_or_else(|| format!("绑定账号不存在: {}", bind_id))?;
+        if modules::cursor_account::is_full_quota_account(&account) {
             return Ok(bind_id.to_string());
         }
-        return Err(format!("绑定账号不存在: {}", bind_id));
+        modules::logger::log_info(&format!(
+            "[Cursor Switch] 绑定账号额度未满 ({}), 自动挑选满额账号",
+            account.email
+        ));
     }
 
-    let exclude = collect_reserved_account_ids(instance_id);
+    if let Some(full_id) = modules::cursor_account::pick_full_quota_account(&exclude) {
+        return Ok(full_id);
+    }
+
     modules::cursor_account::pick_highest_remaining_credits_account(&exclude).ok_or_else(|| {
-        "没有可用的高额度 Cursor 账号，请稍后重试或手动绑定账号".to_string()
+        "没有可用的满额 Cursor 账号，请稍后重试或手动绑定账号".to_string()
     })
 }
 
@@ -152,11 +162,28 @@ pub async fn start_cursor_instance_with_account_switch(
         .as_ref()
         .map(|value| value.trim().is_empty())
         .unwrap_or(true);
-    if needs_auto_bind {
+    let bind_was_non_full = ctx
+        .bind_account_id
+        .as_ref()
+        .and_then(|bind_id| modules::cursor_account::load_account(bind_id))
+        .map(|account| !modules::cursor_account::is_full_quota_account(&account))
+        .unwrap_or(false);
+    let swapped_from_non_full = bind_was_non_full
+        && ctx
+            .bind_account_id
+            .as_deref()
+            .map(|bind_id| bind_id != account_id)
+            .unwrap_or(false);
+    if needs_auto_bind || swapped_from_non_full {
         if let Err(err) = persist_auto_bind_account(&instance_id, &account_id) {
             modules::logger::log_warn(&format!(
                 "自动绑定 Cursor 实例账号失败: instance_id={}, account_id={}, error={}",
                 instance_id, account_id, err
+            ));
+        } else if swapped_from_non_full {
+            modules::logger::log_info(&format!(
+                "[Cursor Switch] 已因额度不足自动改绑满额账号: instance_id={}, account_id={}",
+                instance_id, account_id
             ));
         }
     }

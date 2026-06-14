@@ -4,6 +4,17 @@ use tauri::{AppHandle, Emitter};
 use crate::models::cursor::CursorAccount;
 use crate::modules::{cursor_account, cursor_oauth, logger};
 
+fn emit_cursor_accounts_changed(app: &AppHandle, account_id: &str, reason: &str) {
+    let _ = app.emit(
+        "accounts:changed",
+        serde_json::json!({
+            "platformId": "cursor",
+            "accountId": account_id,
+            "reason": reason,
+        }),
+    );
+}
+
 #[tauri::command]
 pub fn list_cursor_accounts() -> Result<Vec<CursorAccount>, String> {
     Ok(cursor_account::list_accounts_sorted())
@@ -26,7 +37,7 @@ pub async fn import_cursor_from_json(json_content: String) -> Result<Vec<CursorA
     let mut refreshed = Vec::new();
     for account in accounts {
         match cursor_account::refresh_account_async(&account.id).await {
-            Ok(r) => refreshed.push(r),
+            Ok(result) => refreshed.push(result.account),
             Err(e) => {
                 logger::log_warn(&format!(
                     "[Cursor Import] JSON导入账号在线刷新失败（保留本地字段）: id={}, error={}",
@@ -46,7 +57,7 @@ pub async fn import_cursor_from_local(app: AppHandle) -> Result<Vec<CursorAccoun
             // 本地导入后立即在线拉取完整信息（user_meta + stripe_profile + usage_summary）
             match cursor_account::refresh_account_async(&account.id).await {
                 Ok(refreshed) => {
-                    account = refreshed;
+                    account = refreshed.account;
                     logger::log_info(&format!(
                         "[Cursor Import] 本地导入 + 在线全字段刷新成功: id={}, email={}",
                         account.id, account.email
@@ -83,7 +94,11 @@ pub async fn refresh_cursor_token(
     ));
 
     match cursor_account::refresh_account_fast_async(&account_id).await {
-        Ok(account) => {
+        Ok(refreshed) => {
+            let account = refreshed.account;
+            if refreshed.persisted {
+                emit_cursor_accounts_changed(&app, &account.id, "refresh");
+            }
             if let Err(e) = cursor_account::run_quota_alert_if_needed() {
                 logger::log_warn(&format!("[QuotaAlert][Cursor] 预警检查失败: {}", e));
             }
@@ -92,10 +107,11 @@ pub async fn refresh_cursor_token(
                 let _ = crate::modules::tray::update_tray_menu(&app_for_tray);
             });
             logger::log_info(&format!(
-                "[Cursor Command] 刷新完成: account_id={}, email={}, elapsed={}ms, mode=fast_usage_only",
+                "[Cursor Command] 刷新完成: account_id={}, email={}, elapsed={}ms, mode=fast_usage_only, persisted={}",
                 account.id,
                 account.email,
-                started_at.elapsed().as_millis()
+                started_at.elapsed().as_millis(),
+                refreshed.persisted
             ));
             Ok(account)
         }
@@ -116,8 +132,30 @@ pub async fn refresh_all_cursor_tokens(app: AppHandle) -> Result<i32, String> {
     let started_at = Instant::now();
     logger::log_info("[Cursor Command] 批量刷新开始");
 
-    let results = cursor_account::refresh_all_tokens().await?;
-    let success_count = results.iter().filter(|(_, r)| r.is_ok()).count();
+    let accounts = cursor_account::list_accounts();
+    let active_accounts: Vec<CursorAccount> = accounts
+        .into_iter()
+        .filter(|account| !cursor_account::is_banned_account(account))
+        .collect();
+
+    let mut success_count = 0usize;
+    let mut persisted_any = false;
+    for account in active_accounts {
+        let id = account.id.clone();
+        match cursor_account::refresh_account_async(&id).await {
+            Ok(refreshed) => {
+                success_count += 1;
+                if refreshed.persisted {
+                    persisted_any = true;
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
+    if persisted_any {
+        emit_cursor_accounts_changed(&app, "", "refresh-batch-complete");
+    }
 
     if success_count > 0 {
         if let Err(e) = cursor_account::run_quota_alert_if_needed() {
@@ -197,7 +235,7 @@ pub async fn cursor_oauth_login_complete(
     let mut account = cursor_account::upsert_import_payload(payload)?;
 
     match cursor_account::refresh_account_async(&account.id).await {
-        Ok(refreshed) => account = refreshed,
+        Ok(refreshed) => account = refreshed.account,
         Err(e) => {
             logger::log_warn(&format!("[Cursor OAuth] 登录后自动刷新配额失败: {}", e));
         }

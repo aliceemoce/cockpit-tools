@@ -450,6 +450,59 @@ fn persist_quota_query_error(account_id: &str, message: &str) {
     let _ = upsert_account_record(account);
 }
 
+fn is_cursor_transient_quota_error(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("error sending request")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("connection")
+        || lower.contains("connect error")
+        || lower.contains("dns")
+        || lower.contains("resolve")
+        || lower.contains("proxy")
+        || lower.contains("tunnel")
+        || lower.contains("502")
+        || lower.contains("503")
+        || lower.contains("504")
+}
+
+#[allow(dead_code)]
+fn is_cursor_auth_quota_error(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("会话已过期")
+        || lower.contains("未认证")
+        || lower.contains("请重新导入")
+        || lower.contains("请重新登录")
+        || lower.contains("refresh token 已失效")
+        || lower.contains("token 已失效")
+        || lower.contains("session expired")
+        || lower.contains("invalid credentials")
+        || lower.contains("unauthenticated")
+}
+
+pub struct CursorRefreshResult {
+    pub account: CursorAccount,
+    pub persisted: bool,
+}
+
+fn cursor_accounts_differ_for_refresh(before: &CursorAccount, after: &CursorAccount) -> bool {
+    before.quota_query_last_error != after.quota_query_last_error
+        || before.quota_query_last_error_at != after.quota_query_last_error_at
+        || before.cursor_usage_raw != after.cursor_usage_raw
+        || before.usage_updated_at != after.usage_updated_at
+        || before.last_used != after.last_used
+        || before.access_token != after.access_token
+        || before.refresh_token != after.refresh_token
+        || before.membership_type != after.membership_type
+        || before.subscription_status != after.subscription_status
+        || before.sign_up_type != after.sign_up_type
+        || before.cursor_auth_raw != after.cursor_auth_raw
+}
+
+pub fn cursor_refresh_persisted(before: &CursorAccount, after: &CursorAccount) -> bool {
+    cursor_accounts_differ_for_refresh(before, after)
+}
+
 // ---------------------------------------------------------------------------
 // Identity helpers
 // ---------------------------------------------------------------------------
@@ -2575,7 +2628,7 @@ async fn fetch_usage_summary_with_client(
 // Refresh (updates our own account storage + fetches usage from official APIs)
 // ---------------------------------------------------------------------------
 
-async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, String> {
+async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshResult, String> {
     let existing = load_account(account_id).ok_or_else(|| "账号不存在".to_string())?;
     logger::log_info(&format!(
         "[Cursor Refresh] 开始刷新账号: id={}, email={}",
@@ -2702,6 +2755,16 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, S
             ));
         }
         Err(err) => {
+            if is_cursor_transient_quota_error(&err) {
+                logger::log_warn(&format!(
+                    "[Cursor Refresh] transient 失败，跳过写盘: id={}, error={}",
+                    account.id, err
+                ));
+                return Ok(CursorRefreshResult {
+                    account: existing,
+                    persisted: false,
+                });
+            }
             logger::log_warn(&format!(
                 "[Cursor Refresh] API 配额拉取失败: id={}, error={}",
                 account.id, err
@@ -2723,19 +2786,24 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, S
         "[Cursor Refresh] 刷新完成: id={}, email={}",
         updated.id, updated.email
     ));
-    Ok(updated)
+    Ok(CursorRefreshResult {
+        account: updated.clone(),
+        persisted: cursor_accounts_differ_for_refresh(&existing, &updated),
+    })
 }
 
-pub async fn refresh_account_async(account_id: &str) -> Result<CursorAccount, String> {
+pub async fn refresh_account_async(account_id: &str) -> Result<CursorRefreshResult, String> {
     let result = refresh_account_async_once(account_id).await;
     if let Err(err) = &result {
-        persist_quota_query_error(account_id, err);
+        if !is_cursor_transient_quota_error(err) {
+            persist_quota_query_error(account_id, err);
+        }
     }
     result
 }
 
 /// UI 热路径：与全量刷新共用 upstream 判定逻辑，避免 quota_only 漏标失败。
-pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorAccount, String> {
+pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorRefreshResult, String> {
     {
         let mut in_flight = CURSOR_REFRESH_IN_FLIGHT
             .lock()
@@ -2745,7 +2813,11 @@ pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorAccoun
                 "[Cursor Refresh] 跳过重复刷新(已在进行): id={}",
                 account_id
             ));
-            return load_account(account_id).ok_or_else(|| "账号不存在".to_string());
+            let account = load_account(account_id).ok_or_else(|| "账号不存在".to_string())?;
+            return Ok(CursorRefreshResult {
+                account,
+                persisted: false,
+            });
         }
     }
 
@@ -2757,88 +2829,20 @@ pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorAccoun
     result
 }
 
-pub async fn refresh_all_tokens_batched() -> Result<Vec<(String, Result<CursorAccount, String>)>, String> {
-    use futures::future::join_all;
-    use std::sync::Arc;
-    use tokio::sync::Semaphore;
-
-    const BATCH_SIZE: usize = 40;
-    const BATCH_PAUSE_MS: u64 = 1500;
-    const MAX_CONCURRENT: usize = 10;
-
+pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<CursorRefreshResult, String>)>, String> {
     let accounts = list_accounts();
-    let total = accounts.len();
     let active_accounts: Vec<CursorAccount> = accounts
         .into_iter()
         .filter(|account| !is_banned_account(account))
         .collect();
-    let skipped_banned = total.saturating_sub(active_accounts.len());
-    let batch_count = active_accounts.len().div_ceil(BATCH_SIZE);
 
-    logger::log_info(&format!(
-        "[Cursor Refresh] 分批次刷新开始: total={}, active={}, batches={}, concurrent={}, mode=full",
-        total,
-        active_accounts.len(),
-        batch_count,
-        MAX_CONCURRENT
-    ));
-    if skipped_banned > 0 {
-        logger::log_info(&format!(
-            "[Cursor Refresh] 跳过封禁账号: skipped={}",
-            skipped_banned
-        ));
+    let mut results = Vec::with_capacity(active_accounts.len());
+    for account in active_accounts {
+        let id = account.id.clone();
+        let result = refresh_account_async(&id).await;
+        results.push((id, result));
     }
-
-    let mut results = Vec::new();
-    for (batch_index, chunk) in active_accounts.chunks(BATCH_SIZE).enumerate() {
-        logger::log_info(&format!(
-            "[Cursor Refresh] 批次 {}/{}: size={}",
-            batch_index + 1,
-            batch_count,
-            chunk.len()
-        ));
-        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
-        let tasks: Vec<_> = chunk
-            .iter()
-            .map(|account| {
-                let id = account.id.clone();
-                let semaphore = semaphore.clone();
-                async move {
-                    let _permit = semaphore
-                        .acquire_owned()
-                        .await
-                        .map_err(|e| format!("获取 Cursor 刷新并发许可失败: {}", e))?;
-                    let result = refresh_account_async(&id).await;
-                    Ok::<(String, Result<CursorAccount, String>), String>((id, result))
-                }
-            })
-            .collect();
-
-        for task in join_all(tasks).await {
-            match task {
-                Ok(item) => results.push(item),
-                Err(err) => return Err(err),
-            }
-        }
-
-        if batch_index + 1 < batch_count {
-            tokio::time::sleep(std::time::Duration::from_millis(BATCH_PAUSE_MS)).await;
-        }
-    }
-
-    let success_count = results.iter().filter(|(_, r)| r.is_ok()).count();
-    logger::log_info(&format!(
-        "[Cursor Refresh] 分批次刷新完成: total={}, success={}, failed={}",
-        results.len(),
-        success_count,
-        results.len().saturating_sub(success_count)
-    ));
-
     Ok(results)
-}
-
-pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<CursorAccount, String>)>, String> {
-    refresh_all_tokens_batched().await
 }
 
 // ---------------------------------------------------------------------------
@@ -2956,6 +2960,44 @@ fn average_quota_percentage(metrics: &[(String, i32)]) -> f64 {
     sum as f64 / metrics.len() as f64
 }
 
+const FULL_QUOTA_REMAINING_THRESHOLD: f64 = 99.0;
+
+fn plan_limit_value(account: &CursorAccount) -> Option<f64> {
+    let raw = account.cursor_usage_raw.as_ref()?;
+    let raw_obj = raw.as_object()?;
+    let plan_value = raw_obj
+        .get("individualUsage")
+        .and_then(|value| value.as_object())
+        .and_then(|value| value.get("plan"))
+        .or_else(|| {
+            raw_obj
+                .get("individual_usage")
+                .and_then(|value| value.as_object())
+                .and_then(|value| value.get("plan"))
+        })
+        .or_else(|| raw_obj.get("planUsage"))
+        .or_else(|| raw_obj.get("plan_usage"));
+    pick_number(plan_value, &["limit"])
+}
+
+pub fn has_effective_plan_budget(account: &CursorAccount) -> bool {
+    plan_limit_value(account).is_some_and(|limit| limit > 0.0)
+}
+
+pub fn is_full_quota_account(account: &CursorAccount) -> bool {
+    if is_banned_account(account) || has_quota_query_failed(account) {
+        return false;
+    }
+    if !has_effective_plan_budget(account) {
+        return false;
+    }
+    let metrics = extract_quota_metrics(account);
+    if metrics.is_empty() {
+        return false;
+    }
+    average_quota_percentage(&metrics) >= FULL_QUOTA_REMAINING_THRESHOLD
+}
+
 fn normalize_quota_alert_threshold(value: i32) -> i32 {
     value.clamp(0, 100)
 }
@@ -2976,6 +3018,24 @@ fn remaining_credits_sort_key(account: &CursorAccount) -> (i32, i64) {
     let remaining = average_quota_percentage(&extract_quota_metrics(account)) as i32;
     let refreshed_at = account.usage_updated_at.unwrap_or(0);
     (remaining, refreshed_at)
+}
+
+pub fn pick_full_quota_account(exclude_ids: &HashSet<String>) -> Option<String> {
+    let mut candidates: Vec<CursorAccount> = list_accounts()
+        .into_iter()
+        .filter(|account| !exclude_ids.contains(&account.id))
+        .filter(|account| is_full_quota_account(account))
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    candidates.sort_by(|left, right| {
+        remaining_credits_sort_key(right).cmp(&remaining_credits_sort_key(left))
+    });
+
+    candidates.first().map(|account| account.id.clone())
 }
 
 pub fn pick_highest_remaining_credits_account(exclude_ids: &HashSet<String>) -> Option<String> {

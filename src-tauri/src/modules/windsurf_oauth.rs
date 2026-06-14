@@ -654,7 +654,7 @@ async fn post_seat_management_json(
         "{}/exa.seat_management_pb.SeatManagementService/{}",
         base, method
     );
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::create_client(30);
 
     let response = client
         .post(url.clone())
@@ -1586,7 +1586,7 @@ async fn detect_password_auth_method(
         "product": "windsurf",
         "email": email
     });
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::create_client(30);
     let response = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -1642,7 +1642,7 @@ async fn login_with_auth1_password(email: &str, password: &str) -> Result<String
         "email": email,
         "password": password
     });
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::create_client(30);
     let response = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -1719,7 +1719,7 @@ async fn request_auth1_session(auth1_token: &str, org_id: &str) -> Result<Value,
         "auth1Token": auth1_token,
         "orgId": org_id
     });
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::create_client(30);
     let response = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -1923,7 +1923,7 @@ async fn fetch_auth1_plan_status(session_token: &str) -> Result<Value, String> {
         "{}{}",
         WINDSURF_BACKEND_API_BASE_URL, GET_PLAN_STATUS_METHOD_PATH
     );
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::create_client(30);
     let response = client
         .post(url)
         .header("Content-Type", "application/proto")
@@ -2011,7 +2011,7 @@ async fn sign_in_with_firebase_password(email: &str, password: &str) -> Result<S
         "clientType": "CLIENT_TYPE_WEB"
     });
 
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::create_client(30);
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")

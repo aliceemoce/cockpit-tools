@@ -31,9 +31,9 @@ $grepKeepLocal = Select-String -Path $cursorAccount -Pattern '保留本地' -Sim
 if ($grepKeepLocal) {
   Write-Error 'refresh still preserves local email in cursor_account.rs'
 }
-$grepBackupUpload = Select-String -Path $cursorAccount -Pattern 'schedule_local_import_backup_upload' -SimpleMatch
+$grepBackupUpload = Select-String -Path $cursorAccount -Pattern 'record_local_import_backup' -SimpleMatch
 if (-not $grepBackupUpload) {
-  Write-Error 'cursor_account.rs missing schedule_local_import_backup_upload after local import'
+  Write-Error 'cursor_account.rs missing record_local_import_backup for local import backup append'
 }
 
 $backupSync = Join-Path $RepoRoot 'src-tauri\src\modules\cursor_import_backup_sync.rs'
