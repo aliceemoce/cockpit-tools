@@ -2704,18 +2704,16 @@ fn detect_codex_store_app_user_model_id() -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn powershell_single_quoted_array(values: &[String]) -> String {
-    if values.is_empty() {
-        return "@()".to_string();
+fn powershell_argument_list_clause(values: &[String]) -> String {
+    let arguments = values
+        .iter()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!("'{}'", escape_powershell_single_quoted(value)))
+        .collect::<Vec<_>>();
+    if arguments.is_empty() {
+        return String::new();
     }
-    format!(
-        "@({})",
-        values
-            .iter()
-            .map(|value| format!("'{}'", escape_powershell_single_quoted(value)))
-            .collect::<Vec<_>>()
-            .join(", ")
-    )
+    format!(" -ArgumentList @({})", arguments.join(", "))
 }
 
 #[cfg(target_os = "windows")]
@@ -2749,12 +2747,12 @@ fn launch_codex_via_store_app_user_model_id(
         .map(|(key, value)| format!("$env:{}='{}'", key, escape_powershell_single_quoted(&value)))
         .collect::<Vec<_>>()
         .join("\n");
-    let argument_list = powershell_single_quoted_array(extra_args);
+    let argument_list = powershell_argument_list_clause(extra_args);
     let script = format!(
         r#"{env_lines}
 $appId='{escaped}';
 $target='shell:AppsFolder\' + $appId
-Start-Process -FilePath $target -ArgumentList {argument_list} -ErrorAction Stop | Out-Null"#
+Start-Process -FilePath $target{argument_list} -ErrorAction Stop | Out-Null"#
     );
 
     let output = powershell_output(&["-Command", &script])
@@ -2799,11 +2797,11 @@ fn launch_codex_via_powershell_exec_path(
         .map(|(key, value)| format!("$env:{}='{}'", key, escape_powershell_single_quoted(&value)))
         .collect::<Vec<_>>()
         .join("\n");
-    let argument_list = powershell_single_quoted_array(extra_args);
+    let argument_list = powershell_argument_list_clause(extra_args);
     let script = format!(
         r#"{env_lines}
 $exe='{exe}';
-Start-Process -FilePath $exe -ArgumentList {argument_list} -ErrorAction Stop | Out-Null"#,
+Start-Process -FilePath $exe{argument_list} -ErrorAction Stop | Out-Null"#,
         exe = escape_powershell_single_quoted(launch_path),
     );
 
@@ -4661,6 +4659,24 @@ fn get_managed_codex_windows_app_user_data_dir(codex_home: &str) -> Option<Strin
     crate::modules::codex_instance::get_windows_app_user_data_dir(Path::new(trimmed))
         .ok()
         .map(|value| value.to_string_lossy().to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn get_default_codex_windows_app_user_data_dirs(default_codex_home: &str) -> HashSet<String> {
+    let mut dirs = HashSet::new();
+    if let Some(app_dir) = get_default_codex_windows_app_user_data_dir() {
+        let normalized = normalize_path_for_compare(&app_dir);
+        if !normalized.is_empty() {
+            dirs.insert(normalized);
+        }
+    }
+    if let Some(app_dir) = get_managed_codex_windows_app_user_data_dir(default_codex_home) {
+        let normalized = normalize_path_for_compare(&app_dir);
+        if !normalized.is_empty() {
+            dirs.insert(normalized);
+        }
+    }
+    dirs
 }
 
 #[cfg(target_os = "windows")]
@@ -8521,16 +8537,14 @@ pub fn close_codex_instances(codex_homes: &[String], timeout_secs: u64) -> Resul
             return Ok(());
         }
 
-        let current_default_app_dir = if includes_default {
-            get_managed_codex_windows_app_user_data_dir(
+        let current_default_app_dirs = if includes_default {
+            get_default_codex_windows_app_user_data_dirs(
                 crate::modules::codex_account::get_codex_home()
                     .to_string_lossy()
                     .as_ref(),
             )
-            .map(|value| normalize_path_for_compare(&value))
-            .filter(|value| !value.is_empty())
         } else {
-            None
+            HashSet::new()
         };
 
         let matches_target = |dir: Option<&String>,
@@ -8542,7 +8556,7 @@ pub fn close_codex_instances(codex_homes: &[String], timeout_secs: u64) -> Resul
                     !normalized.is_empty()
                         && (target_app_dirs.contains(&normalized)
                             || (includes_default
-                                && current_default_app_dir.as_deref() == Some(normalized.as_str())))
+                                && current_default_app_dirs.contains(&normalized)))
                 }
                 None => includes_default,
             }

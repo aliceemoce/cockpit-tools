@@ -1,9 +1,19 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use crate::models::{DefaultInstanceSettings, InstanceProfileView};
 use crate::modules;
+use tokio::sync::{Mutex, OnceCell};
 
 const DEFAULT_INSTANCE_ID: &str = "__default__";
+
+static CURSOR_SWITCH_LAUNCH_LOCK: OnceCell<Mutex<()>> = OnceCell::const_new();
+
+async fn cursor_switch_launch_lock() -> &'static Mutex<()> {
+    CURSOR_SWITCH_LAUNCH_LOCK
+        .get_or_init(|| async { Mutex::new(()) })
+        .await
+}
 
 fn is_profile_initialized(user_data_dir: &str) -> bool {
     let path = Path::new(user_data_dir);
@@ -16,30 +26,189 @@ fn is_profile_initialized(user_data_dir: &str) -> bool {
     }
 }
 
-fn inject_bound_account_for_instance_start(
-    user_data_dir: &str,
+fn collect_reserved_account_ids(instance_id: &str) -> HashSet<String> {
+    let mut reserved = HashSet::new();
+    let Ok(store) = modules::cursor_instance::load_instance_store() else {
+        return reserved;
+    };
+    for instance in &store.instances {
+        if instance.id == instance_id {
+            continue;
+        }
+        if let Some(bind_id) = instance
+            .bind_account_id
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            reserved.insert(bind_id.to_string());
+        }
+    }
+    if instance_id != DEFAULT_INSTANCE_ID {
+        if let Some(bind_id) = store
+            .default_settings
+            .bind_account_id
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            reserved.insert(bind_id.to_string());
+        }
+    }
+    reserved
+}
+
+fn resolve_instance_switch_account_id(
+    instance_id: &str,
     bind_account_id: Option<&str>,
-) -> Result<(), String> {
-    let bind_id = bind_account_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let Some(bind_id) = bind_id else {
+) -> Result<String, String> {
+    let exclude = collect_reserved_account_ids(instance_id);
+
+    if let Some(bind_id) = bind_account_id.map(str::trim).filter(|value| !value.is_empty()) {
+        let account = modules::cursor_account::load_account(bind_id)
+            .ok_or_else(|| format!("绑定账号不存在: {}", bind_id))?;
+        if modules::cursor_account::is_full_quota_account(&account) {
+            return Ok(bind_id.to_string());
+        }
+        modules::logger::log_info(&format!(
+            "[Cursor Switch] 绑定账号额度未满 ({}), 自动挑选满额账号",
+            account.email
+        ));
+    }
+
+    if let Some(full_id) = modules::cursor_account::pick_full_quota_account(&exclude) {
+        return Ok(full_id);
+    }
+
+    modules::cursor_account::pick_highest_remaining_credits_account(&exclude).ok_or_else(|| {
+        "没有可用的满额 Cursor 账号，请稍后重试或手动绑定账号".to_string()
+    })
+}
+
+fn persist_auto_bind_account(instance_id: &str, account_id: &str) -> Result<(), String> {
+    if instance_id == DEFAULT_INSTANCE_ID {
+        modules::cursor_instance::update_default_settings(Some(Some(account_id.to_string())), None, None)?;
         return Ok(());
+    }
+    modules::cursor_instance::update_instance(modules::cursor_instance::UpdateInstanceParams {
+        instance_id: instance_id.to_string(),
+        name: None,
+        working_dir: None,
+        extra_args: None,
+        bind_account_id: Some(Some(account_id.to_string())),
+    })?;
+    Ok(())
+}
+
+fn prepare_instance_for_account(user_data_dir: &str, account_id: &str) -> Result<(), String> {
+    modules::cursor_account::switch_cursor_account_to_profile(
+        account_id,
+        Path::new(user_data_dir),
+    )
+}
+
+struct InstanceLaunchContext {
+    user_data_dir: String,
+    bind_account_id: Option<String>,
+    is_default: bool,
+}
+
+fn resolve_instance_launch_context(instance_id: &str) -> Result<InstanceLaunchContext, String> {
+    if instance_id == DEFAULT_INSTANCE_ID {
+        let default_dir = modules::cursor_instance::get_default_cursor_user_data_dir()?;
+        let default_settings = modules::cursor_instance::load_default_settings()?;
+        return Ok(InstanceLaunchContext {
+            user_data_dir: default_dir.to_string_lossy().to_string(),
+            bind_account_id: default_settings.bind_account_id,
+            is_default: true,
+        });
+    }
+
+    let store = modules::cursor_instance::load_instance_store()?;
+    let instance = store
+        .instances
+        .into_iter()
+        .find(|item| item.id == instance_id)
+        .ok_or("实例不存在")?;
+    Ok(InstanceLaunchContext {
+        user_data_dir: instance.user_data_dir,
+        bind_account_id: instance.bind_account_id,
+        is_default: false,
+    })
+}
+
+/// 账号总览 Play 与多开实例启动的唯一切号入口。
+pub async fn start_cursor_instance_with_account_switch(
+    instance_id: String,
+    forced_account_id: Option<String>,
+) -> Result<InstanceProfileView, String> {
+    let _guard = cursor_switch_launch_lock().await.lock().await;
+    modules::cursor_instance::ensure_cursor_launch_path_configured()?;
+    let ctx = resolve_instance_launch_context(&instance_id)?;
+
+    let update_default_bind = ctx.is_default && forced_account_id.is_some();
+    let account_id = match forced_account_id {
+        Some(id) => {
+            if modules::cursor_account::load_account(&id).is_none() {
+                return Err(format!("Cursor 账号不存在: {}", id));
+            }
+            id
+        }
+        None => resolve_instance_switch_account_id(&instance_id, ctx.bind_account_id.as_deref())?,
     };
 
-    let account = modules::cursor_account::load_account(bind_id)
-        .ok_or_else(|| format!("绑定账号不存在: {}", bind_id))?;
+    let needs_auto_bind = ctx
+        .bind_account_id
+        .as_ref()
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    let bind_was_non_full = ctx
+        .bind_account_id
+        .as_ref()
+        .and_then(|bind_id| modules::cursor_account::load_account(bind_id))
+        .map(|account| !modules::cursor_account::is_full_quota_account(&account))
+        .unwrap_or(false);
+    let swapped_from_non_full = bind_was_non_full
+        && ctx
+            .bind_account_id
+            .as_deref()
+            .map(|bind_id| bind_id != account_id)
+            .unwrap_or(false);
+    if needs_auto_bind || swapped_from_non_full {
+        if let Err(err) = persist_auto_bind_account(&instance_id, &account_id) {
+            modules::logger::log_warn(&format!(
+                "自动绑定 Cursor 实例账号失败: instance_id={}, account_id={}, error={}",
+                instance_id, account_id, err
+            ));
+        } else if swapped_from_non_full {
+            modules::logger::log_info(&format!(
+                "[Cursor Switch] 已因额度不足自动改绑满额账号: instance_id={}, account_id={}",
+                instance_id, account_id
+            ));
+        }
+    }
 
-    modules::logger::log_info(&format!(
-        "实例启动检测到绑定 Cursor 账号，准备注入: bind_account_id={}, email={}, user_data_dir={}",
-        bind_id, account.email, user_data_dir
-    ));
+    let user_data_dir = ctx.user_data_dir.clone();
+    let account_id_for_switch = account_id.clone();
+    tokio::task::spawn_blocking(move || {
+        prepare_instance_for_account(&user_data_dir, &account_id_for_switch)
+    })
+    .await
+    .map_err(|err| format!("切号任务异常: {}", err))??;
 
-    modules::cursor_instance::close_cursor(&[user_data_dir.to_string()], 20)?;
-    modules::cursor_instance::inject_account_to_profile(Path::new(user_data_dir), bind_id)?;
+    let _ = modules::provider_current_state::set_current_account_id("cursor", Some(&account_id));
 
-    modules::logger::log_info(&format!("Cursor 账号注入完成: {}", account.email));
-    Ok(())
+    if update_default_bind {
+        if let Err(err) = modules::cursor_instance::update_default_settings(
+            Some(Some(account_id.clone())),
+            None,
+            Some(false),
+        ) {
+            modules::logger::log_warn(&format!("更新 Cursor 默认实例绑定账号失败: {}", err));
+        }
+    }
+
+    cursor_start_instance_prepared(instance_id, true).await
 }
 
 #[tauri::command]
@@ -79,21 +248,24 @@ pub async fn cursor_list_instances() -> Result<Vec<InstanceProfileView>, String>
         &process_entries,
     );
     let default_running = default_pid.is_some();
-    result.push(InstanceProfileView {
-        id: DEFAULT_INSTANCE_ID.to_string(),
-        name: String::new(),
-        user_data_dir: default_dir_str,
-        working_dir: None,
-        extra_args: default_settings.extra_args.clone(),
-        bind_account_id: default_settings.bind_account_id.clone(),
-        created_at: 0,
-        last_launched_at: None,
-        last_pid: default_pid,
-        running: default_running,
-        initialized: is_profile_initialized(&default_dir.to_string_lossy()),
-        is_default: true,
-        follow_local_account: false,
-    });
+    result.insert(
+        0,
+        InstanceProfileView {
+            id: DEFAULT_INSTANCE_ID.to_string(),
+            name: String::new(),
+            user_data_dir: default_dir_str,
+            working_dir: None,
+            extra_args: default_settings.extra_args.clone(),
+            bind_account_id: default_settings.bind_account_id.clone(),
+            created_at: 0,
+            last_launched_at: None,
+            last_pid: default_pid,
+            running: default_running,
+            initialized: is_profile_initialized(&default_dir.to_string_lossy()),
+            is_default: true,
+            follow_local_account: false,
+        },
+    );
 
     Ok(result)
 }
@@ -217,32 +389,53 @@ pub async fn cursor_delete_instance(instance_id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn cursor_start_instance(instance_id: String) -> Result<InstanceProfileView, String> {
     modules::logger::log_info(&format!("开始启动 Cursor 实例: {}", instance_id));
-    modules::cursor_instance::ensure_cursor_launch_path_configured()?;
+    start_cursor_instance_with_account_switch(instance_id, None).await
+}
+
+pub async fn cursor_start_instance_prepared(
+    instance_id: String,
+    skip_prelaunch_close: bool,
+) -> Result<InstanceProfileView, String> {
+    // 对齐无忧传统切号：换号步骤完成后等待 1.5s 再启动 Cursor。
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
     if instance_id == DEFAULT_INSTANCE_ID {
         let default_dir = modules::cursor_instance::get_default_cursor_user_data_dir()?;
         let default_dir_str = default_dir.to_string_lossy().to_string();
         let default_settings = modules::cursor_instance::load_default_settings()?;
 
-        if let Some(pid) =
-            modules::cursor_instance::resolve_cursor_pid(default_settings.last_pid, None)
-        {
-            modules::process::close_pid(pid, 20)?;
-            let _ = modules::cursor_instance::update_default_pid(None)?;
+        if !skip_prelaunch_close {
+            if let Some(pid) =
+                modules::cursor_instance::resolve_cursor_pid(default_settings.last_pid, None)
+            {
+                modules::process::close_pid(pid, 20)?;
+                let _ = modules::cursor_instance::update_default_pid(None)?;
+            }
+
+            modules::cursor_instance::close_cursor(&[default_dir_str.clone()], 20)?;
+        } else {
+            modules::logger::log_info(
+                "[Cursor Switch] 切号后跳过二次 close，直接启动默认实例",
+            );
         }
 
-        modules::cursor_instance::close_cursor(&[default_dir_str.clone()], 20)?;
-        inject_bound_account_for_instance_start(
-            &default_dir_str,
-            default_settings.bind_account_id.as_deref(),
-        )?;
-
         let extra_args = modules::process::parse_extra_args(&default_settings.extra_args);
-        let pid = modules::cursor_instance::start_cursor_default_with_args_with_new_window(
+        let workspace = modules::cursor_instance::resolve_launch_workspace(
+            default_settings.working_dir.as_deref(),
+            Some(&default_dir_str),
+        );
+        let use_new_window =
+            modules::cursor_instance::should_use_new_window_for_profile(&default_dir_str);
+        let pid = modules::cursor_instance::start_cursor_with_args_with_new_window(
+            &default_dir_str,
             &extra_args,
-            true,
+            use_new_window,
+            workspace.as_deref(),
         )?;
-        let _ = modules::cursor_instance::update_default_pid(Some(pid))?;
+        let pid_for_store = pid;
+        tokio::task::spawn_blocking(move || {
+            let _ = modules::cursor_instance::update_default_pid(Some(pid_for_store));
+        });
 
         let running = modules::cursor_instance::resolve_cursor_pid(Some(pid), None).is_some();
         return Ok(InstanceProfileView {
@@ -269,37 +462,52 @@ pub async fn cursor_start_instance(instance_id: String) -> Result<InstanceProfil
         .find(|item| item.id == instance_id)
         .ok_or("实例不存在")?;
 
-    if let Some(pid) = modules::cursor_instance::resolve_cursor_pid(
-        instance.last_pid,
-        Some(&instance.user_data_dir),
-    ) {
-        modules::process::close_pid(pid, 20)?;
-        let _ = modules::cursor_instance::update_instance_pid(&instance.id, None)?;
+    if !skip_prelaunch_close {
+        if let Some(pid) = modules::cursor_instance::resolve_cursor_pid(
+            instance.last_pid,
+            Some(&instance.user_data_dir),
+        ) {
+            modules::process::close_pid(pid, 20)?;
+            let _ = modules::cursor_instance::update_instance_pid(&instance.id, None)?;
+        }
+
+        modules::cursor_instance::close_cursor_profile_strict(&instance.user_data_dir, 20)?;
+    } else {
+        modules::logger::log_info(&format!(
+            "[Cursor Switch] 切号后跳过二次 close，直接启动实例: {}",
+            instance.id
+        ));
     }
 
-    modules::cursor_instance::close_cursor(&[instance.user_data_dir.clone()], 20)?;
-    inject_bound_account_for_instance_start(
-        &instance.user_data_dir,
-        instance.bind_account_id.as_deref(),
-    )?;
-
     let extra_args = modules::process::parse_extra_args(&instance.extra_args);
+    let workspace = modules::cursor_instance::resolve_launch_workspace(
+        instance.working_dir.as_deref(),
+        Some(&instance.user_data_dir),
+    );
+    let use_new_window =
+        modules::cursor_instance::should_use_new_window_for_profile(&instance.user_data_dir);
     let pid = modules::cursor_instance::start_cursor_with_args_with_new_window(
         &instance.user_data_dir,
         &extra_args,
-        true,
+        use_new_window,
+        workspace.as_deref(),
     )?;
-    let updated = modules::cursor_instance::update_instance_after_start(&instance.id, pid)?;
+    let instance_id_for_store = instance.id.clone();
+    let pid_for_store = pid;
+    tokio::task::spawn_blocking(move || {
+        let _ =
+            modules::cursor_instance::update_instance_after_start(&instance_id_for_store, pid_for_store);
+    });
 
+    let updated = instance;
     let running =
         modules::cursor_instance::resolve_cursor_pid(Some(pid), Some(&updated.user_data_dir))
             .is_some();
     let initialized = is_profile_initialized(&updated.user_data_dir);
-    Ok(InstanceProfileView::from_profile(
-        updated,
-        running,
-        initialized,
-    ))
+    let mut view = InstanceProfileView::from_profile(updated, running, initialized);
+    view.last_pid = Some(pid);
+    view.last_launched_at = Some(chrono::Utc::now().timestamp_millis());
+    Ok(view)
 }
 
 #[tauri::command]

@@ -1226,7 +1226,7 @@ export function SettingsPage() {
       setGhcpAutoRefresh(String(config.ghcp_auto_refresh_minutes ?? 10));
       setWindsurfAutoRefresh(String(config.windsurf_auto_refresh_minutes ?? 10));
       setKiroAutoRefresh(String(config.kiro_auto_refresh_minutes ?? 10));
-      setCursorAutoRefresh(String(config.cursor_auto_refresh_minutes ?? 10));
+      setCursorAutoRefresh(String(config.cursor_auto_refresh_minutes ?? 60));
       setGeminiAutoRefresh(String(config.gemini_auto_refresh_minutes ?? 10));
       setGeminiSyncWsl(Boolean(config.gemini_sync_wsl ?? true));
       setCloseBehavior(config.close_behavior || 'ask');

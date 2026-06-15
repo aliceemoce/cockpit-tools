@@ -19,6 +19,7 @@ export type Page =
   | 'codex-instances'
   | 'instances'
   | 'accounts'
+  | 'fingerprints'
   | 'wakeup'
   | 'verification'
   | '2fa'

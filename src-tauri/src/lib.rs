@@ -1,7 +1,7 @@
-mod commands;
+pub mod commands;
 pub mod error;
 mod models;
-mod modules;
+pub mod modules;
 mod utils;
 
 use modules::config::CloseWindowBehavior;
@@ -321,6 +321,10 @@ pub fn run() {
                 modules::floating_card_window::show_floating_card_window_on_startup(&app.handle())
             {
                 logger::log_warn(&format!("[FloatingCard] 启动时显示悬浮卡片失败: {}", err));
+            }
+
+            if let Err(err) = modules::floating_card_window::show_main_window(&app.handle()) {
+                logger::log_warn(&format!("[Window] 启动时显示主窗口失败: {}", err));
             }
 
             let startup_args: Vec<String> = std::env::args().collect();

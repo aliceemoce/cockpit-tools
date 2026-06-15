@@ -1,0 +1,359 @@
+{
+  "ok": true,
+  "since": "2026-06-14T02:29",
+  "expected": {
+    "default_account_id": "cursor_794a8da9704249ef64ac082b5a47ad69",
+    "default_email": "bubble_wreath.1j@icloud.com",
+    "instance_id": "5cc582e1-7fa7-4d7a-aef2-db9bc5a9e29c",
+    "instance_name": "22",
+    "instance_profile": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+    "instance_account_id": "cursor_f44aa0937958ee99901f99639fa49f24",
+    "instance_email": "fangs-remiss5u@icloud.com"
+  },
+  "fixed_bind_accounts": {
+    "default_account_id": "cursor_794a8da9704249ef64ac082b5a47ad69",
+    "instance_account_id": "cursor_f44aa0937958ee99901f99639fa49f24",
+    "written_at": "2026-06-14T02:29:18.198350+08:00"
+  },
+  "stopped_multi_pids": [
+    35612,
+    27900,
+    41128,
+    37048,
+    28460,
+    44436,
+    21280,
+    37288,
+    31336
+  ],
+  "default_pids_before": [
+    28264,
+    39404,
+    40188,
+    4988,
+    36596,
+    39972,
+    44600,
+    44008,
+    21776,
+    35204,
+    30128,
+    3760,
+    20284,
+    32056,
+    10244,
+    19700,
+    38116,
+    19220,
+    41068
+  ],
+  "default_email_before": "bubble_wreath.1j@icloud.com",
+  "nav_instances": {
+    "ok": true,
+    "label": "多开实例"
+  },
+  "click_start_all": {
+    "ok": true,
+    "label": "全部启动"
+  },
+  "confirm_start_all": {
+    "ok": true,
+    "label": "WM_COMMAND:1"
+  },
+  "cursor_processes": [
+    {
+      "pid": 28264,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": true,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --user-data-dir C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor --new-window C:\\Users\\aliceemoce\\dev\\cockpit-tools"
+    },
+    {
+      "pid": 39404,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe --type=crashpad-handler --user-data-dir=C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Users"
+    },
+    {
+      "pid": 40188,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAQAAA"
+    },
+    {
+      "pid": 4988,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\" --standard-s"
+    },
+    {
+      "pid": 36596,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\" --standard-schemes=vscode-webview,vscode-file --enable-sandbox --secure-schemes=vscode-webview,vscod"
+    },
+    {
+      "pid": 39972,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 44600,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --dns-result-order=ipv4first --experimental-network-inspection --inspect-port=0"
+    },
+    {
+      "pid": 44008,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 21776,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 35204,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 30128,
+      "user_data_dir": null,
+      "has_workspace": false,
+      "cmd_snippet": "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe --dns-result-order=ipv4first --experimental-network-inspection c:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\resources\\app\\extensions\\cursor-always-local\\dist\\gitWorker.js"
+    },
+    {
+      "pid": 3760,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --dns-result-order=ipv4first --experimental-network-inspection --inspect-port=0"
+    },
+    {
+      "pid": 20284,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 32056,
+      "user_data_dir": null,
+      "has_workspace": false,
+      "cmd_snippet": "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe --dns-result-order=ipv4first --experimental-network-inspection c:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\resources\\app\\extensions\\cursor-always-local\\dist\\gitWorker.js"
+    },
+    {
+      "pid": 10244,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\" --standard-schemes=vscode-webview,vscode-file --enable-sandbox --secure-schemes=vscode-webview,vscod"
+    },
+    {
+      "pid": 19700,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\" --standard-schemes=vscode-webview,vscode-file --enable-sandbox --secure-schemes=vscode-webview,vscod"
+    },
+    {
+      "pid": 38116,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor\" --standard-schemes=vscode-webview,vscode-file --enable-sandbox --secure-schemes=vscode-webview,vscod"
+    },
+    {
+      "pid": 19220,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=video_capture.mojom.VideoCaptureService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\User"
+    },
+    {
+      "pid": 41068,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=audio.mojom.AudioService --lang=en-US --service-sandbox-type=audio --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\A"
+    },
+    {
+      "pid": 34220,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": true,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --user-data-dir C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21 --new-window C:\\Users\\aliceemoce\\dev\\cockpit-tools"
+    },
+    {
+      "pid": 45388,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+      "has_workspace": false,
+      "cmd_snippet": "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe --type=crashpad-handler --user-data-dir=C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor /prefetch:4 --no-rate-limit --monitor-self-annotation=ptype=crashpad-handler --database=C:\\Users"
+    },
+    {
+      "pid": 10612,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21\" --gpu-preferences=SAAAAAAAAADgAAAEAAAAAAAAAAAAAGA"
+    },
+    {
+      "pid": 39528,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit"
+    },
+    {
+      "pid": 45828,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21\" --standard-schemes=vscode-webview,vscode-file --enab"
+    },
+    {
+      "pid": 44564,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --dns-result-order=ipv4first --experimental-network-inspection --inspect-port=0"
+    },
+    {
+      "pid": 36488,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 36636,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 23748,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 10324,
+      "user_data_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+      "has_workspace": false,
+      "cmd_snippet": "\"C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe\" --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --video-capture-use-gpu-memory-buffer --user-data-dir=\"C:\\Users\\aliceemoce\\AppD"
+    },
+    {
+      "pid": 24788,
+      "user_data_dir": null,
+      "has_workspace": false,
+      "cmd_snippet": "C:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\Cursor.exe --dns-result-order=ipv4first --experimental-network-inspection c:\\Users\\aliceemoce\\AppData\\Local\\Programs\\cursor\\resources\\app\\extensions\\cursor-always-local\\dist\\gitWorker.js"
+    }
+  ],
+  "default_email_after": "bubble_wreath.1j@icloud.com",
+  "vscdb_emails": {
+    "default": "bubble_wreath.1j@icloud.com",
+    "instance": "fangs-remiss5u@icloud.com"
+  },
+  "not_login_page": {
+    "ok": true,
+    "pids": [
+      34220
+    ],
+    "login_hits": [],
+    "workspace_hit": true,
+    "sample_names": [
+      "Cursor Agents",
+      "Cursor Agents",
+      "Minimize",
+      "Maximize",
+      "Restore",
+      "Close",
+      "Chrome Legacy Window",
+      "Cursor Agents",
+      "Cursor",
+      "File",
+      "Edit",
+      "View",
+      "Help",
+      "Notifications alt+T",
+      "Resize sidebar",
+      "Editor Window",
+      "Chat actions",
+      "Show Panel",
+      "Hide Sidebar",
+      "Search"
+    ]
+  },
+  "distinct_profiles": 2,
+  "switch_log_tail": [
+    "2026-06-14T02:00:16.766901100+08:00  INFO [Cursor Switch] 切号后跳过二次 close，直接启动实例: 5cc582e1-7fa7-4d7a-aef2-db9bc5a9e29c",
+    "2026-06-14T02:00:29.013170100+08:00  INFO [Cursor Switch] 已执行实例 profile 指纹重置: C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+    "2026-06-14T02:00:29.013338600+08:00  INFO [Cursor Switch] 多开实例跳过 MachineGuid 重置（全局注册表项）",
+    "2026-06-14T02:00:29.045522100+08:00  INFO [Cursor Switch] workbench auth bridge 已存在，跳过 patch",
+    "2026-06-14T02:00:29.071546300+08:00  INFO [Cursor Switch] 已切换账号到 profile: email=1_***r@i***d.com, profile=C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+    "2026-06-14T02:00:30.588793300+08:00  INFO [Cursor Switch] 切号后跳过二次 close，直接启动实例: 5cc582e1-7fa7-4d7a-aef2-db9bc5a9e29c",
+    "2026-06-14T02:13:35.931167100+08:00  INFO [Cursor Switch] 已执行实例 profile 指纹重置: C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+    "2026-06-14T02:13:35.931302+08:00  INFO [Cursor Switch] 多开实例跳过 MachineGuid 重置（全局注册表项）",
+    "2026-06-14T02:13:35.964604700+08:00  INFO [Cursor Switch] workbench auth bridge 已存在，跳过 patch",
+    "2026-06-14T02:13:35.990056800+08:00  INFO [Cursor Switch] 已切换账号到 profile: email=1_***r@i***d.com, profile=C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+    "2026-06-14T02:13:37.496328700+08:00  INFO [Cursor Switch] 切号后跳过二次 close，直接启动实例: 5cc582e1-7fa7-4d7a-aef2-db9bc5a9e29c",
+    "2026-06-14T02:14:48.325393100+08:00  INFO [Cursor Switch] 开始切换账号: account_id=cursor_46827",
+    "2026-06-14T02:14:49.956226600+08:00  INFO [Cursor Switch] 已执行实例 profile 指纹重置: C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+    "2026-06-14T02:14:49.956523400+08:00  INFO [Cursor Switch] Windows MachineGuid 已重置 (old: 2ded1cb6-18f5-428c-8531-2b0d72c26384)",
+    "2026-06-14T02:14:49.987647900+08:00  INFO [Cursor Switch] workbench auth bridge 已存在，跳过 patch",
+    "2026-06-14T02:14:50.009888400+08:00  INFO [Cursor Switch] 已切换账号到 profile: email=lo***j@i***d.com, profile=C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+    "2026-06-14T02:14:51.523664500+08:00  INFO [Cursor Switch] 切号后跳过二次 close，直接启动默认实例",
+    "2026-06-14T02:14:51.697411600+08:00  INFO [Cursor Switch] 切号成功: account_id=cursor_46827, email=lo***j@i***d.com, elapsed=3372ms",
+    "2026-06-14T02:15:00.782844200+08:00  INFO [Cursor Switch] 开始切换账号: account_id=cursor_794a8da9704249ef64ac082b5a47ad69",
+    "2026-06-14T02:15:01.174599200+08:00  INFO [Cursor Switch] 已执行实例 profile 指纹重置: C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+    "2026-06-14T02:15:01.174868600+08:00  INFO [Cursor Switch] Windows MachineGuid 已重置 (old: a0d85cce-7b78-421e-a0cd-ece648e10fc3)",
+    "2026-06-14T02:15:01.205738200+08:00  INFO [Cursor Switch] workbench auth bridge 已存在，跳过 patch",
+    "2026-06-14T02:15:01.228189+08:00  INFO [Cursor Switch] 已切换账号到 profile: email=bu***j@i***d.com, profile=C:\\Users\\aliceemoce\\AppData\\Roaming\\Cursor",
+    "2026-06-14T02:15:02.745513500+08:00  INFO [Cursor Switch] 切号后跳过二次 close，直接启动默认实例",
+    "2026-06-14T02:15:02.924712800+08:00  INFO [Cursor Switch] 切号成功: account_id=cursor_794a8da9704249ef64ac082b5a47ad69, email=bu***j@i***d.com, elapsed=2141ms",
+    "2026-06-14T02:30:32.551877900+08:00  INFO [Cursor Switch] 已执行实例 profile 指纹重置: C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+    "2026-06-14T02:30:32.552035300+08:00  INFO [Cursor Switch] 多开实例跳过 MachineGuid 重置（全局注册表项）",
+    "2026-06-14T02:30:32.587865100+08:00  INFO [Cursor Switch] workbench auth bridge 已存在，跳过 patch",
+    "2026-06-14T02:30:32.614272500+08:00  INFO [Cursor Switch] 已切换账号到 profile: email=fa***u@i***d.com, profile=C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+    "2026-06-14T02:30:34.121687500+08:00  INFO [Cursor Switch] 切号后跳过二次 close，直接启动实例: 5cc582e1-7fa7-4d7a-aef2-db9bc5a9e29c"
+  ],
+  "default_pids_after": [
+    28264,
+    39404,
+    40188,
+    4988,
+    36596,
+    39972,
+    44600,
+    44008,
+    21776,
+    35204,
+    30128,
+    3760,
+    20284,
+    32056,
+    10244,
+    19700,
+    38116,
+    19220,
+    41068,
+    45388,
+    24788
+  ],
+  "default_pids_preserved_count": 19,
+  "failed_checks": [],
+  "checks": {
+    "nav_instances": true,
+    "start_all_clicked": true,
+    "confirm_dialog_clicked": true,
+    "dual_processes": true,
+    "emails_match_bind": true,
+    "multi_has_workspace": true,
+    "default_profile_online": true,
+    "default_pids_preserved": true,
+    "default_email_unchanged": true,
+    "not_login_page": true,
+    "no_mass_close": true
+  },
+  "deploy_proof": {
+    "src_path": "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\target\\release\\cockpit-tools.exe",
+    "src_size": 68738048,
+    "dst_size": 68738048,
+    "sizes_match": true
+  },
+  "github_url": "https://github.com/aliceemoce/cockpit-tools/commits/fork-on-upstream-0256",
+  "cockpit_running": true
+}

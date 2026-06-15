@@ -1193,10 +1193,7 @@ async fn post_code_assist_json(
     payload: &Value,
     action_name: &str,
 ) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    let client = crate::utils::http::create_client(20);
 
     let resp = client
         .post(endpoint)
@@ -1232,10 +1229,7 @@ async fn post_code_assist_json(
 }
 
 async fn refresh_access_token(refresh_token: &str) -> Result<GoogleTokenRefreshResponse, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    let client = crate::utils::http::create_client(20);
 
     let response = client
         .post(GOOGLE_TOKEN_ENDPOINT)
@@ -1279,10 +1273,7 @@ async fn refresh_access_token(refresh_token: &str) -> Result<GoogleTokenRefreshR
 }
 
 async fn fetch_google_userinfo(access_token: &str) -> Option<GoogleUserInfoResponse> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .ok()?;
+    let client = crate::utils::http::create_client(15);
     let response = client
         .get(GOOGLE_USERINFO_ENDPOINT)
         .header(AUTHORIZATION, format!("Bearer {}", access_token))
