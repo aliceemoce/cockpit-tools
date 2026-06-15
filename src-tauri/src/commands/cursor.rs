@@ -96,7 +96,9 @@ pub async fn refresh_cursor_token(
     match cursor_account::refresh_account_fast_async(&account_id).await {
         Ok(refreshed) => {
             let account = refreshed.account;
-            emit_cursor_accounts_changed(&app, &account.id, "refresh");
+            if refreshed.persisted {
+                emit_cursor_accounts_changed(&app, &account.id, "refresh");
+            }
             if let Err(e) = cursor_account::run_quota_alert_if_needed() {
                 logger::log_warn(&format!("[QuotaAlert][Cursor] 预警检查失败: {}", e));
             }
@@ -137,17 +139,21 @@ pub async fn refresh_all_cursor_tokens(app: AppHandle) -> Result<i32, String> {
         .collect();
 
     let mut success_count = 0usize;
+    let mut persisted_any = false;
     for account in active_accounts {
         let id = account.id.clone();
         match cursor_account::refresh_account_async(&id).await {
-            Ok(_) => {
+            Ok(refreshed) => {
                 success_count += 1;
+                if refreshed.persisted {
+                    persisted_any = true;
+                }
             }
             Err(_) => {}
         }
     }
 
-    if success_count > 0 {
+    if persisted_any {
         emit_cursor_accounts_changed(&app, "", "refresh-batch-complete");
     }
 

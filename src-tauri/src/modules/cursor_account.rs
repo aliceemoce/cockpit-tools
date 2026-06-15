@@ -450,6 +450,22 @@ fn persist_quota_query_error(account_id: &str, message: &str) {
     let _ = upsert_account_record(account);
 }
 
+fn is_cursor_transient_quota_error(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("error sending request")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("connection")
+        || lower.contains("connect error")
+        || lower.contains("dns")
+        || lower.contains("resolve")
+        || lower.contains("proxy")
+        || lower.contains("tunnel")
+        || lower.contains("502")
+        || lower.contains("503")
+        || lower.contains("504")
+}
+
 #[allow(dead_code)]
 fn is_cursor_auth_quota_error(message: &str) -> bool {
     let lower = message.to_lowercase();
@@ -2803,6 +2819,16 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshRes
             ));
         }
         Err(err) => {
+            if is_cursor_transient_quota_error(&err) {
+                logger::log_warn(&format!(
+                    "[Cursor Refresh] transient 失败，跳过写盘: id={}, error={}",
+                    account.id, err
+                ));
+                return Ok(CursorRefreshResult {
+                    account: existing,
+                    persisted: false,
+                });
+            }
             logger::log_warn(&format!(
                 "[Cursor Refresh] API 配额拉取失败: id={}, error={}",
                 account.id, err
@@ -2833,7 +2859,9 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshRes
 pub async fn refresh_account_async(account_id: &str) -> Result<CursorRefreshResult, String> {
     let result = refresh_account_async_once(account_id).await;
     if let Err(err) = &result {
-        persist_quota_query_error(account_id, err);
+        if !is_cursor_transient_quota_error(err) {
+            persist_quota_query_error(account_id, err);
+        }
     }
     result
 }
