@@ -11,10 +11,15 @@ async fn main() {
 
     let args: Vec<String> = std::env::args().collect();
     let multi_only = args.iter().any(|a| a == "--multi-only");
+    let forced_account = args
+        .iter()
+        .position(|a| a == "--account")
+        .and_then(|idx| args.get(idx + 1))
+        .cloned();
     let instance_id = args
         .iter()
         .skip(1)
-        .find(|a| !a.starts_with('-'))
+        .find(|a| !a.starts_with('-') && *a != "--account" && forced_account.as_deref() != Some(a.as_str()))
         .cloned()
         .or_else(read_first_instance_id)
         .unwrap_or_else(|| {
@@ -45,8 +50,14 @@ async fn main() {
     }
 
     eprintln!("[dual-cursor-launch] 2/2 多开实例 {instance_id} …");
-    if let Err(err) =
-        cursor_instance::start_cursor_instance_with_account_switch(instance_id.clone(), None).await
+    if let Some(ref account_id) = forced_account {
+        eprintln!("[dual-cursor-launch] 强制账号: {account_id}");
+    }
+    if let Err(err) = cursor_instance::start_cursor_instance_with_account_switch(
+        instance_id.clone(),
+        forced_account,
+    )
+    .await
     {
         eprintln!("[dual-cursor-launch] 多开实例失败: {err}");
         std::process::exit(1);

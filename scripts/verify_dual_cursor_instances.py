@@ -63,12 +63,33 @@ def ui_invoke(c: auto.Control) -> bool:
     return False
 
 
-def list_cockpit_windows() -> list[auto.Control]:
-    return [
-        w
-        for w in auto.GetRootControl().GetChildren()
-        if w.ClassName == "Tauri Window" and "cockpit" in (w.Name or "").lower()
-    ]
+def list_cockpit_windows(exe_path: Path | None = None) -> list[auto.Control]:
+    """只返回「指定 exe 进程」拥有的 Cockpit 主窗，避免误认其它 Tauri/终端窗口。"""
+    from scripts.cockpit_identity import (
+        DEFAULT_EXE,
+        EXPECTED_CLASS,
+        EXPECTED_TITLE,
+        control_from_hwnd,
+        list_processes_for_exe,
+        windows_for_pid,
+    )
+
+    target = exe_path or DEFAULT_EXE
+    processes = list_processes_for_exe(target)
+    if not processes:
+        return []
+
+    wins: list[auto.Control] = []
+    for proc in processes:
+        for info in windows_for_pid(proc.pid):
+            if info.class_name != EXPECTED_CLASS or info.title != EXPECTED_TITLE:
+                continue
+            if not info.visible or info.width < 200 or info.height < 200:
+                continue
+            ctrl = control_from_hwnd(info.hwnd)
+            if ctrl:
+                wins.append(ctrl)
+    return wins
 
 
 def show_main_window(win: auto.Control) -> None:

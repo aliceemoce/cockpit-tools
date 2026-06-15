@@ -1995,9 +1995,11 @@ fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
         .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
     logger::log_info(&format!("[Cursor Switch] 无忧传统切号: {}", account.email));
 
-    crate::modules::cursor_instance::close_cursor_nirvana_style(20)?;
-
     let default_dir = get_default_cursor_data_dir()?;
+    let default_dir_str = default_dir.to_string_lossy().to_string();
+    // 对齐 r2：仅关闭默认 profile 的 Cursor，保留其它多开实例（禁止 taskkill 全杀）。
+    crate::modules::cursor_instance::close_cursor(&[default_dir_str], 20)?;
+
     switch_tokens_in_profile_db(&default_dir, account_id)?;
     reset_storage_json_ids_for_profile(&default_dir)?;
     reset_machine_id_file_for_profile(&default_dir)?;
@@ -2047,16 +2049,70 @@ pub fn switch_cursor_account_to_profile(
     Ok(())
 }
 
-/// 对齐无忧 `switchTokensInDb`（Kh）：删旧 auth → 重置 state.vscdb telemetry → 写 session token。
+/// 无忧 `switchTokensInDb`（Kh）：`accessToken`/`refreshToken` 原样裸 JWT（与默认 profile 一致，不做 `user_id::jwt` 转换）。
+fn nirvana_kh_auth_tokens(account: &CursorAccount) -> Result<(String, String), String> {
+    if let Some(raw) = account.cursor_auth_raw.as_ref() {
+        if let Some(at) = raw.get("accessToken").and_then(|v| v.as_str()) {
+            let access = at.trim();
+            if !access.is_empty() {
+                let refresh = raw
+                    .get("refreshToken")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or(access);
+                return Ok((access.to_string(), refresh.to_string()));
+            }
+        }
+    }
+
+    let access = account.access_token.trim();
+    if access.is_empty() {
+        return Err(format!("账号 {} access_token 为空", account.email));
+    }
+    let refresh = account
+        .refresh_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(access);
+    Ok((access.to_string(), refresh.to_string()))
+}
+
+fn verify_switch_tokens_written(db_path: &Path) -> Result<(), String> {
+    let conn = Connection::open(db_path).map_err(|e| {
+        format!(
+            "切号落盘校验打开数据库失败({}): {}",
+            db_path.display(),
+            e
+        )
+    })?;
+    let access = read_vscdb_item(&conn, "cursorAuth/accessToken").ok_or_else(|| {
+        "切号落盘校验失败: cursorAuth/accessToken 未写入".to_string()
+    })?;
+    let refresh = read_vscdb_item(&conn, "cursorAuth/refreshToken").ok_or_else(|| {
+        "切号落盘校验失败: cursorAuth/refreshToken 未写入".to_string()
+    })?;
+    let email = read_vscdb_item(&conn, "cursorAuth/cachedEmail").ok_or_else(|| {
+        "切号落盘校验失败: cursorAuth/cachedEmail 未写入".to_string()
+    })?;
+    if !email.contains('@') {
+        return Err(format!("切号落盘校验失败: cachedEmail 无效: {}", email));
+    }
+    logger::log_info(&format!(
+        "[Cursor Switch] 切号落盘校验通过: access_len={}, refresh_len={}, email_len={}",
+        access.len(),
+        refresh.len(),
+        email.len()
+    ));
+    Ok(())
+}
+
+/// 对齐无忧 `switchTokensInDb`（Kh）：删旧 auth → 重置 state.vscdb telemetry → 原样写 token。
 pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-    let (access_jwt, session_token) = resolve_vscdb_auth_tokens(&account).map_err(|err| {
-        format!(
-            "账号 Token 无效，无法写入 Cursor 数据库: {}",
-            err
-        )
-    })?;
+    let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
     let db_path = profile_dir
         .join("User")
         .join("globalStorage")
@@ -2089,6 +2145,14 @@ pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Resu
             conn.execute("DELETE FROM ItemTable WHERE key = ?1", [*key])
                 .map_err(|e| format!("删除 {} 失败: {}", key, e))?;
         }
+        for key in ["cursor.accessToken", "cursor.email"] {
+            conn.execute("DELETE FROM ItemTable WHERE key = ?1", [key])
+                .map_err(|e| format!("删除 {} 失败: {}", key, e))?;
+        }
+        for key in ["cursorAuth/authId", "cursorAuth/workosId"] {
+            conn.execute("DELETE FROM ItemTable WHERE key = ?1", [key])
+                .map_err(|e| format!("删除 {} 失败: {}", key, e))?;
+        }
 
         let ids = build_cursor_fingerprint_ids();
         upsert_vscdb_item(
@@ -2109,8 +2173,8 @@ pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Resu
         )?;
         upsert_vscdb_item(&conn, "telemetry.sqmId", &ids["telemetry.sqmId"])?;
 
-        upsert_vscdb_item(&conn, "cursorAuth/accessToken", &access_jwt)?;
-        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", &session_token)?;
+        upsert_vscdb_item(&conn, "cursorAuth/accessToken", &access_token)?;
+        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", &refresh_token)?;
         upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
         upsert_vscdb_item(&conn, "cursorAuth/cachedSignUpType", "Auth_0")?;
 
@@ -2124,9 +2188,6 @@ pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Resu
         if let Some(ref ss) = account.subscription_status {
             upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
         }
-
-        upsert_vscdb_item(&conn, "cursor.accessToken", &access_jwt)?;
-        upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
         Ok(())
     })();
 
@@ -2145,9 +2206,12 @@ pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Resu
     // 恢复 WAL mode 供 Cursor 正常使用
     conn.execute_batch("PRAGMA journal_mode=WAL;")
         .map_err(|e| format!("恢复 journal_mode=WAL 失败: {}", e))?;
+    drop(conn);
+
+    verify_switch_tokens_written(&db_path)?;
 
     logger::log_info(&format!(
-        "[Cursor Switch] switchTokensInDb 完成: email={}, db={}, refresh_has_session=true, journal_mode=delete_then_wal",
+        "[Cursor Switch] switchTokensInDb 完成: email={}, db={}, token=nirvana_raw, journal_mode=delete_then_wal",
         account.email,
         db_path.display()
     ));
@@ -2956,8 +3020,35 @@ pub fn has_effective_plan_budget(account: &CursorAccount) -> bool {
     plan_limit_value(account).is_some_and(|limit| limit > 0.0)
 }
 
+fn has_nirvana_switch_ready_tokens(account: &CursorAccount) -> bool {
+    if let Some(raw) = account.cursor_auth_raw.as_ref() {
+        let access_ok = raw
+            .get("accessToken")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty());
+        let refresh_ok = raw
+            .get("refreshToken")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty());
+        return access_ok && refresh_ok;
+    }
+
+    let access_ok = !account.access_token.trim().is_empty();
+    let refresh_ok = account
+        .refresh_token
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    access_ok && refresh_ok
+}
+
 pub fn is_full_quota_account(account: &CursorAccount) -> bool {
     if is_banned_account(account) || has_quota_query_failed(account) {
+        return false;
+    }
+    if !has_nirvana_switch_ready_tokens(account) {
         return false;
     }
     if !has_effective_plan_budget(account) {
@@ -3015,6 +3106,7 @@ pub fn pick_highest_remaining_credits_account(exclude_ids: &HashSet<String>) -> 
         .into_iter()
         .filter(|account| !exclude_ids.contains(&account.id))
         .filter(|account| !is_banned_account(account))
+        .filter(|account| has_nirvana_switch_ready_tokens(account))
         .collect();
 
     if candidates.is_empty() {
@@ -3170,6 +3262,36 @@ mod cursor_auth_token_tests {
 
     fn sample_jwt() -> String {
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhdXRoMHx1c2VyXzAxSFFGR0g4WjY4WjY4WjY4WiIsImV4cCI6OTk5OTk5OTk5fQ.sig".to_string()
+    }
+
+    #[test]
+    fn nirvana_kh_keeps_raw_refresh_token() {
+        let jwt = sample_jwt();
+        let account = CursorAccount {
+            id: "t".into(),
+            email: "a@b.com".into(),
+            auth_id: None,
+            name: None,
+            tags: None,
+            access_token: jwt.clone(),
+            refresh_token: Some(jwt.clone()),
+            membership_type: None,
+            subscription_status: None,
+            sign_up_type: None,
+            cursor_auth_raw: None,
+            cursor_usage_raw: None,
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: None,
+            created_at: 0,
+            last_used: 0,
+        };
+        let (access, refresh) = nirvana_kh_auth_tokens(&account).expect("raw");
+        assert_eq!(access, jwt);
+        assert_eq!(refresh, jwt);
+        assert!(!refresh.contains("::"));
     }
 
     #[test]
