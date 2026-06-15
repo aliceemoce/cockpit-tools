@@ -4,11 +4,13 @@
 
 | 项 | 值 |
 |----|-----|
-| 代号 | `nirvana-token-20260614` |
+| 代号 | `nirvana-merged-20260615` |
 | 桌面 exe | `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` |
-| 归档 | `cockpit-credentials/cockpit-tools/releases/nirvana-token-20260614/` |
-| 源码 | `aliceemoce/cockpit-tools` @ `eba93695` + `source-diff-uncommitted.patch` |
-| 构建时间 | 2026-06-14 07:03 |
+| SHA-256 | `F5256511C335ECBCD950B640C6BE04394B00B6CB422FE7F1DC4B1B652D3239DF` |
+| 源码 | `aliceemoce/cockpit-tools` 分支 **`agent-build-20260615`** @ `44321ebf` |
+| 构建时间 | 2026-06-15 19:03 |
+| 历史备份 | `Desktop\Cockpit-nirvana-token-20260614\`（`9791D94F`，仅对照） |
+| GitHub 对照 | https://github.com/aliceemoce/cockpit-tools/compare/nirvana-baseline-20260615...agent-build-20260615 |
 
 ### 这版包含什么
 
