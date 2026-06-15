@@ -20,6 +20,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   isPrivacyModeEnabledByDefault,
@@ -1131,6 +1132,26 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
   useEffect(() => {
     fetchAccounts();
   }, [fetchAccounts]);
+
+  // 后端 refresh 写盘后 emit accounts:changed；Cursor 等页拉最新 list 与磁盘对齐
+  useEffect(() => {
+    if (!platformId) return;
+    let unlisten: UnlistenFn | null = null;
+    void listen('accounts:changed', (event) => {
+      const payload = event.payload as {
+        platformId?: string;
+        accountId?: string | null;
+        reason?: string;
+      } | null;
+      if (payload?.platformId !== platformId) return;
+      void fetchAccounts();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      void unlisten?.();
+    };
+  }, [fetchAccounts, platformId]);
 
   // ─── CRUD ─────────────────────────────────────────────────────────────
   const [refreshing, setRefreshing] = useState<string | null>(null);
