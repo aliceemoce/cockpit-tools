@@ -67,8 +67,7 @@ fn copy_profile_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         if file_type.is_dir() {
             copy_profile_dir_recursive(&entry.path(), &target)?;
         } else if file_type.is_file() {
-            fs::copy(entry.path(), &target)
-                .map_err(|e| format!("复制 profile 文件失败: {}", e))?;
+            fs::copy(entry.path(), &target).map_err(|e| format!("复制 profile 文件失败: {}", e))?;
         }
     }
     Ok(())
@@ -1302,7 +1301,10 @@ fn folder_from_uri(uri: &str) -> Option<PathBuf> {
 }
 
 fn recent_workspace_from_storage_json(profile_dir: &Path) -> Option<PathBuf> {
-    let storage_json = profile_dir.join("User").join("globalStorage").join("storage.json");
+    let storage_json = profile_dir
+        .join("User")
+        .join("globalStorage")
+        .join("storage.json");
     let text = fs::read_to_string(&storage_json).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     let backup = value.get("backupWorkspaces")?;
@@ -1340,11 +1342,9 @@ fn recent_workspace_from_state_vscdb(profile_dir: &Path) -> Option<PathBuf> {
     }
     let conn = Connection::open(&db_path).ok()?;
     for key in ["history.recentlyOpenedPathsList", "openedPathsList"] {
-        let Ok(text) = conn.query_row(
-            "SELECT value FROM ItemTable WHERE key = ?1",
-            [key],
-            |row| row.get::<_, String>(0),
-        ) else {
+        let Ok(text) = conn.query_row("SELECT value FROM ItemTable WHERE key = ?1", [key], |row| {
+            row.get::<_, String>(0)
+        }) else {
             continue;
         };
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
@@ -1374,21 +1374,14 @@ pub fn resolve_launch_workspace(
     profile_data_dir: Option<&str>,
 ) -> Option<PathBuf> {
     if let Some(dir) = explicit_working_dir.and_then(existing_directory) {
-        modules::logger::log_info(&format!(
-            "[Cursor Start] 使用配置工作区: {}",
-            dir.display()
-        ));
+        modules::logger::log_info(&format!("[Cursor Start] 使用配置工作区: {}", dir.display()));
         return Some(dir);
     }
 
     let profile_dirs: Vec<PathBuf> = profile_data_dir
         .map(|dir| PathBuf::from(dir))
         .into_iter()
-        .chain(
-            get_default_cursor_user_data_dir()
-                .ok()
-                .into_iter(),
-        )
+        .chain(get_default_cursor_user_data_dir().ok().into_iter())
         .collect();
 
     for profile_dir in &profile_dirs {
@@ -1409,10 +1402,7 @@ pub fn resolve_launch_workspace(
     }
 
     let home = dirs::home_dir()?;
-    for candidate in [
-        home.join("dev").join("cockpit-tools"),
-        home.join("dev"),
-    ] {
+    for candidate in [home.join("dev").join("cockpit-tools"), home.join("dev")] {
         if is_valid_launch_workspace(&candidate) {
             modules::logger::log_info(&format!(
                 "[Cursor Start] 回退工作区: {}",
@@ -1451,10 +1441,7 @@ fn append_workspace_arg(cmd: &mut Command, workspace: Option<&Path>) {
     }
 }
 
-fn foreign_cursor_profiles_running(
-    target_dirs: &HashSet<String>,
-    contains_default: bool,
-) -> bool {
+fn foreign_cursor_profiles_running(target_dirs: &HashSet<String>, contains_default: bool) -> bool {
     for (_, dir) in collect_cursor_process_entries() {
         match dir {
             Some(resolved) if !target_dirs.contains(&resolved) => return true,
@@ -1463,6 +1450,35 @@ fn foreign_cursor_profiles_running(
         }
     }
     false
+}
+
+fn cursor_pids_for_normalized_profile(target: &str, include_default_without_dir: bool) -> Vec<u32> {
+    let mut pids = Vec::new();
+    for (pid, dir) in collect_cursor_process_entries() {
+        match dir.as_ref() {
+            Some(resolved) if resolved == target => pids.push(pid),
+            None if include_default_without_dir => pids.push(pid),
+            _ => {}
+        }
+    }
+    pids.sort();
+    pids.dedup();
+    pids
+}
+
+fn wait_cursor_profile_clear(
+    target: &str,
+    include_default_without_dir: bool,
+    timeout: std::time::Duration,
+) -> Vec<u32> {
+    let started = std::time::Instant::now();
+    loop {
+        let remaining = cursor_pids_for_normalized_profile(target, include_default_without_dir);
+        if remaining.is_empty() || started.elapsed() >= timeout {
+            return remaining;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -1598,10 +1614,7 @@ pub fn start_cursor_with_args_with_new_window(
     }
     let launch_path = resolve_cursor_launch_path()?;
     if let Some(ws) = workspace {
-        modules::logger::log_info(&format!(
-            "[Cursor Start] CLI 工作区: {}",
-            ws.display()
-        ));
+        modules::logger::log_info(&format!("[Cursor Start] CLI 工作区: {}", ws.display()));
     }
 
     #[cfg(target_os = "windows")]
@@ -1611,7 +1624,13 @@ pub fn start_cursor_with_args_with_new_window(
 
     #[cfg(target_os = "macos")]
     {
-        return spawn_cursor_macos_open(&launch_path, target, extra_args, use_new_window, workspace);
+        return spawn_cursor_macos_open(
+            &launch_path,
+            target,
+            extra_args,
+            use_new_window,
+            workspace,
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1667,7 +1686,9 @@ pub fn start_cursor_nirvana_go() -> Result<(), String> {
     {
         let launch_path = resolve_cursor_launch_path_nirvana_go()?;
         let app_root = normalize_macos_app_root(&launch_path).unwrap_or(launch_path);
-        if let Ok(saved_state_dir) = dirs::home_dir().map(|home| home.join("Library/Saved Application State")) {
+        if let Ok(saved_state_dir) =
+            dirs::home_dir().map(|home| home.join("Library/Saved Application State"))
+        {
             if saved_state_dir.is_dir() {
                 if let Ok(entries) = fs::read_dir(&saved_state_dir) {
                     for entry in entries.flatten() {
@@ -1753,7 +1774,11 @@ pub fn close_cursor_nirvana_style(timeout_secs: u64) -> Result<(), String> {
                 .args(["/FI", "IMAGENAME eq Cursor.exe", "/FO", "CSV", "/NH"])
                 .output();
             let still_running = output
-                .map(|out| String::from_utf8_lossy(&out.stdout).to_lowercase().contains("cursor.exe"))
+                .map(|out| {
+                    String::from_utf8_lossy(&out.stdout)
+                        .to_lowercase()
+                        .contains("cursor.exe")
+                })
                 .unwrap_or(false);
             if !still_running {
                 modules::logger::log_info(&format!(
@@ -1809,20 +1834,20 @@ pub fn close_cursor_nirvana_style(timeout_secs: u64) -> Result<(), String> {
 
 /// 多开实例切号：仅关闭 `--user-data-dir` 精确匹配的进程，永不 taskkill 全杀。
 pub fn close_cursor_profile_strict(user_data_dir: &str, timeout_secs: u64) -> Result<(), String> {
+    close_cursor_profile_scoped(user_data_dir, false, timeout_secs)
+}
+
+pub fn close_cursor_profile_scoped(
+    user_data_dir: &str,
+    include_default_without_dir: bool,
+    timeout_secs: u64,
+) -> Result<(), String> {
     let target = normalize_path_for_compare(user_data_dir);
     if target.is_empty() {
         return Ok(());
     }
 
-    let mut pids = Vec::new();
-    for (pid, dir) in collect_cursor_process_entries() {
-        if dir.as_ref().is_some_and(|resolved| resolved == &target) {
-            pids.push(pid);
-        }
-    }
-
-    pids.sort();
-    pids.dedup();
+    let pids = cursor_pids_for_normalized_profile(&target, include_default_without_dir);
     if pids.is_empty() {
         if is_any_cursor_process_running() {
             modules::logger::log_warn(&format!(
@@ -1841,13 +1866,39 @@ pub fn close_cursor_profile_strict(user_data_dir: &str, timeout_secs: u64) -> Re
     ));
 
     for pid in &pids {
-        let _ = modules::process::close_pid(*pid, timeout_secs);
+        if let Err(err) = modules::process::close_pid(*pid, timeout_secs.min(8).max(1)) {
+            modules::logger::log_warn(&format!(
+                "[Cursor Close] strict first close failed pid={} profile={} err={}",
+                pid, user_data_dir, err
+            ));
+        }
     }
 
-    let still_running: Vec<u32> = pids
-        .into_iter()
-        .filter(|pid| modules::process::is_pid_running(*pid))
-        .collect();
+    let mut still_running = wait_cursor_profile_clear(
+        &target,
+        include_default_without_dir,
+        std::time::Duration::from_secs(3),
+    );
+    if !still_running.is_empty() {
+        modules::logger::log_warn(&format!(
+            "[Cursor Close] strict profile still alive after first close: profile={}, remaining={}",
+            user_data_dir,
+            modules::process::summarize_pid_list_for_log(&still_running)
+        ));
+        for pid in &still_running {
+            if let Err(err) = modules::process::close_pid(*pid, timeout_secs.min(6).max(1)) {
+                modules::logger::log_warn(&format!(
+                    "[Cursor Close] strict retry close failed pid={} profile={} err={}",
+                    pid, user_data_dir, err
+                ));
+            }
+        }
+        still_running = wait_cursor_profile_clear(
+            &target,
+            include_default_without_dir,
+            std::time::Duration::from_secs(2),
+        );
+    }
     if !still_running.is_empty() {
         return Err(format!(
             "无法关闭 Cursor 多开实例进程，请手动关闭后重试: {}",

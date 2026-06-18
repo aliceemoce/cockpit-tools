@@ -208,7 +208,9 @@ fn record_import_backup(
     outcome: &UpsertAccountOutcome,
 ) -> Result<PathBuf, String> {
     let backup_path = write_local_import_backup(payload, outcome)?;
-    crate::modules::cursor_import_backup_sync::schedule_local_import_backup_upload(backup_path.clone());
+    crate::modules::cursor_import_backup_sync::schedule_local_import_backup_upload(
+        backup_path.clone(),
+    );
     logger::log_info(&format!(
         "[Cursor Account] 导入备份已写入: email={}, backup={}",
         outcome.account.email,
@@ -466,7 +468,6 @@ fn is_cursor_transient_quota_error(message: &str) -> bool {
         || lower.contains("504")
 }
 
-#[allow(dead_code)]
 fn is_cursor_auth_quota_error(message: &str) -> bool {
     let lower = message.to_lowercase();
     lower.contains("会话已过期")
@@ -478,6 +479,21 @@ fn is_cursor_auth_quota_error(message: &str) -> bool {
         || lower.contains("session expired")
         || lower.contains("invalid credentials")
         || lower.contains("unauthenticated")
+}
+
+fn account_has_auth_failure_marker(account: &CursorAccount) -> bool {
+    account
+        .quota_query_last_error
+        .as_deref()
+        .is_some_and(is_cursor_auth_quota_error)
+        || account
+            .status_reason
+            .as_deref()
+            .is_some_and(is_cursor_auth_quota_error)
+        || account
+            .status
+            .as_deref()
+            .is_some_and(is_cursor_auth_quota_error)
 }
 
 pub struct CursorRefreshResult {
@@ -569,15 +585,17 @@ fn resolve_vscdb_auth_tokens_from_parts(
             rt.to_string()
         } else {
             let jwt = bare_jwt_from_token(access_raw)?;
-            let user_id = extract_workos_user_id(&jwt)
-                .ok_or_else(|| "无法从 access_token 解析 WorkOS user_id，请重新导入账号".to_string())?;
+            let user_id = extract_workos_user_id(&jwt).ok_or_else(|| {
+                "无法从 access_token 解析 WorkOS user_id，请重新导入账号".to_string()
+            })?;
             format!("{}::{}", user_id, jwt)
         }
     } else if access_raw.contains("::") {
         access_raw.to_string()
     } else {
         let user_id = extract_workos_user_id(access_raw).ok_or_else(|| {
-            "账号缺少 refresh_token，且无法从 access_token 构建 session，请删除后重新导入".to_string()
+            "账号缺少 refresh_token，且无法从 access_token 构建 session，请删除后重新导入"
+                .to_string()
         })?;
         format!("{}::{}", user_id, access_raw)
     };
@@ -725,25 +743,15 @@ fn backfill_quota_pool_auth_id(account: &mut CursorAccount) {
 }
 
 fn resolve_payload_auth_id(payload: &CursorImportPayload) -> Option<String> {
-    extract_auth_id_from_raw_value(payload.cursor_auth_raw.as_ref())
-        .as_deref()
-        .and_then(normalize_quota_pool_auth_id)
-        .or_else(|| {
-            extract_workos_user_id(payload.access_token.as_str())
-                .as_deref()
-                .and_then(normalize_quota_pool_auth_id)
-        })
-        .or_else(|| {
-            payload
-                .auth_id
-                .as_deref()
-                .and_then(normalize_quota_pool_auth_id)
-        })
-        .or_else(|| {
-            extract_auth_id_from_access_token(payload.access_token.as_str())
-                .as_deref()
-                .and_then(normalize_quota_pool_auth_id)
-        })
+    normalize_auth_identity(payload.auth_id.as_deref())
+        .or_else(|| extract_auth_id_from_raw_value(payload.cursor_auth_raw.as_ref()))
+        .or_else(|| extract_auth_id_from_access_token(payload.access_token.as_str()))
+}
+
+fn resolve_account_auth_id(account: &CursorAccount) -> Option<String> {
+    normalize_auth_identity(account.auth_id.as_deref())
+        .or_else(|| extract_auth_id_from_raw_value(account.cursor_auth_raw.as_ref()))
+        .or_else(|| extract_auth_id_from_access_token(account.access_token.as_str()))
 }
 
 fn cursor_auth_raw_object_mut(account: &mut CursorAccount) -> &mut serde_json::Map<String, Value> {
@@ -815,13 +823,38 @@ fn cursor_quota_pool_key(account: &CursorAccount) -> Option<String> {
 }
 
 fn accounts_are_duplicates(left: &CursorAccount, right: &CursorAccount) -> bool {
-    match (
-        cursor_quota_pool_key(left).as_deref(),
-        cursor_quota_pool_key(right).as_deref(),
-    ) {
-        (Some(left_key), Some(right_key)) => left_key == right_key,
-        _ => false,
+    let left_auth_id = resolve_account_auth_id(left);
+    let right_auth_id = resolve_account_auth_id(right);
+    if let (Some(left_auth), Some(right_auth)) = (left_auth_id.as_ref(), right_auth_id.as_ref()) {
+        return left_auth == right_auth;
     }
+    if left_auth_id.is_some() || right_auth_id.is_some() {
+        return false;
+    }
+
+    let left_email = normalize_email_identity(Some(left.email.as_str()));
+    let right_email = normalize_email_identity(Some(right.email.as_str()));
+    let left_token = normalize_token_identity(Some(left.access_token.as_str()));
+    let right_token = normalize_token_identity(Some(right.access_token.as_str()));
+
+    let email_conflict = matches!(
+        (left_email.as_ref(), right_email.as_ref()),
+        (Some(l), Some(r)) if l != r
+    );
+    if email_conflict {
+        return false;
+    }
+
+    let email_match = matches!(
+        (left_email.as_ref(), right_email.as_ref()),
+        (Some(l), Some(r)) if l == r
+    );
+    let token_match = matches!(
+        (left_token.as_ref(), right_token.as_ref()),
+        (Some(l), Some(r)) if l == r
+    );
+
+    email_match || token_match
 }
 
 fn archive_duplicate_account_file(account_id: &str) -> Result<(), String> {
@@ -831,13 +864,13 @@ fn archive_duplicate_account_file(account_id: &str) -> Result<(), String> {
         return Ok(());
     }
     let archive_dir = accounts_dir.join(ARCHIVED_DUPLICATES_DIR);
-    fs::create_dir_all(&archive_dir)
-        .map_err(|e| format!("创建重复账号归档目录失败: {}", e))?;
+    fs::create_dir_all(&archive_dir).map_err(|e| format!("创建重复账号归档目录失败: {}", e))?;
     let mut dst = archive_dir.join(format!("{}.json", account_id));
     if dst.exists() {
         dst = archive_dir.join(format!("{}_{}.json", account_id, now_ts()));
     }
-    fs::rename(&src, &dst).map_err(|e| format!("归档重复账号文件失败: id={}, error={}", account_id, e))?;
+    fs::rename(&src, &dst)
+        .map_err(|e| format!("归档重复账号文件失败: id={}, error={}", account_id, e))?;
     logger::log_info(&format!(
         "[Cursor Account] 重复账号文件已归档: id={}, path={}",
         account_id,
@@ -1030,19 +1063,6 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
         ));
     }
 
-    for account in &mut loaded_accounts {
-        let original_auth_id = account.auth_id.clone();
-        backfill_quota_pool_auth_id(account);
-        if account.auth_id != original_auth_id {
-            if let Err(err) = save_account_file(account) {
-                logger::log_warn(&format!(
-                    "[Cursor Account] 回填额度池 ID 失败: id={}, error={}",
-                    account.id, err
-                ));
-            }
-        }
-    }
-
     if loaded_accounts.len() <= 1 {
         index.accounts = loaded_accounts
             .iter()
@@ -1112,7 +1132,6 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
             merge_duplicate_account(&mut primary, &loaded_accounts[*member]);
             removed_ids.push(loaded_accounts[*member].id.clone());
         }
-        backfill_quota_pool_auth_id(&mut primary);
 
         normalized_accounts.push(primary);
     }
@@ -1126,18 +1145,18 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
                 ));
             }
         }
-        logger::log_warn(&format!(
-            "[Cursor Account] 检测到共享额度池的重复账号并已合并: removed_ids={}",
-            removed_ids.join(",")
-        ));
-        for removed_id in &removed_ids {
-            if let Err(err) = archive_duplicate_account_file(removed_id) {
+        for account_id in &removed_ids {
+            if let Err(err) = delete_account_file(account_id) {
                 logger::log_warn(&format!(
-                    "[Cursor Account] 归档重复账号失败: id={}, error={}",
-                    removed_id, err
+                    "[Cursor Account] 删除重复账号文件失败: id={}, error={}",
+                    account_id, err
                 ));
             }
         }
+        logger::log_warn(&format!(
+            "[Cursor Account] 检测到重复账号并已合并: removed_ids={}",
+            removed_ids.join(",")
+        ));
     }
 
     index.accounts = normalized_accounts
@@ -1175,9 +1194,7 @@ fn run_index_maintenance_once() -> Result<(), String> {
     let had_index_accounts = !index.accounts.is_empty();
     let accounts = normalize_account_index(&mut index);
     if had_index_accounts && accounts.is_empty() {
-        logger::log_warn(
-            "[Cursor Account] 索引维护后无有效账号，保留原索引不写回",
-        );
+        logger::log_warn("[Cursor Account] 索引维护后无有效账号，保留原索引不写回");
     } else if let Err(err) = save_account_index(&index) {
         logger::log_warn(&format!("[Cursor Account] 索引维护保存失败: {}", err));
     }
@@ -1211,16 +1228,24 @@ pub fn list_accounts() -> Vec<CursorAccount> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let index = load_account_index();
-    list_accounts_from_index(&index)
+    let mut index = load_account_index();
+    let accounts = normalize_account_index(&mut index);
+    if let Err(err) = save_account_index(&index) {
+        logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
+    }
+    accounts
 }
 
 pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
-    let index = load_account_index_checked()?;
-    Ok(list_accounts_from_index(&index))
+    let mut index = load_account_index_checked()?;
+    let accounts = normalize_account_index(&mut index);
+    if let Err(err) = save_account_index(&index) {
+        logger::log_warn(&format!("[Cursor Account] 保存账号索引失败: {}", err));
+    }
+    Ok(accounts)
 }
 
 /// 返回排序后的账号列表：
@@ -1241,7 +1266,8 @@ fn sort_accounts_for_display(accounts: &mut [CursorAccount]) {
         let left_failed = has_quota_query_failed(left);
         let right_failed = has_quota_query_failed(right);
         // 失败的排最后
-        left_failed.cmp(&right_failed)
+        left_failed
+            .cmp(&right_failed)
             // 剩余 Credits 从高到低
             .then_with(|| right_remaining.cmp(&left_remaining))
             // 同额度的，最后刷新的排最前面
@@ -1255,8 +1281,7 @@ fn sort_accounts_for_display(accounts: &mut [CursorAccount]) {
 
 /// 获取账号的真实额度池显示 ID
 pub fn quota_pool_id_display(account: &CursorAccount) -> Option<String> {
-    resolve_quota_pool_id(account)
-        .or_else(|| account.auth_id.clone())
+    resolve_quota_pool_id(account).or_else(|| account.auth_id.clone())
 }
 
 fn has_quota_query_failed(account: &CursorAccount) -> bool {
@@ -1265,6 +1290,50 @@ fn has_quota_query_failed(account: &CursorAccount) -> bool {
         .as_ref()
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false)
+}
+
+pub fn is_cursor_switch_ready_account(account: &CursorAccount) -> bool {
+    if is_banned_account(account) {
+        return false;
+    }
+    if !has_nirvana_switch_ready_tokens(account) {
+        return false;
+    }
+    if has_quota_query_failed(account) || account_has_auth_failure_marker(account) {
+        return false;
+    }
+    true
+}
+
+pub fn ensure_cursor_switch_ready_account(account: &CursorAccount) -> Result<(), String> {
+    if is_cursor_switch_ready_account(account) {
+        return Ok(());
+    }
+    if is_banned_account(account) {
+        return Err(format!("Cursor 账号已被标记不可用: {}", account.email));
+    }
+    if !has_nirvana_switch_ready_tokens(account) {
+        return Err(format!(
+            "Cursor 账号缺少可切号 token，请重新导入账号: {}",
+            account.email
+        ));
+    }
+    if account_has_auth_failure_marker(account) {
+        return Err(format!(
+            "Cursor 账号会话已失效，请重新导入账号: {}",
+            account.email
+        ));
+    }
+    if let Some(error) = account.quota_query_last_error.as_deref() {
+        let error = error.trim();
+        if !error.is_empty() {
+            return Err(format!(
+                "Cursor 账号最近刷新失败，已跳过切号以避免进入登录页: {} ({})",
+                account.email, error
+            ));
+        }
+    }
+    Err(format!("Cursor 账号当前不可切号: {}", account.email))
 }
 
 struct UpsertAccountOutcome {
@@ -1318,39 +1387,47 @@ fn upsert_account_with_outcome(
     let mut index = load_account_index();
     let incoming_auth_id = resolve_payload_auth_id(&payload);
     let incoming_email = normalize_email_identity(Some(payload.email.as_str()));
-    let normalized_email = incoming_email
-        .clone()
-        .ok_or_else(|| "Cursor 账号缺少有效邮箱，禁止非邮箱去重".to_string())?;
+    let incoming_token = normalize_token_identity(Some(payload.access_token.as_str()));
 
-    // 所有去重与记录归并只认邮箱，不再回退到 auth_id / token。
-    let identity_seed = normalized_email.clone();
-    let mut generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
+    let identity_seed = incoming_auth_id
+        .clone()
+        .or_else(|| incoming_email.clone())
+        .or_else(|| incoming_token.clone())
+        .unwrap_or_else(|| "cursor_user".to_string())
+        .to_lowercase();
+    let generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
 
     let account_id = index
         .accounts
         .iter()
         .filter_map(|item| load_account(&item.id))
         .find(|account| {
+            let existing_auth_id = resolve_account_auth_id(account);
+            if let (Some(existing), Some(incoming)) =
+                (existing_auth_id.as_ref(), incoming_auth_id.as_ref())
+            {
+                return existing == incoming;
+            }
+            if existing_auth_id.is_some() || incoming_auth_id.is_some() {
+                return false;
+            }
+
             let existing_email = normalize_email_identity(Some(account.email.as_str()));
-            matches!(
-                (existing_email.as_ref(), incoming_email.as_ref()),
-                (Some(ex_email), Some(in_email)) if ex_email == in_email
-            )
-        })
-        .map(|account| account.id)
-        .unwrap_or_else(|| {
-            // 若旧脏数据占用了同一个邮箱种子生成的 id，则只在邮箱不同的情况下避让。
-            if let Some(existing) = load_account(&generated_id) {
-                let existing_email = normalize_email_identity(Some(existing.email.as_str()));
-                if existing_email != incoming_email {
-                    generated_id = format!(
-                        "cursor_{:x}",
-                        md5::compute(format!("{}::{}", identity_seed, Uuid::new_v4()).as_bytes())
-                    );
+            let existing_token = normalize_token_identity(Some(account.access_token.as_str()));
+            if let (Some(ex), Some(inc)) = (existing_email.as_ref(), incoming_email.as_ref()) {
+                if ex == inc {
+                    return true;
                 }
             }
-            generated_id
-        });
+            if let (Some(ex), Some(inc)) = (existing_token.as_ref(), incoming_token.as_ref()) {
+                if ex == inc {
+                    return true;
+                }
+            }
+            false
+        })
+        .map(|account| account.id)
+        .unwrap_or(generated_id);
 
     let existing = load_account(&account_id);
     let created = existing.is_none();
@@ -1791,7 +1868,10 @@ pub fn import_from_local() -> Result<Option<CursorAccount>, String> {
 // Inject (write auth fields back to Cursor's state.vscdb)
 // ---------------------------------------------------------------------------
 
-fn write_cursor_auth_fields_to_conn(conn: &Connection, account: &CursorAccount) -> Result<(), String> {
+fn write_cursor_auth_fields_to_conn(
+    conn: &Connection,
+    account: &CursorAccount,
+) -> Result<(), String> {
     // 切换到 DELETE journal mode 确保写入可靠持久化（13GB+ DB 的 WAL checkpoint 不可靠）
     conn.execute_batch("PRAGMA journal_mode=DELETE;")
         .map_err(|e| format!("切换 journal_mode=DELETE 失败: {}", e))?;
@@ -1987,13 +2067,8 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
     }
 
     remove_vscdb_sidecars(&db_path);
-    let conn = Connection::open(&db_path).map_err(|e| {
-        format!(
-            "打开 Cursor state.vscdb 失败({}): {}",
-            db_path.display(),
-            e
-        )
-    })?;
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("打开 Cursor state.vscdb 失败({}): {}", db_path.display(), e))?;
 
     for key in SWITCH_AUTH_DELETE_KEYS {
         conn.execute("DELETE FROM ItemTable WHERE key = ?1", [*key])
@@ -2005,10 +2080,108 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
     Ok(())
 }
 
+/// 多开实例侧栏（Agent/Composer 会话列表与 glass 布局）与默认 profile 对齐的键前缀。
+const SIDEBAR_SYNC_KEY_PREFIXES: &[&str] = &[
+    "composer.",
+    "glass/",
+    "cursor/glass",
+    "workbench.backgroundComposer.",
+    "backgroundComposer.",
+    "cursor/agentLayout.",
+    "chat.",
+];
+
+/// 多开切号/启动前：从默认 profile 的 state.vscdb 同步左侧 Agent/Composer 侧栏状态。
+/// 新建实例走整目录复制；已有实例仅在此按前缀覆盖，避免整库 10GB+ 复制。
+pub fn sync_sidebar_state_from_default_to_profile(profile_dir: &Path) -> Result<usize, String> {
+    if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
+        return Ok(0);
+    }
+
+    let default_db = get_default_cursor_state_db_path()?;
+    let target_db = profile_dir
+        .join("User")
+        .join("globalStorage")
+        .join("state.vscdb");
+
+    if !default_db.exists() || !target_db.exists() {
+        logger::log_info("[Cursor Sidebar Sync] 跳过：default 或实例 state.vscdb 不存在");
+        return Ok(0);
+    }
+
+    remove_vscdb_sidecars(&target_db);
+
+    let src_conn = Connection::open(&default_db)
+        .map_err(|e| format!("打开默认 state.vscdb 失败({}): {}", default_db.display(), e))?;
+    let dst_conn = Connection::open(&target_db)
+        .map_err(|e| format!("打开实例 state.vscdb 失败({}): {}", target_db.display(), e))?;
+
+    dst_conn
+        .execute_batch("BEGIN;")
+        .map_err(|e| format!("BEGIN 失败: {}", e))?;
+
+    let mut deleted = 0usize;
+    let mut copied = 0usize;
+
+    let write_result = (|| -> Result<(), String> {
+        for prefix in SIDEBAR_SYNC_KEY_PREFIXES {
+            let pattern = format!("{prefix}%");
+            let deleted_count = dst_conn
+                .execute("DELETE FROM ItemTable WHERE key LIKE ?1", [&pattern])
+                .map_err(|e| format!("删除侧栏键 {} 失败: {}", pattern, e))?;
+            deleted += deleted_count;
+
+            let mut stmt = src_conn
+                .prepare("SELECT key, value FROM ItemTable WHERE key LIKE ?1")
+                .map_err(|e| format!("查询默认侧栏键 {} 失败: {}", pattern, e))?;
+            let mut rows = stmt
+                .query([&pattern])
+                .map_err(|e| format!("遍历默认侧栏键 {} 失败: {}", pattern, e))?;
+
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| format!("读取默认侧栏键 {} 失败: {}", pattern, e))?
+            {
+                let key: String = row.get(0).map_err(|e| format!("读取 key 失败: {}", e))?;
+                let value: String = row.get(1).map_err(|e| format!("读取 value 失败: {}", e))?;
+                dst_conn
+                    .execute(
+                        "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?1, ?2)",
+                        (&key, &value),
+                    )
+                    .map_err(|e| format!("写入侧栏键 {} 失败: {}", key, e))?;
+                copied += 1;
+            }
+        }
+        Ok(())
+    })();
+
+    match write_result {
+        Ok(()) => {
+            dst_conn
+                .execute_batch("COMMIT;")
+                .map_err(|e| format!("COMMIT 失败: {}", e))?;
+        }
+        Err(e) => {
+            let _ = dst_conn.execute_batch("ROLLBACK;");
+            return Err(e);
+        }
+    }
+
+    logger::log_info(&format!(
+        "[Cursor Sidebar Sync] 多开侧栏已从默认 profile 同步: deleted={}, copied={}, profile={}",
+        deleted,
+        copied,
+        profile_dir.display()
+    ));
+    Ok(copied)
+}
+
 /// 无忧传统切号 `i()`：close → Kh → Gh → Jh → Yh → Nc（默认 profile）。
 fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
-    let account = load_account(account_id)
-        .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    let account =
+        load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    ensure_cursor_switch_ready_account(&account)?;
     logger::log_info(&format!("[Cursor Switch] 无忧传统切号: {}", account.email));
 
     let default_dir = get_default_cursor_data_dir()?;
@@ -2041,11 +2214,18 @@ pub fn switch_cursor_account_to_profile(
         return nirvana_traditional_switch_steps(account_id);
     }
 
-    let account = load_account(account_id)
-        .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    let account =
+        load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    ensure_cursor_switch_ready_account(&account)?;
     let profile_dir_str = profile_dir.to_string_lossy().to_string();
     crate::modules::cursor_instance::close_cursor_profile_strict(&profile_dir_str, 20)?;
     crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
+    if let Err(err) = sync_sidebar_state_from_default_to_profile(profile_dir) {
+        logger::log_warn(&format!(
+            "[Cursor Sidebar Sync] 侧栏同步失败（继续切号）: {}",
+            err
+        ));
+    }
 
     switch_tokens_in_profile_db(profile_dir, account_id)?;
     reset_storage_json_ids_for_profile(profile_dir)?;
@@ -2096,22 +2276,14 @@ fn nirvana_kh_auth_tokens(account: &CursorAccount) -> Result<(String, String), S
 }
 
 fn verify_switch_tokens_written(db_path: &Path) -> Result<(), String> {
-    let conn = Connection::open(db_path).map_err(|e| {
-        format!(
-            "切号落盘校验打开数据库失败({}): {}",
-            db_path.display(),
-            e
-        )
-    })?;
-    let access = read_vscdb_item(&conn, "cursorAuth/accessToken").ok_or_else(|| {
-        "切号落盘校验失败: cursorAuth/accessToken 未写入".to_string()
-    })?;
-    let refresh = read_vscdb_item(&conn, "cursorAuth/refreshToken").ok_or_else(|| {
-        "切号落盘校验失败: cursorAuth/refreshToken 未写入".to_string()
-    })?;
-    let email = read_vscdb_item(&conn, "cursorAuth/cachedEmail").ok_or_else(|| {
-        "切号落盘校验失败: cursorAuth/cachedEmail 未写入".to_string()
-    })?;
+    let conn = Connection::open(db_path)
+        .map_err(|e| format!("切号落盘校验打开数据库失败({}): {}", db_path.display(), e))?;
+    let access = read_vscdb_item(&conn, "cursorAuth/accessToken")
+        .ok_or_else(|| "切号落盘校验失败: cursorAuth/accessToken 未写入".to_string())?;
+    let refresh = read_vscdb_item(&conn, "cursorAuth/refreshToken")
+        .ok_or_else(|| "切号落盘校验失败: cursorAuth/refreshToken 未写入".to_string())?;
+    let email = read_vscdb_item(&conn, "cursorAuth/cachedEmail")
+        .ok_or_else(|| "切号落盘校验失败: cursorAuth/cachedEmail 未写入".to_string())?;
     if !email.contains('@') {
         return Err(format!("切号落盘校验失败: cachedEmail 无效: {}", email));
     }
@@ -2128,26 +2300,19 @@ fn verify_switch_tokens_written(db_path: &Path) -> Result<(), String> {
 pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    ensure_cursor_switch_ready_account(&account)?;
     let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
     let db_path = profile_dir
         .join("User")
         .join("globalStorage")
         .join("state.vscdb");
     if !db_path.exists() {
-        return Err(format!(
-            "Cursor state.vscdb 不存在: {}",
-            db_path.display()
-        ));
+        return Err(format!("Cursor state.vscdb 不存在: {}", db_path.display()));
     }
 
     remove_vscdb_sidecars(&db_path);
-    let conn = Connection::open(&db_path).map_err(|e| {
-        format!(
-            "打开 Cursor state.vscdb 失败({}): {}",
-            db_path.display(),
-            e
-        )
-    })?;
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("打开 Cursor state.vscdb 失败({}): {}", db_path.display(), e))?;
 
     // 切换到 DELETE journal mode：13GB+ 的 DB 在 WAL 模式下 wal_checkpoint 不可靠，
     // DELETE mode 的写入直接进主 DB 文件，不依赖 checkpoint flush。
@@ -2307,14 +2472,8 @@ pub fn hard_reset_cursor_fingerprint_state() -> Result<(), String> {
     let storage_json = get_default_cursor_storage_json_path()?;
     let machine_id_path = get_default_cursor_machine_id_path()?;
     let state_db = get_default_cursor_state_db_path()?;
-    hard_reset_cursor_fingerprint_state_at_paths(
-        &storage_json,
-        &machine_id_path,
-        &state_db,
-    )?;
-    logger::log_info(
-        "[Cursor Switch] 已执行本地指纹重置（state.vscdb/storage.json/machineId）",
-    );
+    hard_reset_cursor_fingerprint_state_at_paths(&storage_json, &machine_id_path, &state_db)?;
+    logger::log_info("[Cursor Switch] 已执行本地指纹重置（state.vscdb/storage.json/machineId）");
     Ok(())
 }
 
@@ -2328,11 +2487,7 @@ pub fn hard_reset_cursor_fingerprint_state_for_profile(profile_dir: &Path) -> Re
         .join("User")
         .join("globalStorage")
         .join("state.vscdb");
-    hard_reset_cursor_fingerprint_state_at_paths(
-        &storage_json,
-        &machine_id_path,
-        &state_db,
-    )?;
+    hard_reset_cursor_fingerprint_state_at_paths(&storage_json, &machine_id_path, &state_db)?;
     logger::log_info(&format!(
         "[Cursor Switch] 已执行实例 profile 指纹重置: {}",
         profile_dir.display()
@@ -2422,19 +2577,22 @@ struct CursorRefreshTokenResponse {
 }
 
 fn build_cursor_http_client() -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(6));
+    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(6));
 
     let config = crate::modules::config::get_user_config();
     if config.global_proxy_enabled && !config.global_proxy_url.trim().is_empty() {
         let proxy_url = config.global_proxy_url.trim();
         if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
             builder = builder.proxy(proxy);
-            logger::log_info(&format!("[Cursor Client] HTTP 客户端已启用代理: {}", proxy_url));
+            logger::log_info(&format!(
+                "[Cursor Client] HTTP 客户端已启用代理: {}",
+                proxy_url
+            ));
         }
     }
 
-    builder.build()
+    builder
+        .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))
 }
 
@@ -2893,7 +3051,8 @@ pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorRefres
     result
 }
 
-pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<CursorRefreshResult, String>)>, String> {
+pub async fn refresh_all_tokens(
+) -> Result<Vec<(String, Result<CursorRefreshResult, String>)>, String> {
     let accounts = list_accounts();
     let active_accounts: Vec<CursorAccount> = accounts
         .into_iter()
@@ -3073,10 +3232,7 @@ fn has_nirvana_switch_ready_tokens(account: &CursorAccount) -> bool {
 }
 
 pub fn is_full_quota_account(account: &CursorAccount) -> bool {
-    if is_banned_account(account) || has_quota_query_failed(account) {
-        return false;
-    }
-    if !has_nirvana_switch_ready_tokens(account) {
+    if !is_cursor_switch_ready_account(account) {
         return false;
     }
     if !has_effective_plan_budget(account) {
@@ -3133,8 +3289,7 @@ pub fn pick_highest_remaining_credits_account(exclude_ids: &HashSet<String>) -> 
     let mut candidates: Vec<CursorAccount> = list_accounts()
         .into_iter()
         .filter(|account| !exclude_ids.contains(&account.id))
-        .filter(|account| !is_banned_account(account))
-        .filter(|account| has_nirvana_switch_ready_tokens(account))
+        .filter(|account| is_cursor_switch_ready_account(account))
         .collect();
 
     if candidates.is_empty() {
@@ -3147,7 +3302,8 @@ pub fn pick_highest_remaining_credits_account(exclude_ids: &HashSet<String>) -> 
         let right_remaining = average_quota_percentage(&extract_quota_metrics(right)) as i32;
         let left_failed = has_quota_query_failed(left);
         let right_failed = has_quota_query_failed(right);
-        left_failed.cmp(&right_failed)
+        left_failed
+            .cmp(&right_failed)
             .then_with(|| right_remaining.cmp(&left_remaining))
             .then_with(|| {
                 let left_ts = left.usage_updated_at.unwrap_or(0);
@@ -3355,8 +3511,8 @@ mod cursor_auth_token_tests {
     fn splits_session_access_token() {
         let jwt = sample_jwt();
         let session = format!("user_01TEST::{jwt}");
-        let (access, out) = resolve_vscdb_auth_tokens_from_parts(&session, Some(&session))
-            .expect("ok");
+        let (access, out) =
+            resolve_vscdb_auth_tokens_from_parts(&session, Some(&session)).expect("ok");
         assert_eq!(access, jwt);
         assert_eq!(out, session);
     }

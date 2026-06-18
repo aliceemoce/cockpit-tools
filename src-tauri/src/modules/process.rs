@@ -6729,37 +6729,73 @@ fn send_close_signal(pid: u32) {
         use std::os::windows::process::CommandExt;
 
         crate::modules::logger::log_info(&format!("[AG Close] taskkill start pid={}", pid));
-        let output = Command::new("taskkill")
+        let mut child = match Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .creation_flags(CREATE_NO_WINDOW)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output();
-        match output {
-            Ok(value) => {
-                if value.status.success() {
-                    crate::modules::logger::log_info(&format!(
-                        "[AG Close] taskkill success pid={} status={}",
-                        pid, value.status
-                    ));
-                } else {
-                    let stderr = String::from_utf8_lossy(&value.stderr);
-                    crate::modules::logger::log_warn(&format!(
-                        "[AG Close] taskkill failed pid={} status={} stderr={}",
-                        pid,
-                        value.status,
-                        stderr.trim()
-                    ));
-                }
-            }
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
             Err(err) => {
                 crate::modules::logger::log_warn(&format!(
                     "[AG Close] taskkill error pid={} err={}",
                     pid, err
                 ));
+                return;
+            }
+        };
+
+        let started = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if started.elapsed() < Duration::from_secs(8) => {
+                    thread::sleep(Duration::from_millis(100));
+                }
+                Ok(None) => {
+                    crate::modules::logger::log_warn(&format!(
+                        "[AG Close] taskkill timeout pid={}, killing taskkill child",
+                        pid
+                    ));
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return;
+                }
+                Err(err) => {
+                    crate::modules::logger::log_warn(&format!(
+                        "[AG Close] taskkill wait error pid={} err={}",
+                        pid, err
+                    ));
+                    return;
+                }
             }
         }
+
+        match child.wait_with_output() {
+            Ok(value) if value.status.success() => {
+                crate::modules::logger::log_info(&format!(
+                    "[AG Close] taskkill success pid={} status={}",
+                    pid, value.status
+                ));
+            }
+            Ok(value) => {
+                let stderr = String::from_utf8_lossy(&value.stderr);
+                crate::modules::logger::log_warn(&format!(
+                    "[AG Close] taskkill failed pid={} status={} stderr={}",
+                    pid,
+                    value.status,
+                    stderr.trim()
+                ));
+            }
+            Err(err) => {
+                crate::modules::logger::log_warn(&format!(
+                    "[AG Close] taskkill output error pid={} err={}",
+                    pid, err
+                ));
+            }
+        };
     }
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -8555,8 +8591,7 @@ pub fn close_codex_instances(codex_homes: &[String], timeout_secs: u64) -> Resul
                     let normalized = normalize_path_for_compare(value);
                     !normalized.is_empty()
                         && (target_app_dirs.contains(&normalized)
-                            || (includes_default
-                                && current_default_app_dirs.contains(&normalized)))
+                            || (includes_default && current_default_app_dirs.contains(&normalized)))
                 }
                 None => includes_default,
             }
