@@ -1,5 +1,6 @@
 use base64::Engine as _;
-use rand::RngCore;
+use rand::seq::SliceRandom;
+use rand::{Rng, RngCore};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde_json::Value;
@@ -449,10 +450,16 @@ fn persist_quota_query_error(account_id: &str, message: &str) {
     };
     account.quota_query_last_error = Some(message.to_string());
     account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
+    let email = account.email.clone();
     let _ = upsert_account_record(account);
+    logger::log_warn(&format!(
+        "[Cursor Account] 标记账号失败(将显示红色): account_id={}, error={}",
+        account_id, message
+    ));
+    crate::modules::cursor_switch_audit::write_ui_error_mark(account_id, &email, message);
 }
 
-fn is_cursor_transient_quota_error(message: &str) -> bool {
+pub(crate) fn is_cursor_transient_quota_error(message: &str) -> bool {
     let lower = message.to_lowercase();
     lower.contains("error sending request")
         || lower.contains("timed out")
@@ -474,14 +481,77 @@ fn is_cursor_auth_quota_error(message: &str) -> bool {
         || lower.contains("未认证")
         || lower.contains("请重新导入")
         || lower.contains("请重新登录")
-        || lower.contains("refresh token 已失效")
+        || lower.contains("登录会话已过期")
+        || lower.contains("授权已失效")
+        || lower.contains("凭证无效")
+        || lower.contains("凭证失效")
+        || lower.contains("token已失效")
         || lower.contains("token 已失效")
+        || lower.contains("登录授权已过期")
+        || lower.contains("refresh token 已失效")
         || lower.contains("session expired")
         || lower.contains("invalid credentials")
         || lower.contains("unauthenticated")
+        || lower.contains("re-import")
+        || lower.contains("re-login")
 }
 
-fn account_has_auth_failure_marker(account: &CursorAccount) -> bool {
+/// 镜像账号总览 `isAbnormalAccount`（CursorAccountsPage.tsx）。
+pub fn is_cursor_overview_abnormal(account: &CursorAccount) -> bool {
+    is_banned_account(account)
+        || account
+            .status
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("error"))
+        || account
+            .quota_query_last_error
+            .as_deref()
+            .is_some_and(is_cursor_auth_quota_error)
+}
+
+/// 镜像账号总览 `resolveRemainingQuotaPercent`。
+pub fn cursor_overview_remaining_percent(account: &CursorAccount) -> Option<i32> {
+    cursor_switch_remaining_percent(account)
+}
+
+/// 多开/实例自动挑号：与账号总览同一套「有效且有额度」判定。
+pub fn ensure_cursor_overview_pickable(account: &CursorAccount) -> Result<(), String> {
+    if is_cursor_overview_abnormal(account) {
+        if is_banned_account(account) {
+            return Err(format!("Cursor 账号已被标记不可用: {}", account.email));
+        }
+        if account
+            .quota_query_last_error
+            .as_deref()
+            .is_some_and(is_cursor_auth_quota_error)
+        {
+            return Err(format!(
+                "Cursor 账号会话已失效，请重新导入账号: {}",
+                account.email
+            ));
+        }
+        return Err(format!("Cursor 账号状态异常: {}", account.email));
+    }
+    if !has_nirvana_switch_ready_tokens(account) {
+        return Err(format!(
+            "Cursor 账号缺少可切号 token，请重新导入账号: {}",
+            account.email
+        ));
+    }
+    match cursor_overview_remaining_percent(account) {
+        None => Err(format!(
+            "Cursor 账号配额不可用（与总览一致），已跳过: {}",
+            account.email
+        )),
+        Some(remaining) if remaining <= 0 => Err(format!(
+            "Cursor 账号额度已耗尽（与总览一致），已跳过: {}",
+            account.email
+        )),
+        Some(_) => Ok(()),
+    }
+}
+
+pub fn account_has_auth_failure_marker(account: &CursorAccount) -> bool {
     account
         .quota_query_last_error
         .as_deref()
@@ -1334,6 +1404,25 @@ pub fn ensure_cursor_switch_ready_account(account: &CursorAccount) -> Result<(),
         }
     }
     Err(format!("Cursor 账号当前不可切号: {}", account.email))
+}
+
+/// 切号后异步验收用：探测 token 是否仍被 API 接受（不阻断切号链）。
+pub async fn probe_cursor_account_live_auth(account_id: &str) -> Result<(), String> {
+    let account = load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    let (access_token, _) = nirvana_kh_auth_tokens(&account)?;
+    let client = build_cursor_http_client()?;
+    match fetch_user_meta_with_client(&client, &access_token).await {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            if is_cursor_transient_quota_error(&err) {
+                return Ok(());
+            }
+            if is_cursor_auth_quota_error(&err) {
+                persist_quota_query_error(account_id, &err);
+            }
+            Err(err)
+        }
+    }
 }
 
 struct UpsertAccountOutcome {
@@ -3184,6 +3273,60 @@ fn average_quota_percentage(metrics: &[(String, i32)]) -> f64 {
 }
 
 const FULL_QUOTA_REMAINING_THRESHOLD: f64 = 99.0;
+const SWITCH_FULL_POOL_REMAINING_MIN: i32 = 99;
+
+/// 与账号总览 UI `resolveRemainingQuotaPercent` 对齐：100 - max(各维度已用%)。
+pub fn cursor_switch_remaining_percent(account: &CursorAccount) -> Option<i32> {
+    if has_quota_query_failed(account) {
+        return None;
+    }
+    let usage = read_usage_percent(account);
+    let mut used_candidates = Vec::new();
+    if let Some(used) = usage.total_used {
+        used_candidates.push(used);
+    }
+    if let Some(used) = usage.auto_used {
+        used_candidates.push(used);
+    }
+    if let Some(used) = usage.api_used {
+        used_candidates.push(used);
+    }
+    if used_candidates.is_empty() {
+        return None;
+    }
+    let max_used = used_candidates
+        .into_iter()
+        .map(|value| value.clamp(0, 100))
+        .max()
+        .unwrap_or(0);
+    Some(100 - max_used)
+}
+
+/// Auto/Total/API 任一维度已用 100% → 不进自动换号池。
+pub fn is_cursor_quota_exhausted_for_switch(account: &CursorAccount) -> bool {
+    let usage = read_usage_percent(account);
+    [usage.total_used, usage.auto_used, usage.api_used]
+        .into_iter()
+        .flatten()
+        .any(|used| used >= 100)
+}
+
+pub fn cursor_switch_usage_snapshot(account: &CursorAccount) -> (Option<i32>, Option<i32>, Option<i32>) {
+    let usage = read_usage_percent(account);
+    (
+        cursor_switch_remaining_percent(account),
+        usage.auto_used,
+        usage.total_used,
+    )
+}
+
+#[derive(Debug, Clone)]
+pub struct CursorRotationPick {
+    pub account_id: String,
+    pub pool: &'static str,
+    pub candidates: usize,
+    pub remaining_pct: i32,
+}
 
 fn plan_limit_value(account: &CursorAccount) -> Option<f64> {
     let raw = account.cursor_usage_raw.as_ref()?;
@@ -3208,27 +3351,7 @@ pub fn has_effective_plan_budget(account: &CursorAccount) -> bool {
 }
 
 fn has_nirvana_switch_ready_tokens(account: &CursorAccount) -> bool {
-    if let Some(raw) = account.cursor_auth_raw.as_ref() {
-        let access_ok = raw
-            .get("accessToken")
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty());
-        let refresh_ok = raw
-            .get("refreshToken")
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty());
-        return access_ok && refresh_ok;
-    }
-
-    let access_ok = !account.access_token.trim().is_empty();
-    let refresh_ok = account
-        .refresh_token
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    access_ok && refresh_ok
+    nirvana_kh_auth_tokens(account).is_ok()
 }
 
 pub fn is_full_quota_account(account: &CursorAccount) -> bool {
@@ -3265,6 +3388,112 @@ fn remaining_credits_sort_key(account: &CursorAccount) -> (i32, i64) {
     let remaining = average_quota_percentage(&extract_quota_metrics(account)) as i32;
     let refreshed_at = account.usage_updated_at.unwrap_or(0);
     (remaining, refreshed_at)
+}
+
+/// 实例 Play / 多开启动：满额池均匀随机，否则好号按剩余额度加权随机。
+pub fn pick_cursor_rotation_account(
+    exclude_ids: &HashSet<String>,
+) -> Result<CursorRotationPick, String> {
+    let mut full_pool: Vec<(CursorAccount, i32)> = Vec::new();
+    let mut good_pool: Vec<(CursorAccount, i32)> = Vec::new();
+    let mut excluded_exhausted = 0usize;
+
+    for account in list_accounts() {
+        if exclude_ids.contains(&account.id) {
+            continue;
+        }
+        if is_cursor_overview_abnormal(&account) {
+            continue;
+        }
+        if !has_nirvana_switch_ready_tokens(&account) {
+            continue;
+        }
+        let Some(remaining) = cursor_overview_remaining_percent(&account) else {
+            continue;
+        };
+        if remaining <= 0 {
+            excluded_exhausted += 1;
+            continue;
+        }
+        if remaining >= SWITCH_FULL_POOL_REMAINING_MIN {
+            full_pool.push((account, remaining));
+        } else {
+            good_pool.push((account, remaining));
+        }
+    }
+
+    if excluded_exhausted > 0 {
+        logger::log_info(&format!(
+            "[Cursor Switch] pick 排除耗尽账号: excluded_exhausted={}",
+            excluded_exhausted
+        ));
+    }
+
+    let mut rng = rand::thread_rng();
+
+    if let Some((account, remaining)) = full_pool.choose(&mut rng).cloned() {
+        let candidates = full_pool.len();
+        logger::log_info(&format!(
+            "[Cursor Switch] pick: pool=full candidates={} picked={} email={} remaining={}% auto={:?}% total={:?}%",
+            candidates,
+            account.id,
+            account.email,
+            remaining,
+            read_usage_percent(&account).auto_used,
+            read_usage_percent(&account).total_used
+        ));
+        return Ok(CursorRotationPick {
+            account_id: account.id,
+            pool: "full",
+            candidates,
+            remaining_pct: remaining,
+        });
+    }
+
+    if good_pool.is_empty() {
+        return Err(
+            "没有可用的可切号 Cursor 账号，请重新导入失效账号或手动绑定正常账号".to_string(),
+        );
+    }
+
+    let candidates = good_pool.len();
+    let total_weight: u32 = good_pool
+        .iter()
+        .map(|(_, remaining)| (*remaining).max(1) as u32)
+        .sum();
+    let mut roll = rng.gen_range(0..total_weight);
+    for (account, remaining) in &good_pool {
+        let weight = (*remaining).max(1) as u32;
+        if roll < weight {
+            logger::log_info(&format!(
+                "[Cursor Switch] pick: pool=good candidates={} picked={} email={} remaining={}% auto={:?}% total={:?}%",
+                candidates,
+                account.id,
+                account.email,
+                remaining,
+                read_usage_percent(account).auto_used,
+                read_usage_percent(account).total_used
+            ));
+            return Ok(CursorRotationPick {
+                account_id: account.id.clone(),
+                pool: "good",
+                candidates,
+                remaining_pct: *remaining,
+            });
+        }
+        roll -= weight;
+    }
+
+    let (account, remaining) = good_pool
+        .last()
+        .cloned()
+        .expect("good_pool non-empty");
+    Ok(CursorRotationPick {
+        account_id: account.id,
+        pool: "good",
+        candidates,
+        remaining_pct: remaining,
+    })
 }
 
 pub fn pick_full_quota_account(exclude_ids: &HashSet<String>) -> Option<String> {
@@ -3440,12 +3669,153 @@ pub fn run_quota_alert_if_needed(
 }
 
 #[cfg(test)]
+mod cursor_overview_pick_tests {
+    use super::*;
+    use crate::models::cursor::CursorAccount;
+
+    fn account_with_usage(id: &str, total: i32, auto: i32) -> CursorAccount {
+        CursorAccount {
+            id: id.into(),
+            email: format!("{id}@test.com"),
+            auth_id: None,
+            name: None,
+            tags: None,
+            access_token: "eyJhbGciOiJIUzI1NiJ9.e30.sig".into(),
+            refresh_token: Some("eyJhbGciOiJIUzI1NiJ9.e30.sig".into()),
+            membership_type: None,
+            subscription_status: None,
+            sign_up_type: None,
+            cursor_auth_raw: None,
+            cursor_usage_raw: Some(serde_json::json!({
+                "individualUsage": {
+                    "plan": {
+                        "totalPercentUsed": total,
+                        "autoPercentUsed": auto
+                    }
+                }
+            })),
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: Some(1),
+            created_at: 0,
+            last_used: 0,
+        }
+    }
+
+    #[test]
+    fn remaining_percent_matches_ui_max_used() {
+        let account = account_with_usage("a", 79, 100);
+        assert_eq!(cursor_overview_remaining_percent(&account), Some(0));
+        assert!(ensure_cursor_overview_pickable(&account).is_err());
+    }
+
+    #[test]
+    fn free_zero_used_counts_as_full_pool() {
+        let account = account_with_usage("b", 0, 0);
+        assert_eq!(cursor_overview_remaining_percent(&account), Some(100));
+        assert!(ensure_cursor_overview_pickable(&account).is_ok());
+    }
+
+    #[test]
+    fn session_expired_is_abnormal_and_not_pickable() {
+        let mut account = account_with_usage("c", 0, 0);
+        account.quota_query_last_error = Some("Cursor 会话已过期或未认证".into());
+        assert!(is_cursor_overview_abnormal(&account));
+        assert!(cursor_overview_remaining_percent(&account).is_none());
+        assert!(ensure_cursor_overview_pickable(&account).is_err());
+    }
+}
+
+#[cfg(test)]
+mod cursor_rotation_pick_tests {
+    use super::*;
+    use crate::models::cursor::CursorAccount;
+
+    fn account_with_usage(id: &str, total: i32, auto: i32) -> CursorAccount {
+        CursorAccount {
+            id: id.into(),
+            email: format!("{id}@test.com"),
+            auth_id: None,
+            name: None,
+            tags: None,
+            access_token: "eyJhbGciOiJIUzI1NiJ9.e30.sig".into(),
+            refresh_token: Some("eyJhbGciOiJIUzI1NiJ9.e30.sig".into()),
+            membership_type: None,
+            subscription_status: None,
+            sign_up_type: None,
+            cursor_auth_raw: None,
+            cursor_usage_raw: Some(serde_json::json!({
+                "individualUsage": {
+                    "plan": {
+                        "totalPercentUsed": total,
+                        "autoPercentUsed": auto
+                    }
+                }
+            })),
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: Some(1),
+            created_at: 0,
+            last_used: 0,
+        }
+    }
+
+    #[test]
+    fn remaining_percent_matches_ui_max_used() {
+        let account = account_with_usage("a", 79, 100);
+        assert_eq!(cursor_switch_remaining_percent(&account), Some(0));
+        assert!(is_cursor_quota_exhausted_for_switch(&account));
+    }
+
+    #[test]
+    fn free_zero_used_counts_as_full_pool() {
+        let account = account_with_usage("b", 0, 0);
+        assert_eq!(cursor_switch_remaining_percent(&account), Some(100));
+        assert!(!is_cursor_quota_exhausted_for_switch(&account));
+    }
+}
+
+#[cfg(test)]
 mod cursor_auth_token_tests {
     use super::*;
     use crate::models::cursor::CursorAccount;
 
     fn sample_jwt() -> String {
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhdXRoMHx1c2VyXzAxSFFGR0g4WjY4WjY4WjY4WiIsImV4cCI6OTk5OTk5OTk5fQ.sig".to_string()
+    }
+
+    #[test]
+    fn switch_ready_when_raw_empty_but_access_token_present() {
+        let jwt = sample_jwt();
+        let account = CursorAccount {
+            id: "t".into(),
+            email: "a@b.com".into(),
+            auth_id: None,
+            name: None,
+            tags: None,
+            access_token: jwt,
+            refresh_token: Some("refresh".into()),
+            membership_type: None,
+            subscription_status: None,
+            sign_up_type: None,
+            cursor_auth_raw: Some(serde_json::json!({})),
+            cursor_usage_raw: Some(serde_json::json!({
+                "individualUsage": { "plan": { "totalPercentUsed": 0, "autoPercentUsed": 0 } }
+            })),
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: None,
+            created_at: 0,
+            last_used: 0,
+        };
+        assert!(has_nirvana_switch_ready_tokens(&account));
+        assert!(ensure_cursor_overview_pickable(&account).is_ok());
     }
 
     #[test]

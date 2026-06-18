@@ -1190,6 +1190,55 @@ func providerGatewayValueHasVisionInput(value any) bool {
 	return false
 }
 
+func providerGatewayStripVisionInput(body []byte) []byte {
+	if len(body) == 0 || !json.Valid(body) {
+		return body
+	}
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	cleaned := providerGatewayValueStripVisionInput(payload)
+	out, err := json.Marshal(cleaned)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func providerGatewayValueStripVisionInput(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		if typ, _ := typed["type"].(string); strings.EqualFold(strings.TrimSpace(typ), "input_image") || strings.EqualFold(strings.TrimSpace(typ), "image_url") {
+			return nil
+		}
+		out := make(map[string]any, len(typed))
+		for key, child := range typed {
+			if key == "image_url" {
+				continue
+			}
+			cleaned := providerGatewayValueStripVisionInput(child)
+			if cleaned == nil {
+				continue
+			}
+			out[key] = cleaned
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, child := range typed {
+			cleaned := providerGatewayValueStripVisionInput(child)
+			if cleaned == nil {
+				continue
+			}
+			out = append(out, cleaned)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
 func stripModelPrefix(model string, spec *apiKeySpec) string {
 	trimmed := strings.TrimSpace(model)
 	if spec == nil || strings.TrimSpace(spec.ModelPrefix) == "" {
@@ -3223,22 +3272,22 @@ func (s *relayServer) handleProviderGatewayRequest(c *gin.Context, gateway *prov
 	if providerGatewayRequestHasVisionInput(body) && !supportsVision {
 		visionRoutingModel := providerGatewayVisionRoutingModel(gateway)
 		if strings.TrimSpace(visionRoutingModel) == "" {
-			writeAPIError(c, http.StatusBadRequest, fmt.Sprintf("model %s does not support image input", upstreamModel), "unsupported_image_input")
-			return
-		}
-		originalModel := upstreamModel
-		upstreamModel = visionRoutingModel
-		if s.emitter != nil {
-			s.emitter.emit(requestDiagnosticPayload{
-				Type:         "provider_gateway_vision_routed",
-				RequestID:    internallogging.GetRequestID(c.Request.Context()),
-				Method:       c.Request.Method,
-				Path:         requestPath(c.Request),
-				RequestKind:  requestKindFromPath(requestPath(c.Request)),
-				Model:        upstreamModel,
-				Transport:    diagnosticTransport(c.Request),
-				ErrorMessage: fmt.Sprintf("routed image input from %s to %s", originalModel, upstreamModel),
-			})
+			body = providerGatewayStripVisionInput(body)
+		} else {
+			originalModel := upstreamModel
+			upstreamModel = visionRoutingModel
+			if s.emitter != nil {
+				s.emitter.emit(requestDiagnosticPayload{
+					Type:         "provider_gateway_vision_routed",
+					RequestID:    internallogging.GetRequestID(c.Request.Context()),
+					Method:       c.Request.Method,
+					Path:         requestPath(c.Request),
+					RequestKind:  requestKindFromPath(requestPath(c.Request)),
+					Model:        upstreamModel,
+					Transport:    diagnosticTransport(c.Request),
+					ErrorMessage: fmt.Sprintf("routed image input from %s to %s", originalModel, upstreamModel),
+				})
+			}
 		}
 	}
 	upstreamPath := "/v1/responses"
@@ -4430,8 +4479,7 @@ func (s *relayServer) handleOllamaProviderGatewayChat(c *gin.Context, gateway *p
 		return
 	}
 	if providerGatewayRequestHasVisionInput(body) && !providerGatewayModelSupportsVision(gateway, upstreamModel) {
-		writeAPIError(c, http.StatusBadRequest, fmt.Sprintf("model %s does not support image input", upstreamModel), "unsupported_image_input")
-		return
+		body = providerGatewayStripVisionInput(body)
 	}
 	upstreamBody := rewriteProviderGatewayBodyModel(body, upstreamModel)
 	upstreamURL, err := providerGatewayURL(gateway.BaseURL, "/v1/chat/completions")

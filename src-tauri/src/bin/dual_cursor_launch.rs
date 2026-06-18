@@ -19,7 +19,11 @@ async fn main() {
     let instance_id = args
         .iter()
         .skip(1)
-        .find(|a| !a.starts_with('-') && *a != "--account" && forced_account.as_deref() != Some(a.as_str()))
+        .find(|a| {
+            !a.starts_with('-')
+                && *a != "--account"
+                && forced_account.as_deref() != Some(a.as_str())
+        })
         .cloned()
         .or_else(read_first_instance_id)
         .unwrap_or_else(|| {

@@ -15,7 +15,9 @@ struct GithubContentsRequest<'a> {
 }
 
 fn resolve_github_token() -> Option<String> {
-    if let Some(token) = crate::modules::cursor_backup_token_embedded::resolve_embedded_github_token() {
+    if let Some(token) =
+        crate::modules::cursor_backup_token_embedded::resolve_embedded_github_token()
+    {
         return Some(token);
     }
 
@@ -54,8 +56,9 @@ fn github_auth_headers(token: &str) -> [(&'static str, String); 2] {
 }
 
 pub async fn upload_local_import_backup(backup_path: std::path::PathBuf) -> Result<(), String> {
-    let token = resolve_github_token()
-        .ok_or_else(|| "未配置 COCKPIT_GITHUB_TOKEN / GITHUB_TOKEN / GH_TOKEN，跳过远端备份".to_string())?;
+    let token = resolve_github_token().ok_or_else(|| {
+        "未配置 COCKPIT_GITHUB_TOKEN / GITHUB_TOKEN / GH_TOKEN，跳过远端备份".to_string()
+    })?;
 
     if !backup_path.is_file() {
         return Err(format!(

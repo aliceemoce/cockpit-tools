@@ -387,11 +387,10 @@ fn collect_rollout_provider_changes(
                 continue;
             };
             let session_id = session_meta_id(&parsed);
-            let fallback_modified_ms = modules::codex_session_file_time::read_modified_time(
-                &rollout_path,
-            )
-            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-            .map(|value| value.as_millis() as i128);
+            let fallback_modified_ms =
+                modules::codex_session_file_time::read_modified_time(&rollout_path)
+                    .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+                    .map(|value| value.as_millis() as i128);
             let target_modified_at = resolve_target_modified_at_ms(
                 session_id.as_deref(),
                 &session_index_map,
@@ -908,9 +907,7 @@ fn repair_sqlite_thread_timestamps(data_dir: &Path) -> Result<usize, String> {
                 row.get::<_, Option<i64>>(2)?,
             ))
         })
-        .map_err(|error| {
-            format_sqlite_read_error(&db_path, "查询 SQLite 会话时间失败", &error)
-        })?;
+        .map_err(|error| format_sqlite_read_error(&db_path, "查询 SQLite 会话时间失败", &error))?;
 
     let mut updates = Vec::new();
     for row in rows {
@@ -944,7 +941,11 @@ fn repair_sqlite_thread_timestamps(data_dir: &Path) -> Result<usize, String> {
         transaction
             .execute(
                 "UPDATE threads SET updated_at = ?1, updated_at_ms = ?2 WHERE id = ?3",
-                (*activity_seconds, *activity_seconds * 1000, thread_id.as_str()),
+                (
+                    *activity_seconds,
+                    *activity_seconds * 1000,
+                    thread_id.as_str(),
+                ),
             )
             .map_err(|error| format_sqlite_write_error(&db_path, &error))?;
     }
@@ -1927,13 +1928,9 @@ mod tests {
         .expect("write session index");
 
         let session_index_map = read_session_index_map(&data_dir).expect("read session index");
-        let target = resolve_target_modified_at_ms(
-            Some("s1"),
-            &session_index_map,
-            &rollout_path,
-            None,
-        )
-        .expect("resolve target modified");
+        let target =
+            resolve_target_modified_at_ms(Some("s1"), &session_index_map, &rollout_path, None)
+                .expect("resolve target modified");
 
         assert_eq!(target, 1_704_067_200_000);
         fs::remove_dir_all(&data_dir).expect("cleanup temp dir");

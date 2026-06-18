@@ -330,10 +330,11 @@ pub fn apply_api_service_speed_to_official_state() -> Result<CodexAppSpeedConfig
 #[cfg(test)]
 mod tests {
     use super::{
-        get_app_speed_config_for_dir, normalize_service_tier_speed, read_desktop_service_tier_from_doc,
-        sync_legacy_service_tier_state, write_app_speed_for_config_toml_path,
-        DESKTOP_DEFAULT_SERVICE_TIER_KEY, DESKTOP_SECTION_KEY, ELECTRON_PERSISTED_ATOM_STATE_KEY,
-        GLOBAL_STATE_FILE, HAS_USER_CHANGED_SERVICE_TIER_KEY,
+        get_app_speed_config_for_dir, normalize_service_tier_speed,
+        read_desktop_service_tier_from_doc, sync_legacy_service_tier_state,
+        write_app_speed_for_config_toml_path, DESKTOP_DEFAULT_SERVICE_TIER_KEY,
+        DESKTOP_SECTION_KEY, ELECTRON_PERSISTED_ATOM_STATE_KEY, GLOBAL_STATE_FILE,
+        HAS_USER_CHANGED_SERVICE_TIER_KEY,
     };
     use crate::models::codex::CodexAppSpeed;
     use std::fs;

@@ -12,6 +12,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import uiautomation as auto
 import win32con
 import win32gui
@@ -22,6 +26,12 @@ INSTANCES_JSON = Path.home() / ".antigravity_cockpit" / "cursor_instances.json"
 ACCOUNTS_JSON = Path.home() / ".antigravity_cockpit" / "cursor_accounts.json"
 DEFAULT_PROFILE = Path.home() / "AppData/Roaming/Cursor"
 FORK_EXP = Path.home() / "AppData/Local/Cockpit Tools/cockpit-tools-fork-exp.exe"
+COCKPIT_EXE = Path(
+    os.environ.get(
+        "COCKPIT_EXE",
+        str(Path.home() / "Desktop" / "Cockpit-nirvana-token-test.exe"),
+    )
+)
 
 # 全部启动后的 Tauri 原生确认框（不在 WebView 树内）
 BULK_START_CONFIRM_TEXTS = (
@@ -74,7 +84,7 @@ def list_cockpit_windows(exe_path: Path | None = None) -> list[auto.Control]:
         windows_for_pid,
     )
 
-    target = exe_path or DEFAULT_EXE
+    target = exe_path or COCKPIT_EXE if COCKPIT_EXE.is_file() else DEFAULT_EXE
     processes = list_processes_for_exe(target)
     if not processes:
         return []
@@ -277,33 +287,32 @@ def collect_visible_button_names(win: auto.Control, limit: int = 40) -> list[str
 
 
 def ensure_fork_exp_running(wait_s: float = 18.0) -> None:
-    r = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq cockpit-tools-fork-exp.exe", "/FO", "CSV", "/NH"],
-        capture_output=True,
-        text=True,
-    )
-    if "cockpit-tools-fork-exp.exe" not in (r.stdout or "").lower():
-        if not FORK_EXP.is_file():
-            return
-        os.environ.setdefault(
-            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--force-renderer-accessibility"
-        )
-        subprocess.Popen([str(FORK_EXP)], env=os.environ.copy())
-        time.sleep(wait_s)
+    """确保验收用 Cockpit 主程序在跑（默认桌面合并包，可用 COCKPIT_EXE 覆盖）。"""
+    from scripts.cockpit_identity import list_processes_for_exe, verify_cockpit_identity
+
+    if not COCKPIT_EXE.is_file():
         return
-    # 已在跑：若树为空则带无障碍参数重启一次
-    wins = list_cockpit_windows()
-    if wins:
-        prepare_visible(max(wins, key=lambda w: w.BoundingRectangle.width() * w.BoundingRectangle.height()))
-        if collect_visible_button_names(wins[0], 5):
-            return
-    subprocess.run(
-        ["powershell", "-NoProfile", "-Command", "Get-Process cockpit-tools-fork-exp -EA SilentlyContinue | Stop-Process -Force"],
-        capture_output=True,
+
+    identity = verify_cockpit_identity(COCKPIT_EXE)
+    if identity.get("ok"):
+        wins = list_cockpit_windows(COCKPIT_EXE)
+        if wins:
+            prepare_visible(
+                max(wins, key=lambda w: w.BoundingRectangle.width() * w.BoundingRectangle.height())
+            )
+            if collect_visible_button_names(wins[0], 5):
+                return
+
+    os.environ.setdefault(
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--force-renderer-accessibility"
     )
+    for proc in list_processes_for_exe(COCKPIT_EXE):
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/F"],
+            capture_output=True,
+        )
     time.sleep(2)
-    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--force-renderer-accessibility"
-    subprocess.Popen([str(FORK_EXP)], env=os.environ.copy())
+    subprocess.Popen([str(COCKPIT_EXE)], env=os.environ.copy())
     time.sleep(wait_s)
 
 
@@ -585,7 +594,7 @@ def main() -> int:
     report["default_pids_before"] = snapshot_default_pids()
     report["default_email_before"] = read_email_from_vscdb(DEFAULT_PROFILE)
 
-    wins = list_cockpit_windows()
+    wins = list_cockpit_windows(COCKPIT_EXE)
     if not wins:
         report["error"] = "cockpit_not_running"
         REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

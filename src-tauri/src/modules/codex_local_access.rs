@@ -3087,7 +3087,10 @@ fn sidecar_payload_default_service_tier(default_service_tier: Option<&str>) -> O
     rule.insert("models".to_string(), Value::Array(models));
     rule.insert("params".to_string(), Value::Object(params));
     let mut payload = Map::new();
-    payload.insert("default".to_string(), Value::Array(vec![Value::Object(rule)]));
+    payload.insert(
+        "default".to_string(),
+        Value::Array(vec![Value::Object(rule)]),
+    );
     Some(Value::Object(payload))
 }
 
@@ -17668,10 +17671,9 @@ mod tests {
         should_retry_single_account_upstream_status, should_treat_response_as_stream,
         should_try_next_account, sidecar_codex_api_key_auth_id, sidecar_config_fingerprint,
         sidecar_payload_default_service_tier, sidecar_stable_id, system_proxy_target_scheme,
-        system_proxy_value_url,
-        validate_client_model_visible, visible_codex_model_ids_for_api_key, websocket_accept_value,
-        websocket_connect_error_from_http_response, windows_proxy_url_from_server,
-        windows_reg_dword_enabled, windows_reg_query_map,
+        system_proxy_value_url, validate_client_model_visible, visible_codex_model_ids_for_api_key,
+        websocket_accept_value, websocket_connect_error_from_http_response,
+        windows_proxy_url_from_server, windows_reg_dword_enabled, windows_reg_query_map,
         write_local_access_profile_model_override, write_provider_gateway_model_catalog,
         write_string_atomic, CodexLocalAccessCollection, CodexLocalAccessGatewayMode,
         CodexLocalAccessScope, GatewayResponseAdapter, ParsedRequest, ResolvedLocalApiKey,
@@ -17797,9 +17799,9 @@ mod tests {
             .collect::<HashSet<_>>();
 
         assert_eq!(models.len(), 3);
-        assert!(models.iter().all(|model| {
-            model.get("name").and_then(Value::as_str) == Some("*")
-        }));
+        assert!(models
+            .iter()
+            .all(|model| { model.get("name").and_then(Value::as_str) == Some("*") }));
         assert!(payload_formats.contains("codex"));
         assert!(payload_formats.contains("openai"));
         assert!(payload_formats.contains("openai-response"));
@@ -20825,7 +20827,10 @@ data: {"error":{"code":"server_error","type":"upstream","message":"stream aborte
                 Some("response.create")
             );
             if let Some(expected_stream) = expected_stream {
-                assert_eq!(body.get("stream").and_then(Value::as_bool), Some(expected_stream));
+                assert_eq!(
+                    body.get("stream").and_then(Value::as_bool),
+                    Some(expected_stream)
+                );
             }
             if let Some(expected_effort) = expected_effort {
                 assert_eq!(

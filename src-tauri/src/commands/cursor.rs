@@ -269,23 +269,25 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
     let account = cursor_account::load_account(&account_id)
         .ok_or_else(|| format!("Cursor account not found: {}", account_id))?;
 
-    let launch_warning = match crate::commands::cursor_instance::start_cursor_instance_with_account_switch(
-        "__default__".to_string(),
-        Some(account_id.clone()),
-    )
-    .await
-    {
-        Ok(_) => None,
-        Err(err) => {
-            if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("启动 Cursor 失败") {
-                Some(err)
-            } else {
-                return Err(err);
+    let launch_warning =
+        match crate::commands::cursor_instance::start_cursor_instance_with_account_switch(
+            "__default__".to_string(),
+            Some(account_id.clone()),
+        )
+        .await
+        {
+            Ok(_) => None,
+            Err(err) => {
+                if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("启动 Cursor 失败") {
+                    Some(err)
+                } else {
+                    return Err(err);
+                }
             }
-        }
-    };
+        };
 
-    let _ = crate::modules::provider_current_state::set_current_account_id("cursor", Some(&account_id));
+    let _ =
+        crate::modules::provider_current_state::set_current_account_id("cursor", Some(&account_id));
 
     let app_for_tray = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -309,23 +311,11 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
         Ok(format!("切换完成，但 Cursor 启动失败: {}", err))
     } else {
         logger::log_info(&format!(
-            "[Cursor Switch] 切号成功: account_id={}, email={}, elapsed={}ms",
+            "[Cursor Switch] 切号流程完成: account_id={}, email={}, elapsed={}ms (验收以 probe_post 日志为准)",
             account.id,
             account.email,
             started_at.elapsed().as_millis()
         ));
-        let refresh_account_id = account.id.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Err(err) =
-                crate::modules::cursor_account::refresh_account_fast_async(&refresh_account_id)
-                    .await
-            {
-                logger::log_warn(&format!(
-                    "[Cursor Switch] 切号后配额刷新失败: account_id={}, error={}",
-                    refresh_account_id, err
-                ));
-            }
-        });
         Ok(format!("切换完成: {}", account.email))
     }
 }
