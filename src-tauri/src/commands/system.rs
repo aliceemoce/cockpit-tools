@@ -1772,17 +1772,16 @@ pub async fn upload_auto_backup_to_webdav(
 
     let mut uploaded_files = Vec::new();
     uploaded_files.push(
-        sync_client.upload_backup_bytes(
-            &archive_name,
-            archive_bytes,
-        )
-        .await?,
+        sync_client
+            .upload_backup_bytes(&archive_name, archive_bytes)
+            .await?,
     );
 
-    let deleted_files = sync_client.cleanup_remote_backups(
-        config::sanitize_webdav_sync_retention_days(config.webdav_sync_retention_days),
-    )
-    .await?;
+    let deleted_files = sync_client
+        .cleanup_remote_backups(config::sanitize_webdav_sync_retention_days(
+            config.webdav_sync_retention_days,
+        ))
+        .await?;
     let uploaded_at = chrono::Utc::now().to_rfc3339();
     let remote_dir = connection.remote_dir.clone();
 
@@ -1814,7 +1813,7 @@ pub async fn read_webdav_backup_file(file_name: String) -> Result<String, String
     let config = config::get_user_config();
     let safe_name = sanitize_auto_backup_file_name(&file_name)?;
     let connection = modules::webdav_sync::connection_from_config(&config)?;
-    
+
     let downloaded_at = chrono::Utc::now().to_rfc3339();
     let content = if safe_name.ends_with(".zip") {
         let bytes = modules::webdav_sync::read_remote_backup_bytes(&connection, &safe_name).await?;

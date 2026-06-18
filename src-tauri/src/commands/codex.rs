@@ -253,9 +253,17 @@ pub async fn switch_codex_account(
     let account_speed = account.app_speed.clone();
     codex_speed::write_official_app_speed(account_speed.clone())?;
 
+    let default_bind_account_id =
+        if crate::modules::codex_local_access::account_requires_provider_gateway(&account) {
+            crate::modules::codex_instance::provider_gateway_bind_account_id(&account.id)
+                .unwrap_or_else(|| account_id.clone())
+        } else {
+            account_id.clone()
+        };
+
     // 同步更新 Codex 默认实例的绑定账号（不同步到 Antigravity，因为账号体系不同）
     if let Err(e) = crate::modules::codex_instance::update_default_settings(
-        Some(Some(account_id.clone())),
+        Some(Some(default_bind_account_id.clone())),
         None,
         Some(false),
         None,
@@ -265,7 +273,7 @@ pub async fn switch_codex_account(
     } else {
         logger::log_info(&format!(
             "已同步更新 Codex 默认实例绑定账号: {}",
-            account_id
+            default_bind_account_id
         ));
     }
     if let Err(e) = crate::modules::codex_instance::update_default_app_speed(account_speed) {

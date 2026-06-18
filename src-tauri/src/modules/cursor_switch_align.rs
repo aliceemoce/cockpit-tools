@@ -63,8 +63,7 @@ fn random_mac_address() -> String {
 
 /// 对齐无忧 `patchCursorMachineId`（Yh）：patch `resources/app/out/main.js`。
 pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
-    let main_js = resolve_main_js(cursor_exe)
-        .ok_or_else(|| "未找到 Cursor main.js".to_string())?;
+    let main_js = resolve_main_js(cursor_exe).ok_or_else(|| "未找到 Cursor main.js".to_string())?;
 
     let content = fs::read_to_string(&main_js)
         .map_err(|e| format!("读取 main.js 失败({}): {}", main_js.display(), e))?;
@@ -110,8 +109,7 @@ pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
         }
     }
 
-    if let Ok(re) =
-        Regex::new(r"(function .{0,50}\{).{0,300}Unable to retrieve mac address.*?(\})")
+    if let Ok(re) = Regex::new(r"(function .{0,50}\{).{0,300}Unable to retrieve mac address.*?(\})")
     {
         if re.is_match(&patched) {
             patched = re
@@ -183,9 +181,9 @@ pub fn patch_cursor_workbench_auth_bridge(cursor_exe: &Path) -> Result<(), Strin
     }
 
     let anchor = "this.logout=";
-    let pos = content
-        .find(anchor)
-        .ok_or_else(|| "未找到 workbench 注入点 this.logout=，可能 Cursor 版本不兼容".to_string())?;
+    let pos = content.find(anchor).ok_or_else(|| {
+        "未找到 workbench 注入点 this.logout=，可能 Cursor 版本不兼容".to_string()
+    })?;
 
     let backup_dir = cursor_backups_dir()?;
     let backup = backup_dir.join("workbench.desktop.main.js.bak");

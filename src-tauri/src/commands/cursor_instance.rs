@@ -58,35 +58,79 @@ fn collect_reserved_account_ids(instance_id: &str) -> HashSet<String> {
     reserved
 }
 
-fn resolve_instance_switch_account_id(
+async fn resolve_auto_switch_account_with_probe_retry(
     instance_id: &str,
     bind_account_id: Option<&str>,
+    trace: &modules::cursor_switch_audit::CursorSwitchAuditCtx,
 ) -> Result<String, String> {
-    let exclude = collect_reserved_account_ids(instance_id);
-
+    let mut exclude = collect_reserved_account_ids(instance_id);
     if let Some(bind_id) = bind_account_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        let account = modules::cursor_account::load_account(bind_id)
-            .ok_or_else(|| format!("绑定账号不存在: {}", bind_id))?;
-        modules::cursor_account::ensure_cursor_switch_ready_account(&account)?;
-        if modules::cursor_account::is_full_quota_account(&account) {
-            return Ok(bind_id.to_string());
+        exclude.insert(bind_id.to_string());
+    }
+
+    loop {
+        let pick = match modules::cursor_account::pick_cursor_rotation_account(&exclude) {
+            Ok(value) => value,
+            Err(err) => {
+                modules::cursor_switch_audit::write_pick_no_candidates(trace, &err);
+                return Err(err);
+            }
+        };
+        let account = modules::cursor_account::load_account(&pick.account_id)
+            .ok_or_else(|| format!("Cursor 账号不存在: {}", pick.account_id))?;
+        modules::cursor_switch_audit::write_pick(trace, &account, pick.pool, pick.candidates);
+
+        if let Err(err) = modules::cursor_account::ensure_cursor_overview_pickable(&account) {
+            modules::cursor_switch_audit::write_probe_pre(trace, &account, "auth_fail", Some(&err));
+            exclude.insert(pick.account_id);
+            continue;
         }
-        modules::logger::log_info(&format!(
-            "[Cursor Switch] 绑定账号额度未满 ({}), 自动挑选满额账号",
-            account.email
-        ));
-    }
 
-    if let Some(full_id) = modules::cursor_account::pick_full_quota_account(&exclude) {
-        return Ok(full_id);
-    }
+        let mut probe_ok = false;
+        let mut last_probe_err: Option<String> = None;
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            }
+            match modules::cursor_account::probe_cursor_account_live_auth(&pick.account_id).await {
+                Ok(()) => {
+                    probe_ok = true;
+                    break;
+                }
+                Err(err) => {
+                    last_probe_err = Some(err);
+                }
+            }
+        }
 
-    modules::cursor_account::pick_highest_remaining_credits_account(&exclude).ok_or_else(|| {
-        "没有可用的可切号 Cursor 账号，请重新导入失效账号或手动绑定正常账号".to_string()
-    })
+        if probe_ok {
+            modules::cursor_switch_audit::write_probe_pre(trace, &account, "ok", None);
+            let from_bind = bind_account_id.unwrap_or("(none)");
+            modules::logger::log_info(&format!(
+                "[Cursor Switch] 自动轮换账号: instance_id={}, from_bind={}, to={}, pool={}, remaining={}%",
+                instance_id, from_bind, account.email, pick.pool, pick.remaining_pct
+            ));
+            return Ok(pick.account_id);
+        }
+
+        let err = last_probe_err.unwrap_or_else(|| "probe failed".to_string());
+        let outcome = if err.contains("会话")
+            || err.contains("未认证")
+            || err.contains("失效")
+            || err.contains("过期")
+        {
+            "auth_fail"
+        } else if modules::cursor_account::is_cursor_transient_quota_error(&err) {
+            "transient"
+        } else {
+            "err"
+        };
+        modules::cursor_switch_audit::write_probe_pre(trace, &account, outcome, Some(&err));
+        exclude.insert(pick.account_id);
+    }
 }
 
 fn persist_auto_bind_account(instance_id: &str, account_id: &str) -> Result<(), String> {
@@ -150,56 +194,68 @@ pub async fn start_cursor_instance_with_account_switch(
     let _guard = cursor_switch_launch_lock().await.lock().await;
     modules::cursor_instance::ensure_cursor_launch_path_configured()?;
     let ctx = resolve_instance_launch_context(&instance_id)?;
+    let trace = modules::cursor_switch_audit::CursorSwitchAuditCtx::new(&instance_id);
+    modules::cursor_switch_audit::write_switch_start(&trace, forced_account_id.as_deref());
 
     let update_default_bind = ctx.is_default && forced_account_id.is_some();
+    let auto_rotation = forced_account_id.is_none();
     let account_id = match forced_account_id {
         Some(id) => {
             let account = modules::cursor_account::load_account(&id)
                 .ok_or_else(|| format!("Cursor 账号不存在: {}", id))?;
-            modules::cursor_account::ensure_cursor_switch_ready_account(&account)?;
+            if let Err(err) = modules::cursor_account::ensure_cursor_overview_pickable(&account) {
+                modules::cursor_switch_audit::write_probe_pre(&trace, &account, "auth_fail", Some(&err));
+                return Err(err);
+            }
             id
         }
-        None => resolve_instance_switch_account_id(&instance_id, ctx.bind_account_id.as_deref())?,
+        None => {
+            resolve_auto_switch_account_with_probe_retry(
+                &instance_id,
+                ctx.bind_account_id.as_deref(),
+                &trace,
+            )
+            .await?
+        }
     };
+
+    let account = modules::cursor_account::load_account(&account_id)
+        .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
 
     let needs_auto_bind = ctx
         .bind_account_id
         .as_ref()
         .map(|value| value.trim().is_empty())
         .unwrap_or(true);
-    let bind_was_non_full = ctx
+    let bind_changed = ctx
         .bind_account_id
-        .as_ref()
-        .and_then(|bind_id| modules::cursor_account::load_account(bind_id))
-        .map(|account| !modules::cursor_account::is_full_quota_account(&account))
-        .unwrap_or(false);
-    let swapped_from_non_full = bind_was_non_full
-        && ctx
-            .bind_account_id
-            .as_deref()
-            .map(|bind_id| bind_id != account_id)
-            .unwrap_or(false);
-    if needs_auto_bind || swapped_from_non_full {
+        .as_deref()
+        .map(|bind_id| bind_id != account_id.as_str())
+        .unwrap_or(true);
+    if needs_auto_bind || (auto_rotation && bind_changed) {
         if let Err(err) = persist_auto_bind_account(&instance_id, &account_id) {
             modules::logger::log_warn(&format!(
                 "自动绑定 Cursor 实例账号失败: instance_id={}, account_id={}, error={}",
                 instance_id, account_id, err
-            ));
-        } else if swapped_from_non_full {
-            modules::logger::log_info(&format!(
-                "[Cursor Switch] 已因额度不足自动改绑满额账号: instance_id={}, account_id={}",
-                instance_id, account_id
             ));
         }
     }
 
     let user_data_dir = ctx.user_data_dir.clone();
     let account_id_for_switch = account_id.clone();
-    tokio::task::spawn_blocking(move || {
+    let inject_result = tokio::task::spawn_blocking(move || {
         prepare_instance_for_account(&user_data_dir, &account_id_for_switch)
     })
     .await
-    .map_err(|err| format!("切号任务异常: {}", err))??;
+    .map_err(|err| format!("切号任务异常: {}", err))?;
+
+    match inject_result {
+        Ok(()) => modules::cursor_switch_audit::write_inject(&trace, &account, "ok", None),
+        Err(err) => {
+            modules::cursor_switch_audit::write_inject(&trace, &account, "err", Some(&err));
+            return Err(err);
+        }
+    }
 
     let _ = modules::provider_current_state::set_current_account_id("cursor", Some(&account_id));
 
@@ -213,7 +269,78 @@ pub async fn start_cursor_instance_with_account_switch(
         }
     }
 
-    cursor_start_instance_prepared(instance_id, true).await
+    let launch_result = cursor_start_instance_prepared(instance_id, true).await;
+    match &launch_result {
+        Ok(_) => {
+            modules::cursor_switch_audit::write_launch(&trace, &account, "ok", None);
+            spawn_switch_post_audit(trace, account_id);
+        }
+        Err(err) => modules::cursor_switch_audit::write_launch(&trace, &account, "err", Some(err)),
+    }
+    launch_result
+}
+
+fn spawn_switch_post_audit(
+    trace: modules::cursor_switch_audit::CursorSwitchAuditCtx,
+    account_id: String,
+) {
+    std::thread::Builder::new()
+        .name("cursor-switch-post-audit".into())
+        .spawn(move || {
+            let Ok(rt) = tokio::runtime::Runtime::new() else {
+                return;
+            };
+            rt.block_on(async move {
+                let Some(account) = modules::cursor_account::load_account(&account_id) else {
+                    return;
+                };
+                match modules::cursor_account::probe_cursor_account_live_auth(&account_id).await {
+                    Ok(()) => modules::cursor_switch_audit::write_probe_post(
+                        &trace, &account, "ok", None,
+                    ),
+                    Err(err) => {
+                        let outcome = if err.contains("会话") || err.contains("未认证") || err.contains("失效") {
+                            "auth_fail"
+                        } else {
+                            "err"
+                        };
+                        modules::cursor_switch_audit::write_probe_post(
+                            &trace, &account, outcome, Some(&err),
+                        );
+                    }
+                }
+                match modules::cursor_account::refresh_account_fast_async(&account_id).await {
+                    Ok(refreshed) => {
+                        let updated = refreshed.account;
+                        let outcome =
+                            if modules::cursor_account::account_has_auth_failure_marker(&updated) {
+                                "auth_fail"
+                            } else {
+                                "ok"
+                            };
+                        modules::cursor_switch_audit::write_refresh_post(
+                            &trace.switch_trace_id,
+                            &trace.instance_id,
+                            &updated,
+                            outcome,
+                            None,
+                        );
+                    }
+                    Err(err) => {
+                        if let Some(acct) = modules::cursor_account::load_account(&account_id) {
+                            modules::cursor_switch_audit::write_refresh_post(
+                                &trace.switch_trace_id,
+                                &trace.instance_id,
+                                &acct,
+                                "err",
+                                Some(&err),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+        .ok();
 }
 
 #[tauri::command]

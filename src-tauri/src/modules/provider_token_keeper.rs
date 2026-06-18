@@ -220,10 +220,17 @@ async fn refresh_due_cursor_accounts() -> bool {
                         ));
                     }
                 }
-                logger::log_info(&format!(
-                    "[TokenKeeper][Cursor] Token 保活成功: account_id={}, email={}",
-                    updated.id, updated.email
-                ));
+                if cursor_account::account_has_auth_failure_marker(&updated) {
+                    logger::log_warn(&format!(
+                        "[TokenKeeper][Cursor] Token 保活完成(会话失效): account_id={}, email={}",
+                        updated.id, updated.email
+                    ));
+                } else {
+                    logger::log_info(&format!(
+                        "[TokenKeeper][Cursor] Token 保活成功: account_id={}, email={}",
+                        updated.id, updated.email
+                    ));
+                }
             }
             Err(err) => {
                 mark_attempt_failure(&key);
