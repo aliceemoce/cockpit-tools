@@ -2309,12 +2309,6 @@ pub fn switch_cursor_account_to_profile(
     let profile_dir_str = profile_dir.to_string_lossy().to_string();
     crate::modules::cursor_instance::close_cursor_profile_strict(&profile_dir_str, 20)?;
     crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
-    if let Err(err) = sync_sidebar_state_from_default_to_profile(profile_dir) {
-        logger::log_warn(&format!(
-            "[Cursor Sidebar Sync] 侧栏同步失败（继续切号）: {}",
-            err
-        ));
-    }
 
     switch_tokens_in_profile_db(profile_dir, account_id)?;
     reset_storage_json_ids_for_profile(profile_dir)?;
