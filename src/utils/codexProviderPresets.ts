@@ -426,7 +426,7 @@ export const CODEX_API_PROVIDER_PRESETS: readonly CodexApiProviderPreset[] = [
       "z-ai/glm-5.1",
       "zyphra/zamba2-7b-instruct",
     ],
- "https://build.nvidia.com/",
+    website: "https://build.nvidia.com/",
   },
   {
     id: "runapi",
