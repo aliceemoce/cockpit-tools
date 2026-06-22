@@ -11,7 +11,8 @@
 | 上游基线 | `upstream/main` @ `d5ad5cea`（v0.26.5 + 4 commits） |
 | Cargo 版本 | `0.26.5` |
 | 源分支（合并前） | `cockpit-rotation-pick-20260620-v3-codex-upstream` @ `77a9cc3f` |
-| 调试构建 | `target/debug/cockpit-tools.exe`（NSIS 打包因网络失败，二进制已编译） |
+| 调试构建 | `target/debug/cockpit-tools.exe` SHA **`50E61F27…`** |
+| Release 构建 | `scripts/_release_staging/Cockpit-integrate-upstream-v0.26.5-20260622-release.exe` SHA **`FF01D890…`**（70.7MB） |
 
 ## 保留的 fork 能力（静态/编译已核对）
 
@@ -19,6 +20,8 @@
 - 多开 pick / 配额 UI 修复 / NVIDIA Codex catalog + cliproxy xhigh→max
 - Windsurf profile bootstrap（`bootstrap_windsurf_profile_by_launch`）
 - `verify_cursor_switch_paths.py` PASS
+- NVIDIA 双账号脚本：index 6 条，providers 含 NVIDIA API（外部/自建）
+- **GUI（MCP）**：`Cockpit Tools` 窗口已加载；探测到 Cursor 账号页文案、`Codex` 侧栏、`全部启动`、多开实例 Tab（WebView 控件 handle=0，未点 Play）
 
 ## 历史 Cursor 验收 exe（合并前，仍作对照）
 
