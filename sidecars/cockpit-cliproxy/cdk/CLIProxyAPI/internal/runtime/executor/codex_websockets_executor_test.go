@@ -151,6 +151,24 @@ func TestCodexWebsocketsUpstreamDisconnectChanSignalsOnInvalidate(t *testing.T) 
 	}
 }
 
+func TestCodexWebsocketRetryDelayUsesStreamingBackoff(t *testing.T) {
+	cfg := &config.Config{
+		SDKConfig: config.SDKConfig{
+			Streaming: config.StreamingConfig{
+				BootstrapRetryBaseDelayMS: 300,
+				BootstrapRetryMaxDelayMS:  1500,
+			},
+		},
+	}
+
+	if got := codexWebsocketRetryDelay(cfg, 1); got != 300*time.Millisecond {
+		t.Fatalf("attempt 1 delay = %v, want 300ms", got)
+	}
+	if got := codexWebsocketRetryDelay(cfg, 2); got != 600*time.Millisecond {
+		t.Fatalf("attempt 2 delay = %v, want 600ms", got)
+	}
+}
+
 func TestApplyCodexWebsocketHeadersDefaultsToCurrentResponsesBeta(t *testing.T) {
 	headers := applyCodexWebsocketHeaders(context.Background(), http.Header{}, nil, "", nil)
 
@@ -721,6 +739,26 @@ func TestApplyCodexHeadersDoesNotInjectClientOnlyHeadersByDefault(t *testing.T) 
 	}
 	if got := req.Header.Get("X-Client-Request-Id"); got != "" {
 		t.Fatalf("X-Client-Request-Id = %q, want empty", got)
+	}
+}
+
+func TestApplyCodexWebsocketHeadersPassesThroughAgtoolsDiagnosticHeaders(t *testing.T) {
+	ctx := contextWithGinHeaders(map[string]string{
+		"X-Agtools-Test-Run-Id":       "run-1",
+		"X-Agtools-Provider-Name-B64": "UHJvdmlkZXI=",
+		"X-Not-Agtools":               "drop-me",
+	})
+
+	headers := applyCodexWebsocketHeaders(ctx, http.Header{}, nil, "", nil)
+
+	if got := headers.Get("X-Agtools-Test-Run-Id"); got != "run-1" {
+		t.Fatalf("X-Agtools-Test-Run-Id = %q, want run-1", got)
+	}
+	if got := headers.Get("X-Agtools-Provider-Name-B64"); got != "UHJvdmlkZXI=" {
+		t.Fatalf("X-Agtools-Provider-Name-B64 = %q, want UHJvdmlkZXI=", got)
+	}
+	if got := headers.Get("X-Not-Agtools"); got != "" {
+		t.Fatalf("X-Not-Agtools = %q, want empty", got)
 	}
 }
 

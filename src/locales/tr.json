@@ -197,7 +197,7 @@
         "planEndsInHours": "{{hours}}h içinde sıfırlanır"
       },
       "flowNotice": {
-        "alternative": "Alternatif: çoklu örnek izolasyonunu kullanın (farklı --user-data-dir). Her örnek için bir kez giriş yapın, ardından hedef hesap ortamına hızlı geçiş için örnek bazında başlatın."
+        "alternative": "Çoklu örnek izolasyonu: ayrı yönetilen profiller kullanın ve hesap ortamları arasında hızlı geçiş için her örnekte bir kez giriş yapın."
       },
       "injecting": "Enjekte ediliyor...",
       "usage": {
@@ -261,7 +261,8 @@
     "switchClassicLayoutDontAskAgain": "Bu uyarıyı tekrar gösterme",
     "switchClassicLayoutConfirm": "Şimdi geç",
     "2faManager": "2FA Yönetimi",
-    "apiRelay": "Aktarım"
+    "apiRelay": "Aktarım",
+    "claude": "Claude"
   },
   "sponsors": {
     "pageTitle": "Sponsorlar",
@@ -596,6 +597,8 @@
       "closeBehaviorAsk": "Her seferinde sor",
       "closeBehaviorMinimize": "Tepsisine küçült",
       "closeBehaviorQuit": "Uygulamadan Çık",
+      "startupMinimized": "Simge durumunda başlat",
+      "startupMinimizedDesc": "Uygulama açıldıktan sonra ana pencereyi otomatik küçültür; Dock, görev çubuğu veya tepsiden geri getirebilirsiniz",
       "minimizeBehavior": "Pencere küçültme davranışı (yalnızca macOS)",
       "minimizeBehaviorDesc": "Pencere küçültüldüğünde Dock ve menü çubuğunda mı, yoksa yalnızca menü çubuğunda mı kalacağını seçin",
       "minimizeBehaviorDockAndTray": "Dock + menü çubuğu (önerilen)",
@@ -778,7 +781,12 @@
       "codexAppSpeedFast": "Hızlı",
       "codexAppSpeedLaunch": "Codex'i yeniden başlat",
       "codexAppSpeedSaveFailed": "Codex hızı kaydedilemedi: {{error}}",
-      "codexAppSpeedLaunchFailed": "Codex yeniden başlatılamadı: {{error}}"
+      "codexAppSpeedLaunchFailed": "Codex yeniden başlatılamadı: {{error}}",
+      "claudeSettingsTitle": "Claude Ayarları",
+      "claudeAutoRefresh": "Claude kota otomatik yenileme",
+      "claudeAutoRefreshDesc": "Claude hesaplarının kota önbelleğini arka planda otomatik yeniler.",
+      "claudeAppPath": "Claude Desktop başlatma hedefi",
+      "claudeAppPathDesc": "Varsayılan profil Microsoft Store hedefi kullanabilir; çoklu örnekler gerçek Claude.exe ister."
     },
     "network": {
       "apiTitle": "Yerçekimine Karşı Kokpit API'si",
@@ -1014,7 +1022,15 @@
       "title": "Uygulama yolu bulunamadı",
       "desc": "{{app}} uygulama yolu bulunamadı. Devam etmek için şimdi ayarlayın.",
       "action": "Şimdi ayarla",
-      "codexLaunchHint": "Kapattığınızda hesap değiştirme ve giriş üzerine yazma çalışmaya devam eder, ancak Codex uygulaması artık başlatılmaz ve bu yol istemi tekrar gösterilmez."
+      "codexLaunchHint": "Kapattığınızda hesap değiştirme ve giriş üzerine yazma çalışmaya devam eder, ancak Codex uygulaması artık başlatılmaz ve bu yol istemi tekrar gösterilmez.",
+      "claudeMultiInstanceRequiresExe": "Claude çoklu örnekleri gerçek Claude.exe yolunu gerektirir. Microsoft Store hedefleri yalnızca varsayılan masaüstü profili içindir.",
+      "scanApps": "Uygulamaları tara",
+      "scanRoots": "Tarama araligi",
+      "scanRootsPlaceholder": "Istege bagli: klasor veya surucu koku secin; bos birakilirsa WindowsApps suruculere gore taranir ve Baslat menusu uygulamalari eklenir.",
+      "windowsApp": "Microsoft Store uygulaması",
+      "defaultOnly": "Yalnızca varsayılan masaüstü; çoklu örnekler için gerçek Claude.exe seçin.",
+      "claudeScanEmpty": "Claude Desktop hedefi bulunamadı. Claude.exe dosyasını elle seçin veya tarama kapsamını değiştirin.",
+      "claudeTargetPlaceholder": "Claude.exe yolu veya shell:AppsFolder\\..."
     },
     "modal": {
       "desc": "{{app}} uygulama yolu bulunamadı. Devam etmek için lütfen şimdi yapılandırın."
@@ -1262,7 +1278,10 @@
     "switchSuccess": "Geçiş başarılı",
     "switched": "{{email}} hesabına geçildi",
     "tagButton": "Etiketleri Düzenle",
-    "tagUpdated": "Etiket güncellendi"
+    "tagUpdated": "Etiket güncellendi",
+    "plan": {
+      "personal": "Kişisel"
+    }
   },
   "overview": {
     "title": "Hesap Genel Bakışı",
@@ -1907,7 +1926,12 @@
       },
       "oauthBinding": {
         "desc": "İsteğe bağlı. Yalnızca refresh_token içeren OAuth hesapları seçilebilir. Bağlantı yoksa API hizmeti eski API Key akışıyla çalışır; bağlanınca oturum OAuth hesabını, Provider ise API hizmeti yapılandırmasını kullanır.",
-        "currentService": "API hizmeti: {{name}}"
+        "currentService": "API hizmeti: {{name}}",
+        "imageGenerationTooltip": "Açılınca API hizmeti, normal metin sohbetlerini iletmeden önce yerel ağ geçidinde image_generation araç bildirimini kaldırır; görsel modeller silinmez.",
+        "imageGenerationConfirm": {
+          "title": "image_generation kapat",
+          "message": "Açılınca API hizmeti, normal metin sohbetlerini iletmeden önce yerel ağ geçidinde image_generation araç bildirimini kaldırarak \"Image generation is not enabled\" gibi hataları önler. gpt-image ve diğer görsel modeller silinmez. Devam edilsin mi?"
+        }
       },
       "customRoutingEdit": "Özel yönlendirmeyi düzenle",
       "customRoutingTitle": "Özel yönlendirme",
@@ -2026,7 +2050,29 @@
       "hourly": "5 saatlik kota",
       "weekly": "Haftalık kota",
       "reset": "Sıfırla",
-      "weeklyBlocksHourly": "Haftalık kota 0 olduğu için 5 saatlik kota kullanılamaz"
+      "weeklyBlocksHourly": "Haftalık kota 0 olduğu için 5 saatlik kota kullanılamaz",
+      "resetCredits": "Sıfırlama {{count}}",
+      "resetCreditsTitle": "5 saatlik pencere için kalan sıfırlama: {{count}}",
+      "resetCreditConfirm": "Onayla?",
+      "resetCreditDialogTitle": "Kullanım sıfırlansın mı?",
+      "resetCreditDialogDesc": "Hız sınırını sıfırlayarak kesintisiz çalışmaya devam edin. Kullanılabilir sıfırlama: {{count}}.",
+      "resetCreditDialogAction": "Kullanımı sıfırla",
+      "resetCreditNoCredits": "Kullanılabilir sıfırlama yok",
+      "resetCreditConsumed": "5 saatlik kota sıfırlandı",
+      "resetCreditFailed": "Sıfırlama başarısız: {{error}}",
+      "resetCreditRefreshAfterConsumeFailed": "Sıfırlama gönderildi, ancak kota yenileme başarısız: {{error}}",
+      "resetCreditsTitleWithExpiry": "5 saatlik pencere için kalan sıfırlama: {{count}}. En yakın bitiş: {{time}}",
+      "resetCreditTimeUnknown": "Zaman bilinmiyor",
+      "resetCreditStatusAvailable": "Kullanılabilir",
+      "resetCreditStatusRedeemed": "Kullanıldı",
+      "resetCreditStatusExpired": "Süresi doldu",
+      "resetCreditStatusUnknown": "Bilinmiyor",
+      "resetCreditNextExpiry": "En yakın bitiş: {{time}}",
+      "resetCreditDetailsTitle": "Sıfırlama ayrıntıları",
+      "resetCreditNoRecords": "Sıfırlama kaydı yok",
+      "resetCreditRecordsLoadFailed": "Sıfırlama kayıtları yüklenemedi: {{error}}",
+      "resetCreditGrantedAt": "Verildi",
+      "resetCreditExpiresAt": "Biter"
     },
     "quotaError": {
       "badge": "Kota hatası",
@@ -2277,26 +2323,38 @@
     },
     "sessionManager": {
       "title": "Oturum yöneticisi",
-      "desc": "Eşitleme ve temizlik burada bir arada: üstteki işlemle tüm örneklere tek tıkla eşitleyebilir, aşağıda her projeyi genişletip oturumları inceleyerek çöp kutusuna taşıyabilirsiniz.",
+      "desc": "Eşitleme, görünürlük onarımı, temizleme ve geri yükleme burada: üstteki işlemlerle oturumları eşitleyin, görünürlüğü onarın veya Çöp Kutusu’ndan geri yükleyin; altta projeleri açarak inceleyin ve oturumları çöpe taşıyın.",
       "actions": {
         "moveToTrash": "Çöp kutusuna taşı",
         "syncSessions": "Oturumları eşitle",
         "expand": "Genişlet",
         "collapse": "Daralt",
-        "repairVisibility": "Görünürlüğü düzelt",
+        "repairVisibility": "Görünürlüğü onar",
         "restoreSessions": "Oturumları geri yükle",
         "copySessionId": "Oturum kimliğini kopyala",
+        "selectAllSessions": "Tüm oturumları seç",
+        "clearSelectedSessions": "Seçimi kaldır",
         "copyToInstance": "Örneğe kopyala"
       },
       "confirm": {
         "title": "Çöp kutusuna taşı",
         "message": "Seçilen oturumlar daha sonra geri yüklenebilmesi için ilgili örneklerden çöp kutusuna taşınacaktır. Çalışan örneklerin değişikliğin görünmesi için yeniden başlatılması gerekebilir. Devam edilsin mi?",
         "syncMessage": "Eksik iş parçacıkları ve bunlara ait oturum verileri tüm örneklerle eşitlenecektir. Mevcut içerik yeniden yazılmayacak ve hedef örnek dosyaları herhangi bir yazma işleminden önce yedeklenecektir. Devam edilsin mi?",
-        "repairVisibilityMessage": "Bu işlem, her örneğin kök config.toml dosyasındaki model_provider değerini kullanarak rollout dosyaları ve state_5.sqlite içindeki sağlayıcı meta verilerini onarır (eksikse varsayılan olarak openai kullanılır). Değiştirilecek dosyalar yazılmadan önce yedeklenir. Değişikliğin görünmesi için çalışan örneklerin yeniden başlatılması gerekebilir. Devam edilsin mi?"
+        "repairVisibilityMessage": "Yan çubuk oturum listesini kontrol eden resmi Codex state DB kayıtlarını günceller. Yazmadan önce state DB dosyaları yedeklenir."
       },
       "empty": {
         "title": "Yönetilecek oturum yok",
-        "desc": "Geçerli örnek kümesinde oturum kaydı bulunamadı."
+        "desc": "Geçerli örnek kümesinde oturum kaydı bulunamadı.",
+        "searchTitle": "Eşleşen oturum bulunamadı",
+        "searchDesc": "Başlık anahtar sözcüklerini değiştirin."
+      },
+      "search": {
+        "titleLabel": "Başlık",
+        "contentLabel": "Konuşma içeriği",
+        "titlePlaceholder": "Başlığa göre ara",
+        "contentPlaceholder": "Konuşma içeriğinde ara",
+        "apply": "Ara",
+        "clear": "Temizle"
       },
       "messages": {
         "pickOne": "Lütfen en az bir oturum seçin",
@@ -2328,6 +2386,59 @@
         "selectedCount": "{{count}} oturum seçildi",
         "existingCount": "Hedefte zaten {{count}} var",
         "confirm": "Oturumları kopyala"
+      },
+      "repairModal": {
+        "running": "Onarılıyor...",
+        "progress": {
+          "queued": "Onarım görevi başlatılıyor...",
+          "collectInstances": "Codex örnekleri toplanıyor...",
+          "scanInstances": "Örnek taraması hazırlanıyor...",
+          "scanInstance": "{{instance}} taranıyor ({{current}}/{{total}})...",
+          "backupInstance": "{{instance}} yedekleniyor ({{current}}/{{total}})...",
+          "writeInstance": "{{instance}} yazılıyor ({{current}}/{{total}})...",
+          "rebuildMetadata": "{{instance}} için resmi oturum durumu yenileniyor...",
+          "pruneBackups": "Eski yedekler temizleniyor...",
+          "done": "Onarım tamamlandı",
+          "writeSqliteProvider": "{{instance}} için SQLite görünürlüğü yazılıyor...",
+          "writeRolloutFiles": "Eski oturum dosyaları yazılıyor...",
+          "writeSqliteTimestamps": "{{instance}} SQLite zamanları düzeltiliyor...",
+          "writeSessionIndex": "session_index yazılıyor..."
+        },
+        "targetProvider": "Hedef provider",
+        "defaultProvider": "Varsayılan",
+        "loadingProviders": "Providerlar yükleniyor...",
+        "noProvider": "Provider bulunamadı",
+        "providerLoadFailed": "Provider adayları yüklenemedi: {{error}}",
+        "modeTitle": "Onarım modu",
+        "modeQuick": "Hızlı onarım",
+        "modeQuickDesc": "Resmi state DB'yi ve oturum meta verisinin ilk satırını düzeltir. Rutin hesap geçişlerinden sonra uygundur.",
+        "modeDeep": "Derin onarım",
+        "modeDeepDesc": "Hızlı onarım yetmediğinde test için mevcut tam meta veri onarımını korur.",
+        "scopeTitle": "Oturum kapsamı",
+        "scopeAll": "Tüm oturumlar",
+        "scopeAllDesc": "Geçerli listedeki {{count}} oturumu onarır.",
+        "scopeSelected": "Seçili oturumlar",
+        "scopeSelectedDesc": "Yalnızca seçili {{count}} oturumu onarır.",
+        "scopeSelectedEmpty": "Önce listeden oturum seçin.",
+        "providerSource": {
+          "config": "Yapılandırma",
+          "rollout": "Oturumlar",
+          "sqlite": "SQLite veritabanı"
+        },
+        "targetInstance": "Hedef örnek",
+        "loadingInstances": "Örnekler yükleniyor...",
+        "noInstance": "Örnek bulunamadı",
+        "instanceLoadFailed": "Örnekler yüklenemedi: {{error}}",
+        "defaultInstance": "Varsayılan örnek",
+        "runningInstance": "Çalışıyor",
+        "instanceProvider": "Geçerli provider",
+        "instanceScopeTitle": "Örnek kapsamı",
+        "instanceScopeTarget": "Yalnız hedef",
+        "instanceScopeTargetDesc": "Yalnız seçili örneği onarır, genellikle daha hızlıdır.",
+        "instanceScopeAll": "Tüm örnekler",
+        "instanceScopeAllDesc": "Çoklu örnek durumunu geri yüklerken tüm Codex örneklerini onarır.",
+        "progressTitle": "Onarım ilerlemesi",
+        "start": "Onar"
       }
     },
     "api": {
@@ -2438,7 +2549,13 @@
         "switchRequiresBinding": "Önce bir OAuth hesabı bağlayın",
         "clearAction": "Bağı kaldır",
         "clearSuccess": "OAuth bağlantısı kaldırıldı.",
-        "clearFailed": "OAuth bağlantısı kaldırılamadı: {{error}}"
+        "clearFailed": "OAuth bağlantısı kaldırılamadı: {{error}}",
+        "useLocalGateway": "image_generation kapat",
+        "localGatewayTooltip": "Açılınca OAuth bağlı API Key metin sohbetleri yerel ağ geçidinden geçer; iletmeden önce image_generation araç bildirimi kaldırılır, görsel modeller silinmez.",
+        "localGatewayConfirm": {
+          "title": "image_generation özelliğini kapat",
+          "message": "Açılınca bu OAuth bağlı API Key hesabının normal metin sohbetleri yerel ağ geçidinden geçer; iletmeden önce image_generation araç bildirimi kaldırılarak \"Image generation is not enabled\" gibi hatalar önlenir. gpt-image ve diğer görsel modeller silinmez. Devam edilsin mi?"
+        }
       }
     },
     "modelProviders": {
@@ -2582,6 +2699,46 @@
         "checkProviderStatus": "Sağlayıcı servis durumunu, proxy’yi veya API uyumluluğunu kontrol edin.",
         "checkModelsApi": "Sağlayıcının OpenAI uyumlu model listesi yanıtı döndürdüğünü doğrulayın."
       },
+      "batchTest": {
+        "entry": "Tümünü test et",
+        "entryHint": "Sağlayıcıların gerçek sohbet yeteneğini toplu test et",
+        "selectedCount": "{{count}} seçildi",
+        "title": "Model Sağlayıcılarını Toplu Test Et",
+        "selectTitle": "Test edilecek sağlayıcıları seç",
+        "selectDesc": "Seçilen sağlayıcılar sohbet testi için geçici olarak yerel gateway’e bağlanır ve sağlayıcı protokolüne göre upstream’e iletilir.",
+        "selectionSummary": "{{selected}} seçildi / {{total}} test edilebilir",
+        "emptySelection": "API Key içeren en az bir sağlayıcı seçin.",
+        "noApiKey": "API Key yok",
+        "gatewayProtocol": "Chat Completions · gateway",
+        "directProtocol": "Responses · gateway",
+        "start": "Testi başlat",
+        "kicker": "Sağlayıcı testi",
+        "resultsTitle": "Sağlayıcı sohbet testi sonuçları",
+        "totalCount": "{{count}} sağlayıcı",
+        "progress": "Test ilerlemesi",
+        "selectVisible": "Görünenleri seç",
+        "resultSelectedCount": "{{count}} seçildi",
+        "selectFailed": "Başarısızları seç",
+        "deleteConfirm": "Seçili {{providerCount}} sağlayıcı silinsin mi? Tam olarak bağlı {{accountCount}} Codex API Key hesabı da silinecek.",
+        "deleteSuccess": "{{providerCount}} sağlayıcı ve {{accountCount}} bağlı hesap silindi.",
+        "deleteFailed": "Seçili öğeler silinemedi: {{error}}",
+        "protocolSummary": "{{protocol}} · {{mode}} · {{model}}",
+        "modelUnknown": "Model beklemede",
+        "promptLabel": "İstem",
+        "pendingDesc": "Başlamayı bekliyor.",
+        "runningDesc": "Sohbet isteği gönderiliyor.",
+        "noReply": "Upstream okunabilir bir yanıt döndürmedi.",
+        "unknownError": "Bilinmeyen hata",
+        "status": {
+          "all": "Tümü",
+          "success": "Başarılı",
+          "error": "Başarısız",
+          "running": "Çalışıyor",
+          "pending": "Bekliyor",
+          "completed": "Tamamlandı"
+        },
+        "officialClientOnlyError": "Bu sağlayıcı yalnızca resmi Codex istemcisinden gelen istekleri kabul eder. Tek tıkla test artık yerel gateway’i kullanıyor, ancak upstream bu test isteğini yine de reddetti. Esas sonucu resmi Codex istemcisinde başlattıktan sonra kontrol edin."
+      },
       "enableAndStart": "Başlat",
       "instance": {
         "label": "Başlatılacak örnek",
@@ -2656,6 +2813,15 @@
       "oauthBinding": {
         "desc": "İsteğe bağlı. refresh_token içeren herhangi bir OAuth hesabı bağlanabilir. Bağlantı yoksa sağlayıcı özgün API Key akışıyla çalışmaya devam eder.",
         "currentProvider": "Sağlayıcı: {{name}}"
+      },
+      "sort": {
+        "custom": "Özel sıra",
+        "customModalTitle": "Özel sağlayıcı sırası",
+        "customModalDesc": "Sağlayıcıları sürükleyin veya görüntü sırasını ayarlamak için yukarı/aşağı düğmelerini kullanın.",
+        "customDragHandle": "Sıralamak için sürükle",
+        "customMoveUp": "Yukarı taşı",
+        "customMoveDown": "Aşağı taşı",
+        "customReset": "Sıralamayı sıfırla"
       }
     },
     "quickSwitch": {
@@ -2700,15 +2866,17 @@
     },
     "apiSwitchNotice": {
       "title": "Codex oturumları gizli",
-      "message": "Codex’in {{from}} üzerinden {{to}} konumuna geçtiği algılandı. Resmi davranış nedeniyle API ile hesaplar arasında doğrudan geçişten sonra mevcut oturumlar otomatik görünmeyebilir. Oturum görünürlüğü otomatik olarak onarılıyor; daha sonra Oturum Yönetimi > Görünürlüğü Onar bölümünü de kullanabilirsiniz.",
+      "message": "Codex {{from}} üzerinden {{to}} üzerine geçti. Resmi davranış nedeniyle bu tür geçişten sonra mevcut oturumlar otomatik görünmeyebilir. Oturum görünürlüğü otomatik onarılıyor; daha sonra Oturum Yönetimi içinden elle de onarabilirsiniz.",
       "repairing": "Codex oturum görünürlüğü onarılıyor...",
-      "repairFailed": "Otomatik onarım başarısız oldu. Daha sonra Oturum Yönetimi > Görünürlüğü Onar bölümünden tekrar deneyebilirsiniz.",
+      "repairFailed": "Görünürlük onarımı başarısız oldu. Daha sonra Oturum yönetiminden tekrar deneyebilirsiniz.",
       "type": {
         "api": "API modu",
         "apiKey": "API Anahtarı",
         "apiService": "API Hizmeti",
         "account": "Hesap"
-      }
+      },
+      "manualMessage": "Görünürlüğü onar, yan çubuk oturum listesini kontrol eden resmi Codex state DB kayıtlarını günceller. Hesaplar ve API Keys arasında geçişten sonra oturumları geri getirmek içindir.",
+      "repairFailedWithError": "Görünürlük onarımı başarısız oldu: {{error}}"
     },
     "accountNote": {
       "title": "Hesap Notu",
@@ -2957,6 +3125,13 @@
       "selectAllAccounts": "Tüm hesapları seç",
       "selectReady": "Sağlamları seç",
       "clearSelection": "Seçimi temizle"
+    },
+    "autoRepairMode": {
+      "label": "Otomatik onarım mantığı",
+      "tooltip": "Geçişte kullanılacak oturum görünürlüğü onarım mantığını seçin",
+      "legacyBefore4eb75d96": "4eb75d96 öncesi",
+      "legacy4eb75d96": "4eb75d96 mantığı",
+      "current": "Geçerli mantık"
     }
   },
   "githubCopilot": {
@@ -3228,6 +3403,11 @@
       "title": "Filtre hafızası",
       "enable": "Hesap genel görünüm filtrelerini hatırla (arama hariç)",
       "hint": "Varsayılan olarak kapalıdır. Açıldığında her platform için filtreler, etiketler ve sıralama korunur."
+    },
+    "claudeRefreshInterval": "Kota otomatik yenileme",
+    "claude": {
+      "appPath": "Claude yolu",
+      "appTargetPlaceholder": "Claude.exe yolu veya shell:AppsFolder\\..."
     }
   },
   "quotaAlert": {
@@ -3793,7 +3973,11 @@
       "resetsIn": "{{relative}}'da sıfırlanır",
       "resetsSoon": "Yakında sıfırlanacak",
       "resetsUnknown": "Sıfırlama zamanı bilinmiyor",
-      "onDemand": "Talep üzerine"
+      "onDemand": "Talep üzerine",
+      "gemini5h": "5h",
+      "geminiWeekly": "Weekly",
+      "claude5h": "5h",
+      "claudeWeekly": "Weekly"
     },
     "instances": {
       "unsupported": "Gemini Cli çoklu örnek yönetimi henüz desteklenmiyor.",
@@ -4504,6 +4688,16 @@
       "queryFailed": "Kota kontrolü başarısız: {{error}}",
       "saveFailed": "Yazma başarısız: {{error}}"
     },
+    "models": {
+      "title": "Kullanılabilir modeller",
+      "desc": "Geçerli API Key model endpoint’inden okunur ve Codex ya da Claude CLI’ye aktarılır.",
+      "count": "{{count}} model",
+      "loading": "Yükleniyor",
+      "loadingDesc": "Geçerli API Key ile model listesi okunuyor...",
+      "empty": "Kullanılabilir modelleri okumak için API Key girin.",
+      "emptyFromKey": "Geçerli API Key model döndürmedi.",
+      "queryFailed": "Model listesi okunamadı: {{error}}"
+    },
     "keyManager": {
       "title": "Anahtar yönetimi",
       "desc": "Hızlı geçiş ve otomatik kota sorgusu için API Keys kaydedin.",
@@ -4516,9 +4710,276 @@
       "editAlias": "Edit alias​",
       "renamePlaceholder": "Enter alias...​",
       "createdAt": "{{time}} eklendi",
-      "saveFlash": "Kaydedildi"
+      "saveFlash": "Kaydedildi",
+      "addingToCodex": "Codex’e ekleniyor...",
+      "addedToCodex": "Codex’e eklendi",
+      "addToCodexFailed": "Codex’e eklenemedi: {{error}}",
+      "addingToClaude": "Claude CLI’ye ekleniyor...",
+      "addedToClaude": "Claude CLI’ye eklendi",
+      "addToClaudeFailed": "Claude CLI’ye eklenemedi: {{error}}",
+      "codexAdded": "Codex eklendi",
+      "claudeAdded": "Claude eklendi",
+      "addToCodex": "Codex’e ekle",
+      "addToClaude": "Claude CLI’ye ekle",
+      "addToClaudeDesktop": "Claude’a ekle",
+      "addToClaudeCli": "Claude CLI’ye ekle",
+      "codexShort": "Codex",
+      "claudeShort": "Claude CLI"
+    },
+    "prefill": {
+      "claudeDesktopReady": "APIKEY.FUN ayarları dolduruldu. Claude’a eklemek için onaylayın."
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "claude": {
+    "import": {
+      "localSuccess": "{{count}} yerel Claude oturumu içe aktarıldı",
+      "localClient": "Geçerli Claude içe aktar",
+      "jsonLabel": "JSON verisi",
+      "jsonPlaceholder": "Dışa aktarılan Claude hesap JSON verisini yapıştırın",
+      "localDesc": "Resmi Claude uygulamasındaki mevcut oturumu okur ve bu araca yerel hesap anlık görüntüsü olarak kopyalar.",
+      "desktopJsonPlaceholder": "Dışa aktarılan Claude Gateway hesap JSON’unu yapıştırın",
+      "cliJsonPlaceholder": "Dışa aktarılan Claude CLI hesap JSON’unu yapıştırın"
+    },
+    "deleteCurrentDisabled": "Geçerli hesap silinemez",
+    "flowNotice": {
+      "title": "Claude hesapları",
+      "desc": "Bu araç Claude oturum durumunu ve Anthropic API Key bilgilerini yönetir. Claude oturumu bu platformun yetkilendirme penceresinde tamamlanır ve önce yerelde saklanır; resmi Claude’a yalnızca hesap değiştirirken yazılır.",
+      "permission": "İzin kapsamı: resmi Claude uygulama veri dizinini okuma/yazma. API Key ve Claude anlık görüntüleri bu aracın yerel hesap verilerinde saklanır.",
+      "network": "Ağ kapsamı: Claude giriş penceresi claude.ai açar; hesap yenileme Claude Web uç noktalarına istek atabilir. API Key içe aktarma tek başına ağ kullanmaz.",
+      "desktopDesc": "Bu araç Claude oturum durumunu yönetir. Oturum önce yerelde kaydedilir ve yalnızca hesap değiştirirken resmi Claude’a yazılır.",
+      "cliDesc": "Bu araç Claude Code OAuth ve çoklu sağlayıcı API Key hesaplarını yönetir. OAuth geçişi yerel Claude Code yapılandırmasına yazar; API Key, sağlayıcı env değerlerini Claude Code settings.json içine yazar.",
+      "desktopPermission": "İzin kapsamı: resmi Claude uygulama veri dizinini okuma/yazma. Claude anlık görüntüleri bu aracın yerel hesap verilerinde saklanır.",
+      "cliPermission": "İzin kapsamı: yerel Claude Code yapılandırmasını ve macOS Keychain içindeki Claude Code kimlik bilgilerini okuma/yazma; API Key hesapları bu araçta yerel olarak saklanır ve geçiş ya da CLI başlatma sırasında settings.json env alanına düz metin olarak yazılır.",
+      "desktopNetwork": "Ağ kapsamı: Claude oturum penceresi claude.ai açar; hesap yenileme Claude Web endpoint istekleri yapabilir.",
+      "cliNetwork": "Ağ kapsamı: OAuth, Claude resmi yetkilendirme ve token/profile/usage endpointlerine erişir; API Key içe aktarma çevrimdışıdır, başlatma sonrası Claude CLI seçilen sağlayıcıya bağlanır."
+    },
+    "search": "Claude hesaplarında ara...",
+    "noAccounts": "Claude hesabı yok",
+    "addAccount": {
+      "title": "Claude hesabı ekle",
+      "desktopTitle": "Claude Hesabı Ekle",
+      "cliTitle": "Claude CLI Hesabı Ekle"
+    },
+    "deleteConfirm": "Claude hesabı {{email}} silinsin mi?",
+    "switch": {
+      "success": "Başarıyla değiştirildi"
+    },
+    "instances": {
+      "unsupportedDescPlatform": "Claude çoklu örnek yalnızca macOS, Windows ve Linux üzerinde desteklenir.",
+      "launchDialogTitle": "Örneği başlat",
+      "launchCommand": "Başlatma komutu",
+      "executeInTerminal": "Terminalde çalıştır",
+      "startSuccess": "Claude başlatıldı"
+    },
+    "quota": {
+      "title": "Kota",
+      "fiveHour": "Geçerli oturum",
+      "sevenDay": "Bu hafta (tüm modeller)",
+      "sonnet": "Sonnet 7 gün",
+      "extra": "Ek kullanım",
+      "empty": "Kota yok",
+      "unsupported": "Yenilenemez",
+      "updatedAt": "Güncellendi: {{time}}",
+      "resetAt": "{{label}} sıfırlanır: {{time}}",
+      "refreshSuccess": "Kota yenilendi",
+      "refreshAllDone": "Kota yenileme tamamlandı",
+      "refreshFailed": "Kota yenileme başarısız: {{error}}",
+      "refreshWithWarning": "Kota yenileme başarısız: {{error}}",
+      "notUpdated": "Kota yenilenmedi",
+      "updated": "Güncellendi",
+      "notUpdatedShort": "Yenilenmedi",
+      "openVerification": "Doğrulamayı aç",
+      "openingVerification": "Açılıyor...",
+      "verificationWindowOpened": "Claude doğrulama penceresi açıldı. Doğrulamadan sonra kotayı yeniden yenileyin.",
+      "verificationWindowFailed": "Claude doğrulama penceresi açılamadı: {{error}}"
+    },
+    "addTabs": {
+      "desktop": "Masa",
+      "oauth": "OAuth",
+      "apiKey": "API anahtarı",
+      "import": "Yerel/JSON",
+      "desktopGateway": "Geçit"
+    },
+    "authMode": {
+      "oauth": "OAuth modu",
+      "setup_token": "Kurulum tokenı",
+      "api_key": "API anahtarı",
+      "desktop_oauth": "Claude oturumu"
+    },
+    "apiKey": {
+      "desc": "Claude CLI API Key değerini ayrı kimlik bilgisi olarak kaydeder. Geçiş veya CLI başlatma sırasında sağlayıcı env değerlerini Claude Code settings.json içine yazar, Claude oturum durumuna yazmaz.",
+      "nameLabel": "Hesap adı",
+      "namePlaceholder": "İsteğe bağlı, ör. APIKEY.FUN",
+      "keyLabel": "API anahtarı",
+      "placeholder": "Sağlayıcı API Key yapıştırın",
+      "hide": "API Key gizle",
+      "show": "API Key göster",
+      "hint": "API Key hesapları yalnızca Claude CLI içindir. Claude Code settings.json içine düz metin env olarak yazılır, Claude oturumunu etkilemez ve abonelik kota yenilemeyi desteklemez.",
+      "importAction": "API Key içe aktar",
+      "required": "API Key girin",
+      "templateRequired": "{{label}} girin",
+      "importSuccess": "Claude API Key hesabı içe aktarıldı: {{name}}",
+      "quotaUnsupported": "API Key hesapları yenilenmez",
+      "switchDisabled": "API Key hesabı Claude’a geçirilemez",
+      "cliUnsupported": "API Key hesabı Claude CLI başlatamaz",
+      "providerLabel": "Sağlayıcı",
+      "customProvider": "Özel",
+      "endpointLabel": "Sağlayıcı endpoint",
+      "officialEndpoint": "Resmi varsayılan",
+      "baseUrlLabel": "Temel URL",
+      "baseUrlPlaceholder": "Boşsa Anthropic resmi adresi",
+      "keyFieldLabel": "Auth alanı",
+      "baseUrlInvalid": "Base URL geçerli değil"
+    },
+    "desktopOAuth": {
+      "title": "Claude oturumu",
+      "desc": "Bu araçta Claude girişi; Google, Apple, e-posta ve free destekler.",
+      "start": "Girişi aç",
+      "preparingRuntime": "Giriş hazırlanıyor...",
+      "hint": "Önce yerelde saklar; Claude’a geçişte yazar.",
+      "runtimeHint": "İlk kullanımda Electron giriş bileşeni yerel uygulama veri klasörüne indirilip doğrulanabilir; yükleyiciye dahil değildir ve sonra önbellekten yeniden kullanılır.",
+      "nameLabel": "Hesap adı",
+      "namePlaceholder": "İsteğe bağlı, örn. Claude Free",
+      "waiting": "Claude penceresinde giriş yapın, burada içe aktarmayı bitirin.",
+      "profileDir": "Yalıtılmış profile dizini",
+      "complete": "Tamamla",
+      "localTitle": "Geçerli Claude içe aktar",
+      "localDesc": "Geçerli Claude oturumunu yerel snapshot olarak kopyalar.",
+      "localAction": "İçe aktar",
+      "localSuccess": "Yerel Claude oturumu içe aktarıldı: {{name}}",
+      "importSuccess": "Claude oturumu içe aktarıldı: {{name}}",
+      "switchHint": "Resmi Claude’a geç",
+      "planUnknown": "Plan bilinmiyor",
+      "progress": {
+        "start": "Oturum açma hazırlanıyor",
+        "profile": "Yalıtılmış profil oluşturuluyor",
+        "resolveRuntime": "Oturum bileşeni aranıyor",
+        "checkCache": "Yerel bileşen önbelleği denetleniyor",
+        "cached": "Yerel bileşen önbelleği kullanılıyor",
+        "downloadStart": "Bileşen indirme başlatılıyor",
+        "downloading": "Oturum bileşeni indiriliyor",
+        "downloaded": "Oturum bileşeni indirildi",
+        "verify": "Bileşen bütünlüğü doğrulanıyor",
+        "extract": "Oturum bileşeni çıkarılıyor",
+        "runtimeReady": "Oturum bileşeni hazır",
+        "launch": "Claude oturum penceresi açılıyor",
+        "ready": "Oturum penceresi açıldı",
+        "default": "Oturum bileşeni hazırlanıyor",
+        "bytesWithTotal": "{{total}} içinden {{downloaded}} indirildi",
+        "bytesOnly": "{{downloaded}} indirildi",
+        "hint": "İlk hazırlıktan sonra yerel önbellek doğrudan yeniden kullanılır."
+      }
+    },
+    "oauth": {
+      "title": "Claude OAuth Yetkilendirme",
+      "desc": "Resmi Claude OAuth yetkilendirme sayfasını açın, ardından hesabı içe aktarmak için geri dönüş bağlantısını veya code değerini yapıştırın.",
+      "start": "OAuth yetkilendir",
+      "proRequiredHint": "Claude resmi OAuth genellikle Claude Code yetkilendirmesi için kullanılır. Sayfa yükseltme veya yetki yok ekranında kalırsa Claude girişi kullanın.",
+      "openInstruction": "Aşağıdaki düğmeye tıklayın ve Claude OAuth yetkilendirmesini tarayıcıda tamamlayın.",
+      "waiting": "Tamamlandıktan sonra son sayfa adresini veya gösterilen code değerini aşağıya yapıştırın.",
+      "authUrl": "Yetkilendirme bağlantısı",
+      "preparing": "Yetkilendirme bağlantısı oluşturuluyor...",
+      "openInBrowser": "Tarayıcıda aç",
+      "openFailed": "Yetkilendirme bağlantısı açılamadı: {{error}}",
+      "callbackPlaceholder": "Geri dönüş bağlantısı veya yetkilendirme code yapıştır",
+      "callbackRequired": "Yetkilendirme tamamlandıktan sonra geri dönüş bağlantısını veya code değerini yapıştırın",
+      "authorizeUrlNotCallback": "Yapıştırılan değer yukarıdaki yetkilendirme giriş bağlantısıdır, tamamlanmış code değildir. Önce tarayıcıda yetkilendirmeyi tamamlayın, sonra son sayfa adresini veya gösterilen code değerini kopyalayın.",
+      "complete": "İçe aktarmayı tamamla",
+      "emailPlaceholder": "E-posta (algılanamazsa doldurun)",
+      "importSuccess": "Claude OAuth yetkilendirmesi içe aktarıldı: {{name}}"
+    },
+    "plan": {
+      "label": "Plan rozeti",
+      "selectPlaceholder": "Plan seç",
+      "updateFailed": "Plan rozeti güncellenemedi: {{error}}"
+    },
+    "legacyOAuth": {
+      "switchDisabled": "Eski OAuth hesapları Claude’a geçirilemez",
+      "quotaUnsupported": "Eski OAuth hesapları artık yenilemeyi desteklemez",
+      "cliUnsupported": "Eski OAuth hesapları Claude CLI başlatamaz"
+    },
+    "cli": {
+      "quickLaunch": "CLI başlat",
+      "selectWorkingDir": "Claude CLI çalışma klasörünü seç",
+      "launchSuccess": "Claude CLI başlatıldı",
+      "prepared": "Claude CLI hazır",
+      "launchFailed": "Claude CLI başlatılamadı: {{error}}",
+      "localTitle": "Geçerli Claude Code’u içe aktar",
+      "localDesc": "Geçerli yerel Claude Code OAuth oturum durumunu okur ve yerel hesap anlık görüntüsü olarak kopyalar.",
+      "localSuccess": "Yerel Claude Code oturumu içe aktarıldı: {{name}}"
+    },
+    "accountNote": {
+      "title": "Hesap notu",
+      "desc": "{{email}} için yerel not ekleyin; hesap değiştirirken ayırt etmek kolaylaşır.",
+      "label": "Hesap notu",
+      "placeholder": "Örn: Free ana, Max 20x, ekip hesabı",
+      "saved": "Hesap notu kaydedildi",
+      "saveFailed": "Hesap notu kaydedilemedi: {{error}}",
+      "emptyTitle": "Hesap notu ekle",
+      "short": "Not",
+      "addShort": "Not"
+    },
+    "account": {
+      "signedInWith": "{{provider}} ile giriş",
+      "userId": "Kullanıcı ID",
+      "nickname": "Takma ad"
+    },
+    "selection": {
+      "selected": "{{count}} seçildi"
+    },
+    "deleteSelectedLabel": "{{count}} hesap",
+    "subPlatform": {
+      "label": "Claude alt platformu",
+      "desktop": "Claude Masaüstü",
+      "cli": "Claude komut satırı"
+    },
+    "searchDesktop": "Claude hesaplarında ara...",
+    "searchCli": "Claude CLI hesaplarında ara...",
+    "noDesktopAccounts": "Henüz Claude hesabı yok",
+    "noCliAccounts": "Henüz Claude CLI hesabı yok",
+    "desktopGateway": {
+      "label": "Geçit",
+      "authScheme": "Auth şeması",
+      "importAction": "Gateway içe aktar",
+      "importSuccess": "Claude Gateway hesabı içe aktarıldı: {{name}}",
+      "baseUrlRequired": "Gateway Base URL girin",
+      "noQuota": "Gateway hesapları Claude abonelik kotasını göstermez",
+      "desc": "Gateway API Key değerini Claude 3P yapılandırması olarak kaydeder. Geçişte resmi Claude yapılandırmasına yazar ve Claude’ı başlatır.",
+      "hint": "Gateway hesapları Claude abonelik ayrıntılarını okumaz. API Key resmi 3P yapılandırmasıyla yerel Claude’a yazılır.",
+      "modelsLabel": "Model kataloğu",
+      "modelsEmpty": "Bu Gateway model döndürmedi.",
+      "modelsLoaded": "{{count}} model alındı. Kaydetmeden önce düzenleyebilirsiniz.",
+      "modelsLoadFailed": "Modeller alınamadı: {{error}}.",
+      "usingPresetMappings": "Hazır eşlemeler kullanılıyor. Kaydetmeden önce düzenleyebilirsiniz.",
+      "manualModels": "Elle modeller",
+      "modelsPlaceholder": "Satır başına bir model ID",
+      "modelsLoading": "Model kataloğu yükleniyor...",
+      "modelsRequired": "Model kataloğunu girin",
+      "editTitle": "Claude Gateway düzenle",
+      "updateAction": "Gateway kaydet",
+      "updateSuccess": "Claude Gateway hesabı güncellendi: {{name}}",
+      "connectionMode": "Bağlantı",
+      "modeDirect": "Doğrudan",
+      "modeLocalMapping": "Yerel eşleme",
+      "mappingsRequired": "Model eşlemesini yapılandırın",
+      "mappingsIncomplete": "Model eşlemesini tamamlayın",
+      "mappingDesktopModelDuplicated": "Claude model adları tekrar edemez: {{model}}",
+      "mappingDesktopModelInvalid": "Eşlenen Claude model adları Claude tarafından tanınmalıdır",
+      "directModelsInvalid": "Doğrudan mod yalnızca Claude tarafından tanınan Claude modellerini destekler",
+      "desktopModelPlaceholder": "Claude modeli",
+      "upstreamModelPlaceholder": "Gerçek üst model",
+      "addMapping": "Eşleme ekle",
+      "mappingSummary": "{{count}} eşleme yapılandırıldı",
+      "mappingSummaryHint": "Kaydetmeden önce gözden geçirin veya düzenleyin.",
+      "editMappings": "Eşlemeleri düzenle",
+      "moreMappings": "{{count}} daha",
+      "mappingEditorTitle": "Model eşlemeleri",
+      "hideMappings": "Daralt",
+      "labelOverridePlaceholder": "Menü görünen adı",
+      "supports1mLabel": "1M desteğini bildir",
+      "supports1mShort": "1M bağlam"
+    }
   }
 }

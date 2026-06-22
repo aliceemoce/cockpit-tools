@@ -31,6 +31,7 @@ export interface CodexAccount {
   api_model_vision_support?: Record<string, boolean>;
   api_vision_routing_model?: string | null;
   bound_oauth_account_id?: string | null;
+  bound_oauth_use_local_gateway?: boolean;
   user_id?: string;
   plan_type?: string;
   subscription_active_until?: string;
@@ -85,8 +86,30 @@ export interface CodexQuota {
   weekly_window_minutes?: number;
   /** 次窗口是否存在（接口返回） */
   weekly_window_present?: boolean;
+  /** 主动重置次数（rate-limit reset credits） */
+  reset_credits_available?: number;
+  /** 主动重置明细（rate-limit reset credits） */
+  reset_credits?: CodexResetCredit[];
+  /** 最近一张可用主动重置次数的到期时间 (Unix timestamp) */
+  reset_credits_next_expires_at?: number;
   /** 原始响应数据 */
   raw_data?: unknown;
+}
+
+export interface CodexResetCredit {
+  id?: string;
+  status?: string;
+  reset_type?: string;
+  granted_at?: number;
+  expires_at?: number;
+  redeemed_at?: number;
+  raw_status?: string;
+}
+
+export interface CodexResetCreditsSnapshot {
+  available_count?: number;
+  credits: CodexResetCredit[];
+  next_expires_at?: number;
 }
 
 const COCKPIT_API_BASE_URL = "https://chongcodex.cn/v1";
@@ -160,10 +183,65 @@ export interface CodexSessionVisibilityRepairItem {
   targetProvider: string;
   changedRolloutFileCount: number;
   updatedSqliteRowCount: number;
+  updatedSqliteTimestampRowCount: number;
   addedSessionIndexEntryCount: number;
+  updatedSessionIndexEntryCount: number;
   skippedSqliteFile: boolean;
+  metadataRebuildFailed: boolean;
   backupDir?: string | null;
   running: boolean;
+}
+
+export type CodexSessionVisibilityRepairMode = 'quick' | 'deep';
+export type CodexSessionVisibilityAutoRepairMode =
+  | 'legacy_before_4eb75d96'
+  | 'legacy_4eb75d96'
+  | 'current';
+
+export type CodexSessionVisibilityRepairProviderSource = 'config' | 'rollout' | 'sqlite';
+
+export interface CodexSessionVisibilityRepairProviderOption {
+  id: string;
+  sources: CodexSessionVisibilityRepairProviderSource[];
+  isDefault: boolean;
+}
+
+export interface CodexSessionVisibilityRepairProviderList {
+  defaultProvider: string;
+  providers: CodexSessionVisibilityRepairProviderOption[];
+}
+
+export interface CodexSessionVisibilityRepairInstanceOption {
+  id: string;
+  name: string;
+  userDataDir: string;
+  currentProvider: string;
+  isDefault: boolean;
+  running: boolean;
+}
+
+export interface CodexSessionVisibilityRepairInstanceList {
+  defaultInstanceId: string;
+  instances: CodexSessionVisibilityRepairInstanceOption[];
+}
+
+export interface CodexSessionVisibilityRepairRequestOptions {
+  mode?: CodexSessionVisibilityRepairMode;
+  targetProvider?: string | null;
+  targetInstanceId?: string | null;
+  repairInstanceIds?: string[] | null;
+  sessionIds?: string[] | null;
+}
+
+export interface CodexSessionVisibilityRepairProgress {
+  runId?: string | null;
+  mode: CodexSessionVisibilityRepairMode;
+  stage: string;
+  percent: number;
+  current: number;
+  total: number;
+  instanceId?: string | null;
+  instanceName?: string | null;
 }
 
 export interface CodexSessionVisibilityRepairSummary {
@@ -171,8 +249,11 @@ export interface CodexSessionVisibilityRepairSummary {
   mutatedInstanceCount: number;
   changedRolloutFileCount: number;
   updatedSqliteRowCount: number;
+  updatedSqliteTimestampRowCount: number;
   addedSessionIndexEntryCount: number;
+  updatedSessionIndexEntryCount: number;
   skippedSqliteFileCount: number;
+  metadataRebuildFailedCount: number;
   items: CodexSessionVisibilityRepairItem[];
   backupDirs: string[];
   message: string;
@@ -191,6 +272,11 @@ export interface CodexSessionRecord {
   updatedAt?: number | null;
   locationCount: number;
   locations: CodexSessionLocation[];
+}
+
+export interface CodexSessionSearchOptions {
+  titleQuery?: string | null;
+  contentQuery?: string | null;
 }
 
 export interface CodexSessionTokenStats {
@@ -440,6 +526,15 @@ export function isCodexNewApiAccount(account: CodexAccount): boolean {
       isCodexCockpitApiBaseUrl(account.api_base_url) ||
       planType === "COCKPIT API" ||
       planType === "NEW_API_EXCLUSIVE")
+  );
+}
+
+export function isCodexChatCompletionsApiKeyAccount(
+  account: CodexAccount,
+): boolean {
+  return (
+    isCodexApiKeyAccount(account) &&
+    (account.api_wire_api || "").trim().toLowerCase() === "chat_completions"
   );
 }
 

@@ -424,10 +424,12 @@ pub struct CodexLocalAccessCollection {
     pub model_pricings: Vec<CodexLocalAccessModelPricing>,
     #[serde(default)]
     pub excluded_models: Vec<String>,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub session_affinity: bool,
     #[serde(default = "default_session_affinity_ttl_ms")]
     pub session_affinity_ttl_ms: i64,
+    #[serde(default)]
+    pub session_affinity_default_enabled_migrated: bool,
     #[serde(default)]
     pub max_retry_credentials: u16,
     #[serde(default = "default_max_retry_interval_ms")]

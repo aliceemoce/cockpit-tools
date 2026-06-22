@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import {
@@ -14,14 +14,26 @@ import {
   X,
 } from 'lucide-react';
 import {
-  queryCodexModelProviderUsage,
-  type CodexModelProviderUsageSummary,
-} from '../services/codexModelProviderService';
+  listModelProviderModels,
+  queryModelProviderUsage,
+  type ModelProviderModel,
+  type ModelProviderUsageSummary,
+} from '../services/modelProviderUsageService';
 import {
   APIKEY_FUN_GLOBAL_ENDPOINT,
+  APIKEY_FUN_PROVIDER_BASE_URL,
   APIKEY_FUN_REGISTER_URL,
+  APIKEY_FUN_SOURCE_TAG,
   buildApiKeyFunProviderBaseUrl,
 } from '../utils/apikeyFunLinks';
+import {
+  CLAUDE_APIKEY_FUN_BASE_URL,
+} from '../utils/claudeProviderPresets';
+import {
+  dispatchApiKeyFunPrefillEvent,
+  getApiKeyFunPrefillPage,
+  type ApiKeyFunPrefillTarget,
+} from '../utils/apiKeyFunPrefill';
 import apiKeyFunIcon from '../assets/icons/apikey-fun.png';
 import './ApiKeyFunPage.css';
 
@@ -33,6 +45,10 @@ type ManagedApiKey = {
   lastUsedAt: number;
   lastStatus?: 'ok' | 'bad' | 'unknown';
   lastRemaining?: string;
+  addedToCodexAt?: number;
+  codexProviderName?: string;
+  addedToClaudeAt?: number;
+  claudeAccountName?: string;
 };
 
 const APIKEY_FUN_KEYS_STORAGE_KEY = 'apikey_fun_managed_keys';
@@ -53,7 +69,7 @@ function formatNumber(value?: number | null, suffix = ''): string {
   return suffix ? `${formatted} ${suffix}` : formatted;
 }
 
-function usagePrimaryValue(summary: CodexModelProviderUsageSummary | null): string {
+function usagePrimaryValue(summary: ModelProviderUsageSummary | null): string {
   if (!summary) return '--';
   const unit = summary.unit ?? '';
   if (summary.quotaUnlimited) return 'Unlimited';
@@ -63,7 +79,7 @@ function usagePrimaryValue(summary: CodexModelProviderUsageSummary | null): stri
   return '--';
 }
 
-function usageValidityTone(summary: CodexModelProviderUsageSummary | null): 'ok' | 'bad' | 'unknown' {
+function usageValidityTone(summary: ModelProviderUsageSummary | null): 'ok' | 'bad' | 'unknown' {
   if (!summary || typeof summary.isValid !== 'boolean') return 'unknown';
   return summary.isValid ? 'ok' : 'bad';
 }
@@ -106,15 +122,42 @@ function formatManagedKeyTime(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
+function normalizeModelCatalog(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  values.forEach((value) => {
+    const model = value.trim();
+    const key = model.toLowerCase();
+    if (!model || seen.has(key)) return;
+    seen.add(key);
+    models.push(model);
+  });
+  return models;
+}
+
+function isClaudeModelId(value: string): boolean {
+  const model = value.trim().toLowerCase();
+  return model.startsWith('claude-') || model.startsWith('anthropic/claude-');
+}
+
 export function ApiKeyFunPage() {
   const { t } = useTranslation();
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
-  const [usage, setUsage] = useState<CodexModelProviderUsageSummary | null>(null);
+  const [usage, setUsage] = useState<ModelProviderUsageSummary | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [queryingUsage, setQueryingUsage] = useState(false);
+  const [apiKeyModels, setApiKeyModels] = useState<ModelProviderModel[]>([]);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [queryingModels, setQueryingModels] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
   const [managedKeys, setManagedKeys] = useState<ManagedApiKey[]>(() => loadManagedApiKeys());
+  const [keyActionState, setKeyActionState] = useState<Record<string, {
+    target: ApiKeyFunPrefillTarget;
+    status: 'success' | 'error';
+    message?: string;
+  }>>({});
+  const initialManagedKeySelectedRef = useRef(false);
 
   // 别名编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -133,6 +176,29 @@ export function ApiKeyFunPage() {
     () => managedKeys.find((item) => item.key === currentKey),
     [currentKey, managedKeys],
   );
+  const apiKeyFunModelCatalog = useMemo(
+    () => normalizeModelCatalog(apiKeyModels.map((model) => model.id)),
+    [apiKeyModels],
+  );
+  const modelCatalogText = useMemo(
+    () => apiKeyFunModelCatalog.join('\n').toLowerCase(),
+    [apiKeyFunModelCatalog],
+  );
+  const canAddCurrentKeyToCodex = modelCatalogText.includes('gpt');
+  const canAddCurrentKeyToClaude = apiKeyFunModelCatalog.some(isClaudeModelId);
+  const canShowTargetActions = canAddCurrentKeyToCodex || canAddCurrentKeyToClaude;
+  const canPrefillCurrentKey =
+    Boolean(currentSavedKey) && !queryingModels && apiKeyFunModelCatalog.length > 0;
+
+  useEffect(() => {
+    if (initialManagedKeySelectedRef.current) return;
+    initialManagedKeySelectedRef.current = true;
+    if (apiKey.trim()) return;
+    const firstKey = managedKeys[0]?.key.trim();
+    if (firstKey) {
+      setApiKey(firstKey);
+    }
+  }, [apiKey, managedKeys]);
 
   useEffect(() => {
     window.localStorage.setItem(APIKEY_FUN_KEYS_STORAGE_KEY, JSON.stringify(managedKeys));
@@ -161,15 +227,21 @@ export function ApiKeyFunPage() {
       setUsage(null);
       setUsageError(null);
       setQueryingUsage(false);
+      setApiKeyModels([]);
+      setModelsError(null);
+      setQueryingModels(false);
       return undefined;
     }
 
     let cancelled = false;
     setUsageError(null);
+    setModelsError(null);
+    setApiKeyModels([]);
     setQueryingUsage(true);
+    setQueryingModels(true);
 
     const timer = window.setTimeout(() => {
-      void queryCodexModelProviderUsage({
+      void queryModelProviderUsage({
         baseUrl: providerBaseUrl,
         apiKey: key,
         integrationType: 'sub2api',
@@ -212,6 +284,32 @@ export function ApiKeyFunPage() {
         })
         .finally(() => {
           if (!cancelled) setQueryingUsage(false);
+        });
+      void listModelProviderModels({
+        baseUrl: providerBaseUrl,
+        apiKey: key,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setApiKeyModels(result.models);
+          setModelsError(
+            result.models.length === 0
+              ? t('apiKeyFun.models.emptyFromKey', '当前 API Key 未返回模型列表。')
+              : null,
+          );
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setApiKeyModels([]);
+          setModelsError(
+            t('apiKeyFun.models.queryFailed', {
+              defaultValue: '模型列表读取失败：{{error}}',
+              error: providerErrorMessage(error),
+            }),
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setQueryingModels(false);
         });
     }, APIKEY_FUN_AUTO_QUERY_DELAY_MS);
 
@@ -262,6 +360,54 @@ export function ApiKeyFunPage() {
     setUsageError(null);
     setSaveFlash(true);
   }, [apiKey, t, usage]);
+
+  const setManagedKeyAction = useCallback((
+    id: string,
+    state: { target: ApiKeyFunPrefillTarget; status: 'success' | 'error'; message?: string },
+  ) => {
+    setKeyActionState((items) => ({ ...items, [id]: state }));
+  }, []);
+
+  const handlePrefillTarget = useCallback((
+    target: ApiKeyFunPrefillTarget,
+    item: ManagedApiKey,
+  ) => {
+    const key = item.key.trim();
+    if (!key) {
+      setManagedKeyAction(item.id, {
+        target,
+        status: 'error',
+        message: t('apiKeyFun.error.missingApiKey', '请输入 API Key。'),
+      });
+      return;
+    }
+    const page = getApiKeyFunPrefillPage(target);
+    const targetName = target === 'codex'
+      ? 'Codex'
+      : target === 'claude_desktop'
+        ? 'Claude'
+        : 'Claude CLI';
+    window.dispatchEvent(new CustomEvent<typeof page>('app-request-navigate', { detail: page }));
+    window.setTimeout(() => {
+      dispatchApiKeyFunPrefillEvent({
+        target,
+        apiKey: key,
+        apiKeyName: item.name || buildManagedKeyName(key),
+        providerName: 'APIKEY.FUN',
+        baseUrl: target === 'codex' ? APIKEY_FUN_PROVIDER_BASE_URL : CLAUDE_APIKEY_FUN_BASE_URL,
+        sourceTag: APIKEY_FUN_SOURCE_TAG,
+        modelCatalog: apiKeyFunModelCatalog,
+      });
+    }, 0);
+    setManagedKeyAction(item.id, {
+      target,
+      status: 'success',
+      message: t('apiKeyFun.keyManager.prefillOpened', {
+        defaultValue: '已打开 {{target}} 添加弹窗，请确认保存',
+        target: targetName,
+      }),
+    });
+  }, [apiKeyFunModelCatalog, setManagedKeyAction, t]);
 
   // 切换密钥
   const handleUseManagedKey = useCallback((item: ManagedApiKey) => {
@@ -359,7 +505,6 @@ export function ApiKeyFunPage() {
             <div className="apikey-fun-panel-head">
               <div>
                 <h2>{t('apiKeyFun.queryTitle', '密钥额度查询')}</h2>
-                <p>{t('apiKeyFun.queryDesc', '输入 APIKEY.FUN 的 API Key 后自动查询额度。')}</p>
               </div>
               <div className="apikey-fun-key-preview">
                 <KeyRound size={14} />
@@ -395,12 +540,15 @@ export function ApiKeyFunPage() {
                       type="button"
                       className="apikey-fun-icon-button clear-btn"
                       onClick={() => {
-                        setApiKey('');
-                        setUsageError(null);
-                        setUsage(null);
-                      }}
-                      title={t('apiKeyFun.clearKey', '清空输入')}
-                    >
+                      setApiKey('');
+                      setUsageError(null);
+                      setUsage(null);
+                      setApiKeyModels([]);
+                      setModelsError(null);
+                      setQueryingModels(false);
+                    }}
+                    title={t('apiKeyFun.clearKey', '清空输入')}
+                  >
                       <X size={16} />
                     </button>
                   )}
@@ -417,18 +565,60 @@ export function ApiKeyFunPage() {
             </div>
 
             <div className="apikey-fun-action-row apikey-fun-key-actions">
-              <button className="btn apikey-fun-save-btn" disabled={!currentKey} onClick={handleSaveCurrentKey}>
-                {currentSavedKey ? <CheckCircle2 size={16} /> : <BookmarkPlus size={16} />}
-                <span>
-                  {currentSavedKey
-                    ? t('apiKeyFun.keyManager.savedButton', '已保存')
-                    : t('apiKeyFun.keyManager.saveButton', '保存密钥')}
-                </span>
-              </button>
-              {saveFlash && (
-                <span className="apikey-fun-save-flash">
-                  {t('apiKeyFun.keyManager.saveFlash', '刚刚保存')}
-                </span>
+              <div className="apikey-fun-primary-actions">
+                <button className="btn apikey-fun-save-btn" disabled={!currentKey} onClick={handleSaveCurrentKey}>
+                  {currentSavedKey ? <CheckCircle2 size={16} /> : <BookmarkPlus size={16} />}
+                  <span>
+                    {currentSavedKey
+                      ? t('apiKeyFun.keyManager.savedButton', '已保存')
+                      : t('apiKeyFun.keyManager.saveButton', '保存密钥')}
+                  </span>
+                </button>
+                {saveFlash && (
+                  <span className="apikey-fun-save-flash">
+                    {t('apiKeyFun.keyManager.saveFlash', '刚刚保存')}
+                  </span>
+                )}
+              </div>
+              {canShowTargetActions && (
+                <div className="apikey-fun-target-actions">
+                  {canAddCurrentKeyToCodex && (
+                    <button
+                      type="button"
+                      className="btn apikey-fun-target-btn"
+                      disabled={!canPrefillCurrentKey}
+                      onClick={() => {
+                        if (currentSavedKey) handlePrefillTarget('codex', currentSavedKey);
+                      }}
+                    >
+                      <span>{t('apiKeyFun.keyManager.addToCodex', '添加到 Codex')}</span>
+                    </button>
+                  )}
+                  {canAddCurrentKeyToClaude && (
+                    <button
+                      type="button"
+                      className="btn apikey-fun-target-btn"
+                      disabled={!canPrefillCurrentKey}
+                      onClick={() => {
+                        if (currentSavedKey) handlePrefillTarget('claude_desktop', currentSavedKey);
+                      }}
+                    >
+                      <span>{t('apiKeyFun.keyManager.addToClaudeDesktop', '添加到 Claude')}</span>
+                    </button>
+                  )}
+                  {canAddCurrentKeyToClaude && (
+                    <button
+                      type="button"
+                      className="btn apikey-fun-target-btn"
+                      disabled={!canPrefillCurrentKey}
+                      onClick={() => {
+                        if (currentSavedKey) handlePrefillTarget('claude_cli', currentSavedKey);
+                      }}
+                    >
+                      <span>{t('apiKeyFun.keyManager.addToClaudeCli', '添加到 Claude CLI')}</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -490,6 +680,43 @@ export function ApiKeyFunPage() {
               )}
             </div>
           </div>
+
+          <section className="apikey-fun-dashboard-panel apikey-fun-models-panel">
+            <div className="apikey-fun-panel-head">
+              <div>
+                <h2>{t('apiKeyFun.models.title', '可用模型')}</h2>
+              </div>
+              <div className="apikey-fun-model-count">
+                {queryingModels
+                  ? t('apiKeyFun.models.loading', '读取中')
+                  : t('apiKeyFun.models.count', {
+                      defaultValue: '{{count}} 个模型',
+                      count: apiKeyFunModelCatalog.length,
+                    })}
+              </div>
+            </div>
+            {queryingModels ? (
+              <div className="apikey-fun-model-empty">
+                {t('apiKeyFun.models.loadingDesc', '正在从当前 API Key 读取模型列表...')}
+              </div>
+            ) : modelsError ? (
+              <div className="apikey-fun-model-empty">
+                {modelsError}
+              </div>
+            ) : apiKeyFunModelCatalog.length === 0 ? (
+              <div className="apikey-fun-model-empty">
+                {currentKey
+                  ? t('apiKeyFun.models.emptyFromKey', '当前 API Key 未返回模型列表。')
+                  : t('apiKeyFun.models.empty', '输入 API Key 后读取可用模型。')}
+              </div>
+            ) : (
+              <div className="apikey-fun-model-list">
+                {apiKeyFunModelCatalog.map((model) => (
+                  <span className="apikey-fun-model-chip" key={model}>{model}</span>
+                ))}
+              </div>
+            )}
+          </section>
         </main>
 
         <aside className="apikey-fun-sidebar-col">
@@ -509,6 +736,7 @@ export function ApiKeyFunPage() {
               <div className="apikey-fun-key-list">
                 {managedKeys.map((item) => {
                   const isEditing = editingId === item.id;
+                  const actionState = keyActionState[item.id];
                   return (
                     <div className={`apikey-fun-key-item ${item.key === currentKey ? 'active' : ''} ${isEditing ? 'editing' : ''}`} key={item.id}>
                       {isEditing ? (
@@ -552,6 +780,11 @@ export function ApiKeyFunPage() {
                                 time: formatManagedKeyTime(item.createdAt),
                               })}
                             </small>
+                            {actionState?.message && (
+                              <small className={`apikey-fun-key-action-state ${actionState.status}`}>
+                                {actionState.message}
+                              </small>
+                            )}
                           </span>
                         </button>
                       )}

@@ -239,6 +239,27 @@ func TestApplyCodexHeadersUsesAccountHeaderForOAuth(t *testing.T) {
 	}
 }
 
+func TestApplyCodexHeadersPassesThroughAgtoolsDiagnosticHeaders(t *testing.T) {
+	httpReq := httptest.NewRequest("POST", "https://example.com/responses", nil)
+	httpReq = httpReq.WithContext(contextWithGinHeaders(map[string]string{
+		"X-Agtools-Test-Run-Id":       "run-1",
+		"X-Agtools-Provider-Name-B64": "UHJvdmlkZXI=",
+		"X-Not-Agtools":               "drop-me",
+	}))
+
+	applyCodexHeaders(httpReq, nil, "oauth-token", true, nil)
+
+	if got := httpReq.Header.Get("X-Agtools-Test-Run-Id"); got != "run-1" {
+		t.Fatalf("X-Agtools-Test-Run-Id = %q, want run-1", got)
+	}
+	if got := httpReq.Header.Get("X-Agtools-Provider-Name-B64"); got != "UHJvdmlkZXI=" {
+		t.Fatalf("X-Agtools-Provider-Name-B64 = %q, want UHJvdmlkZXI=", got)
+	}
+	if got := httpReq.Header.Get("X-Not-Agtools"); got != "" {
+		t.Fatalf("X-Not-Agtools = %q, want empty", got)
+	}
+}
+
 func TestCodexIdentityConfuseKeepsClientBodySeparateFromUpstreamBody(t *testing.T) {
 	cfg := &config.Config{
 		Routing: config.RoutingConfig{Strategy: "fill-first"},

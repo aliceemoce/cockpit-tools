@@ -28,13 +28,13 @@
   },
   "topRightAd": null,
   "apiRelayEnabled": true,
-  "topRightAdsEnabled": false,
+  "topRightAdsEnabled": true,
   "topRightAds": [
     {
       "id": "top-right-ad-2026-04-shop",
-      "enabled": false,
+      "enabled": true,
       "priority": 100,
-      "text": "Codex Plus代过试用，成品号，Gemini给自己账号订阅一年Pro 需要的了解一下",
+      "text": "Codex Plus30天成品号，Gemini给自己账号订阅一年Pro 需要的了解一下",
       "badge": "推广",
       "ctaLabel": "选购",
       "ctaUrl": "https://xiangzili.xyz/user/index/shop",
@@ -45,7 +45,7 @@
       "expiresAt": null,
       "locales": {
         "zh-CN": {
-          "text": "Codex Plus代过试用，成品号，Gemini给自己账号订阅一年Pro 需要的了解一下",
+          "text": "Codex Plus30天成品号，Gemini给自己账号订阅一年Pro 需要的了解一下",
           "badge": "推广",
           "ctaLabel": "选购"
         }

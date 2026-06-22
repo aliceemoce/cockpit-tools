@@ -23,7 +23,6 @@ import {
   Check,
   Play,
   RotateCw,
-  Repeat,
   CircleAlert,
   Info,
   Rows3,
@@ -90,11 +89,16 @@ import {
   getCodexPlanFilterKey,
   getCodexSubscriptionPresentation,
   hasCodexAccountName,
+  formatCodexResetTime,
+  formatCodexResetTimeAbsolute,
   isCodexApiKeyAccount,
+  isCodexChatCompletionsApiKeyAccount,
   isCodexNewApiAccount,
   isCodexTeamLikePlan,
   type CodexApiProviderMode,
   type CodexQuotaErrorInfo,
+  type CodexResetCredit,
+  type CodexResetCreditsSnapshot,
 } from "../types/codex";
 import { filterCodexLocalAccessAccountIds } from "../utils/codexLocalAccessAccounts";
 import { isBlockingCodexQuotaError } from "../utils/codexQuotaError";
@@ -113,6 +117,11 @@ import {
 } from "../components/CodexOverviewTabsHeader";
 import { CodexInstancesContent } from "./CodexInstancesPage";
 import { CodexSessionManager } from "../components/codex/CodexSessionManager";
+import {
+  buildCodexSessionVisibilityInitialProgress,
+  CodexSessionVisibilityRepairProgressView,
+  createCodexSessionVisibilityRepairRunId,
+} from "../components/codex/CodexSessionVisibilityRepairModal";
 import { CodexWakeupContent } from "../components/codex/CodexWakeupContent";
 import { CodexModelProviderManager } from "../components/codex/CodexModelProviderManager";
 import { CodexSpeedSelect } from "../components/codex/CodexSpeedSelect";
@@ -128,9 +137,14 @@ import {
   type SingleSelectFilterOption,
 } from "../components/SingleSelectFilterDropdown";
 import { SingleSelectDropdown } from "../components/SingleSelectDropdown";
-import type { CodexAccount, CodexAppSpeed } from "../types/codex";
+import type {
+  CodexAccount,
+  CodexAppSpeed,
+  CodexSessionVisibilityRepairProgress,
+} from "../types/codex";
 import type {
   CodexLocalAccessAddressKind,
+  CodexLocalAccessAccountHealth,
   CodexLocalAccessCustomRoutingRule,
   CodexLocalAccessGatewayMode,
   CodexLocalAccessRoutingStrategy,
@@ -139,13 +153,13 @@ import type {
 } from "../types/codexLocalAccess";
 import {
   CODEX_API_SERVICE_BIND_ID,
+  CODEX_PROVIDER_GATEWAY_BIND_PREFIX,
   type InstanceProfile,
 } from "../types/instance";
 import {
   CODEX_CODE_REVIEW_QUOTA_VISIBILITY_CHANGED_EVENT,
   isCodexCodeReviewQuotaVisibleByDefault,
 } from "../utils/codexPreferences";
-import { formatCodexSessionVisibilityRepairMessage } from "../utils/codexSessionVisibility";
 import { emitAccountsChanged } from "../utils/accountSyncEvents";
 import { compareCurrentAccountFirst } from "../utils/currentAccountSort";
 import {
@@ -159,9 +173,16 @@ import {
   resolveCodexApiProviderPresetId,
 } from "../utils/codexProviderPresets";
 import {
+  APIKEY_FUN_PROVIDER_BASE_URL,
+  isApiKeyFunProviderBaseUrl,
   normalizeApiKeyFunOfficialUrl,
   resolveApiKeyFunWireApi,
 } from "../utils/apikeyFunLinks";
+import {
+  APIKEY_FUN_PREFILL_EVENT,
+  consumeApiKeyFunPrefill,
+  type ApiKeyFunPrefillPayload,
+} from "../utils/apiKeyFunPrefill";
 import { resolveCodexProviderCapabilityProfile } from "../utils/codexProviderGateway";
 import {
   formatCodexQuotaPoolPercent,
@@ -208,6 +229,7 @@ import {
   setCodexLocalAccessRiskNoticeDismissed,
   type CodexLocalAccessRiskNoticeAction,
 } from "../utils/codexLocalAccessRiskNotice";
+import { formatCodexSessionVisibilityRepairMessage } from "../utils/codexSessionVisibility";
 import md5 from "blueimp-md5";
 
 const CODEX_TOKEN_SINGLE_EXAMPLE = `{
@@ -298,9 +320,11 @@ type CodexApiKeyUsageState = {
   summary?: CodexModelProviderUsageSummary;
   error?: string;
   unavailable?: boolean;
+  updatedAt?: number;
 };
 
 const CODEX_API_KEY_USAGE_CACHE_KEY = "agtools.codex.apiKeyUsage.cache.v1";
+const CODEX_API_KEY_USAGE_AUTO_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 
 function readCodexApiKeyUsageCache(): Record<string, CodexApiKeyUsageState> {
   try {
@@ -315,12 +339,17 @@ function readCodexApiKeyUsageCache(): Record<string, CodexApiKeyUsageState> {
         summary?: CodexModelProviderUsageSummary;
         error?: string;
         unavailable?: boolean;
+        updatedAt?: number;
       };
       next[accountId] = {
         loading: false,
         summary: item.summary,
         error: typeof item.error === "string" ? item.error : undefined,
         unavailable: item.unavailable === true,
+        updatedAt:
+          typeof item.updatedAt === "number" && Number.isFinite(item.updatedAt)
+            ? item.updatedAt
+            : undefined,
       };
     });
     return next;
@@ -343,6 +372,7 @@ function writeCodexApiKeyUsageCache(
               summary: item.summary,
               error: item.error,
               unavailable: item.unavailable === true,
+              updatedAt: item.updatedAt,
             },
           ]),
         ),
@@ -380,18 +410,22 @@ interface LocalAccessAccountPoolHealthSummary {
   quotaLimited: number;
 }
 
-const BLOCKING_LOCAL_ACCESS_ACCOUNT_FAILURE_CATEGORIES = new Set([
+const ABNORMAL_LOCAL_ACCESS_ACCOUNT_FAILURE_CATEGORIES = new Set([
   "auth_unavailable",
   "auth_refresh_failed",
   "account_prepare_failed",
-  "free_account_restricted",
 ]);
 
-function isBlockingLocalAccessAccountFailureCategory(
-  category?: string | null,
+function isAbnormalLocalAccessAccountFailure(
+  health?: CodexLocalAccessAccountHealth,
 ): boolean {
   return Boolean(
-    category && BLOCKING_LOCAL_ACCESS_ACCOUNT_FAILURE_CATEGORIES.has(category),
+    health &&
+      health.consecutiveFailures >= 3 &&
+      health.lastFailureCategory &&
+      ABNORMAL_LOCAL_ACCESS_ACCOUNT_FAILURE_CATEGORIES.has(
+        health.lastFailureCategory,
+      ),
   );
 }
 
@@ -439,12 +473,17 @@ function persistLocalAccessGatewayGuideDismissed(): void {
     // ignore storage write failures
   }
 }
-type CodexLaunchCredentialKind = "api-key" | "api-service" | "account";
+
+type CodexLaunchCredentialKind = "api" | "api-key" | "api-service" | "account";
 type CodexLaunchCredentialType = "api" | "account";
+
 type CodexApiSwitchNoticeContext = {
   from: CodexLaunchCredentialKind;
   to: CodexLaunchCredentialKind;
 };
+
+const CODEX_SESSION_VISIBILITY_REPAIR_PROGRESS_EVENT =
+  "codex:session_visibility_repair_progress";
 
 function getCodexLaunchCredentialKind(
   account: CodexAccount,
@@ -456,6 +495,14 @@ function getCodexLaunchCredentialType(
   kind: CodexLaunchCredentialKind,
 ): CodexLaunchCredentialType {
   return kind === "account" ? "account" : "api";
+}
+
+function getCodexLaunchCredentialKindFromType(
+  type: string | null | undefined,
+): CodexLaunchCredentialKind | null {
+  if (type === "api") return "api";
+  if (type === "account") return "account";
+  return null;
 }
 
 type CockpitApiJsonRecord = Record<string, unknown>;
@@ -749,6 +796,26 @@ function getDefaultApiProviderPresetId(
   return sponsorTemplates[0]?.id ?? DEFAULT_CODEX_API_PROVIDER_ID;
 }
 
+function resolveApiProviderPresetDefaults(
+  providerId: string,
+  sponsorTemplates: SponsorApiProviderTemplate[],
+): { baseUrl: string; providerName: string } {
+  const sponsorTemplate = sponsorTemplates.find(
+    (template) => template.id === providerId,
+  );
+  if (sponsorTemplate) {
+    return {
+      baseUrl: sponsorTemplate.baseUrl,
+      providerName: sponsorTemplate.name,
+    };
+  }
+  const preset = findCodexApiProviderPresetById(providerId);
+  return {
+    baseUrl: preset?.baseUrls[0] ?? DEFAULT_CODEX_API_BASE_URL,
+    providerName: "",
+  };
+}
+
 export function CodexAccountsPage() {
   const sponsorModule = useSponsorStore((state) => state.state.sponsorModule);
   const fetchSponsorState = useSponsorStore((state) => state.fetchState);
@@ -837,6 +904,22 @@ export function CodexAccountsPage() {
   );
   const [refreshingSubscriptionAccountId, setRefreshingSubscriptionAccountId] =
     useState<string | null>(null);
+  const [resettingResetCreditAccountId, setResettingResetCreditAccountId] =
+    useState<string | null>(null);
+  const [resetCreditConfirmAccountId, setResetCreditConfirmAccountId] =
+    useState<string | null>(null);
+  const [resetCreditConfirmSnapshot, setResetCreditConfirmSnapshot] =
+    useState<CodexResetCreditsSnapshot | null>(null);
+  const [resetCreditConfirmLoading, setResetCreditConfirmLoading] =
+    useState(false);
+  const resetCreditConfirmRequestSeqRef = useRef(0);
+  const [resetCreditConfirmActionLocked, setResetCreditConfirmActionLocked] =
+    useState(false);
+  const {
+    message: resetCreditConfirmError,
+    scrollKey: resetCreditConfirmErrorScrollKey,
+    set: setResetCreditConfirmError,
+  } = useModalErrorState();
   const [removingGroupAccountIds, setRemovingGroupAccountIds] = useState<
     Set<string>
   >(new Set());
@@ -860,8 +943,10 @@ export function CodexAccountsPage() {
     useState(false);
   const [apiSwitchNoticeContext, setApiSwitchNoticeContext] =
     useState<CodexApiSwitchNoticeContext | null>(null);
-  const [apiSwitchNoticeRepairing, setApiSwitchNoticeRepairing] =
-    useState(false);
+  const [apiSwitchNoticeRepairRunId, setApiSwitchNoticeRepairRunId] =
+    useState<string | null>(null);
+  const [apiSwitchNoticeRepairProgress, setApiSwitchNoticeRepairProgress] =
+    useState<CodexSessionVisibilityRepairProgress | null>(null);
   const [apiSwitchNoticeRepairResult, setApiSwitchNoticeRepairResult] =
     useState<string | null>(null);
   const {
@@ -1107,6 +1192,7 @@ export function CodexAccountsPage() {
   } = page;
   const [isAllFilteredSelected, setIsAllFilteredSelected] = useState(false);
 
+  const reauthTargetAccountId = reauthTargetAccount?.id?.trim() ?? "";
   const reauthTargetEmail = reauthTargetAccount?.email?.trim() ?? "";
   const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [batchImportSessionId, setBatchImportSessionId] = useState<
@@ -1334,6 +1420,51 @@ export function CodexAccountsPage() {
       );
     }
   }, []);
+
+  const resolveCurrentCodexLaunchCredentialKind =
+    useCallback(async (): Promise<CodexLaunchCredentialKind | null> => {
+      try {
+        const activeAccount = await codexService.getCurrentCodexAccount();
+        if (activeAccount) {
+          return getCodexLaunchCredentialKind(activeAccount);
+        }
+
+        const instances = await codexInstanceService.listInstances();
+        const defaultInstance = instances.find(
+          (instance) => instance.isDefault,
+        );
+        const bindAccountId = defaultInstance?.bindAccountId ?? "";
+        if (bindAccountId === CODEX_API_SERVICE_BIND_ID) {
+          return "api-service";
+        }
+        if (bindAccountId.startsWith(CODEX_PROVIDER_GATEWAY_BIND_PREFIX)) {
+          return "api-key";
+        }
+        return null;
+      } catch (error) {
+        console.warn(
+          "Failed to resolve current Codex launch credential kind:",
+          error,
+        );
+        return null;
+      }
+    }, []);
+
+  const shouldShowApiSwitchVisibilityNotice = useCallback(
+    (
+      currentKind: CodexLaunchCredentialKind | null,
+      targetKind: CodexLaunchCredentialKind | null,
+    ) => {
+      if (!currentKind || !targetKind) {
+        return false;
+      }
+      return (
+        getCodexLaunchCredentialType(currentKind) !==
+        getCodexLaunchCredentialType(targetKind)
+      );
+    },
+    [],
+  );
 
   const exportFormatOptions = useMemo<SingleSelectFilterOption[]>(
     () => [
@@ -1882,6 +2013,102 @@ export function CodexAccountsPage() {
     setFilterTypes([]);
   }, []);
 
+  const closeApiSwitchVisibilityNotice = useCallback(() => {
+    apiSwitchNoticeRepairSeqRef.current += 1;
+    if (apiSwitchNoticeAutoCloseTimerRef.current != null) {
+      window.clearTimeout(apiSwitchNoticeAutoCloseTimerRef.current);
+      apiSwitchNoticeAutoCloseTimerRef.current = null;
+    }
+    setApiSwitchNoticeContext(null);
+    setApiSwitchNoticeRepairRunId(null);
+    setApiSwitchNoticeRepairProgress(null);
+    setApiSwitchNoticeRepairResult(null);
+    setApiSwitchNoticeError(null);
+  }, [setApiSwitchNoticeError]);
+
+  const runApiSwitchVisibilityRepair = useCallback(async () => {
+    const repairSeq = apiSwitchNoticeRepairSeqRef.current + 1;
+    const runId = createCodexSessionVisibilityRepairRunId();
+    apiSwitchNoticeRepairSeqRef.current = repairSeq;
+    if (apiSwitchNoticeAutoCloseTimerRef.current != null) {
+      window.clearTimeout(apiSwitchNoticeAutoCloseTimerRef.current);
+      apiSwitchNoticeAutoCloseTimerRef.current = null;
+    }
+    setApiSwitchNoticeError(null);
+    setApiSwitchNoticeRepairResult(null);
+    setApiSwitchNoticeRepairRunId(runId);
+    setApiSwitchNoticeRepairProgress(
+      buildCodexSessionVisibilityInitialProgress(runId),
+    );
+    try {
+      const summary =
+        await codexInstanceService.repairSessionVisibilityAcrossInstances(
+          runId,
+        );
+      if (apiSwitchNoticeRepairSeqRef.current === repairSeq) {
+        setApiSwitchNoticeRepairResult(
+          formatCodexSessionVisibilityRepairMessage(summary, t),
+        );
+        setApiSwitchNoticeRepairProgress((current) =>
+          current
+            ? {
+                ...current,
+                stage: "done",
+                percent: 100,
+              }
+            : buildCodexSessionVisibilityInitialProgress(runId),
+        );
+        apiSwitchNoticeAutoCloseTimerRef.current = window.setTimeout(() => {
+          if (apiSwitchNoticeRepairSeqRef.current !== repairSeq) return;
+          apiSwitchNoticeRepairSeqRef.current += 1;
+          apiSwitchNoticeAutoCloseTimerRef.current = null;
+          setApiSwitchNoticeContext(null);
+          setApiSwitchNoticeRepairRunId(null);
+          setApiSwitchNoticeRepairProgress(null);
+          setApiSwitchNoticeRepairResult(null);
+          setApiSwitchNoticeError(null);
+        }, 1200);
+      }
+    } catch {
+      if (apiSwitchNoticeRepairSeqRef.current === repairSeq) {
+        setApiSwitchNoticeError(
+          t(
+            "codex.apiSwitchNotice.repairFailed",
+            "修复可见性失败。你仍可稍后在「会话管理」中重试。",
+          ),
+        );
+      }
+    }
+  }, [setApiSwitchNoticeError, t]);
+
+  const openApiSwitchVisibilityNotice = useCallback(
+    (context: CodexApiSwitchNoticeContext) => {
+      setApiSwitchNoticeContext(context);
+      setApiSwitchNoticeRepairResult(null);
+      setApiSwitchNoticeRepairRunId(null);
+      setApiSwitchNoticeRepairProgress(null);
+      setApiSwitchNoticeError(null);
+      void runApiSwitchVisibilityRepair();
+    },
+    [runApiSwitchVisibilityRepair, setApiSwitchNoticeError],
+  );
+
+  const formatCodexLaunchCredentialKindLabel = useCallback(
+    (kind: CodexLaunchCredentialKind) => {
+      if (kind === "api-service") {
+        return t("codex.apiSwitchNotice.type.apiService", "API 服务");
+      }
+      if (kind === "api-key") {
+        return t("codex.apiSwitchNotice.type.apiKey", "API Key");
+      }
+      if (kind === "api") {
+        return t("codex.apiSwitchNotice.type.api", "API 模式");
+      }
+      return t("codex.apiSwitchNotice.type.account", "账号");
+    },
+    [t],
+  );
+
   const validateApiKeyCredentialInputs = useCallback(
     (
       apiKeyRaw: string,
@@ -1954,6 +2181,276 @@ export function CodexAccountsPage() {
     updateAccountAppSpeed,
   } = store;
   const localAccessCollection = localAccessState?.collection ?? null;
+
+  const getResetCreditsAvailable = useCallback((account: CodexAccount) => {
+    const value = account.quota?.reset_credits_available;
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }, []);
+
+  const isAvailableResetCredit = useCallback((credit: CodexResetCredit) => {
+    const normalizedStatus = (credit.status || credit.raw_status || "available")
+      .trim()
+      .toLowerCase();
+    if (
+      normalizedStatus === "redeemed" ||
+      normalizedStatus === "used" ||
+      normalizedStatus === "consumed" ||
+      normalizedStatus === "expired"
+    ) {
+      return false;
+    }
+    return !(
+      typeof credit.expires_at === "number" &&
+      Number.isFinite(credit.expires_at) &&
+      credit.expires_at <= Math.floor(Date.now() / 1000)
+    );
+  }, []);
+
+  const getResetCreditDetails = useCallback((account: CodexAccount) => {
+    return Array.isArray(account.quota?.reset_credits)
+      ? account.quota.reset_credits
+      : [];
+  }, []);
+
+  const getResetCreditNextExpiresAt = useCallback(
+    (account: CodexAccount) => {
+      const explicit = account.quota?.reset_credits_next_expires_at;
+      if (typeof explicit === "number" && Number.isFinite(explicit)) {
+        return explicit;
+      }
+
+      const next = getResetCreditDetails(account)
+        .filter(isAvailableResetCredit)
+        .map((credit) => credit.expires_at)
+        .filter(
+          (value): value is number =>
+            typeof value === "number" && Number.isFinite(value),
+        )
+        .sort((a, b) => a - b)[0];
+      return next ?? null;
+    },
+    [getResetCreditDetails, isAvailableResetCredit],
+  );
+
+  const formatResetCreditTime = useCallback(
+    (timestamp: number | null | undefined) => {
+      return timestamp
+        ? formatCodexResetTime(timestamp, t)
+        : t("codex.quota.resetCreditTimeUnknown", "时间未知");
+    },
+    [t],
+  );
+
+  const formatResetCreditAbsoluteTime = useCallback(
+    (timestamp: number | null | undefined) => {
+      return timestamp
+        ? formatCodexResetTimeAbsolute(timestamp)
+        : t("codex.quota.resetCreditTimeUnknown", "时间未知");
+    },
+    [t],
+  );
+
+  const getResetCreditStatusLabel = useCallback(
+    (credit: CodexResetCredit) => {
+      const normalizedStatus = (credit.status || credit.raw_status || "")
+        .trim()
+        .toLowerCase();
+      if (
+        normalizedStatus === "redeemed" ||
+        normalizedStatus === "used" ||
+        normalizedStatus === "consumed"
+      ) {
+        return t("codex.quota.resetCreditStatusRedeemed", "已使用");
+      }
+      if (normalizedStatus === "available") {
+        return isAvailableResetCredit(credit)
+          ? t("codex.quota.resetCreditStatusAvailable", "可用")
+          : t("codex.quota.resetCreditStatusExpired", "已过期");
+      }
+      if (normalizedStatus === "expired") {
+        return t("codex.quota.resetCreditStatusExpired", "已过期");
+      }
+      if (!isAvailableResetCredit(credit)) {
+        return t("codex.quota.resetCreditStatusExpired", "已过期");
+      }
+      return (
+        credit.raw_status ||
+        credit.status ||
+        t("codex.quota.resetCreditStatusUnknown", "未知")
+      );
+    },
+    [isAvailableResetCredit, t],
+  );
+
+  const getResetCreditStatusTone = useCallback(
+    (credit: CodexResetCredit) => {
+      const normalizedStatus = (credit.status || credit.raw_status || "")
+        .trim()
+        .toLowerCase();
+      if (normalizedStatus === "available" && isAvailableResetCredit(credit)) {
+        return "is-available";
+      }
+      if (
+        normalizedStatus === "redeemed" ||
+        normalizedStatus === "used" ||
+        normalizedStatus === "consumed"
+      ) {
+        return "is-redeemed";
+      }
+      if (normalizedStatus === "expired" || !isAvailableResetCredit(credit)) {
+        return "is-expired";
+      }
+      return "is-unknown";
+    },
+    [isAvailableResetCredit],
+  );
+
+  const buildResetCreditsTitle = useCallback(
+    (account: CodexAccount, availableCount: number) => {
+      if (availableCount <= 0) {
+        return t("codex.quota.resetCreditNoCredits", "没有可用的主动重置次数");
+      }
+
+      const nextExpiresAt = getResetCreditNextExpiresAt(account);
+      if (nextExpiresAt) {
+        return t("codex.quota.resetCreditsTitleWithExpiry", {
+          count: availableCount,
+          time: formatResetCreditTime(nextExpiresAt),
+          defaultValue:
+            "可用于重置当前 5 小时窗口的剩余次数：{{count}}，最近到期：{{time}}",
+        });
+      }
+
+      return t("codex.quota.resetCreditsTitle", {
+        count: availableCount,
+      });
+    },
+    [formatResetCreditTime, getResetCreditNextExpiresAt, t],
+  );
+
+  const resetCreditConfirmAccount = useMemo(
+    () =>
+      resetCreditConfirmAccountId
+        ? accounts.find((account) => account.id === resetCreditConfirmAccountId) ??
+          null
+        : null,
+    [accounts, resetCreditConfirmAccountId],
+  );
+
+  const resetCreditConfirmAvailableCount =
+    resetCreditConfirmSnapshot?.available_count ??
+    (resetCreditConfirmAccount
+      ? getResetCreditsAvailable(resetCreditConfirmAccount)
+      : null);
+  const resetCreditConfirmCredits = resetCreditConfirmSnapshot?.credits ?? [];
+  const resetCreditConfirmNextExpiresAt =
+    resetCreditConfirmSnapshot?.next_expires_at ?? null;
+  const isResetCreditConfirmSubmitting = resetCreditConfirmAccount
+    ? resettingResetCreditAccountId === resetCreditConfirmAccount.id
+    : false;
+
+  const loadResetCreditConfirmSnapshot = useCallback(
+    async (accountId: string) => {
+      const requestSeq = resetCreditConfirmRequestSeqRef.current + 1;
+      resetCreditConfirmRequestSeqRef.current = requestSeq;
+      setResetCreditConfirmLoading(true);
+      setResetCreditConfirmSnapshot(null);
+
+      try {
+        const snapshot = await codexService.getCodexResetCredits(accountId);
+        if (resetCreditConfirmRequestSeqRef.current !== requestSeq) return;
+        setResetCreditConfirmSnapshot({
+          available_count: snapshot.available_count,
+          credits: Array.isArray(snapshot.credits) ? snapshot.credits : [],
+          next_expires_at: snapshot.next_expires_at,
+        });
+      } catch (error) {
+        if (resetCreditConfirmRequestSeqRef.current !== requestSeq) return;
+        setResetCreditConfirmError(
+          t("codex.quota.resetCreditRecordsLoadFailed", {
+            error: String(error).replace(/^Error:\s*/, ""),
+          }),
+        );
+      } finally {
+        if (resetCreditConfirmRequestSeqRef.current === requestSeq) {
+          setResetCreditConfirmLoading(false);
+        }
+      }
+    },
+    [setResetCreditConfirmError, t],
+  );
+
+  const openResetCreditConfirmModal = useCallback(
+    (account: CodexAccount) => {
+      setResetCreditConfirmError(null);
+      setResetCreditConfirmActionLocked(false);
+      setResetCreditConfirmSnapshot(null);
+      setResetCreditConfirmAccountId(account.id);
+      void loadResetCreditConfirmSnapshot(account.id);
+    },
+    [loadResetCreditConfirmSnapshot, setResetCreditConfirmError],
+  );
+
+  const closeResetCreditConfirmModal = useCallback(() => {
+    if (resettingResetCreditAccountId) return;
+    resetCreditConfirmRequestSeqRef.current += 1;
+    setResetCreditConfirmAccountId(null);
+    setResetCreditConfirmSnapshot(null);
+    setResetCreditConfirmLoading(false);
+    setResetCreditConfirmActionLocked(false);
+    setResetCreditConfirmError(null);
+  }, [resettingResetCreditAccountId, setResetCreditConfirmError]);
+
+  const handleConfirmConsumeResetCredit = useCallback(async () => {
+    const account = resetCreditConfirmAccount;
+    if (!account) return;
+
+    const availableCount = resetCreditConfirmAvailableCount;
+    if (availableCount == null || availableCount <= 0) {
+      setResetCreditConfirmError(
+        t("codex.quota.resetCreditNoCredits", "没有可用的主动重置次数"),
+      );
+      return;
+    }
+
+    setResetCreditConfirmError(null);
+    setResetCreditConfirmActionLocked(false);
+    setResettingResetCreditAccountId(account.id);
+
+    try {
+      await codexService.consumeCodexResetCredit(account.id);
+      try {
+        await refreshQuota(account.id);
+        setMessage({
+          text: t("codex.quota.resetCreditConsumed", "已重置 5 小时额度"),
+        });
+        setResetCreditConfirmAccountId(null);
+      } catch (error) {
+        setResetCreditConfirmActionLocked(true);
+        setResetCreditConfirmError(
+          t("codex.quota.resetCreditRefreshAfterConsumeFailed", {
+            error: String(error).replace(/^Error:\s*/, ""),
+          }),
+        );
+      }
+    } catch (error) {
+      setResetCreditConfirmError(
+        t("codex.quota.resetCreditFailed", {
+          error: String(error).replace(/^Error:\s*/, ""),
+        }),
+      );
+      return;
+    } finally {
+      setResettingResetCreditAccountId(null);
+    }
+  }, [
+    refreshQuota,
+    resetCreditConfirmAccount,
+    resetCreditConfirmAvailableCount,
+    setMessage,
+    setResetCreditConfirmError,
+    t,
+  ]);
 
   const handleRefreshSubscriptionInfo = useCallback(
     async (accountId: string) => {
@@ -2167,6 +2664,7 @@ export function CodexAccountsPage() {
   const [apiKeyUsageMap, setApiKeyUsageMap] = useState<
     Record<string, CodexApiKeyUsageState>
   >(() => readCodexApiKeyUsageCache());
+  const apiKeyUsageInFlightRef = useRef<Set<string>>(new Set());
   const [managedProviderId, setManagedProviderId] = useState<string>("");
   const [managedProviderApiKeyId, setManagedProviderApiKeyId] =
     useState<string>("");
@@ -2219,6 +2717,10 @@ export function CodexAccountsPage() {
     useState("");
   const [oauthBindingSaving, setOauthBindingSaving] = useState(false);
   const [oauthBindingAutoSwitch, setOauthBindingAutoSwitch] = useState(false);
+  const [
+    oauthBindingUseLocalGateway,
+    setOauthBindingUseLocalGateway,
+  ] = useState(false);
   const [oauthBindingSearchQuery, setOauthBindingSearchQuery] = useState("");
   const [oauthBindingFilterTypes, setOauthBindingFilterTypes] = useState<
     string[]
@@ -2252,10 +2754,6 @@ export function CodexAccountsPage() {
   const [customSortDropTargetId, setCustomSortDropTargetId] = useState<
     string | null
   >(null);
-  const repairSessionVisibilityAcrossInstances = useCodexInstanceStore(
-    (state) => state.repairSessionVisibilityAcrossInstances,
-  );
-
   const showAddModalRef = useRef(showAddModal);
   const addTabRef = useRef(addTab);
   const addStatusRef = useRef(addStatus);
@@ -2267,6 +2765,10 @@ export function CodexAccountsPage() {
   const inlineRenameDiscardRef = useRef(false);
   const apiSwitchNoticeRepairSeqRef = useRef(0);
   const apiSwitchNoticeAutoCloseTimerRef = useRef<number | null>(null);
+  const skipManagedProviderApiKeyAutofillRef = useRef(false);
+  const apiKeyFunPrefillModelCatalogRef = useRef<string[] | null>(null);
+  const pendingApiKeyFunCodexPrefillRef =
+    useRef<ApiKeyFunPrefillPayload | null>(null);
 
   useEffect(
     () => () => {
@@ -2277,6 +2779,34 @@ export function CodexAccountsPage() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!apiSwitchNoticeRepairRunId) return;
+
+    let disposed = false;
+    let unlisten: UnlistenFn | null = null;
+    void listen<CodexSessionVisibilityRepairProgress>(
+      CODEX_SESSION_VISIBILITY_REPAIR_PROGRESS_EVENT,
+      (event) => {
+        const payload = event.payload;
+        if (!payload || payload.runId !== apiSwitchNoticeRepairRunId) {
+          return;
+        }
+        setApiSwitchNoticeRepairProgress(payload);
+      },
+    ).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten();
+      } else {
+        unlisten = nextUnlisten;
+      }
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [apiSwitchNoticeRepairRunId]);
 
   const selectedApiProviderPreset = useMemo(
     () => findCodexApiProviderPresetById(apiProviderPresetId),
@@ -2436,6 +2966,7 @@ export function CodexAccountsPage() {
       setOauthBindingAccountId(null);
       setOauthBindingSelectedAccountId("");
       setOauthBindingAutoSwitch(false);
+      setOauthBindingUseLocalGateway(false);
       setOauthBindingSearchQuery("");
       setOauthBindingFilterTypes([]);
       setOauthBindingTagFilter([]);
@@ -2446,6 +2977,7 @@ export function CodexAccountsPage() {
       setOauthBindingAccountId(null);
       setOauthBindingSelectedAccountId("");
       setOauthBindingAutoSwitch(false);
+      setOauthBindingUseLocalGateway(false);
       setOauthBindingSearchQuery("");
       setOauthBindingFilterTypes([]);
       setOauthBindingTagFilter([]);
@@ -2565,11 +3097,19 @@ export function CodexAccountsPage() {
         };
       }
 
+      const isApiKeyFunProvider = isApiKeyFunProviderBaseUrl(normalizedBaseUrl);
+      const apiKeyFunModelCatalog = isApiKeyFunProvider
+        ? (apiKeyFunPrefillModelCatalogRef.current ?? undefined)
+        : undefined;
       const trimmedName = customProviderName.trim();
+      const customProviderDisplayName =
+        trimmedName || (isApiKeyFunProvider ? "APIKEY.FUN" : undefined);
       return {
         apiProviderMode: "custom",
-        apiProviderName: trimmedName || undefined,
-        accountName: trimmedName || undefined,
+        apiProviderName: customProviderDisplayName,
+        apiModelCatalog: apiKeyFunModelCatalog,
+        apiWireApi: isApiKeyFunProvider ? "responses" : undefined,
+        accountName: customProviderDisplayName,
       };
     },
     [managedProviders, sponsorApiProviderTemplates],
@@ -2659,15 +3199,22 @@ export function CodexAccountsPage() {
 
   useEffect(() => {
     if (!showAddModal) {
+      if (!pendingApiKeyFunCodexPrefillRef.current) {
+        apiKeyFunPrefillModelCatalogRef.current = null;
+      }
+      const defaultProvider = resolveApiProviderPresetDefaults(
+        defaultApiProviderPresetId,
+        sponsorApiProviderTemplates,
+      );
       setApiKeyInput("");
       setApiKeyInputVisible(false);
-      setApiBaseUrlInput(DEFAULT_CODEX_API_BASE_URL);
+      setApiBaseUrlInput(defaultProvider.baseUrl);
       setApiProviderPresetId(defaultApiProviderPresetId);
       setManagedProviderId("");
       setManagedProviderApiKeyId("");
-      setNewManagedProviderNameInput("");
+      setNewManagedProviderNameInput(defaultProvider.providerName);
     }
-  }, [defaultApiProviderPresetId, showAddModal]);
+  }, [defaultApiProviderPresetId, showAddModal, sponsorApiProviderTemplates]);
 
   useEffect(() => {
     if (showAddModal && addTab === "apikey") {
@@ -2679,20 +3226,40 @@ export function CodexAccountsPage() {
     if (!showAddModal || addTab !== "apikey") {
       return;
     }
-    setApiProviderPresetId((current) => {
-      if (sponsorApiProviderTemplates.length === 0) {
-        return current;
-      }
-      if (current === DEFAULT_CODEX_API_PROVIDER_ID || !current.trim()) {
-        return defaultApiProviderPresetId;
-      }
-      return current;
-    });
+    if (sponsorApiProviderTemplates.length === 0) {
+      return;
+    }
+    const shouldUseDefaultProvider =
+      apiProviderPresetId === DEFAULT_CODEX_API_PROVIDER_ID ||
+      !apiProviderPresetId.trim();
+    const nextProviderPresetId = shouldUseDefaultProvider
+      ? defaultApiProviderPresetId
+      : apiProviderPresetId;
+    const shouldSyncSponsorDefaults =
+      shouldUseDefaultProvider ||
+      (sponsorApiProviderTemplates.some(
+        (template) => template.id === nextProviderPresetId,
+      ) &&
+        normalizeHttpBaseUrl(apiBaseUrlInput) ===
+          normalizeHttpBaseUrl(DEFAULT_CODEX_API_BASE_URL));
+    if (apiProviderPresetId !== nextProviderPresetId) {
+      setApiProviderPresetId(nextProviderPresetId);
+    }
+    if (shouldSyncSponsorDefaults) {
+      const defaultProvider = resolveApiProviderPresetDefaults(
+        nextProviderPresetId,
+        sponsorApiProviderTemplates,
+      );
+      setApiBaseUrlInput(defaultProvider.baseUrl);
+      setNewManagedProviderNameInput(defaultProvider.providerName);
+    }
   }, [
     addTab,
+    apiBaseUrlInput,
+    apiProviderPresetId,
     defaultApiProviderPresetId,
     showAddModal,
-    sponsorApiProviderTemplates.length,
+    sponsorApiProviderTemplates,
   ]);
 
   useEffect(() => {
@@ -2708,7 +3275,12 @@ export function CodexAccountsPage() {
     setManagedProviderId((prev) =>
       prev === (matched?.id ?? "") ? prev : (matched?.id ?? ""),
     );
-    if (!matched || matched.apiKeys.length === 0) {
+    if (
+      !matched ||
+      matched.apiKeys.length === 0 ||
+      skipManagedProviderApiKeyAutofillRef.current
+    ) {
+      skipManagedProviderApiKeyAutofillRef.current = false;
       setManagedProviderApiKeyId("");
       return;
     }
@@ -2907,7 +3479,10 @@ export function CodexAccountsPage() {
         setAddMessage(t("codex.oauth.exchanging", "正在交换令牌..."));
         oauthCompletingRef.current = true;
         try {
-          await codexService.completeCodexOAuthLogin(loginId);
+          await codexService.completeCodexOAuthLogin(
+            loginId,
+            reauthTargetAccountId || null,
+          );
           await completeOauthSuccess();
         } catch (e) {
           completeOauthError(e, true);
@@ -2956,6 +3531,7 @@ export function CodexAccountsPage() {
   }, [
     completeOauthError,
     completeOauthSuccess,
+    reauthTargetAccountId,
     t,
     setAddStatus,
     setAddMessage,
@@ -3156,7 +3732,10 @@ export function CodexAccountsPage() {
       setAddStatus("loading");
       setAddMessage(t("codex.oauth.exchanging", "正在交换令牌..."));
       tokenExchangeStarted = true;
-      await codexService.completeCodexOAuthLogin(loginId);
+      await codexService.completeCodexOAuthLogin(
+        loginId,
+        reauthTargetAccountId || null,
+      );
       await completeOauthSuccess();
     } catch (e) {
       completeOauthError(e, tokenExchangeStarted);
@@ -3177,7 +3756,10 @@ export function CodexAccountsPage() {
     setAddMessage(t("codex.oauth.exchanging", "正在交换令牌..."));
     oauthCompletingRef.current = true;
     try {
-      await codexService.completeCodexOAuthLogin(loginId);
+      await codexService.completeCodexOAuthLogin(
+        loginId,
+        reauthTargetAccountId || null,
+      );
       await completeOauthSuccess();
     } catch (e) {
       completeOauthError(e, true);
@@ -3189,46 +3771,6 @@ export function CodexAccountsPage() {
   };
 
   // ─── Codex-specific: Switch / Import ─────────────────────────────────
-
-  const resolveCurrentCodexLaunchCredentialKind =
-    useCallback(async (): Promise<CodexLaunchCredentialKind | null> => {
-      try {
-        const activeAccount = await codexService.getCurrentCodexAccount();
-        if (activeAccount) {
-          return getCodexLaunchCredentialKind(activeAccount);
-        }
-
-        const instances = await codexInstanceService.listInstances();
-        const defaultInstance = instances.find(
-          (instance) => instance.isDefault,
-        );
-        return defaultInstance?.bindAccountId === CODEX_API_SERVICE_BIND_ID
-          ? "api-service"
-          : null;
-      } catch (error) {
-        console.warn(
-          "Failed to resolve current Codex launch credential kind:",
-          error,
-        );
-        return null;
-      }
-    }, []);
-
-  const shouldShowApiSwitchVisibilityNotice = useCallback(
-    (
-      currentKind: CodexLaunchCredentialKind | null,
-      targetKind: CodexLaunchCredentialKind | null,
-    ) => {
-      if (!currentKind || !targetKind) {
-        return false;
-      }
-      return (
-        getCodexLaunchCredentialType(currentKind) !==
-        getCodexLaunchCredentialType(targetKind)
-      );
-    },
-    [],
-  );
 
   const resolveBoundOAuthAccount = useCallback(
     (account: CodexAccount) => {
@@ -3244,6 +3786,7 @@ export function CodexAccountsPage() {
     setOauthBindingAccountId(null);
     setOauthBindingSelectedAccountId("");
     setOauthBindingAutoSwitch(false);
+    setOauthBindingUseLocalGateway(false);
     setOauthBindingSearchQuery("");
     setOauthBindingFilterTypes([]);
     setOauthBindingTagFilter([]);
@@ -3254,6 +3797,44 @@ export function CodexAccountsPage() {
     if (oauthBindingSaving) return;
     resetOAuthBindingModal();
   }, [oauthBindingSaving, resetOAuthBindingModal]);
+
+  const handleOAuthBindingLocalGatewayToggle = useCallback(
+    async (checked: boolean) => {
+      if (!checked) {
+        setOauthBindingUseLocalGateway(false);
+        return;
+      }
+      const isLocalAccessBinding = oauthBindingTargetKind === "local_access";
+      const confirmed = await confirmDialog(
+        isLocalAccessBinding
+          ? t(
+              "codex.localAccess.oauthBinding.imageGenerationConfirm.message",
+              "开启后，API 服务会在本地网关转发普通文本对话前移除 image_generation 工具声明，避免部分供应商报 “Image generation is not enabled”；不会删除 gpt-image 等生图模型。是否继续？",
+            )
+          : t(
+              "codex.api.oauthBinding.localGatewayConfirm.message",
+              "开启后，该 API Key 账号绑定 OAuth 后的普通文本对话会走本地网关，并在转发前移除 image_generation 工具声明，避免部分供应商报 “Image generation is not enabled”；不会删除 gpt-image 等生图模型。是否继续？",
+            ),
+        {
+          title: isLocalAccessBinding
+            ? t(
+                "codex.localAccess.oauthBinding.imageGenerationConfirm.title",
+                "禁用 image_generation 能力",
+              )
+            : t(
+                "codex.api.oauthBinding.localGatewayConfirm.title",
+                "禁用 image_generation 能力",
+              ),
+          okLabel: t("common.confirm", "确认"),
+          cancelLabel: t("common.cancel", "取消"),
+        },
+      );
+      if (confirmed) {
+        setOauthBindingUseLocalGateway(true);
+      }
+    },
+    [oauthBindingTargetKind, t],
+  );
 
   const openOAuthBindingModal = useCallback(
     (account: CodexAccount, options?: { autoSwitch?: boolean }) => {
@@ -3267,6 +3848,9 @@ export function CodexAccountsPage() {
           : "",
       );
       setOauthBindingAutoSwitch(options?.autoSwitch ?? false);
+      setOauthBindingUseLocalGateway(
+        Boolean(account.bound_oauth_use_local_gateway),
+      );
       setOauthBindingSearchQuery("");
       setOauthBindingFilterTypes([]);
       setOauthBindingTagFilter([]);
@@ -3290,6 +3874,9 @@ export function CodexAccountsPage() {
           : "",
       );
       setOauthBindingAutoSwitch(options?.autoSwitch ?? false);
+      setOauthBindingUseLocalGateway(
+        localAccessCollection?.imageGenerationMode === "images_only",
+      );
       setOauthBindingSearchQuery("");
       setOauthBindingFilterTypes([]);
       setOauthBindingTagFilter([]);
@@ -3298,85 +3885,9 @@ export function CodexAccountsPage() {
     [
       boundLocalAccessOAuthAccount,
       isOAuthBindingEligibleAccount,
+      localAccessCollection?.imageGenerationMode,
       setOauthBindingError,
     ],
-  );
-
-  const closeApiSwitchVisibilityNotice = useCallback(() => {
-    apiSwitchNoticeRepairSeqRef.current += 1;
-    if (apiSwitchNoticeAutoCloseTimerRef.current != null) {
-      window.clearTimeout(apiSwitchNoticeAutoCloseTimerRef.current);
-      apiSwitchNoticeAutoCloseTimerRef.current = null;
-    }
-    setApiSwitchNoticeContext(null);
-    setApiSwitchNoticeRepairing(false);
-    setApiSwitchNoticeRepairResult(null);
-    setApiSwitchNoticeError(null);
-  }, [setApiSwitchNoticeError]);
-
-  const runApiSwitchVisibilityRepair = useCallback(async () => {
-    const repairSeq = apiSwitchNoticeRepairSeqRef.current + 1;
-    apiSwitchNoticeRepairSeqRef.current = repairSeq;
-    if (apiSwitchNoticeAutoCloseTimerRef.current != null) {
-      window.clearTimeout(apiSwitchNoticeAutoCloseTimerRef.current);
-      apiSwitchNoticeAutoCloseTimerRef.current = null;
-    }
-    setApiSwitchNoticeError(null);
-    setApiSwitchNoticeRepairResult(null);
-    setApiSwitchNoticeRepairing(true);
-    try {
-      const summary = await repairSessionVisibilityAcrossInstances();
-      if (apiSwitchNoticeRepairSeqRef.current === repairSeq) {
-        setApiSwitchNoticeRepairResult(
-          formatCodexSessionVisibilityRepairMessage(summary, t),
-        );
-        apiSwitchNoticeAutoCloseTimerRef.current = window.setTimeout(() => {
-          if (apiSwitchNoticeRepairSeqRef.current !== repairSeq) return;
-          apiSwitchNoticeRepairSeqRef.current += 1;
-          apiSwitchNoticeAutoCloseTimerRef.current = null;
-          setApiSwitchNoticeContext(null);
-          setApiSwitchNoticeRepairing(false);
-          setApiSwitchNoticeRepairResult(null);
-          setApiSwitchNoticeError(null);
-        }, 1200);
-      }
-    } catch {
-      if (apiSwitchNoticeRepairSeqRef.current === repairSeq) {
-        setApiSwitchNoticeError(
-          t(
-            "codex.apiSwitchNotice.repairFailed",
-            "自动修复失败。你仍可稍后在「会话管理」中使用「修复可见性」重试。",
-          ),
-        );
-      }
-    } finally {
-      if (apiSwitchNoticeRepairSeqRef.current === repairSeq) {
-        setApiSwitchNoticeRepairing(false);
-      }
-    }
-  }, [repairSessionVisibilityAcrossInstances, setApiSwitchNoticeError, t]);
-
-  const openApiSwitchVisibilityNotice = useCallback(
-    (context: CodexApiSwitchNoticeContext) => {
-      setApiSwitchNoticeContext(context);
-      setApiSwitchNoticeRepairResult(null);
-      setApiSwitchNoticeError(null);
-      void runApiSwitchVisibilityRepair();
-    },
-    [runApiSwitchVisibilityRepair, setApiSwitchNoticeError],
-  );
-
-  const formatCodexLaunchCredentialKindLabel = useCallback(
-    (kind: CodexLaunchCredentialKind) => {
-      if (kind === "api-service") {
-        return t("codex.apiSwitchNotice.type.apiService", "API 服务");
-      }
-      if (kind === "api-key") {
-        return t("codex.apiSwitchNotice.type.apiKey", "API Key");
-      }
-      return t("codex.apiSwitchNotice.type.account", "账号");
-    },
-    [t],
   );
 
   const formatCodexAuthFailureMessage = useCallback(
@@ -3446,7 +3957,20 @@ export function CodexAccountsPage() {
 
   const executeCodexAccountSwitch = useCallback(
     async (accountId: string, options?: { showSuccessMessage?: boolean }) => {
+      const flowStartedAt = performance.now();
+      console.info("[Codex Switch][UI] button loading started", {
+        accountId,
+      });
       const showSuccessMessage = options?.showSuccessMessage ?? true;
+      const currentKind = await resolveCurrentCodexLaunchCredentialKind();
+      const targetAccount = accounts.find((account) => account.id === accountId);
+      const targetKind = targetAccount
+        ? getCodexLaunchCredentialKind(targetAccount)
+        : null;
+      const shouldShowVisibilityNotice = shouldShowApiSwitchVisibilityNotice(
+        currentKind,
+        targetKind,
+      );
       setMessage(null);
       setSwitching(accountId);
       try {
@@ -3459,33 +3983,36 @@ export function CodexAccountsPage() {
             }),
           });
         }
+        if (shouldShowVisibilityNotice && currentKind && targetKind) {
+          openApiSwitchVisibilityNotice({
+            from: currentKind,
+            to: getCodexLaunchCredentialKind(account),
+          });
+        }
         return account;
       } finally {
         setSwitching(null);
+        console.info("[Codex Switch][UI] button loading finished", {
+          accountId,
+          elapsedMs: Math.round(performance.now() - flowStartedAt),
+        });
       }
     },
-    [maskAccountText, setMessage, switchAccount, t],
+    [
+      accounts,
+      maskAccountText,
+      openApiSwitchVisibilityNotice,
+      resolveCurrentCodexLaunchCredentialKind,
+      setMessage,
+      shouldShowApiSwitchVisibilityNotice,
+      switchAccount,
+      t,
+    ],
   );
 
   const handleSwitch = async (accountId: string) => {
-    const targetAccount = accounts.find((account) => account.id === accountId);
-
     try {
-      const currentKind = await resolveCurrentCodexLaunchCredentialKind();
-      const targetKind = targetAccount
-        ? getCodexLaunchCredentialKind(targetAccount)
-        : null;
-      const shouldShowVisibilityNotice = shouldShowApiSwitchVisibilityNotice(
-        currentKind,
-        targetKind,
-      );
-      const switchedAccount = await executeCodexAccountSwitch(accountId);
-      if (shouldShowVisibilityNotice && currentKind && targetKind) {
-        openApiSwitchVisibilityNotice({
-          from: currentKind,
-          to: getCodexLaunchCredentialKind(switchedAccount),
-        });
-      }
+      await executeCodexAccountSwitch(accountId);
     } catch (e) {
       setMessage({
         text: t("codex.switchFailed", {
@@ -3524,12 +4051,14 @@ export function CodexAccountsPage() {
         const nextState =
           await codexLocalAccessService.updateCodexLocalAccessBoundOAuthAccount(
             selectedOAuthBindingAccount.id,
+            oauthBindingUseLocalGateway,
           );
         setLocalAccessState(nextState);
       } else if (oauthBindingAccount) {
         await updateApiKeyBoundOAuthAccount(
           oauthBindingAccount.id,
           selectedOAuthBindingAccount.id,
+          oauthBindingUseLocalGateway,
         );
       }
       setMessage({
@@ -3557,6 +4086,7 @@ export function CodexAccountsPage() {
     oauthBindingAccount,
     oauthBindingAutoSwitch,
     oauthBindingTargetKind,
+    oauthBindingUseLocalGateway,
     isOAuthBindingEligibleAccount,
     selectedOAuthBindingAccount,
     setMessage,
@@ -3582,7 +4112,7 @@ export function CodexAccountsPage() {
           );
         setLocalAccessState(nextState);
       } else if (oauthBindingAccount) {
-        await updateApiKeyBoundOAuthAccount(oauthBindingAccount.id, null);
+        await updateApiKeyBoundOAuthAccount(oauthBindingAccount.id, null, false);
       }
       setMessage({
         text: t("codex.api.oauthBinding.clearSuccess", "OAuth 绑定已解除"),
@@ -3708,6 +4238,11 @@ export function CodexAccountsPage() {
         selected,
       );
       const prepared = await codexInstanceService.startInstance(instance.id);
+      if (prepared.codexLaunchCredentialChange) {
+        handleCodexInstanceLaunchCredentialChange(
+          prepared.codexLaunchCredentialChange,
+        );
+      }
       const result =
         await codexInstanceService.executeCodexInstanceLaunchCommand(
           prepared.id,
@@ -3752,6 +4287,11 @@ export function CodexAccountsPage() {
 
       const instance = await resolveCodexCliInstanceForApiService(selected);
       const prepared = await codexInstanceService.startInstance(instance.id);
+      if (prepared.codexLaunchCredentialChange) {
+        handleCodexInstanceLaunchCredentialChange(
+          prepared.codexLaunchCredentialChange,
+        );
+      }
       const result =
         await codexInstanceService.executeCodexInstanceLaunchCommand(
           prepared.id,
@@ -3772,6 +4312,18 @@ export function CodexAccountsPage() {
       setCliLaunchingAccountId(null);
     }
   };
+
+  const handleCodexInstanceLaunchCredentialChange = useCallback(
+    (change: { from: string; to: string }) => {
+      const from = getCodexLaunchCredentialKindFromType(change.from);
+      const to = getCodexLaunchCredentialKindFromType(change.to);
+      if (!shouldShowApiSwitchVisibilityNotice(from, to) || !from || !to) {
+        return;
+      }
+      openApiSwitchVisibilityNotice({ from, to });
+    },
+    [openApiSwitchVisibilityNotice, shouldShowApiSwitchVisibilityNotice],
+  );
 
   const handleImportFromLocal = async () => {
     page.setAddStatus("loading");
@@ -4118,6 +4670,91 @@ export function CodexAccountsPage() {
     [selectedManagedProvider],
   );
 
+  const applyApiKeyFunPrefill = useCallback(
+    (request: ApiKeyFunPrefillPayload) => {
+      if (request.target !== "codex") return;
+      const apiKey = request.apiKey.trim();
+      if (!apiKey) return;
+
+      pendingApiKeyFunCodexPrefillRef.current = request;
+      openCodexAddModal("apikey");
+    },
+    [openCodexAddModal],
+  );
+
+  useEffect(() => {
+    if (!showAddModal || addTab !== "apikey") return;
+    const request = pendingApiKeyFunCodexPrefillRef.current;
+    if (!request) return;
+    pendingApiKeyFunCodexPrefillRef.current = null;
+
+    const apiKey = request.apiKey.trim();
+    if (!apiKey) return;
+
+    const requestBaseUrl =
+      request.baseUrl?.trim() || APIKEY_FUN_PROVIDER_BASE_URL;
+    const normalizedRequestBaseUrl =
+      normalizeHttpBaseUrl(requestBaseUrl)?.toLowerCase() ?? "";
+    const sponsorTemplate =
+      sponsorApiProviderTemplates.find((template) => {
+        const normalizedTemplateBaseUrl =
+          normalizeHttpBaseUrl(template.baseUrl)?.toLowerCase() ?? "";
+        const searchable = [
+          template.name,
+          template.website,
+          template.apiKeyUrl,
+          template.baseUrl,
+        ]
+          .join(" ")
+          .toLowerCase();
+        return (
+          normalizedTemplateBaseUrl === normalizedRequestBaseUrl ||
+          searchable.includes("apikey.fun") ||
+          searchable.includes("api.apikey.fun")
+        );
+      }) ?? null;
+
+    skipManagedProviderApiKeyAutofillRef.current = true;
+    apiKeyFunPrefillModelCatalogRef.current = request.modelCatalog ?? null;
+    setApiKeyInput(apiKey);
+    setApiKeyInputVisible(false);
+    setApiBaseUrlInput(sponsorTemplate?.baseUrl ?? requestBaseUrl);
+    setManagedProviderId("");
+    setManagedProviderApiKeyId("");
+    setApiProviderPresetId(sponsorTemplate?.id ?? CODEX_API_PROVIDER_CUSTOM_ID);
+    setNewManagedProviderNameInput(
+      sponsorTemplate?.name ?? request.providerName?.trim() ?? "APIKEY.FUN",
+    );
+    setAddStatus("idle");
+    setAddMessage(
+      t(
+        "apiKeyFun.prefill.codexReady",
+        "已带入 APIKEY.FUN 配置，请确认后添加到 Codex。",
+      ),
+    );
+  }, [
+    addTab,
+    setAddMessage,
+    setAddStatus,
+    showAddModal,
+    sponsorApiProviderTemplates,
+    t,
+  ]);
+
+  useEffect(() => {
+    const consumePrefill = () => {
+      const request = consumeApiKeyFunPrefill("codex");
+      if (request) {
+        applyApiKeyFunPrefill(request);
+      }
+    };
+    consumePrefill();
+    window.addEventListener(APIKEY_FUN_PREFILL_EVENT, consumePrefill);
+    return () => {
+      window.removeEventListener(APIKEY_FUN_PREFILL_EVENT, consumePrefill);
+    };
+  }, [applyApiKeyFunPrefill]);
+
   const handleSelectEditingApiProviderPreset = useCallback(
     (providerId: string) => {
       setEditingApiProviderPresetId(providerId);
@@ -4326,7 +4963,7 @@ export function CodexAccountsPage() {
             apiKey: validation.apiKey,
             apiKeyName: providerPayload.accountName,
             sourceTag: providerPayload.sponsorTemplate?.id ?? null,
-            modelCatalog: providerPayload.sponsorTemplate?.modelCatalog,
+            modelCatalog: providerPayload.apiModelCatalog,
             supportsVision: providerPayload.sponsorTemplate?.supportsVision,
             website: providerPayload.sponsorTemplate?.website,
             apiKeyUrl: providerPayload.sponsorTemplate?.apiKeyUrl,
@@ -4634,7 +5271,10 @@ export function CodexAccountsPage() {
 
   const resolveUsageProviderForApiKeyAccount = useCallback(
     (account: CodexAccount): CodexModelProvider | null => {
-      if (!isCodexApiKeyAccount(account) || isCodexNewApiAccount(account)) {
+      if (
+        !isCodexApiKeyAccount(account) ||
+        isCodexNewApiAccount(account)
+      ) {
         return null;
       }
       const provider =
@@ -4650,12 +5290,19 @@ export function CodexAccountsPage() {
 
   const refreshApiKeyUsage = useCallback(
     async (account: CodexAccount, provider?: CodexModelProvider | null) => {
+      if (isCodexChatCompletionsApiKeyAccount(account)) {
+        return;
+      }
       const targetProvider =
         provider ?? resolveUsageProviderForApiKeyAccount(account);
       const apiKey = (account.openai_api_key || "").trim();
       const baseUrl =
         targetProvider?.baseUrl.trim() || (account.api_base_url || "").trim();
       if (!baseUrl || !apiKey) return;
+      if (apiKeyUsageInFlightRef.current.has(account.id)) {
+        return;
+      }
+      apiKeyUsageInFlightRef.current.add(account.id);
       setApiKeyUsageMap((previous) => ({
         ...previous,
         [account.id]: {
@@ -4671,6 +5318,7 @@ export function CodexAccountsPage() {
           apiKey,
           integrationType: targetProvider?.integrationType ?? null,
         });
+        const updatedAt = Date.now();
         if (
           targetProvider &&
           (summary.mode === "sub2api" || summary.mode === "new_api") &&
@@ -4684,9 +5332,10 @@ export function CodexAccountsPage() {
         }
         setApiKeyUsageMap((previous) => ({
           ...previous,
-          [account.id]: { loading: false, summary },
+          [account.id]: { loading: false, summary, updatedAt },
         }));
       } catch (error) {
+        const updatedAt = Date.now();
         setApiKeyUsageMap((previous) => ({
           ...previous,
           [account.id]: {
@@ -4696,26 +5345,23 @@ export function CodexAccountsPage() {
               ? undefined
               : String(error).replace(/^Error:\s*/, ""),
             unavailable: isProviderUsageUnavailableError(error),
+            updatedAt,
           },
         }));
+      } finally {
+        apiKeyUsageInFlightRef.current.delete(account.id);
       }
     },
     [reloadManagedProviders, resolveUsageProviderForApiKeyAccount],
   );
 
-  const refreshApiKeyUsageByAccountId = useCallback(
-    async (accountId: string) => {
-      const account = accounts.find((item) => item.id === accountId);
-      if (!account) return;
-      const provider = resolveUsageProviderForApiKeyAccount(account);
-      await refreshApiKeyUsage(account, provider);
-    },
-    [accounts, refreshApiKeyUsage, resolveUsageProviderForApiKeyAccount],
-  );
-
   const canRefreshApiKeyUsage = useCallback(
     (account: CodexAccount, provider?: CodexModelProvider | null): boolean => {
-      if (!isCodexApiKeyAccount(account) || isCodexNewApiAccount(account)) {
+      if (
+        !isCodexApiKeyAccount(account) ||
+        isCodexNewApiAccount(account) ||
+        isCodexChatCompletionsApiKeyAccount(account)
+      ) {
         return false;
       }
       const targetProvider =
@@ -4728,24 +5374,43 @@ export function CodexAccountsPage() {
     [resolveUsageProviderForApiKeyAccount],
   );
 
-  const refreshApiKeyUsageForAccounts = useCallback(
-    async (targetAccounts: CodexAccount[]) => {
-      const apiKeyAccounts = targetAccounts.filter((account) => {
-        const provider = resolveUsageProviderForApiKeyAccount(account);
-        const baseUrl =
-          provider?.baseUrl.trim() || (account.api_base_url || "").trim();
-        return Boolean(baseUrl && (account.openai_api_key || "").trim());
-      });
-      await Promise.all(
-        apiKeyAccounts.map((account) =>
-          refreshApiKeyUsage(
-            account,
-            resolveUsageProviderForApiKeyAccount(account),
-          ),
-        ),
+  const shouldAutoRefreshApiKeyUsage = useCallback(
+    (account: CodexAccount, provider?: CodexModelProvider | null): boolean => {
+      if (!canRefreshApiKeyUsage(account, provider)) {
+        return false;
+      }
+      const state = apiKeyUsageMap[account.id];
+      if (state?.loading || apiKeyUsageInFlightRef.current.has(account.id)) {
+        return false;
+      }
+      const updatedAt = state?.updatedAt ?? 0;
+      return (
+        updatedAt <= 0 ||
+        Date.now() - updatedAt >= CODEX_API_KEY_USAGE_AUTO_REFRESH_INTERVAL_MS
       );
     },
-    [refreshApiKeyUsage, resolveUsageProviderForApiKeyAccount],
+    [apiKeyUsageMap, canRefreshApiKeyUsage],
+  );
+
+  const refreshApiKeyUsageByAccountId = useCallback(
+    async (accountId: string, options?: { force?: boolean }) => {
+      const account = accounts.find((item) => item.id === accountId);
+      if (!account) return;
+      const provider = resolveUsageProviderForApiKeyAccount(account);
+      if (
+        options?.force === false &&
+        !shouldAutoRefreshApiKeyUsage(account, provider)
+      ) {
+        return;
+      }
+      await refreshApiKeyUsage(account, provider);
+    },
+    [
+      accounts,
+      refreshApiKeyUsage,
+      resolveUsageProviderForApiKeyAccount,
+      shouldAutoRefreshApiKeyUsage,
+    ],
   );
 
   useEffect(() => {
@@ -4754,11 +5419,16 @@ export function CodexAccountsPage() {
 
   useEffect(() => {
     const accountIds = new Set(accounts.map((account) => account.id));
+    const chatCompletionsAccountIds = new Set(
+      accounts
+        .filter((account) => isCodexChatCompletionsApiKeyAccount(account))
+        .map((account) => account.id),
+    );
     setApiKeyUsageMap((previous) => {
       let changed = false;
       const next: Record<string, CodexApiKeyUsageState> = {};
       for (const [accountId, state] of Object.entries(previous)) {
-        if (accountIds.has(accountId)) {
+        if (accountIds.has(accountId) && !chatCompletionsAccountIds.has(accountId)) {
           next[accountId] = state;
         } else {
           changed = true;
@@ -4769,13 +5439,6 @@ export function CodexAccountsPage() {
   }, [accounts]);
 
   useEffect(() => {
-    const refreshOnQuotaChanged = async () => {
-      await refreshApiKeyUsageForAccounts(accounts);
-    };
-    const refreshOnAccountsChanged = async () => {
-      await refreshApiKeyUsageForAccounts(accounts);
-    };
-
     let unlistenAccountsChanged: UnlistenFn | null = null;
     let unlistenCurrentChanged: UnlistenFn | null = null;
 
@@ -4786,11 +5449,13 @@ export function CodexAccountsPage() {
         reason?: string;
       } | null;
       if (payload?.platformId !== "codex") return;
+      if (payload.reason === "delete") return;
       if (payload.accountId) {
-        await refreshApiKeyUsageByAccountId(payload.accountId);
+        await refreshApiKeyUsageByAccountId(payload.accountId, {
+          force: false,
+        });
         return;
       }
-      await refreshOnAccountsChanged();
     }).then((fn) => {
       unlistenAccountsChanged = fn;
     });
@@ -4799,22 +5464,24 @@ export function CodexAccountsPage() {
       const payload = event.payload as {
         platformId?: string;
         accountId?: string | null;
+        reason?: string;
       } | null;
       if (payload?.platformId !== "codex") return;
+      if (payload.reason === "delete") return;
       if (payload.accountId) {
-        await refreshApiKeyUsageByAccountId(payload.accountId);
+        await refreshApiKeyUsageByAccountId(payload.accountId, {
+          force: false,
+        });
       }
     }).then((fn) => {
       unlistenCurrentChanged = fn;
     });
 
-    void refreshOnQuotaChanged();
-
     return () => {
       unlistenAccountsChanged?.();
       unlistenCurrentChanged?.();
     };
-  }, [accounts, refreshApiKeyUsageByAccountId, refreshApiKeyUsageForAccounts]);
+  }, [refreshApiKeyUsageByAccountId]);
 
   const formatApiKeyUsageMoney = useCallback(
     (value?: number | null, unit?: string | null): string => {
@@ -5076,6 +5743,9 @@ export function CodexAccountsPage() {
       provider: CodexModelProvider | null,
       variant: "card" | "table" = "card",
     ): ReactElement => {
+      if (isCodexChatCompletionsApiKeyAccount(account)) {
+        return <></>;
+      }
       const usageState = apiKeyUsageMap[account.id];
       const summary = usageState?.summary;
       const loading = usageState?.loading === true;
@@ -5719,8 +6389,15 @@ export function CodexAccountsPage() {
   );
 
   const isAbnormalAccount = useCallback(
-    (account: CodexAccount) => Boolean(account.quota_error),
-    [],
+    (account: CodexAccount) => {
+      if (account.requires_reauth === true) {
+        return true;
+      }
+      return shouldOfferReauthorizeAction(
+        resolveQuotaErrorMeta(account.quota_error),
+      );
+    },
+    [resolveQuotaErrorMeta, shouldOfferReauthorizeAction],
   );
 
   const localAccessAccountIdSet = useMemo(
@@ -5766,7 +6443,6 @@ export function CodexAccountsPage() {
         const health = healthById.get(accountId);
         if (!account) {
           summary.missing += 1;
-          summary.abnormal += 1;
           return;
         }
         if (health?.cooldowns?.length) {
@@ -5775,20 +6451,14 @@ export function CodexAccountsPage() {
         }
         if (isBlockingCodexQuotaError(account.quota_error)) {
           summary.quotaLimited += 1;
-          summary.abnormal += 1;
           return;
         }
-        if (
-          isBlockingLocalAccessAccountFailureCategory(
-            health?.lastFailureCategory,
-          )
-        ) {
+        if (isAbnormalLocalAccessAccountFailure(health)) {
           summary.authError += 1;
           summary.abnormal += 1;
           return;
         }
         if (health && !health.available) {
-          summary.abnormal += 1;
           return;
         }
         summary.available += 1;
@@ -5801,6 +6471,8 @@ export function CodexAccountsPage() {
       localAccessState?.accountHealth,
     ]);
   const localAccessAccountPoolHealthHasIssue =
+    localAccessAccountPoolHealthSummary.available <
+      localAccessAccountPoolHealthSummary.total ||
     localAccessAccountPoolHealthSummary.abnormal > 0 ||
     localAccessAccountPoolHealthSummary.cooldown > 0;
   const localAccessQuotaPoolLabels = useMemo(
@@ -6049,7 +6721,7 @@ export function CodexAccountsPage() {
       }
       const tier = resolvePlanKey(a);
       if (tier in counts) counts[tier as keyof typeof counts] += 1;
-      if (a.quota_error) counts.ERROR += 1;
+      if (isAbnormalAccount(a)) counts.ERROR += 1;
     });
     return counts;
   }, [isAbnormalAccount, overviewAccounts, resolvePlanKey]);
@@ -6084,7 +6756,7 @@ export function CodexAccountsPage() {
       }
       const tier = resolvePlanKey(account);
       if (tier in counts) counts[tier as keyof typeof counts] += 1;
-      if (account.quota_error) counts.ERROR += 1;
+      if (isAbnormalAccount(account)) counts.ERROR += 1;
     });
     return counts;
   }, [isAbnormalAccount, oauthBindingEligibleAccounts, resolvePlanKey]);
@@ -6159,7 +6831,7 @@ export function CodexAccountsPage() {
       );
       if (selectedTypes.size > 0) {
         result = result.filter((account) => {
-          if (selectedTypes.has("ERROR") && account.quota_error) {
+          if (selectedTypes.has("ERROR") && isAbnormalAccount(account)) {
             return true;
           }
           return selectedTypes.has(resolvePlanKey(account));
@@ -6692,6 +7364,13 @@ export function CodexAccountsPage() {
       }
       const confirmed = await requestLocalAccessRiskNotice("service");
       if (!confirmed) return;
+      const flowStartedAt = performance.now();
+      const currentKind = await resolveCurrentCodexLaunchCredentialKind();
+      const shouldShowVisibilityNotice = shouldShowApiSwitchVisibilityNotice(
+        currentKind,
+        "api-service",
+      );
+      console.info("[Codex API Service Switch][UI] button loading started");
       setLocalAccessStarting(true);
       try {
         const nextState =
@@ -6704,18 +7383,31 @@ export function CodexAccountsPage() {
             text: t("codex.localAccess.activateSuccess", "已切换到 API 服务"),
           });
         }
+        if (shouldShowVisibilityNotice && currentKind) {
+          openApiSwitchVisibilityNotice({
+            from: currentKind,
+            to: "api-service",
+          });
+        }
         return nextState;
       } catch (error) {
         throw new Error(String(error).replace(/^Error:\s*/, ""));
       } finally {
         setLocalAccessStarting(false);
+        console.info(
+          "[Codex API Service Switch][UI] button loading finished",
+          { elapsedMs: Math.round(performance.now() - flowStartedAt) },
+        );
       }
     },
     [
       fetchCurrentAccount,
       localAccessCollection,
+      openApiSwitchVisibilityNotice,
       requestLocalAccessRiskNotice,
+      resolveCurrentCodexLaunchCredentialKind,
       setMessage,
+      shouldShowApiSwitchVisibilityNotice,
       t,
     ],
   );
@@ -6736,19 +7428,9 @@ export function CodexAccountsPage() {
 
   const handleQuickActivateLocalAccess = useCallback(async () => {
     try {
-      const currentKind = await resolveCurrentCodexLaunchCredentialKind();
       const state = await handleActivateLocalAccess();
       if (!state) {
         return;
-      }
-      if (
-        shouldShowApiSwitchVisibilityNotice(currentKind, "api-service") &&
-        currentKind
-      ) {
-        openApiSwitchVisibilityNotice({
-          from: currentKind,
-          to: "api-service",
-        });
       }
     } catch (error) {
       setMessage({
@@ -6759,14 +7441,7 @@ export function CodexAccountsPage() {
         tone: "error",
       });
     }
-  }, [
-    handleActivateLocalAccess,
-    openApiSwitchVisibilityNotice,
-    resolveCurrentCodexLaunchCredentialKind,
-    setMessage,
-    shouldShowApiSwitchVisibilityNotice,
-    t,
-  ]);
+  }, [handleActivateLocalAccess, setMessage, t]);
 
   const handleQuickRefreshLocalAccessQuota = useCallback(async () => {
     if (!localAccessCollection) return;
@@ -6948,7 +7623,7 @@ export function CodexAccountsPage() {
       }
       if (selectedTypes.size > 0) {
         result = result.filter((a) => {
-          if (selectedTypes.has("ERROR") && a.quota_error) {
+          if (selectedTypes.has("ERROR") && isAbnormalAccount(a)) {
             return true;
           }
           return selectedTypes.has(resolvePlanKey(a));
@@ -7010,9 +7685,9 @@ export function CodexAccountsPage() {
   const errorAccountIds = useMemo(
     () =>
       filteredAccounts
-        .filter((account) => account.quota_error)
+        .filter(isAbnormalAccount)
         .map((account) => account.id),
-    [filteredAccounts],
+    [filteredAccounts, isAbnormalAccount],
   );
   const handleClearErrorAccounts = useCallback(() => {
     if (errorAccountIds.length === 0) return;
@@ -7353,6 +8028,45 @@ export function CodexAccountsPage() {
     [],
   );
 
+  const renderResetCreditControls = (account: CodexAccount) => {
+    if (isCodexApiKeyAccount(account)) return null;
+
+    const creditDetails = getResetCreditDetails(account);
+    const availableCount = getResetCreditsAvailable(account);
+    if (availableCount == null && creditDetails.length === 0) return null;
+
+    const displayCount =
+      availableCount ??
+      creditDetails.filter(isAvailableResetCredit).length;
+    const isResetting = resettingResetCreditAccountId === account.id;
+    const isDisabled = isResetting;
+    const titleText =
+      displayCount > 0
+        ? buildResetCreditsTitle(account, displayCount)
+        : t("codex.quota.resetCreditDetailsTitle", "重置次数明细");
+
+    return (
+      <div className="codex-reset-credit-row inline">
+        <button
+          type="button"
+          className={`codex-reset-credit-pill ${
+            displayCount > 0 ? "is-available" : "is-unavailable"
+          }`}
+          onClick={() => openResetCreditConfirmModal(account)}
+          disabled={isDisabled}
+          title={titleText}
+        >
+          {isResetting ? (
+            <RefreshCw size={13} className="loading-spinner" />
+          ) : (
+            <RotateCw size={13} />
+          )}
+          {t("codex.quota.resetCredits", { count: displayCount })}
+        </button>
+      </div>
+    );
+  };
+
   // ─── Render helpers ──────────────────────────────────────────────────
 
   const renderCompactRows = (
@@ -7364,6 +8078,8 @@ export function CodexAccountsPage() {
       const isCurrent = overviewCurrentAccountId === account.id;
       const isSelected = selected.has(account.id);
       const isApiKeyAccount = isCodexApiKeyAccount(account);
+      const isChatCompletionsApiKey =
+        isCodexChatCompletionsApiKeyAccount(account);
       const compactQuotaItems = resolveCompactQuotaItems(presentation);
       const subscriptionInfo = resolveSubscriptionPresentation(account);
       const showCompactExpiry =
@@ -7394,20 +8110,21 @@ export function CodexAccountsPage() {
             {maskAccountText(presentation.displayName)}
           </span>
           <div className="codex-compact-quotas">
-            {compactQuotaItems.map((item) => (
-              <span
-                key={`${account.id}-${item.key}`}
-                className={`codex-compact-quota codex-compact-quota-${item.key}`}
-                title={item.titleText}
-              >
-                <span className="codex-compact-dot" />
+            {!isChatCompletionsApiKey &&
+              compactQuotaItems.map((item) => (
                 <span
-                  className={`codex-compact-quota-value ${item.quotaClass}`}
+                  key={`${account.id}-${item.key}`}
+                  className={`codex-compact-quota codex-compact-quota-${item.key}`}
+                  title={item.titleText}
                 >
-                  {item.valueText}
+                  <span className="codex-compact-dot" />
+                  <span
+                    className={`codex-compact-quota-value ${item.quotaClass}`}
+                  >
+                    {item.valueText}
+                  </span>
                 </span>
-              </span>
-            ))}
+              ))}
             {showCompactExpiry && (
               <span className="codex-compact-expiry-wrap">
                 <span
@@ -7470,6 +8187,8 @@ export function CodexAccountsPage() {
       const isCurrent = overviewCurrentAccountId === account.id;
       const isApiKeyAccount = isCodexApiKeyAccount(account);
       const isNewApiAccount = isCodexNewApiAccount(account);
+      const isChatCompletionsApiKey =
+        isCodexChatCompletionsApiKeyAccount(account);
       const isEditingApiKeyName =
         isApiKeyAccount && editingApiKeyNameId === account.id;
       const isSavingApiKeyName = savingApiKeyNameId === account.id;
@@ -7531,13 +8250,16 @@ export function CodexAccountsPage() {
       const apiKeyUsageMode = resolveApiKeyUsageMode(
         apiKeyUsageMap[account.id]?.summary,
       );
+      const showApiKeyUsagePanel =
+        isApiKeyAccount && !isNewApiAccount && !isChatCompletionsApiKey;
       const isQuotaAwareApiKeyAccount =
-        isApiKeyAccount &&
-        !isNewApiAccount &&
+        showApiKeyUsagePanel &&
         !isSponsorApiKeyAccount &&
         (apiKeyUsageMode !== null ||
           apiKeyUsageProvider?.integrationType === "new_api" ||
           apiKeyUsageProvider?.integrationType === "sub2api");
+      const shouldRenderQuotaSection =
+        showApiKeyUsagePanel || !isApiKeyAccount || isNewApiAccount;
       const displayPlanClass = isSponsorApiKeyAccount
         ? "sponsor-api"
         : isQuotaAwareApiKeyAccount
@@ -7564,6 +8286,7 @@ export function CodexAccountsPage() {
       const isSubscriptionRefreshPending =
         refreshingSubscriptionAccountId === account.id ||
         refreshing === account.id;
+      const resetCreditControls = renderResetCreditControls(account);
       return (
         <div
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
@@ -7629,7 +8352,8 @@ export function CodexAccountsPage() {
           </div>
           {(meta.accountContextText ||
             isInLocalAccess ||
-            (!isApiKeyAccount && account.account_note?.trim())) && (
+            (!isApiKeyAccount && account.account_note?.trim()) ||
+            resetCreditControls) && (
             <div className="account-sub-line">
               {meta.accountContextText && (
                 <span
@@ -7645,6 +8369,7 @@ export function CodexAccountsPage() {
                 </span>
               )}
               {!isApiKeyAccount && renderAccountNoteButton(account)}
+              {resetCreditControls}
             </div>
           )}
           {!isApiKeyAccount && (
@@ -7698,10 +8423,11 @@ export function CodexAccountsPage() {
               )}
             </div>
           )}
-          <div className="codex-quota-section">
-            {isApiKeyAccount && !isNewApiAccount ? (
-              renderApiKeyUsagePanel(account, apiKeyUsageProvider)
-            ) : (
+          {shouldRenderQuotaSection && (
+            <div className="codex-quota-section">
+              {showApiKeyUsagePanel ? (
+                renderApiKeyUsagePanel(account, apiKeyUsageProvider)
+              ) : (
               <>
                 {hasQuotaError && (
                   <div
@@ -7777,8 +8503,9 @@ export function CodexAccountsPage() {
                   </div>
                 )}
               </>
-            )}
-          </div>
+              )}
+            </div>
+          )}
           {!isApiKeyAccount && (
             <div
               className={`codex-subscription-footer ${subscriptionInfo.tone}`}
@@ -7847,7 +8574,7 @@ export function CodexAccountsPage() {
                     <Database size={14} />
                   </button>
                 )}
-                {isSponsorApiKeyAccount && (
+                {isSponsorApiKeyAccount && showApiKeyUsagePanel && (
                   <button
                     className="card-action-btn"
                     onClick={() => setApiKeyUsageDetailAccountId(account.id)}
@@ -7856,15 +8583,13 @@ export function CodexAccountsPage() {
                     <Database size={14} />
                   </button>
                 )}
-                {!isApiKeyAccount && !isNewApiAccount && (
-                  <button
-                    className="card-action-btn"
-                    onClick={() => openTagModal(account.id)}
-                    title={t("accounts.editTags", "编辑标签")}
-                  >
-                    <Tag size={14} />
-                  </button>
-                )}
+                <button
+                  className="card-action-btn"
+                  onClick={() => openTagModal(account.id)}
+                  title={t("accounts.editTags", "编辑标签")}
+                >
+                  <Tag size={14} />
+                </button>
                 {!isApiKeyAccount && !isNewApiAccount && (
                   <button
                     className={`card-action-btn ${account.account_note?.trim() ? "active" : ""}`}
@@ -7876,15 +8601,6 @@ export function CodexAccountsPage() {
                     aria-label={t("codex.accountNote.title", "账号备注")}
                   >
                     <FileText size={14} />
-                  </button>
-                )}
-                {isSponsorApiKeyAccount && (
-                  <button
-                    className="card-action-btn"
-                    onClick={() => openQuickSwitchProviderModal(account)}
-                    title={t("codex.quickSwitch.action", "快速切换供应商")}
-                  >
-                    <Repeat size={14} />
                   </button>
                 )}
                 {isApiKeyAccount && !isNewApiAccount && (
@@ -8474,19 +9190,30 @@ export function CodexAccountsPage() {
                   {t("codex.localAccess.accountPoolHealth.title", "账号池")}
                 </span>
                 <span className="codex-local-access-health-summary-value">
-                  {t("codex.localAccess.accountPoolHealth.availableRatio", {
-                    available: localAccessAccountPoolHealthSummary.available,
-                    total: localAccessAccountPoolHealthSummary.total,
-                    defaultValue: "可用 {{available}}/{{total}}",
-                  })}
+                  {localAccessAccountPoolHealthSummary.available ===
+                    localAccessAccountPoolHealthSummary.total &&
+                  localAccessAccountPoolHealthSummary.abnormal === 0 &&
+                  localAccessAccountPoolHealthSummary.cooldown === 0
+                    ? t("codex.localAccess.accountPoolHealth.allAvailable", {
+                        count: localAccessAccountPoolHealthSummary.total,
+                        defaultValue: "全部可用 {{count}}",
+                      })
+                    : t("codex.localAccess.accountPoolHealth.availableRatio", {
+                        available: localAccessAccountPoolHealthSummary.available,
+                        total: localAccessAccountPoolHealthSummary.total,
+                        defaultValue: "可用 {{available}}/{{total}}",
+                      })}
                 </span>
-                <span className="codex-local-access-health-summary-value">
-                  {t("codex.localAccess.accountPoolHealth.issueSummary", {
-                    abnormal: localAccessAccountPoolHealthSummary.abnormal,
-                    cooldown: localAccessAccountPoolHealthSummary.cooldown,
-                    defaultValue: "异常 {{abnormal}} · 冷却 {{cooldown}}",
-                  })}
-                </span>
+                {(localAccessAccountPoolHealthSummary.abnormal > 0 ||
+                  localAccessAccountPoolHealthSummary.cooldown > 0) && (
+                  <span className="codex-local-access-health-summary-value">
+                    {t("codex.localAccess.accountPoolHealth.issueSummary", {
+                      abnormal: localAccessAccountPoolHealthSummary.abnormal,
+                      cooldown: localAccessAccountPoolHealthSummary.cooldown,
+                      defaultValue: "异常 {{abnormal}} · 冷却 {{cooldown}}",
+                    })}
+                  </span>
+                )}
               </div>
             )}
 
@@ -8775,6 +9502,8 @@ export function CodexAccountsPage() {
       const isCurrent = overviewCurrentAccountId === account.id;
       const isApiKeyAccount = isCodexApiKeyAccount(account);
       const isNewApiAccount = isCodexNewApiAccount(account);
+      const isChatCompletionsApiKey =
+        isCodexChatCompletionsApiKeyAccount(account);
       const isEditingApiKeyName =
         isApiKeyAccount && editingApiKeyNameId === account.id;
       const isSavingApiKeyName = savingApiKeyNameId === account.id;
@@ -8835,9 +9564,10 @@ export function CodexAccountsPage() {
       const apiKeyUsageMode = resolveApiKeyUsageMode(
         apiKeyUsageMap[account.id]?.summary,
       );
+      const showApiKeyUsagePanel =
+        isApiKeyAccount && !isNewApiAccount && !isChatCompletionsApiKey;
       const isQuotaAwareApiKeyAccount =
-        isApiKeyAccount &&
-        !isNewApiAccount &&
+        showApiKeyUsagePanel &&
         !isSponsorApiKeyAccount &&
         (apiKeyUsageMode !== null ||
           apiKeyUsageProvider?.integrationType === "new_api" ||
@@ -8862,6 +9592,7 @@ export function CodexAccountsPage() {
       const isSubscriptionRefreshPending =
         refreshingSubscriptionAccountId === account.id ||
         refreshing === account.id;
+      const resetCreditControls = renderResetCreditControls(account);
       return (
         <tr
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
@@ -8916,7 +9647,8 @@ export function CodexAccountsPage() {
               </div>
               {(meta.accountContextText ||
                 isInLocalAccess ||
-                (!isApiKeyAccount && account.account_note?.trim())) && (
+                (!isApiKeyAccount && account.account_note?.trim()) ||
+                resetCreditControls) && (
                 <div className="account-sub-line codex-account-meta-inline">
                   {meta.accountContextText && (
                     <span
@@ -8932,6 +9664,7 @@ export function CodexAccountsPage() {
                     </span>
                   )}
                   {!isApiKeyAccount && renderAccountNoteButton(account)}
+                  {resetCreditControls}
                 </div>
               )}
               {!isApiKeyAccount && (
@@ -9047,8 +9780,10 @@ export function CodexAccountsPage() {
             )}
           </td>
           <td>
-            {isApiKeyAccount && !isNewApiAccount ? (
+            {showApiKeyUsagePanel ? (
               renderApiKeyUsagePanel(account, apiKeyUsageProvider, "table")
+            ) : isChatCompletionsApiKey ? (
+              <span className="codex-subscription-table-empty">-</span>
             ) : (
               <>
                 <div className="quota-grid">
@@ -9143,7 +9878,7 @@ export function CodexAccountsPage() {
                   <Database size={14} />
                 </button>
               )}
-              {isSponsorApiKeyAccount && (
+              {isSponsorApiKeyAccount && showApiKeyUsagePanel && (
                 <button
                   className="action-btn"
                   onClick={() => setApiKeyUsageDetailAccountId(account.id)}
@@ -9152,15 +9887,13 @@ export function CodexAccountsPage() {
                   <Database size={14} />
                 </button>
               )}
-              {!isApiKeyAccount && !isNewApiAccount && (
-                <button
-                  className="action-btn"
-                  onClick={() => openTagModal(account.id)}
-                  title={t("accounts.editTags", "编辑标签")}
-                >
-                  <Tag size={14} />
-                </button>
-              )}
+              <button
+                className="action-btn"
+                onClick={() => openTagModal(account.id)}
+                title={t("accounts.editTags", "编辑标签")}
+              >
+                <Tag size={14} />
+              </button>
               {!isApiKeyAccount && !isNewApiAccount && (
                 <button
                   className={`action-btn ${account.account_note?.trim() ? "active" : ""}`}
@@ -9172,15 +9905,6 @@ export function CodexAccountsPage() {
                   aria-label={t("codex.accountNote.title", "账号备注")}
                 >
                   <FileText size={14} />
-                </button>
-              )}
-              {isSponsorApiKeyAccount && (
-                <button
-                  className="action-btn"
-                  onClick={() => openQuickSwitchProviderModal(account)}
-                  title={t("codex.quickSwitch.action", "快速切换供应商")}
-                >
-                  <Repeat size={14} />
                 </button>
               )}
               {isApiKeyAccount && !isNewApiAccount && (
@@ -9522,7 +10246,6 @@ export function CodexAccountsPage() {
     return (
       <div
         className="modal-overlay"
-        onClick={() => setApiKeyUsageDetailAccountId(null)}
       >
         <div
           className="modal-content cockpit-api-panel-modal codex-api-key-usage-detail-modal"
@@ -9741,7 +10464,6 @@ export function CodexAccountsPage() {
     return (
       <div
         className="modal-overlay"
-        onClick={() => setCockpitApiPanelAccountId(null)}
       >
         <div
           className="modal-content cockpit-api-panel-modal"
@@ -10383,11 +11105,6 @@ export function CodexAccountsPage() {
       {externalImportProgress.visible && (
         <div
           className="modal-overlay codex-external-import-overlay"
-          onClick={() => {
-            if (!externalImportRunning) {
-              closeExternalImportProgressModal();
-            }
-          }}
         >
           <div
             className="modal-content codex-external-import-modal"
@@ -11911,7 +12628,7 @@ export function CodexAccountsPage() {
           )}
 
           {quickSwitchAccountId && (
-            <div className="modal-overlay" onClick={closeQuickSwitchModal}>
+            <div className="modal-overlay">
               <div
                 className="modal-content codex-add-modal codex-api-key-edit-modal"
                 onClick={(e) => e.stopPropagation()}
@@ -12069,7 +12786,7 @@ export function CodexAccountsPage() {
           )}
 
           {oauthBindingTargetActive && (
-            <div className="modal-overlay" onClick={closeOAuthBindingModal}>
+            <div className="modal-overlay">
               <div
                 className="modal-content codex-add-modal codex-oauth-binding-modal"
                 onClick={(e) => e.stopPropagation()}
@@ -12123,12 +12840,45 @@ export function CodexAccountsPage() {
                       </div>
                     </div>
                     <div className="codex-oauth-binding-picker">
-                      <label>
-                        {t(
-                          "codex.api.oauthBinding.selectLabel",
-                          "选择 OAuth 账号",
+                      <div className="codex-oauth-binding-picker-header">
+                        <label>
+                          {t(
+                            "codex.api.oauthBinding.selectLabel",
+                            "选择 OAuth 账号",
+                          )}
+                        </label>
+                        {oauthBindingTargetKind && (
+                          <label
+                            className="codex-oauth-binding-gateway-toggle"
+                            title={t(
+                              oauthBindingTargetKind === "local_access"
+                                ? "codex.localAccess.oauthBinding.imageGenerationTooltip"
+                                : "codex.api.oauthBinding.localGatewayTooltip",
+                              oauthBindingTargetKind === "local_access"
+                                ? "开启后，API 服务会在本地网关转发普通文本对话前移除 image_generation 工具声明；不会删除生图模型。"
+                                : "开启后，绑定 OAuth 的 API Key 文本对话会走本地网关，并在转发前移除 image_generation 工具声明；不会删除生图模型。",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={oauthBindingUseLocalGateway}
+                              onChange={(event) =>
+                                void handleOAuthBindingLocalGatewayToggle(
+                                  event.target.checked,
+                                )
+                              }
+                              disabled={oauthBindingSaving}
+                            />
+                            <span>
+                              {t(
+                                "codex.api.oauthBinding.useLocalGateway",
+                                "禁用 image_generation",
+                              )}
+                            </span>
+                            <Info size={14} />
+                          </label>
                         )}
-                      </label>
+                      </div>
                       {oauthAccounts.length === 0 ? (
                         <div className="add-status error">
                           <CircleAlert size={16} />
@@ -12427,7 +13177,6 @@ export function CodexAccountsPage() {
           {editingApiKeyCredentialsId && (
             <div
               className="modal-overlay"
-              onClick={closeApiKeyCredentialsModal}
             >
               <div
                 className="modal-content codex-add-modal codex-api-key-edit-modal"
@@ -12752,7 +13501,6 @@ export function CodexAccountsPage() {
           {showCustomSortModal && (
             <div
               className="modal-overlay"
-              onClick={() => setShowCustomSortModal(false)}
             >
               <div
                 className="modal codex-custom-sort-modal"
@@ -12789,9 +13537,12 @@ export function CodexAccountsPage() {
                     {customSortAccounts.map((account, index) => {
                       const presentation = resolvePresentation(account);
                       const isCurrent = overviewCurrentAccountId === account.id;
+                      const isChatCompletionsApiKey =
+                        isCodexChatCompletionsApiKeyAccount(account);
                       const quotaItems =
-                        isCodexApiKeyAccount(account) &&
-                        !isCodexNewApiAccount(account)
+                        isChatCompletionsApiKey ||
+                        (isCodexApiKeyAccount(account) &&
+                          !isCodexNewApiAccount(account))
                           ? []
                           : presentation.quotaItems
                               .filter((item) => item.key !== "code_review")
@@ -12877,7 +13628,7 @@ export function CodexAccountsPage() {
                                       </strong>
                                     </span>
                                   ))
-                                ) : (
+                                ) : isChatCompletionsApiKey ? null : (
                                   <span className="codex-custom-sort-quota-empty">
                                     {t(
                                       "common.shared.quota.noData",
@@ -12982,7 +13733,6 @@ export function CodexAccountsPage() {
           {showLocalAccessQuotaStatsModal && (
             <div
               className="modal-overlay codex-local-access-stats-overlay"
-              onClick={() => setShowLocalAccessQuotaStatsModal(false)}
             >
               <div
                 className="modal codex-local-access-stats-modal"
@@ -13201,70 +13951,138 @@ export function CodexAccountsPage() {
             </div>
           )}
 
-          {apiSwitchNoticeContext && (
-            <div
-              className="modal-overlay codex-local-access-hide-confirm-overlay"
-              onClick={closeApiSwitchVisibilityNotice}
-            >
+          {resetCreditConfirmAccount && (
+            <div className="modal-overlay codex-reset-credit-confirm-overlay">
               <div
-                className="modal codex-local-access-hide-confirm-modal codex-api-switch-notice-modal"
+                className="modal codex-reset-credit-confirm-modal"
                 onClick={(event) => event.stopPropagation()}
               >
-                <div className="modal-header">
-                  <h2>
-                    {t("codex.apiSwitchNotice.title", "Codex 会话不可见")}
-                  </h2>
+                <div className="codex-reset-credit-confirm-visual">
                   <button
-                    className="modal-close"
-                    onClick={closeApiSwitchVisibilityNotice}
+                    type="button"
+                    className="modal-close codex-reset-credit-confirm-close"
+                    onClick={closeResetCreditConfirmModal}
                     aria-label={t("common.close", "关闭")}
+                    disabled={isResetCreditConfirmSubmitting}
                   >
                     <X />
                   </button>
+                  <div className="codex-reset-credit-confirm-icon">
+                    <Terminal size={30} />
+                    <RotateCw
+                      size={18}
+                      className="codex-reset-credit-confirm-icon-badge"
+                    />
+                  </div>
                 </div>
-                <div className="modal-body">
-                  <ModalErrorMessage
-                    message={apiSwitchNoticeError}
-                    scrollKey={apiSwitchNoticeErrorScrollKey}
-                  />
-                  <p className="codex-local-access-hide-confirm-desc">
+                <div className="modal-body codex-reset-credit-confirm-body">
+                  <h2>
                     {t(
-                      "codex.apiSwitchNotice.message",
-                      "检测到 Codex 已从 {{from}} 切换到 {{to}}。由于官方机制，API 与账号直接切换后，原有会话可能不会自动显示。正在自动修复会话可见性，后续也可以通过「会话管理」里的「修复可见性」功能修复。",
-                      {
-                        from: formatCodexLaunchCredentialKindLabel(
-                          apiSwitchNoticeContext.from,
-                        ),
-                        to: formatCodexLaunchCredentialKindLabel(
-                          apiSwitchNoticeContext.to,
-                        ),
-                      },
+                      "codex.quota.resetCreditDialogTitle",
+                      "要重置你的使用量吗？",
                     )}
+                  </h2>
+                  <p>
+                    {t("codex.quota.resetCreditDialogDesc", {
+                      count: resetCreditConfirmAvailableCount ?? 0,
+                      defaultValue:
+                        "重置速率限制后，继续不间断地工作。你还有 {{count}} 次重置可用。",
+                    })}
                   </p>
-                  {apiSwitchNoticeRepairing && (
-                    <div className="codex-api-switch-notice-repair-status is-loading">
-                      <RefreshCw size={14} className="loading-spinner" />
+                  <div className="codex-reset-credit-confirm-account">
+                    <span>{t("common.shared.columns.email", "账号")}</span>
+                    <strong>
+                      {maskAccountText(
+                        resolvePresentation(resetCreditConfirmAccount)
+                          .displayName,
+                      )}
+                    </strong>
+                  </div>
+                  {resetCreditConfirmNextExpiresAt && (
+                    <div className="codex-reset-credit-confirm-expiry">
+                      <Clock size={14} />
                       <span>
-                        {t(
-                          "codex.apiSwitchNotice.repairing",
-                          "正在修复 Codex 会话可见性...",
-                        )}
+                        {t("codex.quota.resetCreditNextExpiry", {
+                          time: formatResetCreditTime(
+                            resetCreditConfirmNextExpiresAt,
+                          ),
+                          defaultValue: "最近到期：{{time}}",
+                        })}
                       </span>
                     </div>
                   )}
-                  {apiSwitchNoticeRepairResult && (
-                    <div className="codex-api-switch-notice-repair-status is-success">
-                      <Check size={14} />
-                      <span>{apiSwitchNoticeRepairResult}</span>
+                  <div className="codex-reset-credit-confirm-details">
+                    <div className="codex-reset-credit-confirm-details-title">
+                      {t("codex.quota.resetCreditDetailsTitle", "重置次数明细")}
                     </div>
-                  )}
+                    {resetCreditConfirmLoading ? (
+                      <div className="codex-reset-credit-confirm-empty">
+                        <RefreshCw size={14} className="loading-spinner" />
+                        <span>{t("common.loading", "加载中...")}</span>
+                      </div>
+                    ) : resetCreditConfirmCredits.length > 0 ? (
+                      resetCreditConfirmCredits.map((credit, index) => (
+                        <div
+                          className="codex-reset-credit-confirm-detail"
+                          key={credit.id || `${credit.status || "credit"}-${index}`}
+                        >
+                          <span
+                            className={`codex-reset-credit-confirm-detail-status ${getResetCreditStatusTone(credit)}`}
+                          >
+                            {getResetCreditStatusLabel(credit)}
+                          </span>
+                          <span>
+                            {t("codex.quota.resetCreditGrantedAt", "发放")}
+                            ：
+                            <strong>
+                              {formatResetCreditAbsoluteTime(credit.granted_at)}
+                            </strong>
+                          </span>
+                          <span>
+                            {t("codex.quota.resetCreditExpiresAt", "到期")}
+                            ：
+                            <strong>
+                              {formatResetCreditTime(credit.expires_at)}
+                            </strong>
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="codex-reset-credit-confirm-empty">
+                        {t("codex.quota.resetCreditNoRecords", "暂无重置记录")}
+                      </div>
+                    )}
+                  </div>
+                  <ModalErrorMessage
+                    message={resetCreditConfirmError}
+                    scrollKey={resetCreditConfirmErrorScrollKey}
+                    position="bottom"
+                  />
                 </div>
-                <div className="modal-footer codex-api-switch-notice-footer">
+                <div className="modal-footer codex-reset-credit-confirm-footer">
                   <button
-                    className="btn btn-primary"
-                    onClick={closeApiSwitchVisibilityNotice}
+                    type="button"
+                    className="btn btn-primary codex-reset-credit-confirm-action"
+                    onClick={() => void handleConfirmConsumeResetCredit()}
+                    disabled={
+                      isResetCreditConfirmSubmitting ||
+                      resetCreditConfirmLoading ||
+                      resetCreditConfirmActionLocked ||
+                      resetCreditConfirmAvailableCount == null ||
+                      resetCreditConfirmAvailableCount <= 0
+                    }
                   >
-                    {t("common.close", "关闭")}
+                    {isResetCreditConfirmSubmitting ? (
+                      <>
+                        <RefreshCw size={14} className="loading-spinner" />
+                        {t("common.processing", "处理中...")}
+                      </>
+                    ) : (
+                      t(
+                        "codex.quota.resetCreditDialogAction",
+                        "重置使用次数",
+                      )
+                    )}
                   </button>
                 </div>
               </div>
@@ -13274,7 +14092,6 @@ export function CodexAccountsPage() {
           {deleteConfirm && (
             <div
               className="modal-overlay"
-              onClick={() => !deleting && setDeleteConfirm(null)}
             >
               <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
@@ -13317,7 +14134,6 @@ export function CodexAccountsPage() {
           {tagDeleteConfirm && (
             <div
               className="modal-overlay"
-              onClick={() => !deletingTag && setTagDeleteConfirm(null)}
             >
               <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
@@ -13371,11 +14187,6 @@ export function CodexAccountsPage() {
           {groupDeleteConfirm && (
             <div
               className="modal-overlay"
-              onClick={() => {
-                if (deletingGroup) return;
-                setGroupDeleteConfirm(null);
-                setGroupDeleteError(null);
-              }}
             >
               <div
                 className="modal"
@@ -13440,7 +14251,7 @@ export function CodexAccountsPage() {
           />
 
           {editingAccountNoteAccount && (
-            <div className="modal-overlay" onClick={closeAccountNoteModal}>
+            <div className="modal-overlay">
               <div
                 className="modal codex-account-note-modal"
                 onClick={(event) => event.stopPropagation()}
@@ -13593,7 +14404,10 @@ export function CodexAccountsPage() {
       )}
 
       {activeTab === "instances" && (
-        <CodexInstancesContent accountsForSelect={sortedAccountsForInstances} />
+        <CodexInstancesContent
+          accountsForSelect={sortedAccountsForInstances}
+          onLaunchCredentialChange={handleCodexInstanceLaunchCredentialChange}
+        />
       )}
 
       {activeTab === "sessions" && <CodexSessionManager />}
@@ -13618,6 +14432,65 @@ export function CodexAccountsPage() {
             await fetchCurrentAccount();
           }}
         />
+      )}
+
+      {apiSwitchNoticeContext && (
+        <div
+          className="modal-overlay codex-local-access-hide-confirm-overlay"
+        >
+          <div
+            className="modal codex-local-access-hide-confirm-modal codex-api-switch-notice-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>{t("codex.apiSwitchNotice.title", "Codex 会话不可见")}</h2>
+              <button
+                className="modal-close"
+                onClick={closeApiSwitchVisibilityNotice}
+                aria-label={t("common.close", "关闭")}
+              >
+                <X />
+              </button>
+            </div>
+            <div className="modal-body">
+              <ModalErrorMessage
+                message={apiSwitchNoticeError}
+                scrollKey={apiSwitchNoticeErrorScrollKey}
+              />
+              <p className="codex-local-access-hide-confirm-desc">
+                {t("codex.apiSwitchNotice.message", {
+                  defaultValue:
+                    "检测到 Codex 已从 {{from}} 切换到 {{to}}。由于官方机制，这类切换后原有会话可能不会自动显示。正在自动修复会话可见性，后续也可以在「会话管理」中手动修复。",
+                  from: formatCodexLaunchCredentialKindLabel(
+                    apiSwitchNoticeContext.from,
+                  ),
+                  to: formatCodexLaunchCredentialKindLabel(
+                    apiSwitchNoticeContext.to,
+                  ),
+                })}
+              </p>
+              {apiSwitchNoticeRepairProgress && (
+                <CodexSessionVisibilityRepairProgressView
+                  progress={apiSwitchNoticeRepairProgress}
+                />
+              )}
+              {apiSwitchNoticeRepairResult && (
+                <div className="codex-api-switch-notice-repair-status is-success">
+                  <Check size={14} />
+                  <span>{apiSwitchNoticeRepairResult}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer codex-api-switch-notice-footer">
+              <button
+                className="btn btn-primary"
+                onClick={closeApiSwitchVisibilityNotice}
+              >
+                {t("common.close", "关闭")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

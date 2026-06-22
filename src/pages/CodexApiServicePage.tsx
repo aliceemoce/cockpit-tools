@@ -568,7 +568,7 @@ export function CodexApiServicePage() {
   const [selectedTimeoutPresetId, setSelectedTimeoutPresetId] =
     useState<TimeoutPresetId>("long_wait");
   const [timeoutPresetNameDraft, setTimeoutPresetNameDraft] = useState("");
-  const [sessionAffinityDraft, setSessionAffinityDraft] = useState(false);
+  const [sessionAffinityDraft, setSessionAffinityDraft] = useState(true);
   const [sessionAffinityTtlDraft, setSessionAffinityTtlDraft] =
     useState("3600");
   const [maxRetryCredentialsDraft, setMaxRetryCredentialsDraft] = useState("0");
@@ -1024,7 +1024,7 @@ export function CodexApiServicePage() {
     );
     setAccountModelRuleSelected(new Set());
     setAccountModelRuleBulkText("");
-    setSessionAffinityDraft(collection?.sessionAffinity ?? false);
+    setSessionAffinityDraft(collection?.sessionAffinity ?? true);
     setSessionAffinityTtlDraft(
       formatSeconds(collection?.sessionAffinityTtlMs ?? 3600000),
     );
@@ -4868,7 +4868,6 @@ export function CodexApiServicePage() {
       {testDialogOpen && (
         <div
           className="modal-overlay codex-local-access-test-dialog-overlay"
-          onClick={handleCloseTestDialog}
         >
           <div
             className="modal codex-local-access-test-dialog"

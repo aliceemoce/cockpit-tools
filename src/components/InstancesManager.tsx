@@ -82,7 +82,9 @@ interface InstancesManagerProps<TAccount extends AccountLike> {
   getAccountSearchText?: (account: TAccount) => string;
   appType?:
     | "antigravity"
+    | "antigravity_ide"
     | "codex"
+    | "claude"
     | "vscode"
     | "windsurf"
     | "kiro"
@@ -95,6 +97,10 @@ interface InstancesManagerProps<TAccount extends AccountLike> {
     | "workbuddy";
   onInstanceStarted?: (instance: InstanceProfile) => void | Promise<void>;
   resolveStartSuccessMessage?: (instance: InstanceProfile) => string;
+  isAccountAllowedForLaunchMode?: (
+    account: TAccount,
+    launchMode: InstanceLaunchMode,
+  ) => boolean;
   toolbarExtraActions?: ReactNode;
 }
 
@@ -268,6 +274,8 @@ const resolveFloatingCardPlatformId = (
   switch (appType) {
     case "vscode":
       return "github-copilot";
+    case "claude":
+      return "claude_manager";
     default:
       return appType;
   }
@@ -283,6 +291,7 @@ export function InstancesManager<TAccount extends AccountLike>({
   appType = "antigravity",
   onInstanceStarted,
   resolveStartSuccessMessage,
+  isAccountAllowedForLaunchMode,
   toolbarExtraActions,
 }: InstancesManagerProps<TAccount>) {
   const { t } = useTranslation();
@@ -377,21 +386,22 @@ export function InstancesManager<TAccount extends AccountLike>({
   );
   const isGeminiApp = appType === "gemini";
   const isCodexApp = appType === "codex";
-  const supportsLaunchModeSelect = isCodexApp;
+  const isClaudeApp = appType === "claude";
+  const supportsLaunchModeSelect = isCodexApp || isClaudeApp;
   const resolveInstanceLaunchMode = (
     instance?: InstanceProfile | null,
   ): InstanceLaunchMode => {
     if (isGeminiApp) {
       return "cli";
     }
-    if (isCodexApp) {
+    if (isCodexApp || isClaudeApp) {
       return instance?.launchMode ?? "app";
     }
     return "app";
   };
   const usesTerminalLaunch = (instance: InstanceProfile) =>
     isGeminiApp ||
-    (isCodexApp && resolveInstanceLaunchMode(instance) === "cli");
+    ((isCodexApp || isClaudeApp) && resolveInstanceLaunchMode(instance) === "cli");
   const supportsStopControl =
     !isGeminiApp && instances.some((item) => !usesTerminalLaunch(item));
   const hidePathFieldInEditModal = isGeminiApp && Boolean(editing?.isDefault);
@@ -423,6 +433,15 @@ export function InstancesManager<TAccount extends AccountLike>({
       return { account, missing: !account, isApiService: false };
     },
     [accounts, isApiServiceBindId],
+  );
+  const filterAccountsForLaunchMode = useCallback(
+    (source: TAccount[], launchMode: InstanceLaunchMode) =>
+      isAccountAllowedForLaunchMode
+        ? source.filter((account) =>
+            isAccountAllowedForLaunchMode(account, launchMode),
+          )
+        : source,
+    [isAccountAllowedForLaunchMode],
   );
 
   const markInstanceStarting = useCallback((instanceId: string) => {
@@ -635,6 +654,19 @@ export function InstancesManager<TAccount extends AccountLike>({
       setFormCopySourceInstanceId(defaultInstanceId);
     }
   }, [defaultInstanceId, editing, formCopySourceInstanceId, formInitMode]);
+
+  useEffect(() => {
+    if (!isAccountAllowedForLaunchMode || !formBindAccountId) return;
+    const selected = resolveBoundAccount(formBindAccountId).account;
+    if (!selected) return;
+    if (isAccountAllowedForLaunchMode(selected, formLaunchMode)) return;
+    setFormBindAccountId("");
+  }, [
+    formBindAccountId,
+    formLaunchMode,
+    isAccountAllowedForLaunchMode,
+    resolveBoundAccount,
+  ]);
 
   const openEditModal = (instance: InstanceProfile) => {
     setOpenInlineMenuId(null);
@@ -864,12 +896,19 @@ export function InstancesManager<TAccount extends AccountLike>({
 
   const handleMissingPathError = (error: unknown, instanceId?: string) => {
     const message = String(error ?? "");
-    if (!message.startsWith("APP_PATH_NOT_FOUND:")) {
+    const missingPathPrefix = "APP_PATH_NOT_FOUND:";
+    const multiInstanceExePrefix = "CLAUDE_MULTI_INSTANCE_REQUIRES_EXE:";
+    const isMissingPath = message.startsWith(missingPathPrefix);
+    const isMultiInstanceExeRequired = message.startsWith(multiInstanceExePrefix);
+    if (!isMissingPath && !isMultiInstanceExeRequired) {
       return false;
     }
-    const rawApp = message.slice("APP_PATH_NOT_FOUND:".length);
+    const rawApp = isMultiInstanceExeRequired
+      ? message.slice(multiInstanceExePrefix.length)
+      : message.slice(missingPathPrefix.length);
     const app =
       rawApp === "codex" ||
+      rawApp === "claude" ||
       rawApp === "antigravity" ||
       rawApp === "vscode" ||
       rawApp === "windsurf" ||
@@ -881,9 +920,13 @@ export function InstancesManager<TAccount extends AccountLike>({
       rawApp === "qoder"
         ? rawApp
         : appType;
+    const runtimeTarget =
+      appType === "antigravity" || appType === "antigravity_ide"
+        ? appType
+        : undefined;
     const retry = instanceId
-      ? { kind: "instance" as const, instanceId }
-      : { kind: "default" as const };
+      ? { kind: "instance" as const, instanceId, runtimeTarget }
+      : { kind: "default" as const, runtimeTarget };
     window.dispatchEvent(
       new CustomEvent("app-path-missing", { detail: { app, retry } }),
     );
@@ -924,6 +967,11 @@ export function InstancesManager<TAccount extends AccountLike>({
       if (!preMarkedStarting) {
         markInstanceStarting(instance.id);
       }
+      const flowStartedAt = performance.now();
+      console.info("[Instance Start][UI] button loading started", {
+        instanceId: instance.id,
+        instanceName: instance.name,
+      });
 
       try {
         const startedInstance = await startInstance(instance.id);
@@ -954,6 +1002,11 @@ export function InstancesManager<TAccount extends AccountLike>({
         if (!preMarkedStarting) {
           unmarkInstanceStarting(instance.id);
         }
+        console.info("[Instance Start][UI] button loading finished", {
+          instanceId: instance.id,
+          instanceName: instance.name,
+          elapsedMs: Math.round(performance.now() - flowStartedAt),
+        });
       }
     },
     [
@@ -1187,6 +1240,35 @@ export function InstancesManager<TAccount extends AccountLike>({
       instances.find((item) => item.id === formCopySourceInstanceId) || null
     );
   }, [defaultInstanceId, formCopySourceInstanceId, instances]);
+  const availableCopySourceInstances = useMemo(
+    () =>
+      sortedInstances.filter(
+        (instance) =>
+          instance.isDefault ||
+          resolveInstanceLaunchMode(instance) === formLaunchMode,
+      ),
+    [formLaunchMode, sortedInstances],
+  );
+
+  useEffect(() => {
+    if (editing || formInitMode !== "copy") return;
+    if (!formCopySourceInstanceId) {
+      setFormCopySourceInstanceId(defaultInstanceId);
+      return;
+    }
+    const selected = availableCopySourceInstances.find(
+      (instance) => instance.id === formCopySourceInstanceId,
+    );
+    if (!selected) {
+      setFormCopySourceInstanceId(defaultInstanceId);
+    }
+  }, [
+    availableCopySourceInstances,
+    defaultInstanceId,
+    editing,
+    formCopySourceInstanceId,
+    formInitMode,
+  ]);
 
   const formCodexQuickPresetOptions = useMemo(
     () => [
@@ -1638,15 +1720,25 @@ export function InstancesManager<TAccount extends AccountLike>({
       useState<AccountSelectPortalPosition | null>(null);
     const [searchValue, setSearchValue] = useState("");
     const [tagFilter, setTagFilter] = useState<string[]>([]);
+    const targetLaunchMode = useMemo(() => {
+      const instance = instanceId
+        ? instances.find((item) => item.id === instanceId)
+        : null;
+      return resolveInstanceLaunchMode(instance);
+    }, [instanceId, instances]);
+    const selectableAccounts = useMemo(
+      () => filterAccountsForLaunchMode(accounts, targetLaunchMode),
+      [accounts, filterAccountsForLaunchMode, targetLaunchMode],
+    );
 
     const availableTags = useMemo(
-      () => collectInstanceAccountTags(accounts),
-      [accounts],
+      () => collectInstanceAccountTags(selectableAccounts),
+      [selectableAccounts],
     );
     const visibleAccounts = useMemo(() => {
       const normalizedQuery = searchValue.trim().toLowerCase();
       const selectedTags = new Set(tagFilter.map(normalizeInstanceAccountTag));
-      return accounts.filter((account) => {
+      return selectableAccounts.filter((account) => {
         if (selectedTags.size > 0) {
           const accountTags = (account.tags || [])
             .map(normalizeInstanceAccountTag)
@@ -1665,7 +1757,7 @@ export function InstancesManager<TAccount extends AccountLike>({
           .toLowerCase();
         return haystack.includes(normalizedQuery);
       });
-    }, [accounts, getAccountSearchText, searchValue, tagFilter]);
+    }, [getAccountSearchText, searchValue, selectableAccounts, tagFilter]);
 
     const toggleTagFilter = useCallback((tag: string) => {
       setTagFilter((prev) =>
@@ -1857,15 +1949,19 @@ export function InstancesManager<TAccount extends AccountLike>({
       useState<AccountSelectPortalPosition | null>(null);
     const [searchValue, setSearchValue] = useState("");
     const [tagFilter, setTagFilter] = useState<string[]>([]);
+    const selectableAccounts = useMemo(
+      () => filterAccountsForLaunchMode(accounts, formLaunchMode),
+      [accounts, filterAccountsForLaunchMode, formLaunchMode],
+    );
 
     const availableTags = useMemo(
-      () => collectInstanceAccountTags(accounts),
-      [accounts],
+      () => collectInstanceAccountTags(selectableAccounts),
+      [selectableAccounts],
     );
     const visibleAccounts = useMemo(() => {
       const normalizedQuery = searchValue.trim().toLowerCase();
       const selectedTags = new Set(tagFilter.map(normalizeInstanceAccountTag));
-      return accounts.filter((account) => {
+      return selectableAccounts.filter((account) => {
         if (selectedTags.size > 0) {
           const accountTags = (account.tags || [])
             .map(normalizeInstanceAccountTag)
@@ -1884,7 +1980,7 @@ export function InstancesManager<TAccount extends AccountLike>({
           .toLowerCase();
         return haystack.includes(normalizedQuery);
       });
-    }, [accounts, getAccountSearchText, searchValue, tagFilter]);
+    }, [getAccountSearchText, searchValue, selectableAccounts, tagFilter]);
 
     const toggleTagFilter = useCallback((tag: string) => {
       setTagFilter((prev) =>
@@ -2084,8 +2180,8 @@ export function InstancesManager<TAccount extends AccountLike>({
     }, [disabled, open]);
 
     const selected =
-      sortedInstances.find((item) => item.id === value) ||
-      sortedInstances.find((item) => item.isDefault) ||
+      availableCopySourceInstances.find((item) => item.id === value) ||
+      availableCopySourceInstances.find((item) => item.isDefault) ||
       null;
     const selectedLabel = selected
       ? selected.isDefault
@@ -2118,14 +2214,14 @@ export function InstancesManager<TAccount extends AccountLike>({
         </button>
         {open && !disabled && (
           <div className="account-select-menu">
-            {sortedInstances.length === 0 ? (
+            {availableCopySourceInstances.length === 0 ? (
               <div className="account-select-item active">
                 <span className="account-select-email muted">
                   {t("instances.defaultName", "默认实例")}
                 </span>
               </div>
             ) : (
-              sortedInstances.map((instance) => {
+              availableCopySourceInstances.map((instance) => {
                 const label = instance.isDefault
                   ? t("instances.defaultName", "默认实例")
                   : instance.name || "";
@@ -2431,7 +2527,7 @@ export function InstancesManager<TAccount extends AccountLike>({
                         ? t("instances.defaultName", "默认实例")
                         : instance.name}
                     </span>
-                    {isCodexApp && (
+                    {(isCodexApp || isClaudeApp) && (
                       <span
                         className={`instance-launch-mode-badge ${launchMode}`}
                       >
@@ -2598,7 +2694,6 @@ export function InstancesManager<TAccount extends AccountLike>({
       {initGuideInstance && (
         <div
           className="modal-overlay"
-          onClick={() => setInitGuideInstance(null)}
         >
           <div
             className="modal instance-init-guide-modal"
@@ -2664,7 +2759,6 @@ export function InstancesManager<TAccount extends AccountLike>({
       {deleteConfirmInstance && (
         <div
           className="modal-overlay"
-          onClick={() => setDeleteConfirmInstance(null)}
         >
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
@@ -2710,7 +2804,6 @@ export function InstancesManager<TAccount extends AccountLike>({
       {runningNoticeInstance && (
         <div
           className="modal-overlay"
-          onClick={() => setRunningNoticeInstance(null)}
         >
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
@@ -2757,7 +2850,7 @@ export function InstancesManager<TAccount extends AccountLike>({
       )}
 
       {showModal && (
-        <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal-overlay">
           <div
             className="modal modal-lg instance-editor-modal"
             onClick={(e) => e.stopPropagation()}

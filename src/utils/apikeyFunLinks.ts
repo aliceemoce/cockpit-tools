@@ -3,6 +3,19 @@ export const APIKEY_FUN_DOCS_URL = 'https://apikey.fun/docs';
 export const APIKEY_FUN_GLOBAL_ENDPOINT = 'https://api.apikey.fun';
 export const APIKEY_FUN_DIRECT_ENDPOINT = 'https://slb.apikey.fun';
 export const APIKEY_FUN_SOURCE_TAG = 'apikey_fun';
+export const APIKEY_FUN_DEFAULT_MODEL_CATALOG = [
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'gpt-5.3-codex',
+  'gpt-5.2',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-5-thinking',
+  'claude-opus-4-6-thinking',
+  'gemini-3-pro-preview',
+  'gemini-3-flash-preview',
+  'gemini-3.5-flash',
+] as const;
 export const APIKEY_FUN_PROVIDER_BASE_URL = buildApiKeyFunProviderBaseUrl(
   APIKEY_FUN_GLOBAL_ENDPOINT,
 );

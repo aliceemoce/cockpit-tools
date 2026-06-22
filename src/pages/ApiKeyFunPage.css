@@ -372,6 +372,15 @@ html[data-theme="dark"] .apikey-fun-page {
   gap: 12px;
 }
 
+.apikey-fun-primary-actions,
+.apikey-fun-target-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
 .apikey-fun-page .btn {
   display: inline-flex;
   align-items: center;
@@ -413,6 +422,18 @@ html[data-theme="dark"] .apikey-fun-page {
   color: #ffffff;
   transform: translateY(-0.5px);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+.apikey-fun-page .apikey-fun-target-btn {
+  border-color: rgba(37, 99, 235, 0.18);
+  color: #1e40af;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.apikey-fun-page .apikey-fun-target-btn:hover:not(:disabled) {
+  border-color: rgba(37, 99, 235, 0.34);
+  color: #1d4ed8;
+  background: rgba(239, 246, 255, 0.92);
 }
 
 .apikey-fun-save-flash {
@@ -496,6 +517,58 @@ html[data-theme="dark"] .apikey-fun-page {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.apikey-fun-models-panel {
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.apikey-fun-model-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 184, 166, 0.18);
+  color: #0f766e;
+  background: rgba(240, 253, 250, 0.68);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.apikey-fun-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.apikey-fun-model-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  color: #334155;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apikey-fun-model-empty {
+  padding: 14px;
+  border-radius: var(--ak-radius-md);
+  border: 1px dashed var(--ak-line);
+  color: var(--ak-muted);
+  background: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 /* 骨架屏 */
@@ -686,8 +759,8 @@ html[data-theme="dark"] .apikey-fun-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
   height: 30px;
+  width: 30px;
   border-radius: 8px;
   border: 0;
   color: #64748b;
@@ -709,6 +782,14 @@ html[data-theme="dark"] .apikey-fun-page {
 .success-icon {
   color: var(--ak-teal);
   animation: scaleUp 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.apikey-fun-key-action-state.success {
+  color: var(--ak-teal);
+}
+
+.apikey-fun-key-action-state.error {
+  color: #ef4444;
 }
 
 [data-theme="dark"] .apikey-fun-header-brand,

@@ -115,6 +115,7 @@ export interface CodexLocalAccessCollection {
   excludedModels: string[];
   sessionAffinity: boolean;
   sessionAffinityTtlMs: number;
+  sessionAffinityDefaultEnabledMigrated?: boolean;
   maxRetryCredentials: number;
   maxRetryIntervalMs: number;
   timeouts: CodexLocalAccessTimeouts;

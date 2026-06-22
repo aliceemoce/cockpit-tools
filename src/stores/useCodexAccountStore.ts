@@ -71,6 +71,19 @@ const shouldHydrateCodexProfile = (account: CodexAccount): boolean =>
 
 const CODEX_STALE_ACCOUNT_ERROR = 'CODEX_STALE_ACCOUNT';
 
+const mergeCodexAccountIntoList = (
+  accounts: CodexAccount[],
+  account: CodexAccount,
+): CodexAccount[] => {
+  const index = accounts.findIndex((item) => item.id === account.id);
+  if (index < 0) {
+    return [account, ...accounts];
+  }
+  const next = [...accounts];
+  next[index] = account;
+  return next;
+};
+
 interface CodexAccountState {
   accounts: CodexAccount[];
   currentAccount: CodexAccount | null;
@@ -106,6 +119,7 @@ interface CodexAccountState {
   updateApiKeyBoundOAuthAccount: (
     accountId: string,
     boundOauthAccountId: string | null,
+    boundOauthUseLocalGateway?: boolean,
   ) => Promise<CodexAccount>;
   updateAccountTags: (accountId: string, tags: string[]) => Promise<CodexAccount>;
   updateAccountNote: (accountId: string, note: string) => Promise<CodexAccount>;
@@ -165,7 +179,15 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
   },
   
   switchAccount: async (accountId: string) => {
+    const flowStartedAt = performance.now();
+    console.info('[Codex Switch][Store] switchAccount started', {
+      accountId,
+    });
     const accounts = await codexService.listCodexAccounts();
+    console.info('[Codex Switch][Store] listCodexAccounts finished', {
+      accountId,
+      elapsedMs: Math.round(performance.now() - flowStartedAt),
+    });
     allowNextEmptyCodexAccountList = false;
     set({ accounts, loading: false, error: null });
     persistCodexAccountsCache(accounts);
@@ -180,12 +202,37 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     }
 
     const account = await codexService.switchCodexAccount(accountId);
-    set({ currentAccount: account });
-    await get().fetchAccounts();
+    console.info('[Codex Switch][Store] switchCodexAccount finished', {
+      accountId,
+      elapsedMs: Math.round(performance.now() - flowStartedAt),
+    });
+    set((state) => {
+      const nextAccounts = mergeCodexAccountIntoList(state.accounts, account);
+      persistCodexAccountsCache(nextAccounts);
+      persistCodexCurrentAccountCache(account);
+      return {
+        accounts: nextAccounts,
+        currentAccount: account,
+        loading: false,
+        error: null,
+      };
+    });
+    void get()
+      .fetchAccounts()
+      .then(() => {
+        console.info('[Codex Switch][Store] background fetchAccounts after switch finished', {
+          accountId,
+          elapsedMs: Math.round(performance.now() - flowStartedAt),
+        });
+      });
     await emitCurrentAccountChanged({
       platformId: 'codex',
       accountId: account.id,
       reason: 'switch',
+    });
+    console.info('[Codex Switch][Store] switchAccount finished', {
+      accountId,
+      elapsedMs: Math.round(performance.now() - flowStartedAt),
     });
     return account;
   },
@@ -379,10 +426,12 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
   updateApiKeyBoundOAuthAccount: async (
     accountId: string,
     boundOauthAccountId: string | null,
+    boundOauthUseLocalGateway = false,
   ) => {
     const account = await codexService.updateCodexApiKeyBoundOAuthAccount(
       accountId,
       boundOauthAccountId,
+      boundOauthUseLocalGateway,
     );
     await get().fetchAccounts();
     await get().fetchCurrentAccount();

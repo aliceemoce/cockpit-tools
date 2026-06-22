@@ -4,6 +4,8 @@ export type Page =
   | 'api-relay'
   | 'overview'
   | 'codex'
+  | 'claude'
+  | 'claude-cli'
   | 'codex-api-service'
   | 'zed'
   | 'github-copilot'

@@ -2823,7 +2823,7 @@ Start-Process -FilePath $exe{argument_list} -ErrorAction Stop | Out-Null"#,
     Ok(())
 }
 
-fn detect_codex_exec_path() -> Option<std::path::PathBuf> {
+pub(crate) fn detect_codex_exec_path() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     {
         if let Some(path) = find_codex_process_exe() {
@@ -3263,11 +3263,20 @@ fn resolve_codex_launch_path() -> Result<std::path::PathBuf, String> {
 pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
     let current = config::get_user_config();
     match app {
-        "antigravity" => {
+        "antigravity" | "antigravity_ide" => {
             if !force && !current.antigravity_app_path.trim().is_empty() {
                 return Some(current.antigravity_app_path);
             }
             if let Some(detected) = detect_antigravity_exec_path() {
+                update_app_path_in_config("antigravity", &detected);
+                return Some(config::get_user_config().antigravity_app_path);
+            }
+        }
+        "antigravity_legacy" => {
+            if !force && !current.antigravity_app_path.trim().is_empty() {
+                return Some(current.antigravity_app_path);
+            }
+            if let Some(detected) = detect_antigravity_legacy_exec_path() {
                 update_app_path_in_config("antigravity", &detected);
                 return Some(config::get_user_config().antigravity_app_path);
             }
@@ -4595,10 +4604,27 @@ fn get_default_antigravity_user_data_dir() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn get_default_antigravity_legacy_user_data_dir() -> Option<String> {
+    crate::modules::antigravity_legacy_instance::get_default_user_data_dir()
+        .ok()
+        .map(|value| normalize_path_for_compare(&value.to_string_lossy()))
+        .filter(|value| !value.is_empty())
+}
+
 fn resolve_antigravity_target_and_fallback(user_data_dir: Option<&str>) -> Option<(String, bool)> {
     build_user_data_dir_match_target(
         user_data_dir,
         get_default_antigravity_user_data_dir(),
+        !strict_process_detect_enabled(),
+    )
+}
+
+fn resolve_antigravity_legacy_target_and_fallback(
+    user_data_dir: Option<&str>,
+) -> Option<(String, bool)> {
+    build_user_data_dir_match_target(
+        user_data_dir,
+        get_default_antigravity_legacy_user_data_dir(),
         !strict_process_detect_enabled(),
     )
 }
@@ -4916,6 +4942,40 @@ pub fn resolve_antigravity_pid(last_pid: Option<u32>, user_data_dir: Option<&str
     resolve_antigravity_pid_from_entries(last_pid, user_data_dir, &entries)
 }
 
+pub fn resolve_antigravity_legacy_pid_from_entries(
+    last_pid: Option<u32>,
+    user_data_dir: Option<&str>,
+    entries: &[(u32, Option<String>)],
+) -> Option<u32> {
+    let (target, allow_none_for_target) =
+        resolve_antigravity_legacy_target_and_fallback(user_data_dir)?;
+    let matches = collect_matching_pids_by_user_data_dir(entries, &target, allow_none_for_target);
+
+    if let Some(pid) = last_pid {
+        if is_pid_running(pid) && matches.contains(&pid) {
+            return Some(pid);
+        }
+        if is_pid_running(pid) {
+            crate::modules::logger::log_warn(&format!(
+                "[AG Legacy Resolve] 忽略不匹配的 last_pid={}，target={}，matched_pids={}",
+                pid,
+                summarize_text_for_process_log(&target, 96),
+                summarize_pid_list_for_log(&matches)
+            ));
+        }
+    }
+
+    pick_preferred_pid(matches)
+}
+
+pub fn resolve_antigravity_legacy_pid(
+    last_pid: Option<u32>,
+    user_data_dir: Option<&str>,
+) -> Option<u32> {
+    let entries = collect_antigravity_legacy_process_entries();
+    resolve_antigravity_legacy_pid_from_entries(last_pid, user_data_dir, &entries)
+}
+
 #[cfg(target_os = "macos")]
 fn focus_window_by_pid(pid: u32) -> Result<(), String> {
     let script = format!(
@@ -5029,6 +5089,28 @@ pub fn focus_antigravity_instance(
     focus_window_by_pid(pid)?;
     crate::modules::logger::log_info(&format!(
         "[Focus] Antigravity IDE focus pid={} elapsed={}ms",
+        pid,
+        focus_start.elapsed().as_millis()
+    ));
+    Ok(pid)
+}
+
+pub fn focus_antigravity_legacy_instance(
+    last_pid: Option<u32>,
+    user_data_dir: Option<&str>,
+) -> Result<u32, String> {
+    let resolve_start = Instant::now();
+    let pid = resolve_antigravity_legacy_pid(last_pid, user_data_dir)
+        .ok_or_else(|| "实例未运行，无法定位窗口".to_string())?;
+    crate::modules::logger::log_info(&format!(
+        "[Focus] Antigravity resolve pid={} elapsed={}ms",
+        pid,
+        resolve_start.elapsed().as_millis()
+    ));
+    let focus_start = Instant::now();
+    focus_window_by_pid(pid)?;
+    crate::modules::logger::log_info(&format!(
+        "[Focus] Antigravity focus pid={} elapsed={}ms",
         pid,
         focus_start.elapsed().as_millis()
     ));
@@ -6970,6 +7052,128 @@ fn close_pids(pids: &[u32], timeout_secs: u64) -> Result<(), String> {
     }
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn close_processes_by_exact_exe_paths(
+    exe_paths: &[std::path::PathBuf],
+    timeout_secs: u64,
+) -> Result<usize, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut candidates: Vec<(String, String, String)> = Vec::new();
+        let mut expected_paths = HashSet::new();
+        let mut process_names = HashSet::new();
+        for path in exe_paths {
+            let raw_path = path.to_string_lossy().to_string();
+            let normalized = normalize_path_for_compare(&raw_path);
+            if normalized.is_empty() {
+                continue;
+            }
+            let Some(file_name) = path
+                .file_name()
+                .map(|value| value.to_string_lossy().trim().to_string())
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            expected_paths.insert(normalized.clone());
+            process_names.insert(file_name.to_ascii_lowercase());
+            candidates.push((raw_path, normalized, file_name));
+        }
+
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+
+        let current_pid = std::process::id();
+        let mut pids = Vec::new();
+        for (raw_path, _, process_name) in &candidates {
+            let script = build_windows_path_filtered_process_probe_script(process_name, raw_path);
+            match powershell_output_with_timeout(
+                &["-NoProfile", "-Command", &script],
+                WINDOWS_PROCESS_PROBE_TIMEOUT,
+            ) {
+                Ok(output) if output.status.success() => {
+                    for line in String::from_utf8_lossy(&output.stdout).lines() {
+                        let line = line.trim();
+                        if line.is_empty() {
+                            continue;
+                        }
+                        let mut parts = line.splitn(2, '|');
+                        let pid_str = parts.next().unwrap_or("").trim();
+                        let Ok(pid) = pid_str.parse::<u32>() else {
+                            continue;
+                        };
+                        if pid != current_pid {
+                            pids.push(pid);
+                        }
+                    }
+                }
+                Ok(output) => {
+                    crate::modules::logger::log_warn(&format!(
+                        "[CloseByExe] PowerShell probe failed: name={} status={} stderr={}",
+                        process_name,
+                        output.status,
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    ));
+                }
+                Err(err) => {
+                    crate::modules::logger::log_warn(&format!(
+                        "[CloseByExe] PowerShell probe error: name={} err={}",
+                        process_name, err
+                    ));
+                }
+            }
+        }
+
+        let mut system = System::new();
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing()
+                .with_exe(UpdateKind::OnlyIfNotSet)
+                .with_cmd(UpdateKind::OnlyIfNotSet),
+        );
+        for (pid, process) in system.processes() {
+            let pid_u32 = pid.as_u32();
+            if pid_u32 == current_pid {
+                continue;
+            }
+            let process_name = process.name().to_string_lossy().to_ascii_lowercase();
+            if !process_names.contains(&process_name) {
+                continue;
+            }
+            let (resolved_exe, _) = resolve_windows_process_exe_for_match(process);
+            if let Some(resolved_exe) = resolved_exe {
+                if expected_paths.contains(&resolved_exe) {
+                    pids.push(pid_u32);
+                }
+            }
+        }
+
+        pids.sort();
+        pids.dedup();
+        if pids.is_empty() {
+            return Ok(0);
+        }
+        crate::modules::logger::log_info(&format!(
+            "[CloseByExe] closing exact-path processes: targets={}, paths={:?}",
+            summarize_pid_list_for_log(&pids),
+            candidates
+                .iter()
+                .map(|(_, normalized, _)| summarize_text_for_process_log(normalized, 160))
+                .collect::<Vec<_>>()
+        ));
+        close_pids(&pids, timeout_secs)?;
+        Ok(pids.len())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (exe_paths, timeout_secs);
+        Ok(0)
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn try_launch_via_shortcut(shortcut_pattern: &str) -> Result<Option<u32>, String> {
     use std::fs;
@@ -7229,6 +7433,22 @@ pub fn start_antigravity_legacy_with_args(
         let pid = spawn_open_app_with_options(&app_root, &args, true)
             .map_err(|e| format!("启动 Antigravity 失败: {}", e))?;
         crate::modules::logger::log_info("Antigravity 启动命令已发送（open -n -a）");
+        if !user_data_dir_trimmed.is_empty() {
+            let probe_started = Instant::now();
+            let timeout = Duration::from_secs(6);
+            while probe_started.elapsed() < timeout {
+                if let Some(resolved_pid) =
+                    resolve_antigravity_legacy_pid(None, Some(user_data_dir_trimmed))
+                {
+                    return Ok(resolved_pid);
+                }
+                thread::sleep(Duration::from_millis(200));
+            }
+            crate::modules::logger::log_warn(&format!(
+                "[AG Legacy Start] 启动后 6s 内未匹配到实例 PID，回退 open pid={}",
+                pid
+            ));
+        }
         return Ok(pid);
     }
 

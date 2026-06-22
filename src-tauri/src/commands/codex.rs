@@ -16,7 +16,7 @@ use crate::modules::{
     codex_speed, codex_wakeup, codex_wakeup_scheduler, config, logger, openclaw_auth,
     opencode_auth, process,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
@@ -25,44 +25,104 @@ use tauri_plugin_opener::OpenerExt;
 
 static CODEX_POST_REFRESH_CHECK_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
-fn codex_launch_credential_kind_for_provider(provider: &str) -> &'static str {
-    if provider == "openai" {
-        "account"
-    } else {
+#[derive(Clone)]
+struct CodexLaunchCredentialSnapshot {
+    kind: String,
+    source: String,
+}
+
+fn codex_launch_credential_kind_for_account(account: &CodexAccount) -> &'static str {
+    if account.is_api_key_auth() {
         "api"
+    } else {
+        "account"
     }
 }
 
-fn repair_codex_session_visibility_after_provider_change(
-    context: &str,
-    before_provider: Option<String>,
-    after_provider: Option<String>,
-) -> Result<(), String> {
-    let (Some(before), Some(after)) = (before_provider, after_provider) else {
-        return Ok(());
-    };
-    if before == after {
-        return Ok(());
+fn codex_launch_credential_snapshot_for_account(
+    account: &CodexAccount,
+    source_prefix: &str,
+) -> CodexLaunchCredentialSnapshot {
+    CodexLaunchCredentialSnapshot {
+        kind: codex_launch_credential_kind_for_account(account).to_string(),
+        source: format!("{}{}", source_prefix, account.id),
     }
-    if codex_launch_credential_kind_for_provider(&before)
-        == codex_launch_credential_kind_for_provider(&after)
-    {
-        return Ok(());
+}
+
+fn codex_launch_credential_snapshot_for_account_id(
+    account_id: &str,
+    source_prefix: &str,
+) -> Option<CodexLaunchCredentialSnapshot> {
+    let account_id = account_id.trim();
+    if account_id.is_empty() {
+        return None;
     }
 
-    let started = Instant::now();
-    let summary = codex_session_visibility::repair_session_visibility_across_instances()?;
+    if crate::modules::codex_instance::is_api_service_bind_account_id(account_id)
+        || crate::modules::codex_instance::parse_provider_gateway_bind_account_id(account_id)
+            .is_some()
+        || codex_local_access::is_local_access_runtime_account_id(account_id)
+    {
+        return Some(CodexLaunchCredentialSnapshot {
+            kind: "api".to_string(),
+            source: format!("{}{}", source_prefix, account_id),
+        });
+    }
+
+    codex_account::load_account(account_id)
+        .map(|account| codex_launch_credential_snapshot_for_account(&account, source_prefix))
+}
+
+fn read_current_codex_launch_credential_snapshot() -> Option<CodexLaunchCredentialSnapshot> {
+    let codex_home = codex_account::get_codex_home();
+    if let Some(account_id) =
+        codex_account::read_managed_projection_account_id_from_dir(&codex_home)
+    {
+        if let Some(snapshot) =
+            codex_launch_credential_snapshot_for_account_id(&account_id, "profile:")
+        {
+            return Some(snapshot);
+        }
+    }
+
+    if let Ok(settings) = crate::modules::codex_instance::load_default_settings() {
+        if let Some(bind_account_id) = settings.bind_account_id.as_deref() {
+            if let Some(snapshot) =
+                codex_launch_credential_snapshot_for_account_id(bind_account_id, "default-bind:")
+            {
+                return Some(snapshot);
+            }
+        }
+    }
+
+    codex_account::get_current_account()
+        .as_ref()
+        .map(|account| codex_launch_credential_snapshot_for_account(account, "current-index:"))
+}
+
+fn repair_codex_session_visibility_after_credential_kind_change(
+    context: &str,
+    before: Option<CodexLaunchCredentialSnapshot>,
+    after: Option<CodexLaunchCredentialSnapshot>,
+    auto_repair_mode: Option<codex_session_visibility::CodexSessionVisibilityAutoRepairMode>,
+) {
+    let (Some(before), Some(after)) = (before, after) else {
+        return;
+    };
+    if before.kind == after.kind {
+        return;
+    }
+
+    let auto_repair_mode = auto_repair_mode.unwrap_or_default();
     logger::log_info(&format!(
-        "[Codex Session Visibility] {}: repaired after account switch, from_provider={}, to_provider={}, mutated_instances={}, rollout_files={}, sqlite_rows={}, elapsed_ms={}",
+        "[Codex Session Visibility] {}: credential kind changed, defer quick repair to frontend notice, mode={}, from_kind={}, to_kind={}, from_source={}, to_source={}",
         context,
-        before,
-        after,
-        summary.mutated_instance_count,
-        summary.changed_rollout_file_count,
-        summary.updated_sqlite_row_count,
-        started.elapsed().as_millis()
+        auto_repair_mode.label(),
+        before.kind,
+        after.kind,
+        before.source,
+        after.source
     ));
-    Ok(())
 }
 
 fn restart_codex_specified_app_if_enabled(user_config: &config::UserConfig) {
@@ -238,20 +298,53 @@ pub async fn refresh_codex_account_profile(account_id: String) -> Result<CodexAc
 pub async fn switch_codex_account(
     app: AppHandle,
     account_id: String,
+    auto_repair_mode: Option<codex_session_visibility::CodexSessionVisibilityAutoRepairMode>,
 ) -> Result<CodexAccount, String> {
-    let codex_home = codex_account::get_codex_home();
-    let previous_provider =
-        codex_session_visibility::read_history_visibility_provider_for_dir(&codex_home).ok();
-
+    let flow_started = Instant::now();
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] switch_codex_account started: account_id={}",
+        account_id
+    ));
+    let previous_credential = read_current_codex_launch_credential_snapshot();
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] previous credential resolved: account_id={}, elapsed_ms={}",
+        account_id,
+        flow_started.elapsed().as_millis()
+    ));
     // 切换账号（写入 auth.json）
+    let switch_started = Instant::now();
     let account = codex_account::switch_account_managed(&account_id).await?;
-    repair_codex_session_visibility_after_provider_change(
-        "switch-codex-account",
-        previous_provider,
-        codex_session_visibility::read_history_visibility_provider_for_dir(&codex_home).ok(),
-    )?;
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] switch_account_managed finished: account_id={}, elapsed_ms={}, total_ms={}",
+        account_id,
+        switch_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
     let account_speed = account.app_speed.clone();
+    let speed_started = Instant::now();
     codex_speed::write_official_app_speed(account_speed.clone())?;
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] write official app speed finished: account_id={}, elapsed_ms={}, total_ms={}",
+        account_id,
+        speed_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
+    let repair_started = Instant::now();
+    repair_codex_session_visibility_after_credential_kind_change(
+        "after-account-switch",
+        previous_credential,
+        Some(codex_launch_credential_snapshot_for_account(
+            &account,
+            "target-account:",
+        )),
+        auto_repair_mode,
+    );
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] session visibility repair stage finished: account_id={}, elapsed_ms={}, total_ms={}",
+        account_id,
+        repair_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
 
     let default_bind_account_id =
         if crate::modules::codex_local_access::account_requires_provider_gateway(&account) {
@@ -262,6 +355,7 @@ pub async fn switch_codex_account(
         };
 
     // 同步更新 Codex 默认实例的绑定账号（不同步到 Antigravity，因为账号体系不同）
+    let default_settings_started = Instant::now();
     if let Err(e) = crate::modules::codex_instance::update_default_settings(
         Some(Some(default_bind_account_id.clone())),
         None,
@@ -279,6 +373,12 @@ pub async fn switch_codex_account(
     if let Err(e) = crate::modules::codex_instance::update_default_app_speed(account_speed) {
         logger::log_warn(&format!("更新 Codex 默认实例速度失败: {}", e));
     }
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] default settings update finished: account_id={}, elapsed_ms={}, total_ms={}",
+        account_id,
+        default_settings_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
 
     let user_config = config::get_user_config();
 
@@ -330,6 +430,7 @@ pub async fn switch_codex_account(
     }
 
     if user_config.codex_launch_on_switch {
+        let launch_started = Instant::now();
         #[cfg(target_os = "macos")]
         if process::is_codex_running() {
             logger::log_info("检测到 Codex 正在运行，将按默认实例 PID 逻辑重启");
@@ -346,13 +447,33 @@ pub async fn switch_codex_account(
                 }
             }
         }
+        logger::log_info(&format!(
+            "[Codex Switch][Backend] codex_start_default_with_prepared_profile finished: account_id={}, elapsed_ms={}, total_ms={}",
+            account_id,
+            launch_started.elapsed().as_millis(),
+            flow_started.elapsed().as_millis()
+        ));
     } else {
         logger::log_info("已关闭切换 Codex 时自动启动 Codex App");
     }
 
+    let restart_specified_started = Instant::now();
     restart_codex_specified_app_if_enabled(&user_config);
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] restart specified app stage finished: account_id={}, elapsed_ms={}, total_ms={}",
+        account_id,
+        restart_specified_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
 
+    let tray_started = Instant::now();
     let _ = crate::modules::tray::update_tray_menu(&app);
+    logger::log_info(&format!(
+        "[Codex Switch][Backend] switch_codex_account finished: account_id={}, tray_elapsed_ms={}, total_ms={}",
+        account_id,
+        tray_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
     Ok(account)
 }
 
@@ -367,7 +488,7 @@ async fn run_codex_post_refresh_checks(app: &AppHandle) {
     match codex_account::pick_auto_switch_target_if_needed() {
         Ok(Some(target)) => {
             let target_id = target.id.clone();
-            match switch_codex_account(app.clone(), target_id.clone()).await {
+            match switch_codex_account(app.clone(), target_id.clone(), None).await {
                 Ok(switched_account) => {
                     logger::log_info(&format!(
                         "[AutoSwitch][Codex] 自动切号完成: target_id={}, email={}",
@@ -540,6 +661,18 @@ pub async fn refresh_codex_quota(app: AppHandle, account_id: String) -> Result<C
 }
 
 #[tauri::command]
+pub async fn get_codex_reset_credits(
+    account_id: String,
+) -> Result<codex_quota::CodexResetCreditsSnapshot, String> {
+    codex_quota::fetch_account_reset_credits(&account_id).await
+}
+
+#[tauri::command]
+pub async fn consume_codex_reset_credit(account_id: String) -> Result<(), String> {
+    codex_quota::consume_reset_credit(&account_id).await
+}
+
+#[tauri::command]
 pub async fn refresh_codex_subscription_info(
     app: AppHandle,
     account_id: String,
@@ -584,8 +717,22 @@ pub async fn refresh_all_codex_quotas(app: AppHandle) -> Result<i32, String> {
     Ok(success_count as i32)
 }
 
-async fn save_codex_oauth_tokens(tokens: CodexTokens) -> Result<CodexAccount, String> {
-    let account = codex_account::upsert_account(tokens)?;
+async fn save_codex_oauth_tokens(
+    tokens: CodexTokens,
+    reauth_account_id: Option<&str>,
+) -> Result<CodexAccount, String> {
+    let account = if let Some(account_id) = reauth_account_id.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    }) {
+        codex_account::upsert_account_for_reauth(tokens, account_id)?
+    } else {
+        codex_account::upsert_account(tokens)?
+    };
 
     if let Err(e) = codex_quota::refresh_account_quota(&account.id).await {
         logger::log_error(&format!("刷新配额失败: {}", e));
@@ -616,7 +763,10 @@ pub async fn codex_oauth_login_start(
 
 /// OAuth：浏览器授权完成后按 loginId 完成登录
 #[tauri::command]
-pub async fn codex_oauth_login_completed(login_id: String) -> Result<CodexAccount, String> {
+pub async fn codex_oauth_login_completed(
+    login_id: String,
+    reauth_account_id: Option<String>,
+) -> Result<CodexAccount, String> {
     let started_at_ms = chrono::Utc::now().timestamp_millis();
     logger::log_info(&format!(
         "Codex OAuth completed 命令开始: login_id={}, started_at_ms={}",
@@ -634,7 +784,7 @@ pub async fn codex_oauth_login_completed(login_id: String) -> Result<CodexAccoun
             return Err(e);
         }
     };
-    let account = save_codex_oauth_tokens(tokens).await?;
+    let account = save_codex_oauth_tokens(tokens, reauth_account_id.as_deref()).await?;
     logger::log_info(&format!(
         "Codex OAuth completed 命令成功: login_id={}, duration_ms={}, account_id={}, account_email={}",
         login_id,
@@ -766,8 +916,14 @@ pub fn update_codex_api_key_credentials(
 pub async fn update_codex_api_key_bound_oauth_account(
     account_id: String,
     bound_oauth_account_id: Option<String>,
+    bound_oauth_use_local_gateway: Option<bool>,
 ) -> Result<CodexAccount, String> {
-    codex_account::update_api_key_bound_oauth_account(&account_id, bound_oauth_account_id).await
+    codex_account::update_api_key_bound_oauth_account(
+        &account_id,
+        bound_oauth_account_id,
+        bound_oauth_use_local_gateway.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -803,7 +959,7 @@ pub fn close_codex_oauth_port() -> Result<u32, String> {
 
 #[tauri::command]
 pub fn codex_wakeup_get_cli_status() -> Result<codex_wakeup::CodexCliStatus, String> {
-    Ok(codex_wakeup::get_cli_status())
+    Ok(codex_wakeup::wakeup_runtime_status())
 }
 
 #[tauri::command]
@@ -815,7 +971,7 @@ pub fn codex_wakeup_update_runtime_config(
         codex_cli_path,
         node_path,
     })?;
-    Ok(codex_wakeup::get_cli_status())
+    Ok(codex_wakeup::wakeup_runtime_status())
 }
 
 #[tauri::command]
@@ -1074,6 +1230,329 @@ fn codex_model_provider_failure(
     }
 }
 
+const CODEX_MODEL_PROVIDER_CHAT_TEST_PROGRESS_EVENT: &str = "codex://model-provider-test-progress";
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModelProviderChatTestTarget {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub base_url: String,
+    pub api_key_id: Option<String>,
+    pub api_key_name: Option<String>,
+    pub api_key: String,
+    pub wire_api: Option<String>,
+    #[serde(default)]
+    pub model_catalog: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModelProviderChatTestRecord {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub api_key_id: Option<String>,
+    pub api_key_name: Option<String>,
+    pub wire_api: String,
+    pub access_mode: String,
+    pub model_id: Option<String>,
+    pub success: bool,
+    pub prompt: String,
+    pub reply: Option<String>,
+    pub error: Option<String>,
+    pub duration_ms: Option<u64>,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModelProviderChatTestBatchResult {
+    pub run_id: String,
+    pub records: Vec<CodexModelProviderChatTestRecord>,
+    pub success_count: usize,
+    pub failure_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModelProviderChatTestProgressPayload {
+    pub run_id: String,
+    pub total: usize,
+    pub completed: usize,
+    pub success_count: usize,
+    pub failure_count: usize,
+    pub running: bool,
+    pub phase: String,
+    pub current_provider_id: Option<String>,
+    pub item: Option<CodexModelProviderChatTestRecord>,
+}
+
+fn emit_model_provider_chat_test_progress(
+    app: &AppHandle,
+    run_id: &str,
+    total: usize,
+    completed: usize,
+    success_count: usize,
+    failure_count: usize,
+    running: bool,
+    phase: &str,
+    current_provider_id: Option<&str>,
+    item: Option<CodexModelProviderChatTestRecord>,
+) {
+    let payload = CodexModelProviderChatTestProgressPayload {
+        run_id: run_id.to_string(),
+        total,
+        completed,
+        success_count,
+        failure_count,
+        running,
+        phase: phase.to_string(),
+        current_provider_id: current_provider_id.map(ToOwned::to_owned),
+        item,
+    };
+    let _ = app.emit(CODEX_MODEL_PROVIDER_CHAT_TEST_PROGRESS_EVENT, payload);
+}
+
+fn normalize_model_provider_wire_api(value: Option<&str>, base_url: &str) -> String {
+    match value.map(str::trim) {
+        Some("chat_completions") => return "chat_completions".to_string(),
+        Some("responses") => return "responses".to_string(),
+        _ => {}
+    }
+    let lower = base_url.trim().to_ascii_lowercase();
+    if lower.contains("/chat/completions")
+        || lower.contains("api.deepseek.com")
+        || lower.contains("api.moonshot.cn")
+        || lower.contains("api.siliconflow.cn")
+        || lower.contains("api.siliconflow.com")
+        || lower.contains("open.bigmodel.cn")
+        || lower.contains("api.z.ai")
+        || lower.contains("volces.com")
+        || lower.contains("bytepluses.com")
+        || lower.contains("qianfan.baidubce.com")
+        || lower.contains("dashscope.aliyuncs.com")
+        || lower.contains("api.stepfun.com")
+        || lower.contains("api.stepfun.ai")
+        || lower.contains("modelscope.cn")
+        || lower.contains("api.longcat.chat")
+        || lower.contains("api.minimax.io")
+        || lower.contains("api.mini-max.chat")
+        || lower.contains("api.minimaxi.com")
+        || lower.contains("api.mimo.dev")
+        || lower.contains("token-plan-cn.xiaomimimo.com")
+        || lower.contains("api.novita.ai")
+        || lower.contains("integrate.api.nvidia.com")
+        || lower.contains("runapi.co")
+        || lower.contains("relaxycode.com")
+        || lower.contains("compshare.cn")
+        || lower.contains("api.lemondata.cc")
+        || lower.contains("e-flowcode.cc")
+        || lower.contains("cc-api.pipellm.ai")
+        || lower.contains("openrouter.ai")
+        || lower.contains("api.therouter.ai")
+    {
+        "chat_completions".to_string()
+    } else {
+        "responses".to_string()
+    }
+}
+
+const RESPONSES_NATIVE_CHAT_TEST_MODEL_PRIORITY: &[&str] =
+    &["gpt-5.5", "gpt-5.4", "gpt-5", "gpt-4.1", "gpt-4o"];
+
+fn is_image_generation_model_id(model_id: &str) -> bool {
+    let lower = model_id.trim().to_ascii_lowercase();
+    lower.starts_with("gpt-image") || lower.starts_with("dall-e") || lower.contains("image-gen")
+}
+
+fn first_non_empty_model_id(models: &[String]) -> Option<String> {
+    models
+        .iter()
+        .map(|item| item.trim())
+        .find(|item| !item.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn select_model_provider_chat_test_model(
+    wire_api: &str,
+    explicit_model: Option<&str>,
+    model_catalog: &[String],
+) -> Option<String> {
+    if let Some(model) = explicit_model
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(model.to_string());
+    }
+
+    if wire_api.trim() == "responses" {
+        for preferred in RESPONSES_NATIVE_CHAT_TEST_MODEL_PRIORITY {
+            if let Some(model) = model_catalog
+                .iter()
+                .map(|item| item.trim())
+                .find(|item| item.eq_ignore_ascii_case(preferred))
+            {
+                return Some(model.to_string());
+            }
+        }
+        if let Some(model) = model_catalog
+            .iter()
+            .map(|item| item.trim())
+            .find(|item| !item.is_empty() && !is_image_generation_model_id(item))
+        {
+            return Some(model.to_string());
+        }
+    }
+
+    first_non_empty_model_id(model_catalog)
+}
+
+fn model_ids_from_provider_models(body: &serde_json::Value) -> Vec<String> {
+    body.get("data")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("id").and_then(|id| id.as_str()))
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn first_model_from_provider_models(body: &serde_json::Value, wire_api: &str) -> Option<String> {
+    let models = model_ids_from_provider_models(body);
+    select_model_provider_chat_test_model(wire_api, None, &models)
+}
+
+async fn discover_model_provider_model(
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key: &str,
+    wire_api: &str,
+) -> Option<String> {
+    let url = codex_model_provider_models_url(base_url).ok()?;
+    let response = client
+        .get(url)
+        .bearer_auth(api_key.trim())
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let text = response.text().await.ok()?;
+    let parsed = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    first_model_from_provider_models(&parsed, wire_api)
+}
+
+async fn run_single_model_provider_chat_test(
+    client: &reqwest::Client,
+    target: CodexModelProviderChatTestTarget,
+    prompt: &str,
+    model: Option<&str>,
+    run_id: &str,
+) -> CodexModelProviderChatTestRecord {
+    let wire_api = normalize_model_provider_wire_api(target.wire_api.as_deref(), &target.base_url);
+    let access_mode = "gateway".to_string();
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let api_key = target.api_key.trim().to_string();
+    if api_key.is_empty() {
+        return CodexModelProviderChatTestRecord {
+            provider_id: target.provider_id,
+            provider_name: target.provider_name,
+            api_key_id: target.api_key_id,
+            api_key_name: target.api_key_name,
+            wire_api,
+            access_mode,
+            model_id: None,
+            success: false,
+            prompt: prompt.to_string(),
+            reply: None,
+            error: Some("供应商缺少 API Key".to_string()),
+            duration_ms: None,
+            timestamp,
+        };
+    }
+    let configured_model_id =
+        select_model_provider_chat_test_model(&wire_api, model, &target.model_catalog);
+    let model_id = match configured_model_id {
+        Some(model_id) => Some(model_id),
+        None => discover_model_provider_model(client, &target.base_url, &api_key, &wire_api).await,
+    };
+    let Some(model_id) = model_id else {
+        return CodexModelProviderChatTestRecord {
+            provider_id: target.provider_id,
+            provider_name: target.provider_name,
+            api_key_id: target.api_key_id,
+            api_key_name: target.api_key_name,
+            wire_api,
+            access_mode,
+            model_id: None,
+            success: false,
+            prompt: prompt.to_string(),
+            reply: None,
+            error: Some("无法确定测试模型，请先配置模型目录或确认 /models 可用".to_string()),
+            duration_ms: None,
+            timestamp,
+        };
+    };
+
+    let result = codex_local_access::run_model_provider_gateway_chat_test(
+        codex_local_access::CodexModelProviderGatewayChatTestRequest {
+            run_id: run_id.to_string(),
+            provider_id: target.provider_id.clone(),
+            provider_name: target.provider_name.clone(),
+            base_url: target.base_url.clone(),
+            api_key_id: target.api_key_id.clone(),
+            api_key_name: target.api_key_name.clone(),
+            api_key,
+            wire_api: wire_api.clone(),
+            model_catalog: target.model_catalog.clone(),
+            model_id: model_id.clone(),
+            prompt: prompt.to_string(),
+        },
+    )
+    .await
+    .map(|result| (result.duration_ms, result.reply));
+
+    match result {
+        Ok((duration_ms, reply)) => CodexModelProviderChatTestRecord {
+            provider_id: target.provider_id,
+            provider_name: target.provider_name,
+            api_key_id: target.api_key_id,
+            api_key_name: target.api_key_name,
+            wire_api,
+            access_mode,
+            model_id: Some(model_id),
+            success: true,
+            prompt: prompt.to_string(),
+            reply: Some(reply),
+            error: None,
+            duration_ms: Some(duration_ms),
+            timestamp,
+        },
+        Err(error) => CodexModelProviderChatTestRecord {
+            provider_id: target.provider_id,
+            provider_name: target.provider_name,
+            api_key_id: target.api_key_id,
+            api_key_name: target.api_key_name,
+            wire_api,
+            access_mode,
+            model_id: Some(model_id),
+            success: false,
+            prompt: prompt.to_string(),
+            reply: None,
+            error: Some(error),
+            duration_ms: None,
+            timestamp,
+        },
+    }
+}
+
 fn summarize_model_provider_models(body: &serde_json::Value) -> (Option<String>, Option<String>) {
     let ids: Vec<String> = body
         .get("data")
@@ -1096,12 +1575,58 @@ fn summarize_model_provider_models(body: &serde_json::Value) -> (Option<String>,
     (first, output)
 }
 
+fn list_model_provider_models(body: &serde_json::Value) -> Vec<CodexModelProviderModel> {
+    let mut seen = std::collections::HashSet::new();
+    body.get("data")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let id = item.get("id").and_then(|id| id.as_str())?.trim();
+                    if id.is_empty() {
+                        return None;
+                    }
+                    let key = id.to_ascii_lowercase();
+                    if !seen.insert(key) {
+                        return None;
+                    }
+                    Some(CodexModelProviderModel {
+                        id: id.to_string(),
+                        display_name: item
+                            .get("display_name")
+                            .or_else(|| item.get("displayName"))
+                            .and_then(|value| value.as_str())
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(str::to_string),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexModelProviderUsageDetail {
     pub key: String,
     pub label: String,
     pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModelProviderModel {
+    pub id: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModelProviderModelsResult {
+    pub models: Vec<CodexModelProviderModel>,
+    pub latency_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1518,6 +2043,159 @@ pub async fn codex_test_model_provider_connection(
 }
 
 #[tauri::command]
+pub async fn codex_model_provider_chat_test_batch(
+    app: AppHandle,
+    targets: Vec<CodexModelProviderChatTestTarget>,
+    prompt: Option<String>,
+    model: Option<String>,
+    run_id: Option<String>,
+) -> Result<CodexModelProviderChatTestBatchResult, String> {
+    let cleaned_targets: Vec<CodexModelProviderChatTestTarget> = targets
+        .into_iter()
+        .filter(|target| {
+            !target.provider_id.trim().is_empty() && !target.base_url.trim().is_empty()
+        })
+        .collect();
+    if cleaned_targets.is_empty() {
+        return Err("至少选择一个模型供应商".to_string());
+    }
+    let prompt = prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(codex_wakeup::DEFAULT_PROMPT)
+        .to_string();
+    let model = model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let run_id = run_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let total = cleaned_targets.len();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(CODEX_MODEL_PROVIDER_TEST_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("CREATE_HTTP_CLIENT_FAILED: {}", e))?;
+
+    emit_model_provider_chat_test_progress(
+        &app,
+        &run_id,
+        total,
+        0,
+        0,
+        0,
+        true,
+        "batch_started",
+        None,
+        None,
+    );
+
+    let mut records = Vec::with_capacity(total);
+    let mut success_count = 0usize;
+    let mut failure_count = 0usize;
+    for (index, target) in cleaned_targets.into_iter().enumerate() {
+        emit_model_provider_chat_test_progress(
+            &app,
+            &run_id,
+            total,
+            index,
+            success_count,
+            failure_count,
+            true,
+            "provider_started",
+            Some(&target.provider_id),
+            None,
+        );
+        let record = run_single_model_provider_chat_test(
+            &client,
+            target,
+            &prompt,
+            model.as_deref(),
+            &run_id,
+        )
+        .await;
+        if record.success {
+            success_count += 1;
+        } else {
+            failure_count += 1;
+        }
+        emit_model_provider_chat_test_progress(
+            &app,
+            &run_id,
+            total,
+            index + 1,
+            success_count,
+            failure_count,
+            true,
+            "provider_completed",
+            Some(&record.provider_id),
+            Some(record.clone()),
+        );
+        records.push(record);
+    }
+
+    emit_model_provider_chat_test_progress(
+        &app,
+        &run_id,
+        total,
+        total,
+        success_count,
+        failure_count,
+        false,
+        "batch_completed",
+        None,
+        None,
+    );
+
+    Ok(CodexModelProviderChatTestBatchResult {
+        run_id,
+        records,
+        success_count,
+        failure_count,
+    })
+}
+
+#[tauri::command]
+pub async fn codex_list_model_provider_models(
+    base_url: String,
+    api_key: String,
+) -> Result<CodexModelProviderModelsResult, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("MISSING_API_KEY".to_string());
+    }
+    let url = codex_model_provider_models_url(&base_url)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(CODEX_MODEL_PROVIDER_TEST_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("CREATE_HTTP_CLIENT_FAILED: {}", e))?;
+    let started = Instant::now();
+    let response = client
+        .get(&url)
+        .bearer_auth(key)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("PROVIDER_MODELS_NETWORK_FAILED: {}", e))?;
+    let latency_ms = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!(
+            "PROVIDER_MODELS_HTTP_{}: {}",
+            status.as_u16(),
+            text.chars().take(300).collect::<String>()
+        ));
+    }
+    let parsed = serde_json::from_str::<serde_json::Value>(&text)
+        .map_err(|e| format!("PROVIDER_MODELS_PARSE_FAILED: {}", e))?;
+    Ok(CodexModelProviderModelsResult {
+        models: list_model_provider_models(&parsed),
+        latency_ms,
+    })
+}
+
+#[tauri::command]
 pub async fn codex_query_model_provider_usage(
     base_url: String,
     api_key: String,
@@ -1686,8 +2364,13 @@ pub async fn codex_local_access_rotate_api_key() -> Result<CodexLocalAccessState
 #[tauri::command]
 pub async fn codex_local_access_update_bound_oauth_account(
     bound_oauth_account_id: Option<String>,
+    bound_oauth_use_local_gateway: Option<bool>,
 ) -> Result<CodexLocalAccessState, String> {
-    codex_local_access::update_local_access_bound_oauth_account(bound_oauth_account_id).await
+    codex_local_access::update_local_access_bound_oauth_account(
+        bound_oauth_account_id,
+        bound_oauth_use_local_gateway.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1903,16 +2586,45 @@ pub async fn codex_local_access_set_enabled(
 }
 
 #[tauri::command]
-pub async fn codex_local_access_activate(app: AppHandle) -> Result<CodexLocalAccessState, String> {
+pub async fn codex_local_access_activate(
+    app: AppHandle,
+    auto_repair_mode: Option<codex_session_visibility::CodexSessionVisibilityAutoRepairMode>,
+) -> Result<CodexLocalAccessState, String> {
+    let flow_started = Instant::now();
+    logger::log_info("[Codex API Service Switch][Backend] codex_local_access_activate started");
     let codex_home = codex_account::get_codex_home();
+    let previous_credential = read_current_codex_launch_credential_snapshot();
+    logger::log_info(&format!(
+        "[Codex API Service Switch][Backend] previous credential resolved: elapsed_ms={}",
+        flow_started.elapsed().as_millis()
+    ));
+    let activate_started = Instant::now();
     let state = codex_local_access::activate_local_access_for_dir(&codex_home).await?;
+    logger::log_info(&format!(
+        "[Codex API Service Switch][Backend] activate_local_access_for_dir finished: elapsed_ms={}, total_ms={}",
+        activate_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
     let api_service_speed = codex_speed::get_api_service_app_speed_config()?.speed;
+    let speed_started = Instant::now();
     codex_speed::write_official_app_speed(api_service_speed.clone())?;
+    logger::log_info(&format!(
+        "[Codex API Service Switch][Backend] write official app speed finished: elapsed_ms={}, total_ms={}",
+        speed_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
 
+    let index_started = Instant::now();
     let mut index = codex_account::load_account_index();
     index.current_account_id = None;
     codex_account::save_account_index(&index)?;
+    logger::log_info(&format!(
+        "[Codex API Service Switch][Backend] account index cleared: elapsed_ms={}, total_ms={}",
+        index_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
 
+    let default_settings_started = Instant::now();
     if let Err(e) = crate::modules::codex_instance::update_default_settings(
         Some(Some(
             crate::modules::codex_instance::CODEX_API_SERVICE_BIND_ACCOUNT_ID.to_string(),
@@ -1929,12 +2641,36 @@ pub async fn codex_local_access_activate(app: AppHandle) -> Result<CodexLocalAcc
     if let Err(e) = crate::modules::codex_instance::update_default_app_speed(api_service_speed) {
         logger::log_warn(&format!("更新 Codex 默认实例 API 服务速度失败: {}", e));
     }
+    logger::log_info(&format!(
+        "[Codex API Service Switch][Backend] default settings update finished: elapsed_ms={}, total_ms={}",
+        default_settings_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
+    let repair_started = Instant::now();
+    repair_codex_session_visibility_after_credential_kind_change(
+        "after-api-service-activate",
+        previous_credential,
+        Some(CodexLaunchCredentialSnapshot {
+            kind: "api".to_string(),
+            source: format!(
+                "target-bind:{}",
+                crate::modules::codex_instance::CODEX_API_SERVICE_BIND_ACCOUNT_ID
+            ),
+        }),
+        auto_repair_mode,
+    );
+    logger::log_info(&format!(
+        "[Codex API Service Switch][Backend] session visibility repair stage finished: elapsed_ms={}, total_ms={}",
+        repair_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
 
     let user_config = config::get_user_config();
 
     logger::log_info("API 服务启动模式下跳过 OpenCode / OpenClaw OAuth 同步");
 
     if user_config.codex_launch_on_switch {
+        let launch_started = Instant::now();
         #[cfg(target_os = "macos")]
         if process::is_codex_running() {
             logger::log_info("检测到 Codex 正在运行，将按默认实例 PID 逻辑重启");
@@ -1951,11 +2687,22 @@ pub async fn codex_local_access_activate(app: AppHandle) -> Result<CodexLocalAcc
                 }
             }
         }
+        logger::log_info(&format!(
+            "[Codex API Service Switch][Backend] codex_start_default_with_prepared_profile finished: elapsed_ms={}, total_ms={}",
+            launch_started.elapsed().as_millis(),
+            flow_started.elapsed().as_millis()
+        ));
     } else {
         logger::log_info("已关闭切换 Codex 时自动启动 Codex App");
     }
 
+    let tray_started = Instant::now();
     let _ = crate::modules::tray::update_tray_menu(&app);
+    logger::log_info(&format!(
+        "[Codex API Service Switch][Backend] codex_local_access_activate finished: tray_elapsed_ms={}, total_ms={}",
+        tray_started.elapsed().as_millis(),
+        flow_started.elapsed().as_millis()
+    ));
     Ok(state)
 }
 
@@ -1981,4 +2728,54 @@ pub async fn codex_local_access_chat_test_stream(
 ) -> Result<(), String> {
     codex_local_access::stream_chat_local_access_with_dialog(app, session_id, model_id, messages)
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn models(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn responses_native_chat_test_prefers_gpt_55_over_image_model() {
+        let catalog = models(&["gpt-image-2", "gpt-5.5", "gpt-5.4"]);
+
+        assert_eq!(
+            select_model_provider_chat_test_model("responses", None, &catalog).as_deref(),
+            Some("gpt-5.5")
+        );
+    }
+
+    #[test]
+    fn responses_native_chat_test_skips_image_model_when_preferred_missing() {
+        let catalog = models(&["gpt-image-2", "custom-text-model"]);
+
+        assert_eq!(
+            select_model_provider_chat_test_model("responses", None, &catalog).as_deref(),
+            Some("custom-text-model")
+        );
+    }
+
+    #[test]
+    fn chat_completions_chat_test_keeps_catalog_order() {
+        let catalog = models(&["provider-default", "gpt-5.5"]);
+
+        assert_eq!(
+            select_model_provider_chat_test_model("chat_completions", None, &catalog).as_deref(),
+            Some("provider-default")
+        );
+    }
+
+    #[test]
+    fn explicit_chat_test_model_wins_over_responses_preference() {
+        let catalog = models(&["gpt-image-2", "gpt-5.5"]);
+
+        assert_eq!(
+            select_model_provider_chat_test_model("responses", Some("custom-model"), &catalog)
+                .as_deref(),
+            Some("custom-model")
+        );
+    }
 }

@@ -197,7 +197,7 @@
         "planEndsInHours": "تتم إعادة الضبط خلال {{hours}} ساعة"
       },
       "flowNotice": {
-        "alternative": "بديل: استخدم العزل عبر المثيلات المتعددة (باستخدام --user-data-dir مختلف). سجّل الدخول مرة واحدة لكل مثيل، ثم شغّل حسب المثيل للتبديل السريع إلى بيئة الحساب المستهدف."
+        "alternative": "العزل عبر مثيلات متعددة: استخدم ملفات تعريف مُدارة منفصلة وسجّل الدخول مرة لكل مثيل للتبديل بسرعة بين بيئات الحسابات."
       },
       "injecting": "جارٍ الحقن...",
       "usage": {
@@ -307,7 +307,8 @@
     "switchClassicLayoutDontAskAgain": "عدم إظهار هذا التنبيه مرة أخرى",
     "switchClassicLayoutConfirm": "التبديل الآن",
     "2faManager": "إدارة 2FA",
-    "apiRelay": "الترحيل"
+    "apiRelay": "الترحيل",
+    "claude": "Claude"
   },
   "sponsors": {
     "pageTitle": "الرعاة",
@@ -639,6 +640,8 @@
       "closeBehaviorAsk": "اسأل في كل مرة",
       "closeBehaviorMinimize": "تصغير إلى الدرج",
       "closeBehaviorQuit": "إنهاء التطبيق",
+      "startupMinimized": "بدء التشغيل مصغّرًا",
+      "startupMinimizedDesc": "تصغير النافذة الرئيسية تلقائيًا بعد اكتمال تشغيل التطبيق؛ يمكن استعادتها من Dock أو شريط المهام أو الدرج",
       "minimizeBehavior": "سلوك تصغير النافذة (macOS فقط)",
       "minimizeBehaviorDesc": "اختر ما إذا كانت النافذة عند تصغيرها تبقى في Dock وشريط القوائم، أو في شريط القوائم فقط",
       "minimizeBehaviorDockAndTray": "Dock + شريط القوائم (موصى به)",
@@ -824,7 +827,12 @@
       "codexAppSpeedFast": "سريع",
       "codexAppSpeedLaunch": "إعادة تشغيل Codex",
       "codexAppSpeedSaveFailed": "فشل حفظ سرعة Codex: {{error}}",
-      "codexAppSpeedLaunchFailed": "فشلت إعادة تشغيل Codex: {{error}}"
+      "codexAppSpeedLaunchFailed": "فشلت إعادة تشغيل Codex: {{error}}",
+      "claudeSettingsTitle": "إعدادات Claude",
+      "claudeAutoRefresh": "تحديث حصة Claude تلقائيًا",
+      "claudeAutoRefreshDesc": "يحدّث ذاكرة الحصة المؤقتة لحسابات Claude تلقائيًا في الخلفية.",
+      "claudeAppPath": "هدف تشغيل Claude Desktop",
+      "claudeAppPathDesc": "يمكن للملف الافتراضي استخدام هدف Microsoft Store؛ أما الملفات متعددة المثيلات فتحتاج Claude.exe الحقيقي."
     },
     "network": {
       "apiTitle": "واجهة برمجة تطبيقات قمرة القيادة المضادة للجاذبية",
@@ -1060,7 +1068,15 @@
       "title": "لم يتم العثور على مسار التطبيق",
       "desc": "تعذر العثور على مسار تطبيق {{app}}. الرجاء تعيينه الآن للمتابعة.",
       "action": "تعيين الآن",
-      "codexLaunchHint": "عند إيقافه، يستمر تبديل الحساب واستبدال تسجيل الدخول، لكن لن يتم تشغيل تطبيق Codex بعد الآن ولن يظهر هذا التنبيه لمسار التشغيل مرة أخرى."
+      "codexLaunchHint": "عند إيقافه، يستمر تبديل الحساب واستبدال تسجيل الدخول، لكن لن يتم تشغيل تطبيق Codex بعد الآن ولن يظهر هذا التنبيه لمسار التشغيل مرة أخرى.",
+      "claudeMultiInstanceRequiresExe": "تتطلب ملفات Claude متعددة المثيلات مسار Claude.exe الحقيقي. أهداف Microsoft Store مخصصة لملف سطح المكتب الافتراضي فقط.",
+      "scanApps": "فحص التطبيقات",
+      "scanRoots": "Nitaq al-fahs",
+      "scanRootsPlaceholder": "Ikhtiyari: ikhtar mujalladan aw jadhra qurs; idha turik farighan, yamsah WindowsApps hasab al-aqras wa yudif tatbiqat Start.",
+      "windowsApp": "تطبيق Microsoft Store",
+      "defaultOnly": "لسطح المكتب الافتراضي فقط؛ اختر Claude.exe الحقيقي للملفات متعددة المثيلات.",
+      "claudeScanEmpty": "لم يتم العثور على هدف Claude Desktop. اختر Claude.exe يدويا أو عدل نطاقات الفحص.",
+      "claudeTargetPlaceholder": "مسار Claude.exe أو shell:AppsFolder\\..."
     },
     "modal": {
       "desc": "لم يتم العثور على مسار تطبيق {{app}}. يرجى الضبط الآن للمتابعة."
@@ -1308,7 +1324,10 @@
     "switchSuccess": "تم التبديل بنجاح",
     "switched": "تم التبديل إلى {{email}}",
     "tagButton": "تعديل الوسوم",
-    "tagUpdated": "تم تحديث الوسم"
+    "tagUpdated": "تم تحديث الوسم",
+    "plan": {
+      "personal": "شخصي"
+    }
   },
   "overview": {
     "title": "نظرة عامة على الحسابات",
@@ -1953,7 +1972,12 @@
       },
       "oauthBinding": {
         "desc": "اختياري. يمكن اختيار حسابات OAuth التي تحتوي على refresh_token فقط. بدون ربط، تعمل خدمة API بالمسار السابق لمفتاح API؛ وبعد الربط تستخدم حالة تسجيل الدخول حساب OAuth ويستخدم Provider إعدادات خدمة API الحالية.",
-        "currentService": "خدمة API: {{name}}"
+        "currentService": "خدمة API: {{name}}",
+        "imageGenerationTooltip": "عند التفعيل، تزيل خدمة API تعريف أداة image_generation داخل البوابة المحلية قبل تمرير محادثات النص؛ لا تُزال نماذج الصور.",
+        "imageGenerationConfirm": {
+          "title": "تعطيل image_generation",
+          "message": "عند التفعيل، ستزيل خدمة API تعريف أداة image_generation داخل البوابة المحلية قبل تمرير محادثات النص، لتجنب أخطاء مثل \"Image generation is not enabled\". لا تُحذف نماذج الصور مثل gpt-image. هل تريد المتابعة؟"
+        }
       },
       "customRoutingEdit": "تعديل التوجيه المخصص",
       "customRoutingTitle": "التوجيه المخصص",
@@ -2072,7 +2096,29 @@
       "hourly": "حصة 5 ساعات",
       "weekly": "الحصة الأسبوعية",
       "reset": "إعادة ضبط",
-      "weeklyBlocksHourly": "الحصة الأسبوعية 0، لذا حصة 5 ساعات غير متاحة"
+      "weeklyBlocksHourly": "الحصة الأسبوعية 0، لذا حصة 5 ساعات غير متاحة",
+      "resetCredits": "مرات الضبط {{count}}",
+      "resetCreditsTitle": "مرات متبقية لإعادة ضبط نافذة 5 ساعات: {{count}}",
+      "resetCreditConfirm": "تأكيد؟",
+      "resetCreditDialogTitle": "هل تريد إعادة ضبط استخدامك؟",
+      "resetCreditDialogDesc": "أعد ضبط حد المعدل لتواصل العمل بلا انقطاع. عمليات إعادة الضبط المتاحة: {{count}}.",
+      "resetCreditDialogAction": "إعادة ضبط الاستخدام",
+      "resetCreditNoCredits": "لا توجد مرات إعادة ضبط متاحة",
+      "resetCreditConsumed": "تمت إعادة ضبط حصة 5 ساعات",
+      "resetCreditFailed": "فشلت إعادة الضبط: {{error}}",
+      "resetCreditRefreshAfterConsumeFailed": "تم إرسال إعادة الضبط، لكن تحديث الحصة فشل: {{error}}",
+      "resetCreditsTitleWithExpiry": "عمليات إعادة التعيين المتبقية لنافذة 5 ساعات: {{count}}. أقرب انتهاء: {{time}}",
+      "resetCreditTimeUnknown": "الوقت غير معروف",
+      "resetCreditStatusAvailable": "متاح",
+      "resetCreditStatusRedeemed": "مستخدم",
+      "resetCreditStatusExpired": "منتهي",
+      "resetCreditStatusUnknown": "غير معروف",
+      "resetCreditNextExpiry": "أقرب انتهاء: {{time}}",
+      "resetCreditDetailsTitle": "تفاصيل إعادة التعيين",
+      "resetCreditNoRecords": "لا توجد سجلات إعادة ضبط",
+      "resetCreditRecordsLoadFailed": "فشل تحميل سجلات إعادة الضبط: {{error}}",
+      "resetCreditGrantedAt": "مُنحت",
+      "resetCreditExpiresAt": "تنتهي"
     },
     "quotaError": {
       "badge": "خطأ في الحصة",
@@ -2323,7 +2369,7 @@
     },
     "sessionManager": {
       "title": "إدارة الجلسات",
-      "desc": "هنا تتم المزامنة والتنظيف معًا: استخدم الإجراء العلوي للمزامنة إلى جميع المثيلات، ثم وسّع كل مشروع لمراجعة الجلسات ونقلها إلى سلة المهملات.",
+      "desc": "توجد المزامنة وإصلاح الظهور والتنظيف والاستعادة هنا معا: استخدم الأزرار العلوية لمزامنة الجلسات أو إصلاح ظهورها أو الاستعادة من سلة المهملات، ثم افتح كل مشروع للمراجعة والنقل إلى السلة.",
       "actions": {
         "moveToTrash": "نقل إلى المهملات",
         "syncSessions": "مزامنة الجلسات",
@@ -2332,17 +2378,29 @@
         "repairVisibility": "إصلاح الظهور",
         "restoreSessions": "استعادة الجلسات",
         "copySessionId": "نسخ معرّف الجلسة",
+        "selectAllSessions": "تحديد كل الجلسات",
+        "clearSelectedSessions": "إلغاء تحديد الكل",
         "copyToInstance": "نسخ إلى المثيل"
       },
       "confirm": {
         "title": "نقل إلى المهملات",
         "message": "سيتم نقل الجلسات المحددة إلى سلة المهملات من المثيلات المقابلة لتسهيل استعادتها لاحقًا؛ قد تحتاج المثيلات قيد التشغيل إلى إعادة تشغيل قبل ظهور التغييرات. هل تريد المتابعة؟",
         "syncMessage": "ستتم مزامنة السلاسل والجلسات المفقودة إلى جميع المثيلات. لن تتم كتابة المحتوى الموجود مرة أخرى، وسيتم نسخ ملفات المثيل الهدف احتياطيًا قبل أي كتابة. هل تريد المتابعة؟",
-        "repairVisibilityMessage": "سيؤدي هذا إلى إصلاح بيانات تعريف المزوّد في ملفات rollout وملف state_5.sqlite باستخدام قيمة model_provider من ملف config.toml الجذري لكل مثيل (وسيُستخدم openai افتراضيًا إذا كانت مفقودة). ستؤخذ نسخة احتياطية من الملفات التي سيجري تعديلها قبل الكتابة. قد تحتاج المثيلات قيد التشغيل إلى إعادة التشغيل قبل ظهور التغيير. هل تريد المتابعة؟"
+        "repairVisibilityMessage": "يحدث سجلات state DB الرسمية في Codex التي تتحكم في قائمة الجلسات الجانبية. يتم نسخ ملفات state DB احتياطيا قبل الكتابة."
       },
       "empty": {
         "title": "لا توجد جلسات لإدارتها",
-        "desc": "لم يتم العثور على سجلات جلسات في مجموعة المثيلات الحالية."
+        "desc": "لم يتم العثور على سجلات جلسات في مجموعة المثيلات الحالية.",
+        "searchTitle": "لم يتم العثور على جلسات مطابقة",
+        "searchDesc": "جرّب تعديل كلمات العنوان."
+      },
+      "search": {
+        "titleLabel": "العنوان",
+        "contentLabel": "محتوى المحادثة",
+        "titlePlaceholder": "ابحث حسب العنوان",
+        "contentPlaceholder": "ابحث في محتوى المحادثة",
+        "apply": "بحث",
+        "clear": "مسح"
       },
       "messages": {
         "pickOne": "يرجى تحديد جلسة واحدة على الأقل",
@@ -2374,6 +2432,59 @@
         "selectedCount": "تم تحديد {{count}} جلسة",
         "existingCount": "{{count}} موجودة بالفعل في الهدف",
         "confirm": "نسخ الجلسات"
+      },
+      "repairModal": {
+        "running": "جارٍ الإصلاح...",
+        "progress": {
+          "queued": "جارٍ بدء مهمة الإصلاح...",
+          "collectInstances": "جارٍ جمع مثيلات Codex...",
+          "scanInstances": "جارٍ تجهيز فحص المثيلات...",
+          "scanInstance": "جارٍ فحص {{instance}} ({{current}}/{{total}})...",
+          "backupInstance": "جارٍ نسخ {{instance}} احتياطيًا ({{current}}/{{total}})...",
+          "writeInstance": "جارٍ الكتابة إلى {{instance}} ({{current}}/{{total}})...",
+          "rebuildMetadata": "جار تحديث حالة الجلسات الرسمية لـ {{instance}}...",
+          "pruneBackups": "جارٍ تنظيف النسخ القديمة...",
+          "done": "اكتمل الإصلاح",
+          "writeSqliteProvider": "جارٍ كتابة ظهور SQLite لـ {{instance}}...",
+          "writeRolloutFiles": "جارٍ كتابة ملفات الجلسات القديمة...",
+          "writeSqliteTimestamps": "جارٍ تصحيح أوقات SQLite لـ {{instance}}...",
+          "writeSessionIndex": "جارٍ كتابة session_index..."
+        },
+        "targetProvider": "المزوّد الهدف",
+        "defaultProvider": "افتراضي",
+        "loadingProviders": "جارٍ تحميل المزوّدين...",
+        "noProvider": "لم يتم العثور على مزوّد",
+        "providerLoadFailed": "فشل تحميل مزوّدي الإصلاح: {{error}}",
+        "modeTitle": "طريقة الإصلاح",
+        "modeQuick": "إصلاح سريع",
+        "modeQuickDesc": "يصحح قاعدة state الرسمية وأول سطر من بيانات الجلسة؛ مناسب بعد تبديل الحساب المعتاد.",
+        "modeDeep": "إصلاح عميق",
+        "modeDeepDesc": "يبقي إصلاح البيانات الوصفية الكامل الحالي للاختبار عندما لا يكفي الإصلاح السريع.",
+        "scopeTitle": "نطاق الجلسات",
+        "scopeAll": "كل الجلسات",
+        "scopeAllDesc": "إصلاح {{count}} جلسة في قائمة الإدارة الحالية.",
+        "scopeSelected": "الجلسات المحددة",
+        "scopeSelectedDesc": "إصلاح {{count}} جلسة محددة فقط.",
+        "scopeSelectedEmpty": "حدد جلسات من القائمة أولاً.",
+        "providerSource": {
+          "config": "الإعدادات",
+          "rollout": "الجلسات",
+          "sqlite": "قاعدة SQLite"
+        },
+        "targetInstance": "المثيل الهدف",
+        "loadingInstances": "جارٍ تحميل المثيلات...",
+        "noInstance": "لم يتم العثور على مثيلات",
+        "instanceLoadFailed": "فشل تحميل المثيلات: {{error}}",
+        "defaultInstance": "المثيل الافتراضي",
+        "runningInstance": "قيد التشغيل",
+        "instanceProvider": "الموفر الحالي",
+        "instanceScopeTitle": "نطاق المثيلات",
+        "instanceScopeTarget": "المثيل الهدف فقط",
+        "instanceScopeTargetDesc": "إصلاح المثيل المحدد فقط، وهذا أسرع عادةً.",
+        "instanceScopeAll": "كل المثيلات",
+        "instanceScopeAllDesc": "إصلاح كل مثيلات Codex عند استعادة عدة مثيلات.",
+        "progressTitle": "تقدم الإصلاح",
+        "start": "إصلاح"
       }
     },
     "api": {
@@ -2484,7 +2595,13 @@
         "switchRequiresBinding": "اربط حساب OAuth أولا",
         "clearAction": "إلغاء الربط",
         "clearSuccess": "تم إلغاء ربط OAuth.",
-        "clearFailed": "فشل إلغاء ربط OAuth: {{error}}"
+        "clearFailed": "فشل إلغاء ربط OAuth: {{error}}",
+        "useLocalGateway": "تعطيل image_generation",
+        "localGatewayTooltip": "عند التفعيل، تمر محادثات النص لحساب API Key المرتبط بـ OAuth عبر البوابة المحلية، وتزيل image_generation قبل التمرير؛ لا تُزال نماذج الصور.",
+        "localGatewayConfirm": {
+          "title": "تعطيل قدرة image_generation",
+          "message": "عند التفعيل، ستمر محادثات النص العادية لحساب API Key المرتبط بـ OAuth عبر البوابة المحلية، حيث يُزال تعريف أداة image_generation قبل التمرير لتجنب أخطاء مثل \"Image generation is not enabled\". لا تُحذف نماذج الصور مثل gpt-image. هل تريد المتابعة؟"
+        }
       }
     },
     "modelProviders": {
@@ -2628,6 +2745,46 @@
         "checkProviderStatus": "تحقق من حالة خدمة المزوّد أو الوكيل أو توافق API.",
         "checkModelsApi": "تأكد أن المزوّد يعيد قائمة نماذج متوافقة مع OpenAI."
       },
+      "batchTest": {
+        "entry": "اختبار شامل",
+        "entryHint": "اختبار قدرة المحادثة الفعلية للمزوّدين دفعة واحدة",
+        "selectedCount": "تم تحديد {{count}}",
+        "title": "اختبار مزوّدي النماذج دفعة واحدة",
+        "selectTitle": "اختر المزوّدين للاختبار",
+        "selectDesc": "يتم ربط المزوّدين المحددين مؤقتاً بالبوابة المحلية لاختبار المحادثة، ثم تُحوَّل الطلبات إلى المنبع حسب بروتوكول كل مزوّد.",
+        "selectionSummary": "محدد {{selected}} / قابل للاختبار {{total}}",
+        "emptySelection": "اختر مزوّداً واحداً على الأقل يحتوي على API Key.",
+        "noApiKey": "لا يوجد API Key",
+        "gatewayProtocol": "Chat Completions · بوابة",
+        "directProtocol": "Responses · بوابة",
+        "start": "بدء الاختبار",
+        "kicker": "اختبار المزوّد",
+        "resultsTitle": "نتائج اختبار محادثة المزوّدين",
+        "totalCount": "{{count}} مزوّد",
+        "progress": "تقدم الاختبار",
+        "selectVisible": "تحديد الظاهر",
+        "resultSelectedCount": "تم تحديد {{count}}",
+        "selectFailed": "تحديد الفاشلة",
+        "deleteConfirm": "حذف {{providerCount}} مزوّد محدد؟ سيتم أيضاً حذف {{accountCount}} حساب Codex API Key مرتبط بدقة.",
+        "deleteSuccess": "تم حذف {{providerCount}} مزوّد و{{accountCount}} حساب مرتبط.",
+        "deleteFailed": "فشل حذف العناصر المحددة: {{error}}",
+        "protocolSummary": "{{protocol}} · {{mode}} · {{model}}",
+        "modelUnknown": "النموذج قيد التحديد",
+        "promptLabel": "المطالبة",
+        "pendingDesc": "بانتظار البدء.",
+        "runningDesc": "جار إرسال طلب المحادثة.",
+        "noReply": "لم يرجع المصدر رداً قابلاً للقراءة.",
+        "unknownError": "خطأ غير معروف",
+        "status": {
+          "all": "الكل",
+          "success": "نجح",
+          "error": "فشل",
+          "running": "جار الاختبار",
+          "pending": "قيد الانتظار",
+          "completed": "اكتمل"
+        },
+        "officialClientOnlyError": "يقبل هذا المزوّد طلبات عميل Codex الرسمي فقط؛ اختبار النقرة الواحدة يستخدم الآن البوابة المحلية، لكن المنبع ما زال يرفض طلب الاختبار هذا. اعتمد على نتيجة التشغيل الفعلي داخل Codex الرسمي."
+      },
       "enableAndStart": "تشغيل",
       "instance": {
         "label": "مثيل التشغيل",
@@ -2702,6 +2859,15 @@
       "oauthBinding": {
         "desc": "اختياري. يمكن ربط أي حساب OAuth يحتوي على refresh_token. بدون ربط، يستمر المزوّد في استخدام تدفق API Key الأصلي.",
         "currentProvider": "المزوّد: {{name}}"
+      },
+      "sort": {
+        "custom": "ترتيب مخصص",
+        "customModalTitle": "ترتيب المزوّدين المخصص",
+        "customModalDesc": "اسحب المزوّدين أو استخدم زري الأعلى/الأسفل لضبط ترتيب العرض.",
+        "customDragHandle": "اسحب للترتيب",
+        "customMoveUp": "نقل للأعلى",
+        "customMoveDown": "نقل للأسفل",
+        "customReset": "إعادة ضبط الترتيب"
       }
     },
     "quickSwitch": {
@@ -2746,15 +2912,17 @@
     },
     "apiSwitchNotice": {
       "title": "جلسات Codex مخفية",
-      "message": "تم اكتشاف أن Codex تبدّل من {{from}} إلى {{to}}. بسبب الآلية الرسمية، قد لا تظهر الجلسات الحالية تلقائيًا بعد التبديل المباشر بين API والحسابات. يجري الآن إصلاح ظهور الجلسات تلقائيًا، ويمكنك أيضًا استخدام إدارة الجلسات > إصلاح الظهور لاحقًا.",
-      "repairing": "جارٍ إصلاح ظهور جلسات Codex...",
-      "repairFailed": "فشل الإصلاح التلقائي. يمكنك إعادة المحاولة لاحقًا من إدارة الجلسات > إصلاح الظهور.",
+      "message": "تم تبديل Codex من {{from}} إلى {{to}}. بسبب السلوك الرسمي، قد لا تظهر الجلسات الحالية تلقائيا بعد هذا النوع من التبديل. يجري إصلاح ظهور الجلسات تلقائيا، ويمكنك أيضا إصلاحه لاحقا من إدارة الجلسات.",
+      "repairing": "جار إصلاح ظهور جلسات Codex...",
+      "repairFailed": "فشل إصلاح الظهور. يمكنك إعادة المحاولة لاحقا من إدارة الجلسات.",
       "type": {
         "api": "وضع API",
         "apiKey": "مفتاح API",
         "apiService": "خدمة API",
         "account": "حساب"
-      }
+      },
+      "manualMessage": "إصلاح الظهور يحدث سجلات state DB الرسمية في Codex التي تتحكم في قائمة الجلسات الجانبية. يستخدم لاستعادة الجلسات بعد التبديل بين الحسابات و API Keys.",
+      "repairFailedWithError": "فشل إصلاح الظهور: {{error}}"
     },
     "accountNote": {
       "title": "ملاحظة الحساب",
@@ -3003,6 +3171,13 @@
       "selectAllAccounts": "اختيار كل الحسابات",
       "selectReady": "اختيار الحسابات السليمة",
       "clearSelection": "إلغاء الاختيار"
+    },
+    "autoRepairMode": {
+      "label": "منطق الإصلاح التلقائي",
+      "tooltip": "اختر منطق إصلاح ظهور الجلسات عند التبديل",
+      "legacyBefore4eb75d96": "قبل 4eb75d96",
+      "legacy4eb75d96": "منطق 4eb75d96",
+      "current": "المنطق الحالي"
     }
   },
   "githubCopilot": {
@@ -3274,6 +3449,11 @@
       "title": "تذكّر الفلاتر",
       "enable": "تذكّر فلاتر نظرة الحسابات (بدون البحث)",
       "hint": "مغلق افتراضيًا. عند التفعيل تُحفَظ التصفية والوسوم والترتيب لكل منصة."
+    },
+    "claudeRefreshInterval": "تحديث الحصة تلقائيًا",
+    "claude": {
+      "appPath": "مسار Claude",
+      "appTargetPlaceholder": "مسار Claude.exe أو shell:AppsFolder\\..."
     }
   },
   "quotaAlert": {
@@ -3812,7 +3992,11 @@
       "resetsIn": "إعادة التعيين خلال {{relative}}",
       "resetsSoon": "إعادة التعيين قريبًا",
       "resetsUnknown": "وقت إعادة التعيين غير معروف",
-      "onDemand": "عند الطلب"
+      "onDemand": "عند الطلب",
+      "gemini5h": "5h",
+      "geminiWeekly": "Weekly",
+      "claude5h": "5h",
+      "claudeWeekly": "Weekly"
     },
     "title": "إدارة حسابات Gemini Cli",
     "instances": {
@@ -4504,6 +4688,16 @@
       "queryFailed": "فشل التحقق من الحصة: {{error}}",
       "saveFailed": "فشلت الكتابة: {{error}}"
     },
+    "models": {
+      "title": "النماذج المتاحة",
+      "desc": "تُقرأ من واجهة النماذج لمفتاح API الحالي، وتُمرَّر إلى Codex أو Claude CLI.",
+      "count": "{{count}} نموذج",
+      "loading": "جارٍ القراءة",
+      "loadingDesc": "جارٍ قراءة قائمة النماذج من API Key الحالي...",
+      "empty": "أدخل API Key لقراءة النماذج المتاحة.",
+      "emptyFromKey": "لم يُرجع API Key الحالي أي نماذج.",
+      "queryFailed": "فشل قراءة قائمة النماذج: {{error}}"
+    },
     "keyManager": {
       "title": "إدارة المفاتيح",
       "desc": "احفظ API Keys للتبديل السريع وفحص الحصة تلقائيًا.",
@@ -4516,9 +4710,276 @@
       "editAlias": "Edit alias​",
       "renamePlaceholder": "Enter alias...​",
       "createdAt": "أُضيف في {{time}}",
-      "saveFlash": "حُفظ الآن"
+      "saveFlash": "حُفظ الآن",
+      "addingToCodex": "تتم الإضافة إلى Codex...",
+      "addedToCodex": "تمت الإضافة إلى Codex",
+      "addToCodexFailed": "فشل الإضافة إلى Codex: {{error}}",
+      "addingToClaude": "تتم الإضافة إلى Claude CLI...",
+      "addedToClaude": "تمت الإضافة إلى Claude CLI",
+      "addToClaudeFailed": "فشل الإضافة إلى Claude CLI: {{error}}",
+      "codexAdded": "تمت إضافة Codex",
+      "claudeAdded": "تمت إضافة Claude",
+      "addToCodex": "إضافة إلى Codex",
+      "addToClaude": "إضافة إلى Claude CLI",
+      "addToClaudeDesktop": "إضافة إلى Claude",
+      "addToClaudeCli": "إضافة إلى Claude CLI",
+      "codexShort": "Codex",
+      "claudeShort": "Claude CLI"
+    },
+    "prefill": {
+      "claudeDesktopReady": "تمت تعبئة إعدادات APIKEY.FUN. أكّد الإضافة إلى Claude."
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "claude": {
+    "import": {
+      "localSuccess": "تم استيراد {{count}} حالة تسجيل دخول محلية من Claude",
+      "localClient": "استيراد Claude الحالي",
+      "jsonLabel": "بيانات JSON",
+      "jsonPlaceholder": "الصق JSON حساب Claude المصدّر",
+      "localDesc": "يقرأ حالة تسجيل الدخول الحالية من تطبيق Claude الرسمي وينسخها في هذه الأداة كلقطة حساب محلية.",
+      "desktopJsonPlaceholder": "الصق JSON حساب Claude Gateway المصدّر",
+      "cliJsonPlaceholder": "الصق JSON حساب Claude CLI المصدّر"
+    },
+    "deleteCurrentDisabled": "لا يمكن حذف الحساب الحالي",
+    "flowNotice": {
+      "title": "إدارة حسابات Claude",
+      "desc": "تدير هذه الأداة حالة تسجيل الدخول في Claude ومفاتيح Anthropic API Key. يكتمل تسجيل Claude داخل نافذة التفويض في هذه المنصة ويُحفظ محليا أولا؛ ولا يُكتب إلى Claude الرسمي إلا عند تبديل الحساب.",
+      "permission": "نطاق الأذونات: قراءة/كتابة مجلد بيانات تطبيق Claude الرسمي. تُحفظ مفاتيح API Key ولقطات Claude ضمن بيانات الحسابات المحلية لهذه الأداة.",
+      "network": "نطاق الشبكة: تفتح نافذة تسجيل Claude موقع claude.ai؛ وقد يطلب تحديث الحساب واجهات Claude Web. استيراد API Key بحد ذاته لا يستخدم الشبكة.",
+      "desktopDesc": "تدير هذه الأداة حالة تسجيل الدخول في Claude. يتم حفظ تسجيل الدخول محليًا أولًا، ولا يُكتب إلى Claude الرسمي إلا عند تبديل الحسابات.",
+      "cliDesc": "تدير هذه الأداة Claude Code OAuth ومفاتيح API من عدة مزودين. تبديل OAuth يكتب في إعدادات Claude Code المحلية، ومفتاح API يكتب قيم env الخاصة بالمزود في Claude Code settings.json.",
+      "desktopPermission": "نطاق الأذونات: قراءة/كتابة دليل بيانات تطبيق Claude الرسمي. تُحفظ لقطات Claude في بيانات الحساب المحلية لهذه الأداة.",
+      "cliPermission": "نطاق الأذونات: قراءة/كتابة إعدادات Claude Code المحلية وبيانات اعتماد Claude Code في macOS Keychain؛ يتم حفظ حسابات API Key محليًا في هذه الأداة وتكتب كقيم env بنص صريح في settings.json عند التبديل أو تشغيل CLI.",
+      "desktopNetwork": "نطاق الشبكة: تفتح نافذة تسجيل الدخول في Claude موقع claude.ai؛ وقد تطلب عملية تحديث الحساب واجهات Claude Web.",
+      "cliNetwork": "نطاق الشبكة: OAuth يصل إلى تفويض Claude الرسمي ونقاط token/profile/usage؛ استيراد API Key لا يستخدم الشبكة، وبعد التشغيل يتصل Claude CLI بالمزوّد المختار."
+    },
+    "search": "بحث في حسابات Claude...",
+    "noAccounts": "لا توجد حسابات Claude",
+    "addAccount": {
+      "title": "إضافة حساب Claude",
+      "desktopTitle": "إضافة حساب Claude",
+      "cliTitle": "إضافة حساب Claude CLI"
+    },
+    "deleteConfirm": "حذف حساب Claude {{email}}؟",
+    "switch": {
+      "success": "تم التبديل بنجاح"
+    },
+    "instances": {
+      "unsupportedDescPlatform": "تعدد مثيلات Claude مدعوم فقط على macOS وWindows وLinux.",
+      "launchDialogTitle": "تشغيل المثيل",
+      "launchCommand": "أمر التشغيل",
+      "executeInTerminal": "تشغيل في الطرفية",
+      "startSuccess": "تم تشغيل Claude"
+    },
+    "quota": {
+      "title": "الحصة",
+      "fiveHour": "الجلسة الحالية",
+      "sevenDay": "الأسبوع الحالي (كل النماذج)",
+      "sonnet": "سونيت",
+      "extra": "استخدام إضافي",
+      "empty": "لا توجد حصة",
+      "unsupported": "غير قابل للتحديث",
+      "updatedAt": "تحديث: {{time}}",
+      "resetAt": "إعادة {{label}}: {{time}}",
+      "refreshSuccess": "تم تحديث الحصة",
+      "refreshAllDone": "اكتمل تحديث الحصة",
+      "refreshFailed": "فشل تحديث الحصة: {{error}}",
+      "refreshWithWarning": "فشل تحديث الحصة: {{error}}",
+      "notUpdated": "لم يتم تحديث الحصة",
+      "updated": "تم التحديث",
+      "notUpdatedShort": "غير محدثة",
+      "openVerification": "فتح التحقق",
+      "openingVerification": "جارٍ الفتح...",
+      "verificationWindowOpened": "تم فتح نافذة تحقق Claude. حدّث الحصة مرة أخرى بعد إكمال التحقق.",
+      "verificationWindowFailed": "فشل فتح نافذة تحقق Claude: {{error}}"
+    },
+    "addTabs": {
+      "desktop": "سطح",
+      "oauth": "OAuth",
+      "apiKey": "مفتاح API",
+      "import": "محلي/JSON",
+      "desktopGateway": "بوابة"
+    },
+    "authMode": {
+      "oauth": "وضع OAuth",
+      "setup_token": "رمز الإعداد",
+      "api_key": "مفتاح API",
+      "desktop_oauth": "تسجيل Claude"
+    },
+    "apiKey": {
+      "desc": "احفظ API Key الخاص بـ Claude CLI كبيانات اعتماد مستقلة. عند التبديل أو تشغيل CLI تُكتب قيم env الخاصة بالمزود في Claude Code settings.json ولا تُكتب حالة تسجيل دخول Claude.",
+      "nameLabel": "اسم الحساب",
+      "namePlaceholder": "اختياري، مثل APIKEY.FUN",
+      "keyLabel": "مفتاح API",
+      "placeholder": "الصق API Key للمزوّد",
+      "hide": "إخفاء API Key",
+      "show": "إظهار API Key",
+      "hint": "حسابات API Key مخصصة لـ Claude CLI فقط. تُكتب كقيم env بنص صريح في Claude Code settings.json ولا تؤثر على Claude ولا تدعم تحديث حصة الاشتراك.",
+      "importAction": "استيراد API Key",
+      "required": "أدخل API Key",
+      "templateRequired": "أدخل {{label}}",
+      "importSuccess": "تم استيراد حساب Claude API Key: {{name}}",
+      "quotaUnsupported": "حسابات API Key لا تدعم التحديث",
+      "switchDisabled": "لا يمكن تحويل حساب API Key إلى Claude",
+      "cliUnsupported": "حساب API Key لا يشغّل Claude CLI",
+      "providerLabel": "المزوّد",
+      "customProvider": "مخصص",
+      "endpointLabel": "Endpoint المزوّد",
+      "officialEndpoint": "الافتراضي الرسمي",
+      "baseUrlLabel": "عنوان URL الأساسي",
+      "baseUrlPlaceholder": "اتركه فارغًا لاستخدام عنوان Anthropic الرسمي",
+      "keyFieldLabel": "حقل auth",
+      "baseUrlInvalid": "Base URL ليس رابطًا صالحًا"
+    },
+    "desktopOAuth": {
+      "title": "تسجيل Claude",
+      "desc": "تسجيل Claude داخل هذه الأداة؛ يدعم Google وApple والبريد وfree.",
+      "start": "فتح الدخول",
+      "preparingRuntime": "جارٍ تجهيز الدخول...",
+      "hint": "يحفظ محليا أولا ولا يكتب في Claude إلا عند التبديل.",
+      "runtimeHint": "قد يُنزّل مكوّن دخول Electron في أول استخدام إلى مجلد بيانات التطبيق المحلي بعد التحقق منه؛ لا يكون ضمن المثبّت وسيُعاد استخدامه لاحقًا.",
+      "nameLabel": "اسم الحساب",
+      "namePlaceholder": "اختياري، مثل Claude Free",
+      "waiting": "أكمل الدخول في نافذة Claude ثم أنه الاستيراد هنا.",
+      "profileDir": "مجلد profile معزول",
+      "complete": "إكمال",
+      "localTitle": "استيراد Claude الحالي",
+      "localDesc": "ينسخ جلسة Claude الحالية كلقطة محلية.",
+      "localAction": "استيراد",
+      "localSuccess": "تم استيراد تسجيل Claude المحلي: {{name}}",
+      "importSuccess": "تم استيراد تسجيل Claude: {{name}}",
+      "switchHint": "التبديل إلى Claude الرسمي",
+      "planUnknown": "الخطة غير معروفة",
+      "progress": {
+        "start": "تحضير مهمة تسجيل الدخول",
+        "profile": "إنشاء ملف تعريف معزول",
+        "resolveRuntime": "البحث عن مكوّن الدخول",
+        "checkCache": "فحص ذاكرة المكوّن المحلية",
+        "cached": "استخدام ذاكرة المكوّن المحلية",
+        "downloadStart": "بدء تنزيل مكوّن الدخول",
+        "downloading": "تنزيل مكوّن الدخول",
+        "downloaded": "اكتمل تنزيل مكوّن الدخول",
+        "verify": "التحقق من سلامة المكوّن",
+        "extract": "فك ضغط مكوّن الدخول",
+        "runtimeReady": "مكوّن الدخول جاهز",
+        "launch": "فتح نافذة دخول Claude",
+        "ready": "تم فتح نافذة الدخول",
+        "default": "تحضير مكوّن الدخول",
+        "bytesWithTotal": "تم تنزيل {{downloaded}} من {{total}}",
+        "bytesOnly": "تم تنزيل {{downloaded}}",
+        "hint": "بعد الإعداد الأول، سيعاد استخدام الذاكرة المحلية مباشرة."
+      }
+    },
+    "oauth": {
+      "title": "تفويض Claude OAuth",
+      "desc": "افتح صفحة تفويض Claude OAuth الرسمية، ثم الصق رابط الرجوع أو الرمز بعد الاكتمال لاستيراد الحساب.",
+      "start": "تفويض OAuth",
+      "proRequiredHint": "يستخدم OAuth الرسمي من Claude عادة لتفويض Claude Code؛ إذا توقفت الصفحة عند الترقية أو عدم الصلاحية، استخدم تسجيل دخول Claude.",
+      "openInstruction": "انقر الزر أدناه وأكمل تفويض Claude OAuth في المتصفح.",
+      "waiting": "بعد الاكتمال، الصق عنوان الصفحة النهائي أو الرمز المعروض أدناه.",
+      "authUrl": "رابط التفويض",
+      "preparing": "جارٍ إنشاء رابط التفويض...",
+      "openInBrowser": "افتح في المتصفح",
+      "openFailed": "فشل فتح رابط التفويض: {{error}}",
+      "callbackPlaceholder": "الصق رابط الرجوع أو رمز التفويض",
+      "callbackRequired": "الصق رابط الرجوع أو الرمز بعد اكتمال التفويض",
+      "authorizeUrlNotCallback": "ما لصقته هو رابط بدء التفويض أعلاه، وليس الرمز بعد اكتمال التفويض. أكمل التفويض في المتصفح أولا، ثم انسخ عنوان الصفحة النهائي أو الرمز المعروض.",
+      "complete": "إكمال الاستيراد",
+      "emailPlaceholder": "البريد الإلكتروني (املأه إذا تعذر التعرف تلقائيا)",
+      "importSuccess": "تم استيراد تفويض Claude OAuth: {{name}}"
+    },
+    "plan": {
+      "label": "شارة الخطة",
+      "selectPlaceholder": "اختر الخطة",
+      "updateFailed": "فشل تحديث شارة الخطة: {{error}}"
+    },
+    "legacyOAuth": {
+      "switchDisabled": "لا يمكن تحويل حسابات OAuth القديمة إلى Claude",
+      "quotaUnsupported": "حسابات OAuth القديمة لم تعد تدعم التحديث",
+      "cliUnsupported": "لا يمكن لحسابات OAuth القديمة تشغيل Claude CLI"
+    },
+    "cli": {
+      "quickLaunch": "تشغيل CLI",
+      "selectWorkingDir": "اختر مجلد عمل Claude CLI",
+      "launchSuccess": "تم تشغيل Claude CLI",
+      "prepared": "تم تجهيز Claude CLI",
+      "launchFailed": "فشل تشغيل Claude CLI: {{error}}",
+      "localTitle": "استيراد Claude Code الحالي",
+      "localDesc": "اقرأ حالة تسجيل دخول OAuth الحالية في Claude Code المحلي وانسخها كلقطة حساب محلية.",
+      "localSuccess": "تم استيراد تسجيل دخول Claude Code المحلي: {{name}}"
+    },
+    "accountNote": {
+      "title": "ملاحظة الحساب",
+      "desc": "أضف ملاحظة محلية لـ {{email}} لتسهيل تمييز الحساب عند التبديل.",
+      "label": "ملاحظة الحساب",
+      "placeholder": "مثال: Free رئيسي، Max 20x، حساب فريق",
+      "saved": "تم حفظ ملاحظة الحساب",
+      "saveFailed": "فشل حفظ ملاحظة الحساب: {{error}}",
+      "emptyTitle": "أضف ملاحظة للحساب",
+      "short": "ملاحظة",
+      "addShort": "ملاحظة"
+    },
+    "account": {
+      "signedInWith": "تم تسجيل الدخول عبر {{provider}}",
+      "userId": "معرّف المستخدم",
+      "nickname": "الاسم المستعار"
+    },
+    "selection": {
+      "selected": "تم تحديد {{count}}"
+    },
+    "deleteSelectedLabel": "{{count}} حسابات",
+    "subPlatform": {
+      "label": "منصة Claude الفرعية",
+      "desktop": "Claude سطح المكتب",
+      "cli": "Claude سطر الأوامر"
+    },
+    "searchDesktop": "البحث في حسابات Claude...",
+    "searchCli": "البحث في حسابات Claude CLI...",
+    "noDesktopAccounts": "لا توجد حسابات Claude بعد",
+    "noCliAccounts": "لا توجد حسابات Claude CLI بعد",
+    "desktopGateway": {
+      "label": "بوابة",
+      "authScheme": "نظام المصادقة",
+      "importAction": "استيراد Gateway",
+      "importSuccess": "تم استيراد حساب Claude Gateway: {{name}}",
+      "baseUrlRequired": "أدخل Gateway Base URL",
+      "noQuota": "حسابات Gateway لا تعرض حصة اشتراك Claude",
+      "desc": "احفظ مفتاح Gateway API كإعداد Claude 3P. عند التبديل، يكتب في إعداد Claude الرسمي ويشغل Claude.",
+      "hint": "حسابات Gateway لا تقرأ تفاصيل اشتراك Claude. يكتب مفتاح API إلى Claude المحلي بإعداد 3P الرسمي.",
+      "modelsLabel": "كتالوج النماذج",
+      "modelsEmpty": "لم يُرجع هذا Gateway أي نماذج.",
+      "modelsLoaded": "تم جلب {{count}} نموذجًا. يمكنك تعديلها قبل الحفظ.",
+      "modelsLoadFailed": "فشل جلب النماذج: {{error}}.",
+      "usingPresetMappings": "يتم استخدام تعيينات جاهزة. يمكنك تعديلها قبل الحفظ.",
+      "manualModels": "نماذج يدوية",
+      "modelsPlaceholder": "معرّف نموذج واحد في كل سطر",
+      "modelsLoading": "جارٍ تحميل كتالوج النماذج...",
+      "modelsRequired": "أدخل كتالوج النماذج",
+      "editTitle": "تعديل Claude Gateway",
+      "updateAction": "حفظ Gateway",
+      "updateSuccess": "تم تحديث حساب Claude Gateway: {{name}}",
+      "connectionMode": "الاتصال",
+      "modeDirect": "مباشر",
+      "modeLocalMapping": "ربط محلي",
+      "mappingsRequired": "اضبط ربط النماذج",
+      "mappingsIncomplete": "أكمل تعيينات النماذج",
+      "mappingDesktopModelDuplicated": "لا يمكن تكرار أسماء نماذج Claude: {{model}}",
+      "mappingDesktopModelInvalid": "يجب أن تكون أسماء نماذج Claude المعينة قابلة للتعرف عليها من Claude",
+      "directModelsInvalid": "الوضع المباشر يدعم فقط أسماء Claude التي يتعرف عليها Claude",
+      "desktopModelPlaceholder": "نموذج Claude",
+      "upstreamModelPlaceholder": "النموذج الفعلي للمزوّد",
+      "addMapping": "إضافة ربط",
+      "mappingSummary": "تم تكوين {{count}} تعيينات",
+      "mappingSummaryHint": "راجعها أو عدلها قبل الحفظ.",
+      "editMappings": "تعديل التعيينات",
+      "moreMappings": "{{count}} إضافية",
+      "mappingEditorTitle": "تعيينات النماذج",
+      "hideMappings": "طي",
+      "labelOverridePlaceholder": "اسم العرض في القائمة",
+      "supports1mLabel": "إعلان دعم 1M",
+      "supports1mShort": "سياق 1M"
+    }
   }
 }

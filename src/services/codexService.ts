@@ -7,6 +7,7 @@ import {
   CodexProviderWireApi,
   CodexQuickConfig,
   CodexQuota,
+  CodexResetCreditsSnapshot,
 } from '../types/codex';
 
 export interface CodexOAuthLoginStartResponse {
@@ -81,8 +82,24 @@ export async function refreshCodexAccountProfile(accountId: string): Promise<Cod
 }
 
 /** 切换 Codex 账号 */
-export async function switchCodexAccount(accountId: string): Promise<CodexAccount> {
-  return await invoke('switch_codex_account', { accountId });
+export async function switchCodexAccount(
+  accountId: string,
+): Promise<CodexAccount> {
+  const startedAt = performance.now();
+  console.info('[Codex Switch][Service] invoke switch_codex_account started', {
+    accountId,
+  });
+  try {
+    return await invoke('switch_codex_account', {
+      accountId,
+      autoRepairMode: null,
+    });
+  } finally {
+    console.info('[Codex Switch][Service] invoke switch_codex_account finished', {
+      accountId,
+      elapsedMs: Math.round(performance.now() - startedAt),
+    });
+  }
 }
 
 /** 删除 Codex 账号 */
@@ -200,6 +217,18 @@ export async function refreshCodexQuota(accountId: string): Promise<CodexQuota> 
   return await invoke('refresh_codex_quota', { accountId });
 }
 
+/** 获取 Codex 主动重置次数明细 */
+export async function getCodexResetCredits(
+  accountId: string,
+): Promise<CodexResetCreditsSnapshot> {
+  return await invoke('get_codex_reset_credits', { accountId });
+}
+
+/** 消耗一次 Codex 主动重置次数 */
+export async function consumeCodexResetCredit(accountId: string): Promise<void> {
+  return await invoke('consume_codex_reset_credit', { accountId });
+}
+
 /** 强制刷新单个账号的订阅信息 */
 export async function refreshCodexSubscriptionInfo(accountId: string): Promise<CodexAccount> {
   return await invoke('refresh_codex_subscription_info', { accountId });
@@ -216,8 +245,14 @@ export async function startCodexOAuthLogin(): Promise<CodexOAuthLoginStartRespon
 }
 
 /** 新 OAuth 流程：完成登录 */
-export async function completeCodexOAuthLogin(loginId: string): Promise<CodexAccount> {
-  return await invoke('codex_oauth_login_completed', { loginId });
+export async function completeCodexOAuthLogin(
+  loginId: string,
+  reauthAccountId?: string | null
+): Promise<CodexAccount> {
+  return await invoke('codex_oauth_login_completed', {
+    loginId,
+    reauthAccountId: reauthAccountId ?? null,
+  });
 }
 
 /** 新 OAuth 流程：取消登录 */
@@ -310,10 +345,12 @@ export async function updateCodexApiKeyCredentials(
 export async function updateCodexApiKeyBoundOAuthAccount(
   accountId: string,
   boundOauthAccountId: string | null,
+  boundOauthUseLocalGateway = false,
 ): Promise<CodexAccount> {
   return await invoke('update_codex_api_key_bound_oauth_account', {
     accountId,
     boundOauthAccountId,
+    boundOauthUseLocalGateway,
   });
 }
 

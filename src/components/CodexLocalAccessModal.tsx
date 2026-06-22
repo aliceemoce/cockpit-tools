@@ -29,6 +29,7 @@ import type { CodexAccount } from "../types/codex";
 import type { CodexAccountGroup } from "../services/codexAccountGroupService";
 import type {
   CodexLocalAccessAddressKind,
+  CodexLocalAccessAccountHealth,
   CodexLocalAccessChatMessage,
   CodexLocalAccessChatStreamEvent,
   CodexLocalAccessCustomRoutingRule,
@@ -154,11 +155,10 @@ const CUSTOM_ROUTING_PRIORITY_MIN = 0;
 const CUSTOM_ROUTING_PRIORITY_MAX = 100;
 const CUSTOM_ROUTING_WEIGHT_MIN = 1;
 const CUSTOM_ROUTING_WEIGHT_MAX = 100;
-const BLOCKING_ACCOUNT_FAILURE_CATEGORIES = new Set([
+const ABNORMAL_ACCOUNT_FAILURE_CATEGORIES = new Set([
   "auth_unavailable",
   "auth_refresh_failed",
   "account_prepare_failed",
-  "free_account_restricted",
 ]);
 
 function normalizeAccessScope(value: string): CodexLocalAccessScope {
@@ -256,8 +256,13 @@ function areSetsEqual(left: Set<string>, right: Set<string>): boolean {
   return true;
 }
 
-function isBlockingAccountFailureCategory(category?: string | null): boolean {
-  return Boolean(category && BLOCKING_ACCOUNT_FAILURE_CATEGORIES.has(category));
+function isAbnormalAccountFailure(health?: CodexLocalAccessAccountHealth): boolean {
+  return Boolean(
+    health &&
+      health.consecutiveFailures >= 3 &&
+      health.lastFailureCategory &&
+      ABNORMAL_ACCOUNT_FAILURE_CATEGORIES.has(health.lastFailureCategory),
+  );
 }
 
 export function CodexLocalAccessModal({
@@ -508,16 +513,14 @@ export function CodexLocalAccessModal({
       }
       if (isBlockingCodexQuotaError(account.quota_error)) {
         summary.quotaLimited += 1;
-        summary.abnormal += 1;
         return;
       }
-      if (isBlockingAccountFailureCategory(health?.lastFailureCategory)) {
+      if (isAbnormalAccountFailure(health)) {
         summary.authError += 1;
         summary.abnormal += 1;
         return;
       }
       if (health && !health.available) {
-        summary.abnormal += 1;
         return;
       }
       summary.available += 1;
@@ -1830,7 +1833,6 @@ export function CodexLocalAccessModal({
         className={`modal-overlay codex-local-access-modal-overlay${
           isMembersMode ? "" : " codex-local-access-modal-overlay-panel"
         }`}
-        onClick={onClose}
       >
         <div
           className={`modal codex-local-access-modal${
@@ -2179,6 +2181,8 @@ export function CodexLocalAccessModal({
                     {accountPoolHealthSummary.total > 0 && (
                       <div
                         className={`codex-local-access-quota-pool-card codex-local-access-health-pool-card${
+                          accountPoolHealthSummary.available <
+                            accountPoolHealthSummary.total ||
                           accountPoolHealthSummary.abnormal > 0 ||
                           accountPoolHealthSummary.cooldown > 0
                             ? " has-issue"
@@ -2203,7 +2207,9 @@ export function CodexLocalAccessModal({
                           )}
                         </span>
                         <span className="codex-local-access-quota-pool-value">
-                          {accountPoolHealthSummary.abnormal === 0 &&
+                          {accountPoolHealthSummary.available ===
+                            accountPoolHealthSummary.total &&
+                          accountPoolHealthSummary.abnormal === 0 &&
                           accountPoolHealthSummary.cooldown === 0
                             ? t(
                                 "codex.localAccess.accountPoolHealth.allAvailable",
@@ -2861,7 +2867,6 @@ export function CodexLocalAccessModal({
       {customRoutingOpen && collection && (
         <div
           className="modal-overlay codex-local-access-custom-routing-overlay"
-          onClick={closeCustomRoutingDialog}
         >
           <div
             className="modal codex-local-access-custom-routing-dialog"
@@ -3217,7 +3222,6 @@ export function CodexLocalAccessModal({
       {testDialogOpen && (
         <div
           className="modal-overlay codex-local-access-test-dialog-overlay"
-          onClick={closeTestDialog}
         >
           <div
             className="modal codex-local-access-test-dialog"

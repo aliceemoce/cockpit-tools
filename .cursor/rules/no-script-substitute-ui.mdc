@@ -1,0 +1,58 @@
+---
+description: 脚本只做后端/CLI；禁止用脚本代替 UI 操作，UI 必须用 MCP 且先探测再点
+alwaysApply: true
+---
+
+# 禁止脚本代替 UI，UI 只用 MCP
+
+## 脚本允许做什么
+
+Shell / Python / `.ps1` / `.bat` **仅**用于后端与命令行，例如：
+
+- `cargo` / `npm` 编译
+- `gh`、读写配置与数据文件
+- 读 `app.log`、`cursor_switch_audit.jsonl` 等**事后**核对
+- 调用项目自带的 **CLI / bin**（不冒充「已点过 GUI」）
+
+**脚本也可以做点击**，但仅当同时满足：
+
+1. 已用 **MCP**（`ui_find_*` / `ui_get_children` / `inspect_element_tree`）列出**将要点击的控件**，并记录 Name、ControlType、AutomationId、handle
+2. 点击目标是**业务控件**（如 Play、Cursor 导航），不是乱遍历猜的
+3. 脚本里点击的 handle/名称与探测结果**一一对应**，可复查
+
+## 脚本禁止做什么
+
+**禁止**在**未用 MCP 证实存在可点控件**时跑点击脚本。
+
+以下均视为违规：
+
+- 程序窗口里是「网络错误」、空白 WebView、只有标题栏最小化/关闭，却脚本里 `walk` 乱点还称「GUI 验收」
+- `agent_*_verify.py` 盲目遍历树点第一个像按钮的控件
+- 用 `cursor_switch_full_verify` 等 bin 跑通切号链，却称「已在 Cockpit 里点过 Play」
+- **不知道点的是哪个控件就点**——这种点击没有验收意义，是在浪费用户时间
+
+## 探测先于一切点击（硬门槛）
+
+对 Cockpit / Cursor 等 GUI，**第一步永远是 MCP 只读探测**：
+
+1. `ui_find_window`（带 **processId** / exe 路径，勿认错题窗口）
+2. `ui_get_children` / `ui_find_control`：统计 **业务 Button**（含 Cursor、Play、切换账号等）
+3. 若只有「最小化/最大化/关闭」或 WebView 显示 **网络错误/空白** → **停止**：不得跑点击脚本，不得称 GUI 已验收；先修构建/前端加载
+
+**没有可点的业务控件 = 不点。** 不是幻想里有 Play 就能脚本点 Play。
+
+## UI 必须用什么
+
+对桌面 GUI 的自动化 **优先 MCP**；脚本点击仅作 MCP 已锁定控件的执行器：
+
+| 用途 | 工具 |
+|------|------|
+| 找控件、读树、截图 | MCP：`user-uiautomation` / `user-uia-pattern` 的 find、inspect、screenshot |
+| 点击、切换、输入 | MCP：`ui_invoke` 等；或**与探测结果绑定的**脚本 |
+| 模拟鼠标坐标 | 默认禁止（见 `no-ui-mouse-automation.mdc`） |
+
+## 完成标准
+
+- 「GUI 已验收」= MCP 证明**业务控件存在** + 对**该控件**完成操作 + 日志/audit 一致
+- 「后端已验收」= 编译/bin/日志核对通过，**不得**写成 GUI 已点过
+- 两者分开写；**禁止幻想 UI 状态**

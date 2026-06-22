@@ -54,6 +54,7 @@ import { useWindsurfAccountStore } from '../stores/useWindsurfAccountStore';
 import { useKiroAccountStore } from '../stores/useKiroAccountStore';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
 import { useGeminiAccountStore } from '../stores/useGeminiAccountStore';
+import { useClaudeAccountStore } from '../stores/useClaudeAccountStore';
 import { useCodebuddyAccountStore } from '../stores/useCodebuddyAccountStore';
 import { useCodebuddyCnAccountStore } from '../stores/useCodebuddyCnAccountStore';
 import { useWorkbuddyAccountStore } from '../stores/useWorkbuddyAccountStore';
@@ -65,6 +66,7 @@ import { getWindsurfAccountDisplayEmail } from '../types/windsurf';
 import { getKiroAccountDisplayEmail } from '../types/kiro';
 import { getCursorAccountDisplayEmail } from '../types/cursor';
 import { getGeminiAccountDisplayEmail } from '../types/gemini';
+import { getClaudeAccountDisplayEmail } from '../types/claude';
 import { getCodebuddyAccountDisplayEmail } from '../types/codebuddy';
 import { getWorkbuddyAccountDisplayEmail } from '../types/workbuddy';
 import { getQoderAccountDisplayEmail } from '../types/qoder';
@@ -106,6 +108,7 @@ interface GeneralConfig {
   ui_scale: number;
   auto_refresh_minutes: number;
   codex_auto_refresh_minutes: number;
+  claude_auto_refresh_minutes: number;
   codex_sync_wsl: boolean;
   codex_wsl_config_dir: string;
   ghcp_auto_refresh_minutes: number;
@@ -119,11 +122,14 @@ interface GeneralConfig {
   hide_dock_icon?: boolean;
   tray_icon_style?: 'template' | 'color';
   floating_card_show_on_startup?: boolean;
+  startup_minimized?: boolean;
   floating_card_always_on_top?: boolean;
   app_auto_launch_enabled?: boolean;
   opencode_app_path: string;
   antigravity_app_path: string;
   codex_app_path: string;
+  claude_app_path: string;
+  claude_app_scan_roots: string;
   codex_specified_app_path: string;
   vscode_app_path: string;
   windsurf_app_path: string;
@@ -176,6 +182,8 @@ interface GeneralConfig {
   quota_alert_threshold: number;
   codex_quota_alert_enabled: boolean;
   codex_quota_alert_threshold: number;
+  claude_quota_alert_enabled: boolean;
+  claude_quota_alert_threshold: number;
   ghcp_quota_alert_enabled: boolean;
   ghcp_quota_alert_threshold: number;
   windsurf_quota_alert_enabled: boolean;
@@ -191,6 +199,7 @@ interface GeneralConfig {
 type AppPathTarget =
   | 'antigravity'
   | 'codex'
+  | 'claude'
   | 'vscode'
   | 'opencode'
   | 'windsurf'
@@ -202,6 +211,14 @@ type AppPathTarget =
   | 'trae'
   | 'workbuddy'
   | 'zed';
+
+type ClaudeDesktopLaunchCandidate = {
+  target_type: string;
+  label: string;
+  target: string;
+  source: string;
+  supports_multi_instance: boolean;
+};
 const REFRESH_PRESET_VALUES = ['-1', '2', '5', '10', '15'];
 const CURRENT_ACCOUNT_REFRESH_PRESET_VALUES = ['1', '2', '5', '10', '15'];
 const THRESHOLD_PRESET_VALUES = ['0', '20', '40', '60'];
@@ -215,17 +232,18 @@ const FALLBACK_PLATFORM_SETTINGS_ORDER: Record<PlatformId, number> = {
   antigravity: 0,
   antigravity_ide: 1,
   codex: 2,
-  'github-copilot': 3,
-  windsurf: 4,
-  kiro: 5,
-  cursor: 6,
-  gemini: 7,
-  codebuddy: 8,
-  codebuddy_cn: 9,
-  qoder: 10,
-  trae: 11,
-  workbuddy: 12,
-  zed: 13,
+  claude_manager: 3,
+  'github-copilot': 4,
+  windsurf: 5,
+  kiro: 6,
+  cursor: 7,
+  gemini: 8,
+  codebuddy: 9,
+  codebuddy_cn: 10,
+  qoder: 11,
+  trae: 12,
+  workbuddy: 13,
+  zed: 14,
 };
 type UpdateCheckSource = 'auto' | 'manual';
 type UpdateCheckFinishedDetail = {
@@ -365,6 +383,7 @@ export function SettingsPage() {
   const [uiScale, setUiScale] = useState('1');
   const [autoRefresh, setAutoRefresh] = useState('5');
   const [codexAutoRefresh, setCodexAutoRefresh] = useState('10');
+  const [claudeAutoRefresh, setClaudeAutoRefresh] = useState('10');
   const [codexSyncWsl, setCodexSyncWsl] = useState(false);
   const [codexWslConfigDir, setCodexWslConfigDir] = useState('');
   const [ghcpAutoRefresh, setGhcpAutoRefresh] = useState('10');
@@ -378,11 +397,14 @@ export function SettingsPage() {
   const [hideDockIcon, setHideDockIcon] = useState(false);
   const [trayIconStyle, setTrayIconStyle] = useState<'template' | 'color'>('template');
   const [floatingCardShowOnStartup, setFloatingCardShowOnStartup] = useState(false);
+  const [startupMinimized, setStartupMinimized] = useState(false);
   const [floatingCardAlwaysOnTop, setFloatingCardAlwaysOnTop] = useState(false);
   const [appAutoLaunchEnabled, setAppAutoLaunchEnabled] = useState(false);
   const [opencodeAppPath, setOpencodeAppPath] = useState('');
   const [antigravityAppPath, setAntigravityAppPath] = useState('');
   const [codexAppPath, setCodexAppPath] = useState('');
+  const [claudeAppPath, setClaudeAppPath] = useState('');
+  const [claudeAppScanRoots, setClaudeAppScanRoots] = useState('');
   const [codexSpecifiedAppPath, setCodexSpecifiedAppPath] = useState('');
   const [vscodeAppPath, setVscodeAppPath] = useState('');
   const [windsurfAppPath, setWindsurfAppPath] = useState('');
@@ -439,6 +461,7 @@ export function SettingsPage() {
   const [codebuddyCnQuotaAlertThresholdCustomMode, setCodebuddyCnQuotaAlertThresholdCustomMode] = useState(false);
   const [workbuddyQuotaAlertThresholdCustomMode, setWorkbuddyQuotaAlertThresholdCustomMode] = useState(false);
   const [appPathResetDetectingTargets, setAppPathResetDetectingTargets] = useState<Set<AppPathTarget>>(new Set());
+  const [claudeLaunchCandidates, setClaudeLaunchCandidates] = useState<ClaudeDesktopLaunchCandidate[]>([]);
   const [opencodeSyncOnSwitch, setOpencodeSyncOnSwitch] = useState(false);
   const [opencodeAuthOverwriteOnSwitch, setOpencodeAuthOverwriteOnSwitch] = useState(false);
   const [openclawAuthOverwriteOnSwitch, setOpenclawAuthOverwriteOnSwitch] = useState(false);
@@ -464,6 +487,8 @@ export function SettingsPage() {
   const [quotaAlertThreshold, setQuotaAlertThreshold] = useState('20');
   const [codexQuotaAlertEnabled, setCodexQuotaAlertEnabled] = useState(false);
   const [codexQuotaAlertThreshold, setCodexQuotaAlertThreshold] = useState('20');
+  const [claudeQuotaAlertEnabled, setClaudeQuotaAlertEnabled] = useState(false);
+  const [claudeQuotaAlertThreshold, setClaudeQuotaAlertThreshold] = useState('20');
   const [ghcpQuotaAlertEnabled, setGhcpQuotaAlertEnabled] = useState(false);
   const [ghcpQuotaAlertThreshold, setGhcpQuotaAlertThreshold] = useState('20');
   const [windsurfQuotaAlertEnabled, setWindsurfQuotaAlertEnabled] = useState(false);
@@ -476,6 +501,7 @@ export function SettingsPage() {
   const [geminiQuotaAlertThreshold, setGeminiQuotaAlertThreshold] = useState('20');
   const [autoRefreshCustomMode, setAutoRefreshCustomMode] = useState(false);
   const [codexAutoRefreshCustomMode, setCodexAutoRefreshCustomMode] = useState(false);
+  const [claudeAutoRefreshCustomMode, setClaudeAutoRefreshCustomMode] = useState(false);
   const [ghcpAutoRefreshCustomMode, setGhcpAutoRefreshCustomMode] = useState(false);
   const [windsurfAutoRefreshCustomMode, setWindsurfAutoRefreshCustomMode] = useState(false);
   const [kiroAutoRefreshCustomMode, setKiroAutoRefreshCustomMode] = useState(false);
@@ -485,6 +511,7 @@ export function SettingsPage() {
   const [autoSwitchCreditsThresholdCustomMode, setAutoSwitchCreditsThresholdCustomMode] = useState(false);
   const [quotaAlertThresholdCustomMode, setQuotaAlertThresholdCustomMode] = useState(false);
   const [codexQuotaAlertThresholdCustomMode, setCodexQuotaAlertThresholdCustomMode] = useState(false);
+  const [claudeQuotaAlertThresholdCustomMode, setClaudeQuotaAlertThresholdCustomMode] = useState(false);
   const [ghcpQuotaAlertThresholdCustomMode, setGhcpQuotaAlertThresholdCustomMode] = useState(false);
   const [windsurfQuotaAlertThresholdCustomMode, setWindsurfQuotaAlertThresholdCustomMode] = useState(false);
   const [kiroQuotaAlertThresholdCustomMode, setKiroQuotaAlertThresholdCustomMode] = useState(false);
@@ -744,6 +771,7 @@ export function SettingsPage() {
     if (
       !autoRefresh.trim() ||
       !codexAutoRefresh.trim() ||
+      !claudeAutoRefresh.trim() ||
       !ghcpAutoRefresh.trim() ||
       !windsurfAutoRefresh.trim() ||
       !kiroAutoRefresh.trim() ||
@@ -761,6 +789,7 @@ export function SettingsPage() {
 
     const autoRefreshNum = parseInt(autoRefresh, 10) || -1;
     const codexAutoRefreshNum = parseInt(codexAutoRefresh, 10) || -1;
+    const claudeAutoRefreshNum = parseInt(claudeAutoRefresh, 10) || -1;
     const ghcpAutoRefreshNum = parseInt(ghcpAutoRefresh, 10) || -1;
     const windsurfAutoRefreshNum = parseInt(windsurfAutoRefresh, 10) || -1;
     const kiroAutoRefreshNum = parseInt(kiroAutoRefresh, 10) || -1;
@@ -780,6 +809,7 @@ export function SettingsPage() {
     const parsedAutoSwitchCreditsThreshold = Number.parseInt(autoSwitchCreditsThreshold, 10);
     const parsedQuotaAlertThreshold = Number.parseInt(quotaAlertThreshold, 10);
     const parsedCodexQuotaAlertThreshold = Number.parseInt(codexQuotaAlertThreshold, 10);
+    const parsedClaudeQuotaAlertThreshold = Number.parseInt(claudeQuotaAlertThreshold, 10);
     const parsedGhcpQuotaAlertThreshold = Number.parseInt(ghcpQuotaAlertThreshold, 10);
     const parsedWindsurfQuotaAlertThreshold = Number.parseInt(windsurfQuotaAlertThreshold, 10);
     const parsedKiroQuotaAlertThreshold = Number.parseInt(kiroQuotaAlertThreshold, 10);
@@ -805,6 +835,7 @@ export function SettingsPage() {
           uiScale: normalizedUiScale,
           autoRefreshMinutes: autoRefreshNum,
           codexAutoRefreshMinutes: codexAutoRefreshNum,
+          claudeAutoRefreshMinutes: claudeAutoRefreshNum,
           codexSyncWsl,
           codexWslConfigDir,
           ghcpAutoRefreshMinutes: ghcpAutoRefreshNum,
@@ -824,11 +855,14 @@ export function SettingsPage() {
           hideDockIcon,
           trayIconStyle: isMacOS ? trayIconStyle : undefined,
           floatingCardShowOnStartup,
+          startupMinimized,
           floatingCardAlwaysOnTop,
           appAutoLaunchEnabled,
           opencodeAppPath,
           antigravityAppPath,
           codexAppPath,
+          claudeAppPath,
+          claudeAppScanRoots,
           codexSpecifiedAppPath,
           vscodeAppPath,
           windsurfAppPath,
@@ -864,6 +898,10 @@ export function SettingsPage() {
           codexQuotaAlertThreshold: Number.isNaN(parsedCodexQuotaAlertThreshold)
             ? 20
             : parsedCodexQuotaAlertThreshold,
+          claudeQuotaAlertEnabled,
+          claudeQuotaAlertThreshold: Number.isNaN(parsedClaudeQuotaAlertThreshold)
+            ? 20
+            : parsedClaudeQuotaAlertThreshold,
           ghcpQuotaAlertEnabled,
           ghcpQuotaAlertThreshold: Number.isNaN(parsedGhcpQuotaAlertThreshold)
             ? 20
@@ -924,6 +962,7 @@ export function SettingsPage() {
   }, [
     autoRefresh,
     codexAutoRefresh,
+    claudeAutoRefresh,
     codexSyncWsl,
     codexWslConfigDir,
     ghcpAutoRefresh,
@@ -941,6 +980,7 @@ export function SettingsPage() {
     trayIconStyle,
     isMacOS,
     floatingCardShowOnStartup,
+    startupMinimized,
     floatingCardAlwaysOnTop,
     appAutoLaunchEnabled,
     generalLoaded,
@@ -951,6 +991,8 @@ export function SettingsPage() {
     opencodeAppPath,
     antigravityAppPath,
     codexAppPath,
+    claudeAppPath,
+    claudeAppScanRoots,
     codexSpecifiedAppPath,
     vscodeAppPath,
     windsurfAppPath,
@@ -982,6 +1024,8 @@ export function SettingsPage() {
     quotaAlertThreshold,
     codexQuotaAlertEnabled,
     codexQuotaAlertThreshold,
+    claudeQuotaAlertEnabled,
+    claudeQuotaAlertThreshold,
     ghcpQuotaAlertEnabled,
     ghcpQuotaAlertThreshold,
     windsurfQuotaAlertEnabled,
@@ -1221,6 +1265,7 @@ export function SettingsPage() {
       setUiScale(String(config.ui_scale ?? 1));
       setAutoRefresh(String(config.auto_refresh_minutes));
       setCodexAutoRefresh(String(config.codex_auto_refresh_minutes ?? 10));
+      setClaudeAutoRefresh(String(config.claude_auto_refresh_minutes ?? 10));
       setCodexSyncWsl(Boolean(config.codex_sync_wsl ?? false));
       setCodexWslConfigDir(config.codex_wsl_config_dir || '');
       setGhcpAutoRefresh(String(config.ghcp_auto_refresh_minutes ?? 10));
@@ -1234,11 +1279,15 @@ export function SettingsPage() {
       setHideDockIcon(Boolean(config.hide_dock_icon));
       setTrayIconStyle(config.tray_icon_style === 'color' ? 'color' : 'template');
       setFloatingCardShowOnStartup(config.floating_card_show_on_startup ?? false);
+      setStartupMinimized(config.startup_minimized ?? false);
       setFloatingCardAlwaysOnTop(config.floating_card_always_on_top ?? false);
       setAppAutoLaunchEnabled(config.app_auto_launch_enabled ?? false);
       setOpencodeAppPath(config.opencode_app_path || '');
       setAntigravityAppPath(config.antigravity_app_path || '');
       setCodexAppPath(config.codex_app_path || '');
+      setClaudeAppPath(config.claude_app_path || '');
+      setClaudeAppScanRoots(config.claude_app_scan_roots || '');
+      setClaudeLaunchCandidates([]);
       setCodexSpecifiedAppPath(config.codex_specified_app_path || '');
       setVscodeAppPath(config.vscode_app_path || '');
       setWindsurfAppPath(config.windsurf_app_path || '');
@@ -1300,6 +1349,8 @@ export function SettingsPage() {
       setQuotaAlertThreshold(String(config.quota_alert_threshold ?? 20));
       setCodexQuotaAlertEnabled(config.codex_quota_alert_enabled ?? false);
       setCodexQuotaAlertThreshold(String(config.codex_quota_alert_threshold ?? 20));
+      setClaudeQuotaAlertEnabled(config.claude_quota_alert_enabled ?? false);
+      setClaudeQuotaAlertThreshold(String(config.claude_quota_alert_threshold ?? 20));
       setGhcpQuotaAlertEnabled(config.ghcp_quota_alert_enabled ?? false);
       setGhcpQuotaAlertThreshold(String(config.ghcp_quota_alert_threshold ?? 20));
       setWindsurfQuotaAlertEnabled(config.windsurf_quota_alert_enabled ?? false);
@@ -1312,6 +1363,7 @@ export function SettingsPage() {
       setGeminiQuotaAlertThreshold(String(config.gemini_quota_alert_threshold ?? 20));
       setAutoRefreshCustomMode(false);
       setCodexAutoRefreshCustomMode(false);
+      setClaudeAutoRefreshCustomMode(false);
       setGhcpAutoRefreshCustomMode(false);
       setWindsurfAutoRefreshCustomMode(false);
       setKiroAutoRefreshCustomMode(false);
@@ -1327,6 +1379,7 @@ export function SettingsPage() {
       setAutoSwitchCreditsThresholdCustomMode(false);
       setQuotaAlertThresholdCustomMode(false);
       setCodexQuotaAlertThresholdCustomMode(false);
+      setClaudeQuotaAlertThresholdCustomMode(false);
       setGhcpQuotaAlertThresholdCustomMode(false);
       setWindsurfQuotaAlertThresholdCustomMode(false);
       setKiroQuotaAlertThresholdCustomMode(false);
@@ -1424,6 +1477,8 @@ export function SettingsPage() {
       setAntigravityAppPath(path);
     } else if (target === 'codex') {
       setCodexAppPath(path);
+    } else if (target === 'claude') {
+      setClaudeAppPath(path);
     } else if (target === 'vscode') {
       setVscodeAppPath(path);
     } else if (target === 'windsurf') {
@@ -1483,6 +1538,9 @@ export function SettingsPage() {
     if (target === 'opencode') {
       return t('settings.general.opencodePathReset', '重置默认');
     }
+    if (target === 'claude') {
+      return t('appPath.missing.scanApps', '扫描应用');
+    }
     return t('settings.general.codexPathReset', '重置默认');
   };
 
@@ -1500,6 +1558,26 @@ export function SettingsPage() {
     } catch (err) {
       console.error('选择启动路径失败:', err);
     }
+  };
+
+  const handlePickClaudeScanRoot = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: true,
+      });
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (!path) return;
+      setClaudeAppScanRoots(path);
+      setClaudeLaunchCandidates([]);
+    } catch (err) {
+      console.error('选择 Claude 扫描范围失败:', err);
+    }
+  };
+
+  const handleClearClaudeScanRoot = () => {
+    setClaudeAppScanRoots('');
+    setClaudeLaunchCandidates([]);
   };
 
   const handlePickCodexSpecifiedAppPath = async () => {
@@ -1524,6 +1602,22 @@ export function SettingsPage() {
       return next;
     });
     try {
+      if (target === 'claude') {
+        const candidates = await invoke<ClaudeDesktopLaunchCandidate[]>(
+          'scan_claude_desktop_launch_targets',
+          {
+            scanRoots: claudeAppScanRoots.trim() || null,
+          },
+        );
+        setClaudeLaunchCandidates(candidates);
+        if (candidates.length === 0) {
+          alert(t(
+            'settings.general.claudeLaunchScanEmpty',
+            '未扫描到 Claude Desktop，请手动选择 Claude.exe 或调整扫描范围。',
+          ));
+        }
+        return;
+      }
       const detected = await invoke<string | null>('detect_app_path', { app: target, force: true });
       setAppPathForTarget(target, detected || '');
     } catch (err) {
@@ -1536,6 +1630,10 @@ export function SettingsPage() {
         return next;
       });
     }
+  };
+
+  const handleSelectClaudeLaunchCandidate = (candidate: ClaudeDesktopLaunchCandidate) => {
+    setClaudeAppPath(candidate.target);
   };
 
   const sanitizeNumberInput = (value: string) => value.replace(/[^\d]/g, '');
@@ -1578,6 +1676,8 @@ export function SettingsPage() {
         return parseRefresh(autoRefresh) > 0;
       case 'codex':
         return parseRefresh(codexAutoRefresh) > 0;
+      case 'claude':
+        return parseRefresh(claudeAutoRefresh) > 0;
       case 'ghcp':
         return parseRefresh(ghcpAutoRefresh) > 0;
       case 'windsurf':
@@ -1716,6 +1816,8 @@ export function SettingsPage() {
         return antigravityAccounts.map((a) => ({ id: a.id, email: a.email }));
       case 'codex':
         return codexAccounts.map((a) => ({ id: a.id, email: a.email }));
+      case 'claude':
+        return getProviderAccounts(useClaudeAccountStore, getClaudeAccountDisplayEmail);
       case 'ghcp':
         return getProviderAccounts(useGitHubCopilotAccountStore, getGitHubCopilotAccountDisplayEmail);
       case 'windsurf':
@@ -1915,8 +2017,192 @@ export function SettingsPage() {
     );
   };
 
+  const renderPlatformAutoRefreshRow = ({
+    title,
+    description,
+    value,
+    setValue,
+    customMode,
+    setCustomMode,
+    isPreset,
+  }: {
+    title: string;
+    description: string;
+    value: string;
+    setValue: (value: string) => void;
+    customMode: boolean;
+    setCustomMode: (enabled: boolean) => void;
+    isPreset: boolean;
+  }) => (
+    <div className="settings-row">
+      <div className="row-label">
+        <div className="row-title">{title}</div>
+        <div className="row-desc">{description}</div>
+      </div>
+      <div className="row-control">
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {customMode ? (
+            <div className="settings-inline-input" style={{ minWidth: '120px', width: 'auto' }}>
+              <input
+                type="number"
+                min={1}
+                max={999}
+                className="settings-select settings-select--input-mode settings-select--with-unit"
+                value={value}
+                placeholder={t('quickSettings.inputMinutes', '输入分钟数')}
+                onChange={(event) => setValue(sanitizeNumberInput(event.target.value))}
+                onBlur={() => {
+                  setValue(normalizeNumberInput(value, 1, 999));
+                  setCustomMode(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    setValue(normalizeNumberInput(value, 1, 999));
+                    setCustomMode(false);
+                  }
+                }}
+              />
+              <span className="settings-input-unit">{t('settings.general.minutes')}</span>
+            </div>
+          ) : (
+            <select
+              className="settings-select"
+              style={{ minWidth: '120px', width: 'auto' }}
+              value={value}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue === 'custom') {
+                  setCustomMode(true);
+                  setValue(value !== '-1' ? value : '1');
+                  return;
+                }
+                setCustomMode(false);
+                setValue(nextValue);
+              }}
+            >
+              {!isPreset && (
+                <option value={value}>
+                  {value} {t('settings.general.minutes')}
+                </option>
+              )}
+              <option value="-1">{t('settings.general.autoRefreshDisabled')}</option>
+              <option value="2">2 {t('settings.general.minutes')}</option>
+              <option value="5">5 {t('settings.general.minutes')}</option>
+              <option value="10">10 {t('settings.general.minutes')}</option>
+              <option value="15">15 {t('settings.general.minutes')}</option>
+              <option value="custom">{t('settings.general.autoRefreshCustom')}</option>
+            </select>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPlatformQuotaAlertRows = ({
+    enabled,
+    setEnabled,
+    threshold,
+    setThreshold,
+    customMode,
+    setCustomMode,
+    isPreset,
+  }: {
+    enabled: boolean;
+    setEnabled: (enabled: boolean) => void;
+    threshold: string;
+    setThreshold: (value: string) => void;
+    customMode: boolean;
+    setCustomMode: (enabled: boolean) => void;
+    isPreset: boolean;
+  }) => (
+    <>
+      <div className="settings-row">
+        <div className="row-label">
+          <div className="row-title">{t('quickSettings.quotaAlert.enable', '超额预警')}</div>
+          <div className="row-desc">
+            {t(
+              'quickSettings.quotaAlert.hint',
+              '当当前账号任意模型配额低于阈值时，发送原生通知并在页面提示快捷切号。',
+            )}
+          </div>
+        </div>
+        <div className="row-control">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            <span className="slider"></span>
+          </label>
+        </div>
+      </div>
+      {enabled && (
+        <div className="settings-row" style={{ animation: 'fadeUp 0.3s ease both' }}>
+          <div className="row-label">
+            <div className="row-title">{t('quickSettings.quotaAlert.threshold', '预警阈值')}</div>
+            <div className="row-desc">
+              {t('quickSettings.quotaAlert.thresholdDesc', '任意模型配额低于此百分比时触发预警')}
+            </div>
+          </div>
+          <div className="row-control">
+            {customMode ? (
+              <div className="settings-inline-input">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="settings-select settings-select--input-mode settings-select--with-unit"
+                  value={threshold}
+                  placeholder={t('quickSettings.inputPercent', '输入百分比')}
+                  onChange={(event) => setThreshold(sanitizeNumberInput(event.target.value))}
+                  onBlur={() => {
+                    setThreshold(normalizeNumberInput(threshold, 0, 100));
+                    setCustomMode(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      setThreshold(normalizeNumberInput(threshold, 0, 100));
+                      setCustomMode(false);
+                    }
+                  }}
+                />
+                <span className="settings-input-unit">%</span>
+              </div>
+            ) : (
+              <select
+                className="settings-select"
+                value={threshold}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  if (nextValue === 'custom') {
+                    setCustomMode(true);
+                    setThreshold(threshold || '20');
+                    return;
+                  }
+                  setCustomMode(false);
+                  setThreshold(nextValue);
+                }}
+              >
+                {!isPreset && <option value={threshold}>{threshold}%</option>}
+                <option value="0">0%</option>
+                <option value="20">20%</option>
+                <option value="40">40%</option>
+                <option value="60">60%</option>
+                <option value="custom">{t('settings.general.autoRefreshCustom')}</option>
+              </select>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   const autoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(autoRefresh);
   const codexAutoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(codexAutoRefresh);
+  const claudeAutoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(claudeAutoRefresh);
   const ghcpAutoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(ghcpAutoRefresh);
   const windsurfAutoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(windsurfAutoRefresh);
   const kiroAutoRefreshIsPreset = REFRESH_PRESET_VALUES.includes(kiroAutoRefresh);
@@ -1934,6 +2220,7 @@ export function SettingsPage() {
   );
   const quotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(quotaAlertThreshold);
   const codexQuotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(codexQuotaAlertThreshold);
+  const claudeQuotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(claudeQuotaAlertThreshold);
   const ghcpQuotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(ghcpQuotaAlertThreshold);
   const windsurfQuotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(windsurfQuotaAlertThreshold);
   const kiroQuotaAlertThresholdIsPreset = THRESHOLD_PRESET_VALUES.includes(kiroQuotaAlertThreshold);
@@ -2195,6 +2482,30 @@ export function SettingsPage() {
                     <option value="ask">{t('settings.general.closeBehaviorAsk')}</option>
                     <option value="minimize">{t('settings.general.closeBehaviorMinimize')}</option>
                     <option value="quit">{t('settings.general.closeBehaviorQuit')}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-label">
+                  <div className="row-title">
+                    {t('settings.general.startupMinimized', '启动后自动最小化')}
+                  </div>
+                  <div className="row-desc">
+                    {t(
+                      'settings.general.startupMinimizedDesc',
+                      '应用启动完成后自动最小化主窗口，可从 Dock、任务栏或托盘恢复'
+                    )}
+                  </div>
+                </div>
+                <div className="row-control">
+                  <select
+                    className="settings-select"
+                    value={startupMinimized ? 'true' : 'false'}
+                    onChange={(e) => setStartupMinimized(e.target.value === 'true')}
+                  >
+                    <option value="false">{t('common.disable', '停用')}</option>
+                    <option value="true">{t('common.enable', '启用')}</option>
                   </select>
                 </div>
               </div>
@@ -3280,6 +3591,152 @@ export function SettingsPage() {
               )}
             </div>
 
+              </div>
+
+              <div style={{ order: platformSettingsOrder.claude_manager }}>
+                <div className="group-title">
+                  {t('settings.general.claudeSettingsTitle', 'Claude 设置')}
+                </div>
+                <div className="settings-group">
+                  {renderPlatformAutoRefreshRow({
+                    title: t(
+                      'settings.general.claudeAutoRefresh',
+                      'Claude 自动刷新配额',
+                    ),
+                    description: t(
+                      'settings.general.claudeAutoRefreshDesc',
+                      '后台自动更新 Claude 账号配额缓存',
+                    ),
+                    value: claudeAutoRefresh,
+                    setValue: setClaudeAutoRefresh,
+                    customMode: claudeAutoRefreshCustomMode,
+                    setCustomMode: setClaudeAutoRefreshCustomMode,
+                    isPreset: claudeAutoRefreshIsPreset,
+                  })}
+                  {renderCurrentAccountRefreshRow('claude')}
+                  {renderAccountLevelRefreshConfig('claude')}
+                  <div className="settings-row settings-row--align-start">
+                    <div className="row-label">
+                      <div className="row-title">
+                        {t('settings.general.claudeAppPath', 'Claude Desktop 启动目标')}
+                      </div>
+                      <div className="row-desc">
+                        {t(
+                          'settings.general.claudeAppPathDesc',
+                          '默认实例可使用 Microsoft Store 应用目标；多开实例请选择真实 Claude.exe。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="row-control row-control--grow settings-claude-launch-control">
+                      <div className="settings-claude-scan-roots">
+                        <label>{t('appPath.missing.scanRoots', '扫描范围')}</label>
+                        <div className="settings-claude-scan-root-row">
+                          <input
+                            type="text"
+                            className="settings-input settings-claude-scan-roots-input"
+                            value={claudeAppScanRoots}
+                            placeholder={t(
+                              'appPath.missing.scanRootsPlaceholder',
+                              '可选，选择一个目录或盘符；留空时按盘符扫描 WindowsApps 并补充开始菜单应用。',
+                            )}
+                            readOnly
+                          />
+                          <button
+                            className="btn btn-secondary"
+                            onClick={handlePickClaudeScanRoot}
+                            disabled={isAppPathResetDetecting('claude')}
+                          >
+                            {t('settings.general.codexPathSelect', '选择')}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={handleClearClaudeScanRoot}
+                            disabled={
+                              isAppPathResetDetecting('claude') || !claudeAppScanRoots.trim()
+                            }
+                          >
+                            {t('common.clear', '清除')}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="settings-claude-launch-row">
+                        <input
+                          type="text"
+                          className="settings-input settings-input--path"
+                          value={claudeAppPath}
+                          placeholder={t(
+                            'quickSettings.claude.appTargetPlaceholder',
+                            'Claude.exe 路径或 shell:AppsFolder\\...',
+                          )}
+                          onChange={(e) => setClaudeAppPath(e.target.value)}
+                        />
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => handlePickAppPath('claude')}
+                          disabled={isAppPathResetDetecting('claude')}
+                        >
+                          {t('settings.general.codexPathSelect', '选择')}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => handleResetAppPath('claude')}
+                          disabled={isAppPathResetDetecting('claude')}
+                        >
+                          <RefreshCw
+                            size={16}
+                            className={isAppPathResetDetecting('claude') ? 'spin' : undefined}
+                          />
+                          {isAppPathResetDetecting('claude')
+                            ? t('common.loading', '加载中...')
+                            : getResetLabelByTarget('claude')}
+                        </button>
+                      </div>
+                      {claudeLaunchCandidates.length > 0 ? (
+                        <div className="settings-claude-candidate-list">
+                          {claudeLaunchCandidates.map((candidate) => (
+                            <button
+                              key={`${candidate.target_type}:${candidate.target}`}
+                              type="button"
+                              className={`settings-claude-candidate-item${
+                                claudeAppPath.trim() === candidate.target ? ' selected' : ''
+                              }`}
+                              onClick={() => handleSelectClaudeLaunchCandidate(candidate)}
+                            >
+                              <div className="settings-claude-candidate-main">
+                                <span>{candidate.label || 'Claude Desktop'}</span>
+                                <span className="settings-claude-candidate-badge">
+                                  {candidate.target_type === 'windows_app'
+                                    ? t('appPath.missing.windowsApp', 'Microsoft Store')
+                                    : 'EXE'}
+                                </span>
+                              </div>
+                              <div className="settings-claude-candidate-target">
+                                {candidate.target}
+                              </div>
+                              {!candidate.supports_multi_instance ? (
+                                <div className="settings-claude-candidate-note">
+                                  {t(
+                                    'appPath.missing.defaultOnly',
+                                    '仅适用于默认桌面端；多开实例请选择真实 Claude.exe',
+                                  )}
+                                </div>
+                              ) : null}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  {renderPlatformQuotaAlertRows({
+                    enabled: claudeQuotaAlertEnabled,
+                    setEnabled: setClaudeQuotaAlertEnabled,
+                    threshold: claudeQuotaAlertThreshold,
+                    setThreshold: setClaudeQuotaAlertThreshold,
+                    customMode: claudeQuotaAlertThresholdCustomMode,
+                    setCustomMode: setClaudeQuotaAlertThresholdCustomMode,
+                    isPreset: claudeQuotaAlertThresholdIsPreset,
+                  })}
+                </div>
               </div>
 
               <div style={{ order: platformSettingsOrder['github-copilot'] }}>
@@ -5727,7 +6184,7 @@ export function SettingsPage() {
         </div>
       </div>
       {releaseHistoryOpen && (
-        <div className="modal-overlay" onClick={handleCloseReleaseHistory}>
+        <div className="modal-overlay">
           <div className="modal settings-release-history-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <h2>{t('settings.about.releaseHistoryTitle', '更新记录')}</h2>

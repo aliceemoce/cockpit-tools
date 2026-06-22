@@ -197,7 +197,7 @@
         "planEndsInHours": "Сбрасывается через {{hours}}h"
       },
       "flowNotice": {
-        "alternative": "Альтернатива: использовать изоляцию мульти-инстансов (разные --user-data-dir). Войдите один раз для каждого инстанса, затем запускайте нужный инстанс для быстрого переключения на целевую среду аккаунта."
+        "alternative": "Изоляция мульти-инстансов: используйте отдельные управляемые профили и войдите один раз в каждый инстанс для быстрого переключения аккаунтов."
       },
       "injecting": "Внедрение...",
       "usage": {
@@ -261,7 +261,8 @@
     "switchClassicLayoutDontAskAgain": "Больше не показывать это сообщение",
     "switchClassicLayoutConfirm": "Переключить сейчас",
     "2faManager": "Управление 2FA",
-    "apiRelay": "Релей"
+    "apiRelay": "Релей",
+    "claude": "Claude"
   },
   "sponsors": {
     "pageTitle": "Спонсоры",
@@ -596,6 +597,8 @@
       "closeBehaviorAsk": "Спрашивать каждый раз",
       "closeBehaviorMinimize": "Свернуть в трей",
       "closeBehaviorQuit": "Закрыть приложение",
+      "startupMinimized": "Запускать свернутым",
+      "startupMinimizedDesc": "Автоматически сворачивает главное окно после запуска приложения; восстановить можно из Dock, панели задач или трея",
       "minimizeBehavior": "Поведение при сворачивании окна (только macOS)",
       "minimizeBehaviorDesc": "Выберите, оставлять ли окно при сворачивании в Dock и строке меню или только в строке меню",
       "minimizeBehaviorDockAndTray": "Dock + строка меню (рекомендуется)",
@@ -778,7 +781,12 @@
       "codexAppSpeedFast": "Быстро",
       "codexAppSpeedLaunch": "Перезапустить Codex",
       "codexAppSpeedSaveFailed": "Не удалось сохранить скорость Codex: {{error}}",
-      "codexAppSpeedLaunchFailed": "Не удалось перезапустить Codex: {{error}}"
+      "codexAppSpeedLaunchFailed": "Не удалось перезапустить Codex: {{error}}",
+      "claudeSettingsTitle": "Настройки Claude",
+      "claudeAutoRefresh": "Автообновление квоты Claude",
+      "claudeAutoRefreshDesc": "Автоматически обновляет кэш квоты аккаунтов Claude в фоне.",
+      "claudeAppPath": "Цель запуска Claude Desktop",
+      "claudeAppPathDesc": "Стандартный профиль может использовать цель Microsoft Store; нескольким экземплярам нужен реальный Claude.exe."
     },
     "network": {
       "apiTitle": "API антигравитационной кабины",
@@ -1014,7 +1022,15 @@
       "title": "Путь к приложению не найден",
       "desc": "Не удалось найти путь к приложению {{app}}. Установите его сейчас, чтобы продолжить.",
       "action": "Установить сейчас",
-      "codexLaunchHint": "После отключения переключение аккаунта и перезапись входа продолжат выполняться, но приложение Codex больше не будет запускаться, и этот запрос пути больше не появится."
+      "codexLaunchHint": "После отключения переключение аккаунта и перезапись входа продолжат выполняться, но приложение Codex больше не будет запускаться, и этот запрос пути больше не появится.",
+      "claudeMultiInstanceRequiresExe": "Для нескольких экземпляров Claude нужен реальный путь к Claude.exe. Цели Microsoft Store подходят только для стандартного настольного профиля.",
+      "scanApps": "Сканировать приложения",
+      "scanRoots": "Oblast skanirovaniya",
+      "scanRootsPlaceholder": "Neobyazatelno: vyberite papku ili koren diska; pustoe pole skaniruet WindowsApps po diskam i dobavlyaet prilozheniya menyu Pusk.",
+      "windowsApp": "Приложение Microsoft Store",
+      "defaultOnly": "Только для стандартного рабочего стола; для нескольких экземпляров выберите реальный Claude.exe.",
+      "claudeScanEmpty": "Цель Claude Desktop не найдена. Выберите Claude.exe вручную или измените области сканирования.",
+      "claudeTargetPlaceholder": "Путь Claude.exe или shell:AppsFolder\\..."
     },
     "modal": {
       "desc": "Путь приложения {{app}} не найден. Настройте его сейчас для продолжения."
@@ -1262,7 +1278,10 @@
     "switchSuccess": "Переключение выполнено",
     "switched": "Переключено на {{email}}",
     "tagButton": "Редактировать теги",
-    "tagUpdated": "Тег обновлён"
+    "tagUpdated": "Тег обновлён",
+    "plan": {
+      "personal": "Личный"
+    }
   },
   "overview": {
     "title": "Обзор аккаунтов",
@@ -1907,7 +1926,12 @@
       },
       "oauthBinding": {
         "desc": "Необязательно. Можно выбрать только OAuth-аккаунты с refresh_token. Без привязки API-сервис работает по прежней логике API Key; после привязки вход использует OAuth-аккаунт, а Provider — настройки API-сервиса.",
-        "currentService": "API-сервис: {{name}}"
+        "currentService": "API-сервис: {{name}}",
+        "imageGenerationTooltip": "Если включено, API-сервис удаляет объявление инструмента image_generation в локальном шлюзе перед пересылкой обычных текстовых диалогов; модели изображений не удаляются.",
+        "imageGenerationConfirm": {
+          "title": "Отключить image_generation",
+          "message": "Если включено, API-сервис будет удалять объявление инструмента image_generation в локальном шлюзе перед пересылкой обычных текстовых диалогов, чтобы избежать ошибок вроде «Image generation is not enabled». gpt-image и другие модели изображений не удаляются. Продолжить?"
+        }
       },
       "customRoutingEdit": "Изменить настраиваемую маршрутизацию",
       "customRoutingTitle": "Настраиваемая маршрутизация",
@@ -2026,7 +2050,29 @@
       "hourly": "Квота 5 часов",
       "weekly": "Недельная квота",
       "reset": "Сброс",
-      "weeklyBlocksHourly": "Недельная квота равна 0, поэтому 5-часовая квота недоступна"
+      "weeklyBlocksHourly": "Недельная квота равна 0, поэтому 5-часовая квота недоступна",
+      "resetCredits": "Сбросы {{count}}",
+      "resetCreditsTitle": "Осталось сбросов для 5-часового окна: {{count}}",
+      "resetCreditConfirm": "Подтвердить?",
+      "resetCreditDialogTitle": "Сбросить использование?",
+      "resetCreditDialogDesc": "Сбросьте лимит скорости, чтобы продолжить работу без перерывов. Доступно сбросов: {{count}}.",
+      "resetCreditDialogAction": "Сбросить использование",
+      "resetCreditNoCredits": "Нет доступных сбросов",
+      "resetCreditConsumed": "5-часовая квота сброшена",
+      "resetCreditFailed": "Сбой сброса: {{error}}",
+      "resetCreditRefreshAfterConsumeFailed": "Сброс отправлен, но обновление квоты не удалось: {{error}}",
+      "resetCreditsTitleWithExpiry": "Осталось сбросов для 5-часового окна: {{count}}. Ближайшее истечение: {{time}}",
+      "resetCreditTimeUnknown": "Время неизвестно",
+      "resetCreditStatusAvailable": "Доступно",
+      "resetCreditStatusRedeemed": "Использовано",
+      "resetCreditStatusExpired": "Истекло",
+      "resetCreditStatusUnknown": "Неизвестно",
+      "resetCreditNextExpiry": "Ближайшее истечение: {{time}}",
+      "resetCreditDetailsTitle": "Детали сбросов",
+      "resetCreditNoRecords": "Нет записей сброса",
+      "resetCreditRecordsLoadFailed": "Не удалось загрузить записи сброса: {{error}}",
+      "resetCreditGrantedAt": "Выдано",
+      "resetCreditExpiresAt": "Истекает"
     },
     "quotaError": {
       "badge": "Ошибка квоты",
@@ -2277,7 +2323,7 @@
     },
     "sessionManager": {
       "title": "Управление сессиями",
-      "desc": "Синхронизация и очистка собраны здесь: сверху можно в один клик синхронизировать всё со всеми экземплярами, а ниже раскрыть каждый проект, просмотреть сессии и отправить их в корзину.",
+      "desc": "Синхронизация, исправление видимости, очистка и восстановление собраны здесь: сверху можно синхронизировать сессии, исправить видимость или восстановить из корзины, ниже — раскрыть проекты для просмотра и перемещения сессий в корзину.",
       "actions": {
         "moveToTrash": "Переместить в корзину",
         "syncSessions": "Синхронизировать сессии",
@@ -2286,17 +2332,29 @@
         "repairVisibility": "Исправить видимость",
         "restoreSessions": "Восстановить сессии",
         "copySessionId": "Копировать ID сессии",
+        "selectAllSessions": "Выбрать все сессии",
+        "clearSelectedSessions": "Снять выбор",
         "copyToInstance": "Копировать в экземпляр"
       },
       "confirm": {
         "title": "Переместить в корзину",
         "message": "Выбранные сессии будут перемещены в корзину из соответствующих экземпляров, чтобы их можно было восстановить позже. Запущенным экземплярам может потребоваться перезапуск, прежде чем изменения станут видны. Продолжить?",
         "syncMessage": "Отсутствующие треды и их данные сессий будут синхронизированы со всеми экземплярами. Существующее содержимое не будет записываться повторно, а файлы целевого экземпляра будут сохранены в резервной копии перед любой записью. Продолжить?",
-        "repairVisibilityMessage": "Это исправит метаданные провайдера в rollout-файлах и в state_5.sqlite, используя значение model_provider из корневого config.toml каждого экземпляра (если оно отсутствует, будет использован openai). Для файлов, которые будут изменены, перед записью создаются резервные копии. Запущенным экземплярам может понадобиться перезапуск, прежде чем изменения станут видны. Продолжить?"
+        "repairVisibilityMessage": "Обновляет записи официальной state DB Codex, которые управляют списком сессий в боковой панели. Перед записью файлы state DB копируются."
       },
       "empty": {
         "title": "Нет сессий для управления",
-        "desc": "В текущем наборе экземпляров записи сессий не найдены."
+        "desc": "В текущем наборе экземпляров записи сессий не найдены.",
+        "searchTitle": "Подходящие сеансы не найдены",
+        "searchDesc": "Измените ключевые слова заголовка."
+      },
+      "search": {
+        "titleLabel": "Заголовок",
+        "contentLabel": "Содержимое диалога",
+        "titlePlaceholder": "Искать по заголовку",
+        "contentPlaceholder": "Искать в содержимом диалога",
+        "apply": "Поиск",
+        "clear": "Очистить"
       },
       "messages": {
         "pickOne": "Выберите хотя бы одну сессию",
@@ -2328,6 +2386,59 @@
         "selectedCount": "Выбрано сеансов: {{count}}",
         "existingCount": "Уже в цели: {{count}}",
         "confirm": "Копировать сеансы"
+      },
+      "repairModal": {
+        "running": "Исправление...",
+        "progress": {
+          "queued": "Запуск исправления...",
+          "collectInstances": "Сбор экземпляров Codex...",
+          "scanInstances": "Подготовка сканирования...",
+          "scanInstance": "Сканирование {{instance}} ({{current}}/{{total}})...",
+          "backupInstance": "Резервное копирование {{instance}} ({{current}}/{{total}})...",
+          "writeInstance": "Запись {{instance}} ({{current}}/{{total}})...",
+          "rebuildMetadata": "Обновление официального состояния сессий для {{instance}}...",
+          "pruneBackups": "Очистка старых копий...",
+          "done": "Исправление завершено",
+          "writeSqliteProvider": "Запись видимости SQLite для {{instance}}...",
+          "writeRolloutFiles": "Запись старых файлов сессий...",
+          "writeSqliteTimestamps": "Исправление времени SQLite для {{instance}}...",
+          "writeSessionIndex": "Запись session_index..."
+        },
+        "targetProvider": "Целевой provider",
+        "defaultProvider": "По умолчанию",
+        "loadingProviders": "Загрузка provider...",
+        "noProvider": "Provider не найден",
+        "providerLoadFailed": "Не удалось загрузить provider: {{error}}",
+        "modeTitle": "Режим исправления",
+        "modeQuick": "Быстрое исправление",
+        "modeQuickDesc": "Исправляет официальную state DB и первую строку метаданных сеанса. Подходит после обычного переключения аккаунта.",
+        "modeDeep": "Глубокое исправление",
+        "modeDeepDesc": "Сохраняет текущее полное исправление метаданных для проверки, если быстрого исправления недостаточно.",
+        "scopeTitle": "Область сессий",
+        "scopeAll": "Все сессии",
+        "scopeAllDesc": "Восстановить {{count}} сессий из текущего списка.",
+        "scopeSelected": "Выбранные сессии",
+        "scopeSelectedDesc": "Восстановить только {{count}} выбранных сессий.",
+        "scopeSelectedEmpty": "Сначала выберите сессии в списке.",
+        "providerSource": {
+          "config": "Конфигурация",
+          "rollout": "Сессии",
+          "sqlite": "База SQLite"
+        },
+        "targetInstance": "Целевой экземпляр",
+        "loadingInstances": "Загрузка экземпляров...",
+        "noInstance": "Экземпляр не найден",
+        "instanceLoadFailed": "Не удалось загрузить экземпляры: {{error}}",
+        "defaultInstance": "Экземпляр по умолчанию",
+        "runningInstance": "Запущен",
+        "instanceProvider": "Текущий provider",
+        "instanceScopeTitle": "Область экземпляров",
+        "instanceScopeTarget": "Только целевой",
+        "instanceScopeTargetDesc": "Исправляет только выбранный экземпляр, обычно быстрее.",
+        "instanceScopeAll": "Все экземпляры",
+        "instanceScopeAllDesc": "Исправляет все экземпляры Codex при общей восстановлении.",
+        "progressTitle": "Ход восстановления",
+        "start": "Восстановить"
       }
     },
     "api": {
@@ -2438,7 +2549,13 @@
         "switchRequiresBinding": "Сначала свяжите OAuth-аккаунт",
         "clearAction": "Отвязать",
         "clearSuccess": "Привязка OAuth удалена.",
-        "clearFailed": "Не удалось удалить привязку OAuth: {{error}}"
+        "clearFailed": "Не удалось удалить привязку OAuth: {{error}}",
+        "useLocalGateway": "Отключить image_generation",
+        "localGatewayTooltip": "Если включено, текстовые диалоги API Key с привязкой OAuth идут через локальный шлюз, который удаляет image_generation перед пересылкой; модели изображений не удаляются.",
+        "localGatewayConfirm": {
+          "title": "Отключить возможность image_generation",
+          "message": "Если включено, обычные текстовые диалоги этого аккаунта API Key с привязкой OAuth будут идти через локальный шлюз, где объявление инструмента image_generation удаляется перед пересылкой, чтобы избежать ошибок вроде «Image generation is not enabled». gpt-image и другие модели изображений не удаляются. Продолжить?"
+        }
       }
     },
     "modelProviders": {
@@ -2582,6 +2699,46 @@
         "checkProviderStatus": "Проверьте состояние сервиса провайдера, прокси или совместимость API.",
         "checkModelsApi": "Убедитесь, что провайдер возвращает список моделей в формате OpenAI."
       },
+      "batchTest": {
+        "entry": "Проверить все",
+        "entryHint": "Пакетно проверить реальную возможность чата у провайдеров",
+        "selectedCount": "Выбрано {{count}}",
+        "title": "Пакетная проверка провайдеров моделей",
+        "selectTitle": "Выберите провайдеров для проверки",
+        "selectDesc": "Выбранные провайдеры временно подключаются к локальному шлюзу для теста чата и отправляются upstream по протоколу провайдера.",
+        "selectionSummary": "Выбрано {{selected}} / доступно {{total}}",
+        "emptySelection": "Выберите хотя бы одного провайдера с API Key.",
+        "noApiKey": "Нет API Key",
+        "gatewayProtocol": "Chat Completions · шлюз",
+        "directProtocol": "Responses · шлюз",
+        "start": "Начать проверку",
+        "kicker": "Проверка провайдера",
+        "resultsTitle": "Результаты проверки чата провайдеров",
+        "totalCount": "{{count}} провайдеров",
+        "progress": "Ход проверки",
+        "selectVisible": "Выбрать видимые",
+        "resultSelectedCount": "Выбрано {{count}}",
+        "selectFailed": "Выбрать ошибки",
+        "deleteConfirm": "Удалить выбранных провайдеров: {{providerCount}}? Также будут удалены точно связанные аккаунты Codex API Key: {{accountCount}}.",
+        "deleteSuccess": "Удалено провайдеров: {{providerCount}}, связанных аккаунтов: {{accountCount}}.",
+        "deleteFailed": "Не удалось удалить выбранные элементы: {{error}}",
+        "protocolSummary": "{{protocol}} · {{mode}} · {{model}}",
+        "modelUnknown": "Модель ожидает",
+        "promptLabel": "Промпт",
+        "pendingDesc": "Ожидает запуска.",
+        "runningDesc": "Отправляется запрос чата.",
+        "noReply": "Upstream не вернул читаемый ответ.",
+        "unknownError": "Неизвестная ошибка",
+        "status": {
+          "all": "Все",
+          "success": "Успех",
+          "error": "Ошибка",
+          "running": "Выполняется",
+          "pending": "Ожидает",
+          "completed": "Завершено"
+        },
+        "officialClientOnlyError": "Этот поставщик принимает запросы только от официального клиента Codex. Тест в один клик теперь использует локальный шлюз, но upstream всё равно отклонил этот тестовый запрос. Ориентируйтесь на поведение после запуска в официальном Codex."
+      },
       "enableAndStart": "Запуск",
       "instance": {
         "label": "Экземпляр",
@@ -2656,6 +2813,15 @@
       "oauthBinding": {
         "desc": "Необязательно. Можно привязать любой OAuth-аккаунт с refresh_token. Без привязки провайдер продолжит использовать исходный поток API Key.",
         "currentProvider": "Провайдер: {{name}}"
+      },
+      "sort": {
+        "custom": "Свой порядок",
+        "customModalTitle": "Свой порядок поставщиков",
+        "customModalDesc": "Перетащите поставщиков или используйте кнопки вверх/вниз, чтобы изменить порядок.",
+        "customDragHandle": "Перетащить для сортировки",
+        "customMoveUp": "Вверх",
+        "customMoveDown": "Вниз",
+        "customReset": "Сбросить порядок"
       }
     },
     "quickSwitch": {
@@ -2700,15 +2866,17 @@
     },
     "apiSwitchNotice": {
       "title": "Сеансы Codex скрыты",
-      "message": "Обнаружено, что Codex переключился с {{from}} на {{to}}. Из-за официального поведения существующие сеансы могут не появиться автоматически после прямого переключения между API и аккаунтами. Видимость сеансов сейчас исправляется автоматически; позже можно также использовать Управление сеансами > Исправить видимость.",
-      "repairing": "Исправление видимости сеансов Codex...",
-      "repairFailed": "Автоматическое исправление не удалось. Повторите позже в Управление сеансами > Исправить видимость.",
+      "message": "Codex переключился с {{from}} на {{to}}. По официальному поведению существующие сессии после такого переключения могут не появиться автоматически. Видимость сессий восстанавливается автоматически; позже это можно сделать вручную в управлении сессиями.",
+      "repairing": "Исправление видимости сессий Codex...",
+      "repairFailed": "Не удалось исправить видимость. Повторите попытку позже в управлении сессиями.",
       "type": {
         "api": "Режим API",
         "apiKey": "Ключ API",
         "apiService": "Сервис API",
         "account": "Аккаунт"
-      }
+      },
+      "manualMessage": "Восстановление видимости обновляет записи официальной state DB Codex, которые управляют списком сессий в боковой панели. Это нужно для восстановления после переключения между аккаунтами и API Keys.",
+      "repairFailedWithError": "Не удалось исправить видимость: {{error}}"
     },
     "accountNote": {
       "title": "Заметка аккаунта",
@@ -2957,6 +3125,13 @@
       "selectAllAccounts": "Выбрать все",
       "selectReady": "Выбрать исправные",
       "clearSelection": "Снять выбор"
+    },
+    "autoRepairMode": {
+      "label": "Логика автоисправления",
+      "tooltip": "Выберите логику автоисправления видимости сессий при переключении",
+      "legacyBefore4eb75d96": "До 4eb75d96",
+      "legacy4eb75d96": "Логика 4eb75d96",
+      "current": "Текущая логика"
     }
   },
   "githubCopilot": {
@@ -3228,6 +3403,11 @@
       "title": "Память фильтров",
       "enable": "Запоминать фильтры обзора аккаунтов (кроме поиска)",
       "hint": "По умолчанию выключено. При включении для каждой платформы сохраняются фильтры, теги и сортировка."
+    },
+    "claudeRefreshInterval": "Автообновление квоты",
+    "claude": {
+      "appPath": "Путь Claude",
+      "appTargetPlaceholder": "Путь Claude.exe или shell:AppsFolder\\..."
     }
   },
   "quotaAlert": {
@@ -3793,7 +3973,11 @@
       "resetsIn": "Сбрасывается в {{relative}}",
       "resetsSoon": "Скоро сброс",
       "resetsUnknown": "Время сброса неизвестно",
-      "onDemand": "По требованию"
+      "onDemand": "По требованию",
+      "gemini5h": "5h",
+      "geminiWeekly": "Weekly",
+      "claude5h": "5h",
+      "claudeWeekly": "Weekly"
     },
     "instances": {
       "unsupported": "Управление несколькими экземплярами Gemini Cli пока не поддерживается.",
@@ -4504,6 +4688,16 @@
       "queryFailed": "Не удалось проверить квоту: {{error}}",
       "saveFailed": "Не удалось записать: {{error}}"
     },
+    "models": {
+      "title": "Доступные модели",
+      "desc": "Загружаются из endpoint моделей текущего API Key и передаются в Codex или Claude CLI.",
+      "count": "{{count}} моделей",
+      "loading": "Загрузка",
+      "loadingDesc": "Загрузка списка моделей с текущим API Key...",
+      "empty": "Введите API Key, чтобы загрузить доступные модели.",
+      "emptyFromKey": "Текущий API Key не вернул моделей.",
+      "queryFailed": "Не удалось загрузить список моделей: {{error}}"
+    },
     "keyManager": {
       "title": "Управление ключами",
       "desc": "Сохраняйте API Keys для быстрого переключения и автоматической проверки лимита.",
@@ -4516,9 +4710,276 @@
       "editAlias": "Edit alias​",
       "renamePlaceholder": "Enter alias...​",
       "createdAt": "Добавлено {{time}}",
-      "saveFlash": "Сохранено"
+      "saveFlash": "Сохранено",
+      "addingToCodex": "Добавление в Codex...",
+      "addedToCodex": "Добавлено в Codex",
+      "addToCodexFailed": "Не удалось добавить в Codex: {{error}}",
+      "addingToClaude": "Добавление в Claude CLI...",
+      "addedToClaude": "Добавлено в Claude CLI",
+      "addToClaudeFailed": "Не удалось добавить в Claude CLI: {{error}}",
+      "codexAdded": "Codex добавлен",
+      "claudeAdded": "Claude добавлен",
+      "addToCodex": "В Codex",
+      "addToClaude": "В Claude CLI",
+      "addToClaudeDesktop": "В Claude",
+      "addToClaudeCli": "В Claude CLI",
+      "codexShort": "Codex",
+      "claudeShort": "Claude CLI"
+    },
+    "prefill": {
+      "claudeDesktopReady": "Настройки APIKEY.FUN заполнены. Подтвердите добавление в Claude."
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "claude": {
+    "import": {
+      "localSuccess": "Импортировано локальных входов Claude: {{count}}",
+      "localClient": "Импорт текущего Claude",
+      "jsonLabel": "Данные JSON",
+      "jsonPlaceholder": "Вставьте экспортированный JSON аккаунта Claude",
+      "localDesc": "Читает текущий вход в официальном Claude и копирует его в этот инструмент как локальный снимок аккаунта.",
+      "desktopJsonPlaceholder": "Вставьте экспортированный JSON аккаунта Claude Gateway",
+      "cliJsonPlaceholder": "Вставьте экспортированный JSON аккаунта Claude CLI"
+    },
+    "deleteCurrentDisabled": "Текущий аккаунт нельзя удалить",
+    "flowNotice": {
+      "title": "Аккаунты Claude",
+      "desc": "Этот инструмент управляет состоянием входа Claude и Anthropic API Key. Вход Claude выполняется в окне авторизации этой платформы и сначала сохраняется локально; в официальный Claude он записывается только при переключении аккаунта.",
+      "permission": "Права доступа: чтение и запись каталога данных официального Claude. API Key и снимки Claude сохраняются в локальных данных аккаунтов этого инструмента.",
+      "network": "Сеть: окно входа Claude открывает claude.ai; обновление аккаунта может обращаться к интерфейсам Claude Web. Импорт API Key сам по себе не использует сеть.",
+      "desktopDesc": "Этот инструмент управляет состоянием входа Claude. Вход сначала сохраняется локально и записывается в официальный Claude только при переключении аккаунта.",
+      "cliDesc": "Инструмент управляет Claude Code OAuth и API Key разных провайдеров. Переключение OAuth записывает локальную конфигурацию Claude Code; API Key записывает env провайдера в Claude Code settings.json.",
+      "desktopPermission": "Область разрешений: чтение/запись каталога данных официального приложения Claude. Снимки Claude сохраняются в локальных данных аккаунтов этого инструмента.",
+      "cliPermission": "Права: чтение/запись локальной конфигурации Claude Code и учетных данных Claude Code в macOS Keychain; аккаунты API Key хранятся локально в этом инструменте и при переключении или запуске CLI записываются открытым текстом в env файла settings.json.",
+      "desktopNetwork": "Сеть: окно входа Claude открывает claude.ai; обновление аккаунта может обращаться к endpoint Claude Web.",
+      "cliNetwork": "Сеть: OAuth обращается к официальной авторизации Claude и endpoint token/profile/usage; импорт API Key не использует сеть, после запуска Claude CLI обращается к выбранному провайдеру."
+    },
+    "search": "Поиск аккаунтов Claude...",
+    "noAccounts": "Нет аккаунтов Claude",
+    "addAccount": {
+      "title": "Добавить аккаунт Claude",
+      "desktopTitle": "Добавить аккаунт Claude",
+      "cliTitle": "Добавить аккаунт Claude CLI"
+    },
+    "deleteConfirm": "Удалить аккаунт Claude {{email}}?",
+    "switch": {
+      "success": "Переключено успешно"
+    },
+    "instances": {
+      "unsupportedDescPlatform": "Несколько экземпляров Claude поддерживаются только на macOS, Windows и Linux.",
+      "launchDialogTitle": "Запустить экземпляр",
+      "launchCommand": "Команда запуска",
+      "executeInTerminal": "Запустить в терминале",
+      "startSuccess": "Claude запущен"
+    },
+    "quota": {
+      "title": "Лимит",
+      "fiveHour": "Текущая сессия",
+      "sevenDay": "Текущая неделя (все модели)",
+      "sonnet": "Sonnet 7 дн.",
+      "extra": "Доп. использование",
+      "empty": "Нет лимита",
+      "unsupported": "Не обновляется",
+      "updatedAt": "Обновлено: {{time}}",
+      "resetAt": "{{label}} сброс: {{time}}",
+      "refreshSuccess": "Лимит обновлён",
+      "refreshAllDone": "Обновление лимита завершено",
+      "refreshFailed": "Не удалось обновить лимит: {{error}}",
+      "refreshWithWarning": "Не удалось обновить лимит: {{error}}",
+      "notUpdated": "Лимит не обновлен",
+      "updated": "Обновлено",
+      "notUpdatedShort": "Не обновлено",
+      "openVerification": "Открыть проверку",
+      "openingVerification": "Открытие...",
+      "verificationWindowOpened": "Окно проверки Claude открыто. После проверки обновите лимит снова.",
+      "verificationWindowFailed": "Не удалось открыть окно проверки Claude: {{error}}"
+    },
+    "addTabs": {
+      "desktop": "Рабочий",
+      "oauth": "OAuth",
+      "apiKey": "API-ключ",
+      "import": "Локально/JSON",
+      "desktopGateway": "Шлюз"
+    },
+    "authMode": {
+      "oauth": "Режим OAuth",
+      "setup_token": "Токен настройки",
+      "api_key": "API-ключ",
+      "desktop_oauth": "Вход Claude"
+    },
+    "apiKey": {
+      "desc": "Сохраняет API Key Claude CLI как отдельные учетные данные. При переключении или запуске CLI env провайдера записывается в Claude Code settings.json, без записи состояния входа Claude.",
+      "nameLabel": "Имя аккаунта",
+      "namePlaceholder": "Необязательно, напр. APIKEY.FUN",
+      "keyLabel": "Ключ API",
+      "placeholder": "Вставьте API Key провайдера",
+      "hide": "Скрыть API Key",
+      "show": "Показать API Key",
+      "hint": "Аккаунты API Key предназначены только для Claude CLI. Они записываются открытым текстом в env файла Claude Code settings.json, не влияют на Claude и не поддерживают обновление квоты подписки.",
+      "importAction": "Импорт API Key",
+      "required": "Введите API Key",
+      "templateRequired": "Введите {{label}}",
+      "importSuccess": "Аккаунт Claude API Key импортирован: {{name}}",
+      "quotaUnsupported": "Аккаунты API Key не обновляются",
+      "switchDisabled": "Аккаунт API Key нельзя переключить в Claude",
+      "cliUnsupported": "Аккаунт API Key не может запускать Claude CLI",
+      "providerLabel": "Провайдер",
+      "customProvider": "Свой",
+      "endpointLabel": "Endpoint провайдера",
+      "officialEndpoint": "Офиц. по умолч.",
+      "baseUrlLabel": "Базовый URL",
+      "baseUrlPlaceholder": "Пусто: официальный Anthropic",
+      "keyFieldLabel": "Поле auth",
+      "baseUrlInvalid": "Base URL не является URL"
+    },
+    "desktopOAuth": {
+      "title": "Вход Claude",
+      "desc": "Вход Claude внутри инструмента; Google, Apple, почта и free поддерживаются.",
+      "start": "Открыть вход",
+      "preparingRuntime": "Подготовка...",
+      "hint": "Сначала локально; запись в Claude только при переключении.",
+      "runtimeHint": "При первом использовании компонент входа Electron может быть загружен и проверен в локальной папке данных приложения; он не входит в установщик и затем используется из кэша.",
+      "nameLabel": "Имя аккаунта",
+      "namePlaceholder": "Необязательно, например Claude Free",
+      "waiting": "Войдите в окне Claude, затем завершите импорт здесь.",
+      "profileDir": "Изолированный каталог profile",
+      "complete": "Завершить",
+      "localTitle": "Импорт текущего Claude",
+      "localDesc": "Копирует текущую сессию Claude как локальный снимок.",
+      "localAction": "Импорт",
+      "localSuccess": "Локальный вход Claude импортирован: {{name}}",
+      "importSuccess": "Вход Claude импортирован: {{name}}",
+      "switchHint": "Переключить официальный Claude",
+      "planUnknown": "План неизвестен",
+      "progress": {
+        "start": "Подготовка входа",
+        "profile": "Создание изолированного profile",
+        "resolveRuntime": "Поиск компонента входа",
+        "checkCache": "Проверка локального кэша компонента",
+        "cached": "Используется локальный кэш компонента",
+        "downloadStart": "Запуск загрузки компонента",
+        "downloading": "Загрузка компонента входа",
+        "downloaded": "Компонент входа загружен",
+        "verify": "Проверка целостности компонента",
+        "extract": "Распаковка компонента входа",
+        "runtimeReady": "Компонент входа готов",
+        "launch": "Открытие окна входа Claude",
+        "ready": "Окно входа открыто",
+        "default": "Подготовка компонента входа",
+        "bytesWithTotal": "Загружено {{downloaded}} из {{total}}",
+        "bytesOnly": "Загружено {{downloaded}}",
+        "hint": "После первой подготовки локальный кэш будет использоваться напрямую."
+      }
+    },
+    "oauth": {
+      "title": "Авторизация Claude OAuth",
+      "desc": "Откройте официальную страницу авторизации Claude OAuth, затем вставьте callback-ссылку или code для импорта аккаунта.",
+      "start": "Авторизовать OAuth",
+      "proRequiredHint": "Официальный OAuth Claude обычно используется для Claude Code. Если страница останавливается на обновлении тарифа или отказе в доступе, используйте вход Claude.",
+      "openInstruction": "Нажмите кнопку ниже и завершите авторизацию Claude OAuth в браузере.",
+      "waiting": "После завершения вставьте ниже финальный адрес страницы или показанный code.",
+      "authUrl": "Ссылка авторизации",
+      "preparing": "Создание ссылки авторизации...",
+      "openInBrowser": "Открыть в браузере",
+      "openFailed": "Не удалось открыть ссылку авторизации: {{error}}",
+      "callbackPlaceholder": "Вставьте callback-ссылку или code авторизации",
+      "callbackRequired": "Вставьте callback-ссылку или code после завершения авторизации",
+      "authorizeUrlNotCallback": "Это стартовая ссылка авторизации выше, а не code после завершения. Сначала завершите авторизацию в браузере, затем скопируйте финальный адрес страницы или показанный code.",
+      "complete": "Завершить импорт",
+      "emailPlaceholder": "Почта (заполните, если не определена)",
+      "importSuccess": "Авторизация Claude OAuth импортирована: {{name}}"
+    },
+    "plan": {
+      "label": "Метка тарифа",
+      "selectPlaceholder": "Выбрать",
+      "updateFailed": "Не удалось обновить метку тарифа: {{error}}"
+    },
+    "legacyOAuth": {
+      "switchDisabled": "Старые OAuth-аккаунты нельзя переключить в Claude",
+      "quotaUnsupported": "Старые OAuth-аккаунты больше не поддерживают обновление",
+      "cliUnsupported": "Старые OAuth-аккаунты не могут запускать Claude CLI"
+    },
+    "cli": {
+      "quickLaunch": "Запуск CLI",
+      "selectWorkingDir": "Выберите рабочую папку Claude CLI",
+      "launchSuccess": "Claude CLI запущен",
+      "prepared": "Claude CLI готов",
+      "launchFailed": "Не удалось запустить Claude CLI: {{error}}",
+      "localTitle": "Импортировать текущий Claude Code",
+      "localDesc": "Считывает текущее локальное состояние входа OAuth Claude Code и копирует его как локальный снимок аккаунта.",
+      "localSuccess": "Локальный вход Claude Code импортирован: {{name}}"
+    },
+    "accountNote": {
+      "title": "Заметка аккаунта",
+      "desc": "Добавьте локальную заметку для {{email}}, чтобы легче узнавать аккаунт при переключении.",
+      "label": "Заметка аккаунта",
+      "placeholder": "Например: Free основной, Max 20x, командный аккаунт",
+      "saved": "Заметка аккаунта сохранена",
+      "saveFailed": "Не удалось сохранить заметку: {{error}}",
+      "emptyTitle": "Добавить заметку аккаунта",
+      "short": "Заметка",
+      "addShort": "Заметка"
+    },
+    "account": {
+      "signedInWith": "Вход через {{provider}}",
+      "userId": "ID пользователя",
+      "nickname": "Никнейм"
+    },
+    "selection": {
+      "selected": "Выбрано: {{count}}"
+    },
+    "deleteSelectedLabel": "{{count}} аккаунтов",
+    "subPlatform": {
+      "label": "Подплатформа Claude",
+      "desktop": "Claude приложение",
+      "cli": "Claude командная строка"
+    },
+    "searchDesktop": "Поиск аккаунтов Claude...",
+    "searchCli": "Поиск аккаунтов Claude CLI...",
+    "noDesktopAccounts": "Аккаунтов Claude пока нет",
+    "noCliAccounts": "Аккаунтов Claude CLI пока нет",
+    "desktopGateway": {
+      "label": "Шлюз",
+      "authScheme": "Схема auth",
+      "importAction": "Импорт Gateway",
+      "importSuccess": "Аккаунт Claude Gateway импортирован: {{name}}",
+      "baseUrlRequired": "Введите Gateway Base URL",
+      "noQuota": "Аккаунты Gateway не показывают квоту подписки Claude",
+      "desc": "Сохраняет Gateway API Key как конфигурацию Claude 3P. При переключении записывает ее в официальную конфигурацию Claude и запускает Claude.",
+      "hint": "Аккаунты Gateway не читают данные подписки Claude. API Key записывается в локальный Claude по официальной 3P-конфигурации.",
+      "modelsLabel": "Каталог моделей",
+      "modelsEmpty": "Этот Gateway не вернул модели.",
+      "modelsLoaded": "Загружено моделей: {{count}}. Их можно изменить перед сохранением.",
+      "modelsLoadFailed": "Не удалось получить модели: {{error}}.",
+      "usingPresetMappings": "Используются готовые сопоставления. Их можно изменить перед сохранением.",
+      "manualModels": "Ручные модели",
+      "modelsPlaceholder": "Один ID модели в строке",
+      "modelsLoading": "Загрузка каталога моделей...",
+      "modelsRequired": "Укажите каталог моделей",
+      "editTitle": "Изменить Claude Gateway",
+      "updateAction": "Сохранить Gateway",
+      "updateSuccess": "Аккаунт Claude Gateway обновлён: {{name}}",
+      "connectionMode": "Подключение",
+      "modeDirect": "Напрямую",
+      "modeLocalMapping": "Локальная схема",
+      "mappingsRequired": "Настройте сопоставление моделей",
+      "mappingsIncomplete": "Заполните сопоставление моделей",
+      "mappingDesktopModelDuplicated": "Имена моделей Claude не должны повторяться: {{model}}",
+      "mappingDesktopModelInvalid": "Сопоставленные имена моделей Claude должны распознаваться Claude",
+      "directModelsInvalid": "Прямой режим поддерживает только имена Claude, распознаваемые Claude",
+      "desktopModelPlaceholder": "Модель Claude",
+      "upstreamModelPlaceholder": "Реальная модель провайдера",
+      "addMapping": "Добавить связь",
+      "mappingSummary": "Настроено сопоставлений: {{count}}",
+      "mappingSummaryHint": "Проверьте или измените перед сохранением.",
+      "editMappings": "Изменить",
+      "moreMappings": "Еще {{count}}",
+      "mappingEditorTitle": "Сопоставления моделей",
+      "hideMappings": "Свернуть",
+      "labelOverridePlaceholder": "Название в меню",
+      "supports1mLabel": "Заявить 1M",
+      "supports1mShort": "1M контекст"
+    }
   }
 }

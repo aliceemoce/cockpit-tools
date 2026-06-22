@@ -70,6 +70,23 @@ fn raise_process_file_descriptor_limit() {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn raise_process_file_descriptor_limit() {}
 
+fn apply_startup_minimized(app: &tauri::AppHandle) {
+    let config = modules::config::get_user_config();
+    if !config.startup_minimized {
+        return;
+    }
+
+    let Some(window) = app.get_webview_window("main") else {
+        logger::log_warn("[Window] 启动后自动最小化失败: main window not found");
+        return;
+    };
+
+    match window.minimize() {
+        Ok(()) => logger::log_info("[Window] 启动后已自动最小化主窗口"),
+        Err(err) => logger::log_warn(&format!("[Window] 启动后自动最小化失败: {}", err)),
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn apply_macos_activation_policy(app: &tauri::AppHandle) {
     let config = modules::config::get_user_config();
@@ -340,6 +357,8 @@ pub fn run() {
                 startup_external_import_handled
             ));
 
+            apply_startup_minimized(&app.handle());
+
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -407,6 +426,47 @@ pub fn run() {
             commands::data_transfer::data_transfer_get_instance_store,
             commands::data_transfer::data_transfer_replace_instance_store,
             commands::provider_current::get_provider_current_account_id,
+            // Claude Commands
+            commands::claude::list_claude_accounts,
+            commands::claude::delete_claude_account,
+            commands::claude::delete_claude_accounts,
+            commands::claude::import_claude_from_json,
+            commands::claude::import_claude_api_key,
+            commands::claude::import_claude_desktop_gateway,
+            commands::claude::update_claude_desktop_gateway,
+            commands::claude::claude_desktop_gateway_list_models,
+            commands::claude::claude_oauth_login_prepare,
+            commands::claude::claude_oauth_login_start,
+            commands::claude::claude_oauth_login_complete,
+            commands::claude::claude_oauth_login_cancel,
+            commands::claude::import_claude_cli_from_local,
+            commands::claude::claude_desktop_login_start,
+            commands::claude::claude_desktop_login_complete,
+            commands::claude::claude_desktop_login_cancel,
+            commands::claude::claude_open_verification_window,
+            commands::claude::export_claude_accounts,
+            commands::claude::refresh_claude_quota,
+            commands::claude::refresh_all_claude_quotas,
+            commands::claude::update_claude_account_tags,
+            commands::claude::update_claude_account_plan,
+            commands::claude::update_claude_account_note,
+            commands::claude::get_claude_accounts_index_path,
+            commands::claude::claude_get_cli_launch_command,
+            commands::claude::claude_execute_cli_launch_command,
+            commands::claude::claude_launch_cli,
+            commands::claude::switch_claude_account,
+            // Claude Instance Commands
+            commands::claude_instance::claude_get_instance_defaults,
+            commands::claude_instance::claude_list_instances,
+            commands::claude_instance::claude_create_instance,
+            commands::claude_instance::claude_update_instance,
+            commands::claude_instance::claude_delete_instance,
+            commands::claude_instance::claude_start_instance,
+            commands::claude_instance::claude_stop_instance,
+            commands::claude_instance::claude_open_instance_window,
+            commands::claude_instance::claude_close_all_instances,
+            commands::claude_instance::claude_get_instance_launch_command,
+            commands::claude_instance::claude_execute_instance_launch_command,
             // System Commands
             commands::system::open_data_folder,
             commands::system::save_text_file,
@@ -435,9 +495,11 @@ pub fn run() {
             commands::system::save_general_config,
             commands::system::save_tray_platform_layout,
             commands::system::set_app_path,
+            commands::system::set_claude_app_scan_roots,
             commands::system::set_codex_launch_on_switch,
             commands::system::set_codex_local_access_entry_visible,
             commands::system::detect_app_path,
+            commands::system::scan_claude_desktop_launch_targets,
             commands::system::get_antigravity_installed_version_info,
             commands::system::set_wakeup_override,
             commands::system::handle_window_close,
@@ -495,6 +557,8 @@ pub fn run() {
             commands::announcement::announcement_get_top_right_ad,
             commands::announcement::announcement_get_sponsor_module,
             commands::announcement::announcement_force_refresh_sponsor_module,
+            commands::remote_config::remote_config_get_state,
+            commands::remote_config::remote_config_force_refresh,
             // Group Commands
             commands::group::get_group_settings,
             commands::group::save_group_settings,
@@ -530,6 +594,8 @@ pub fn run() {
             commands::codex::get_codex_batch_import_preview,
             commands::codex::confirm_codex_batch_import,
             commands::codex::refresh_codex_quota,
+            commands::codex::get_codex_reset_credits,
+            commands::codex::consume_codex_reset_credit,
             commands::codex::refresh_codex_subscription_info,
             commands::codex::refresh_all_codex_quotas,
             commands::codex::refresh_current_codex_quota,
@@ -563,6 +629,8 @@ pub fn run() {
             commands::codex::load_codex_model_providers,
             commands::codex::save_codex_model_providers,
             commands::codex::codex_test_model_provider_connection,
+            commands::codex::codex_model_provider_chat_test_batch,
+            commands::codex::codex_list_model_provider_models,
             commands::codex::codex_query_model_provider_usage,
             commands::codex::codex_local_access_get_state,
             commands::codex::codex_local_access_save_accounts,
@@ -900,6 +968,8 @@ pub fn run() {
             commands::codex_instance::codex_sync_threads_across_instances,
             commands::codex_instance::codex_sync_sessions_to_instance,
             commands::codex_instance::codex_repair_session_visibility_across_instances,
+            commands::codex_instance::codex_list_session_visibility_repair_providers,
+            commands::codex_instance::codex_list_session_visibility_repair_instances,
             commands::codex_instance::codex_list_sessions_across_instances,
             commands::codex_instance::codex_get_session_token_stats_across_instances,
             commands::codex_instance::codex_move_sessions_to_trash_across_instances,
@@ -924,6 +994,15 @@ pub fn run() {
             commands::instance::stop_instance,
             commands::instance::open_instance_window,
             commands::instance::close_all_instances,
+            commands::antigravity_legacy_instance::antigravity_legacy_get_instance_defaults,
+            commands::antigravity_legacy_instance::antigravity_legacy_list_instances,
+            commands::antigravity_legacy_instance::antigravity_legacy_create_instance,
+            commands::antigravity_legacy_instance::antigravity_legacy_update_instance,
+            commands::antigravity_legacy_instance::antigravity_legacy_delete_instance,
+            commands::antigravity_legacy_instance::antigravity_legacy_start_instance,
+            commands::antigravity_legacy_instance::antigravity_legacy_stop_instance,
+            commands::antigravity_legacy_instance::antigravity_legacy_open_instance_window,
+            commands::antigravity_legacy_instance::antigravity_legacy_close_all_instances,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

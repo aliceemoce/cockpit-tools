@@ -97,7 +97,115 @@ func TestApplyPayloadConfigWithRoot_DisableImageGenerationChat_KeepsImageGenerat
 	}
 }
 
-func TestApplyPayloadConfigWithRoot_DisableImageGeneration_PayloadOverrideCanRestoreImageGeneration(t *testing.T) {
+func TestApplyPayloadConfigWithRequest_DisableImageGenerationHeaderRemovesToolsEntry(t *testing.T) {
+	cfg := &config.Config{}
+	headers := http.Header{}
+	headers.Set(DisableImageGenerationHeader, "chat")
+	payload := []byte(`{"tools":[{"type":"image_generation"},{"type":"function","name":"f1"}],"tool_choice":{"type":"image_generation"}}`)
+
+	out := ApplyPayloadConfigWithRequest(cfg, "gpt-5.4", "codex", "openai", "", payload, nil, "gpt-5.4", "/v1/chat/completions", headers)
+
+	tools := gjson.GetBytes(out, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		t.Fatalf("expected tools array, got %v", tools.Type)
+	}
+	arr := tools.Array()
+	if len(arr) != 1 {
+		t.Fatalf("expected 1 tool after removal, got %d", len(arr))
+	}
+	if got := arr[0].Get("type").String(); got != "function" {
+		t.Fatalf("expected remaining tool type=function, got %q", got)
+	}
+	if gjson.GetBytes(out, "tool_choice").Exists() {
+		t.Fatalf("expected tool_choice to be removed")
+	}
+}
+
+func TestShouldInjectImageGenerationTool_DisableImageGenerationHeaderBlocksChatInjection(t *testing.T) {
+	cfg := &config.Config{}
+	headers := http.Header{}
+	headers.Set(DisableImageGenerationHeader, "chat")
+
+	if ShouldInjectImageGenerationTool(cfg, "/v1/chat/completions", headers) {
+		t.Fatalf("expected chat test header to block image_generation injection")
+	}
+	if !ShouldInjectImageGenerationTool(cfg, "/v1/images/generations", headers) {
+		t.Fatalf("expected chat test header to keep image endpoint injection")
+	}
+}
+
+func TestApplyPayloadConfigWithRequest_DisableImageGenerationHeaderWinsOverPayloadOverride(t *testing.T) {
+	cfg := &config.Config{
+		Payload: config.PayloadConfig{
+			OverrideRaw: []config.PayloadRule{
+				{
+					Models: []config.PayloadModelRule{
+						{Name: "gpt-5.4", Protocol: "codex"},
+					},
+					Params: map[string]any{
+						"tools":       `[{"type":"image_generation"},{"type":"function","name":"f1"}]`,
+						"tool_choice": `{"type":"image_generation"}`,
+					},
+				},
+			},
+		},
+	}
+	headers := http.Header{}
+	headers.Set(DisableImageGenerationHeader, "chat")
+	payload := []byte(`{"tools":[{"type":"function","name":"f1"}]}`)
+
+	out := ApplyPayloadConfigWithRequest(cfg, "gpt-5.4", "codex", "openai", "", payload, nil, "gpt-5.4", "/v1/chat/completions", headers)
+
+	tools := gjson.GetBytes(out, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		t.Fatalf("expected tools array, got %v", tools.Type)
+	}
+	for _, tool := range tools.Array() {
+		if got := tool.Get("type").String(); got == "image_generation" {
+			t.Fatalf("expected test header to remove restored image_generation tool, payload=%s", string(out))
+		}
+	}
+	if gjson.GetBytes(out, "tool_choice").Exists() {
+		t.Fatalf("expected test header to remove restored tool_choice, payload=%s", string(out))
+	}
+}
+
+func TestApplyPayloadConfigWithRoot_DisableImageGenerationChatConfigWinsOverPayloadOverride(t *testing.T) {
+	cfg := &config.Config{
+		SDKConfig: config.SDKConfig{DisableImageGeneration: config.DisableImageGenerationChat},
+		Payload: config.PayloadConfig{
+			OverrideRaw: []config.PayloadRule{
+				{
+					Models: []config.PayloadModelRule{
+						{Name: "gpt-5.4", Protocol: "openai-response"},
+					},
+					Params: map[string]any{
+						"tools":       `[{"type":"image_generation"},{"type":"function","name":"f1"}]`,
+						"tool_choice": `{"type":"image_generation"}`,
+					},
+				},
+			},
+		},
+	}
+	payload := []byte(`{"tools":[{"type":"function","name":"f1"}]}`)
+
+	out := ApplyPayloadConfigWithRoot(cfg, "gpt-5.4", "openai-response", "", payload, nil, "", "/v1/responses")
+
+	tools := gjson.GetBytes(out, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		t.Fatalf("expected tools array, got %v", tools.Type)
+	}
+	for _, tool := range tools.Array() {
+		if got := tool.Get("type").String(); got == "image_generation" {
+			t.Fatalf("expected chat disable-image-generation to remove restored image_generation tool, payload=%s", string(out))
+		}
+	}
+	if gjson.GetBytes(out, "tool_choice").Exists() {
+		t.Fatalf("expected chat disable-image-generation to remove restored tool_choice, payload=%s", string(out))
+	}
+}
+
+func TestApplyPayloadConfigWithRoot_DisableImageGenerationConfigWinsOverPayloadOverride(t *testing.T) {
 	cfg := &config.Config{
 		SDKConfig: config.SDKConfig{DisableImageGeneration: config.DisableImageGenerationAll},
 		Payload: config.PayloadConfig{
@@ -122,15 +230,13 @@ func TestApplyPayloadConfigWithRoot_DisableImageGeneration_PayloadOverrideCanRes
 	if !tools.Exists() || !tools.IsArray() {
 		t.Fatalf("expected tools array, got %v", tools.Type)
 	}
-	arr := tools.Array()
-	if len(arr) != 2 {
-		t.Fatalf("expected 2 tools after payload override, got %d", len(arr))
+	for _, tool := range tools.Array() {
+		if got := tool.Get("type").String(); got == "image_generation" {
+			t.Fatalf("expected config disable-image-generation to remove restored image_generation tool, payload=%s", string(out))
+		}
 	}
-	if got := arr[0].Get("type").String(); got != "image_generation" {
-		t.Fatalf("expected first tool type=image_generation, got %q", got)
-	}
-	if !gjson.GetBytes(out, "tool_choice").Exists() {
-		t.Fatalf("expected tool_choice to be restored by payload override")
+	if gjson.GetBytes(out, "tool_choice").Exists() {
+		t.Fatalf("expected config disable-image-generation to remove restored tool_choice, payload=%s", string(out))
 	}
 }
 

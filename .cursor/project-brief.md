@@ -1,22 +1,20 @@
 # Cockpit Tools — 会话简报
 
-**日期**: 2026-06-15  
-**验收 exe**: `Desktop\Cockpit-nirvana-token-test.exe` SHA `F5256511…`  
-**源码**: `agent-build-20260615` @ `44321ebf`  
-**PR**: https://github.com/aliceemoce/cockpit-tools/pull/2（head 改 `agent-build-20260615`）  
-**对照**: https://github.com/aliceemoce/cockpit-tools/compare/nirvana-baseline-20260615...agent-build-20260615
+**日期**: 2026-06-22  
+**任务**: Windsurf 账号「一个也打不开」排查  
+**验收 exe**: `Desktop\Cockpit-nirvana-token-test.exe` SHA `F5256511…`（Cursor 链，与 Windsurf 无关）
 
-## 合并包能力
+## 根因（已核实）
 
-- 默认 `close_cursor` 只关本 profile；多开 strict close
-- Kh 裸 JWT + 落盘校验；满额换号；无 scheduler
-- transient 配额失败不写盘；emit 仅 persisted
-- 无全局 `accounts:changed` listener
+- 索引 1336 个 Windsurf 账号，外层 `~/.antigravity_cockpit/windsurf_accounts/*.json` **全部 token 为空**，`quota_query_last_error` =「Token 不能为空」
+- 完整凭证仍在嵌套目录 `windsurf_accounts/windsurf_accounts/*.json`（同 ID 1336 个可恢复）
+- 切号时 `inject_account_to_profile` 因无 token 失败 → Windsurf 无法注入/启动登录态
 
-## 历史备份
+## 本次动作
 
-- `Desktop\Cockpit-nirvana-token-20260614\Cockpit-nirvana-token-test.exe` — `9791D94F`（对照用，勿删）
+- 从嵌套目录合并恢复外层账号文件的 token 与 auth 字段
+- 空壳文件备份至 `windsurf_accounts_empty_shell_backup_*`
 
-## 拒收/误标
+## Cursor 基线（不变）
 
-- `CB525188` staging r2、`7761f453`、`94B7D986` 中间 Agent 包
+- 分支 `agent-build-20260615` @ `44321ebf`；默认切号不全杀 Cursor；transient 不写盘

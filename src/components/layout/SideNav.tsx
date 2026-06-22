@@ -23,6 +23,7 @@ import { useGlobalModal } from '../../hooks/useGlobalModal';
 import { getPlatformLabel, renderPlatformIcon } from '../../utils/platformMeta';
 import { useAntigravityRuntimeTarget } from '../../hooks/useAntigravityRuntimeTarget';
 import { setAntigravityRuntimeTargetFromPlatform } from '../../utils/antigravityRuntimeTarget';
+import { useRemoteConfigStore } from '../../stores/useRemoteConfigStore';
 
 interface SideNavProps {
   page: Page;
@@ -34,6 +35,7 @@ interface SideNavProps {
   updateActionState: 'hidden' | 'available' | 'downloading' | 'installing' | 'ready';
   updateProgress: number;
   onUpdateActionClick: () => void;
+  versionJumpAvailable: boolean;
   updateRemindersEnabled: boolean;
   sponsorEntryVisible: boolean;
   onOpenLogViewer: () => void;
@@ -60,6 +62,8 @@ const PAGE_PLATFORM_MAP: Partial<Record<Page, PlatformId>> = {
   overview: 'antigravity',
   codex: 'codex',
   'codex-api-service': 'codex',
+  claude: 'claude_manager',
+  'claude-cli': 'claude_manager',
   zed: 'zed',
   'github-copilot': 'github-copilot',
   windsurf: 'windsurf',
@@ -105,11 +109,17 @@ function renderEntryIcon(entry: SideNavEntry, size: number) {
   }
 
   if (entry.group) {
-    const iconPlatform = entry.group.iconPlatformId ?? entry.targetPlatformId;
+    const iconPlatform = isAntigravitySuitePlatformIds(entry.group.platformIds)
+      ? entry.targetPlatformId
+      : entry.group.iconPlatformId ?? entry.targetPlatformId;
     return iconPlatform ? renderPlatformIcon(iconPlatform, size) : null;
   }
 
   return entry.targetPlatformId ? renderPlatformIcon(entry.targetPlatformId, size) : null;
+}
+
+function isAntigravitySuitePlatformIds(platformIds: PlatformId[]): boolean {
+  return platformIds.includes('antigravity') && platformIds.includes('antigravity_ide');
 }
 
 export function SideNav({
@@ -122,6 +132,7 @@ export function SideNav({
   updateActionState,
   updateProgress,
   onUpdateActionClick,
+  versionJumpAvailable,
   updateRemindersEnabled,
   sponsorEntryVisible,
   onOpenLogViewer,
@@ -166,6 +177,7 @@ export function SideNav({
     apiRelaySidebarVisible,
     apiRelayEntryOrder,
   } = usePlatformLayoutStore();
+  const remoteHiddenPlatformIds = useRemoteConfigStore((state) => state.hiddenPlatformIds);
 
   const antigravityRuntimeTarget = useAntigravityRuntimeTarget();
   const currentPlatformId = page === 'overview'
@@ -183,6 +195,15 @@ export function SideNav({
 
   const hiddenSet = useMemo(() => new Set(hiddenEntryIds), [hiddenEntryIds]);
   const sidebarSet = useMemo(() => new Set(sidebarEntryIds), [sidebarEntryIds]);
+  const remoteHiddenPlatformSet = useMemo(
+    () => new Set(remoteHiddenPlatformIds),
+    [remoteHiddenPlatformIds],
+  );
+  const isPlatformAvailable = useCallback(
+    (platformId: PlatformId) =>
+      isMenuVisiblePlatform(platformId) && !remoteHiddenPlatformSet.has(platformId),
+    [remoteHiddenPlatformSet],
+  );
   const apiRelayEntryVisible = sponsorEntryVisible && apiRelaySidebarVisible;
 
   const orderedEntries = useMemo<SideNavEntry[]>(() => {
@@ -190,7 +211,7 @@ export function SideNav({
       .map<SideNavEntry | null>((entryId) => {
         const platformId = parsePlatformEntryId(entryId);
         if (platformId) {
-          if (!isMenuVisiblePlatform(platformId)) {
+          if (!isPlatformAvailable(platformId)) {
             return null;
           }
           return {
@@ -213,16 +234,19 @@ export function SideNav({
           return null;
         }
 
-        const visiblePlatformIds = group.platformIds.filter(isMenuVisiblePlatform);
+        const visiblePlatformIds = group.platformIds.filter(isPlatformAvailable);
         if (visiblePlatformIds.length === 0) {
           return null;
         }
 
         const resolvedTargetPlatformId = resolveEntryDefaultPlatformId(entryId, platformGroups);
         const targetPlatformId =
-          resolvedTargetPlatformId && visiblePlatformIds.includes(resolvedTargetPlatformId)
-            ? resolvedTargetPlatformId
-            : visiblePlatformIds[0];
+          isAntigravitySuitePlatformIds(group.platformIds)
+            && visiblePlatformIds.includes(antigravityRuntimeTarget)
+            ? antigravityRuntimeTarget
+            : resolvedTargetPlatformId && visiblePlatformIds.includes(resolvedTargetPlatformId)
+              ? resolvedTargetPlatformId
+              : visiblePlatformIds[0];
         if (!targetPlatformId) {
           return null;
         }
@@ -255,7 +279,16 @@ export function SideNav({
       group: null,
     });
     return result;
-  }, [apiRelayEntryOrder, apiRelayEntryVisible, orderedEntryIds, platformGroups, hiddenSet, t]);
+  }, [
+    apiRelayEntryOrder,
+    apiRelayEntryVisible,
+    orderedEntryIds,
+    platformGroups,
+    hiddenSet,
+    isPlatformAvailable,
+    antigravityRuntimeTarget,
+    t,
+  ]);
 
   const sidebarVisibleEntries = useMemo(
     () => orderedEntries.filter((entry) =>
@@ -343,13 +376,15 @@ export function SideNav({
   const isMoreActive = !!currentEntryId && !sidebarMenuEntryIdSet.has(currentEntryId);
   const shouldLockActiveOnMore = showMore;
 
-  const shouldShowUpdateEntry = updateActionState !== 'hidden'
+  const shouldShowUpdateActionEntry = updateActionState !== 'hidden'
     && (
       updateRemindersEnabled
       || updateActionState === 'downloading'
       || updateActionState === 'installing'
       || updateActionState === 'ready'
     );
+  const isVersionJumpEntry = !shouldShowUpdateActionEntry && versionJumpAvailable;
+  const shouldShowUpdateEntry = shouldShowUpdateActionEntry || isVersionJumpEntry;
 
   const recalculateClassicAdaptiveScale = useCallback(() => {
     if (!isClassicLayout || typeof window === 'undefined') {
@@ -553,7 +588,6 @@ export function SideNav({
         '经典布局会展示完整平台导航并支持折叠。你仍可在“设置 > 通用 > 侧边栏布局”中随时切换回原始布局。',
       ),
       width: 'sm',
-      closeOnOverlay: false,
       content: (
         <div className="side-nav-layout-switch-modal-content">
           <label className="side-nav-layout-switch-remember">
@@ -699,11 +733,27 @@ export function SideNav({
   }, [showMore, isClassicLayout]);
 
   const clampedUpdateProgress = Math.max(0, Math.min(100, Math.round(updateProgress)));
-  const updateVisualState = updateActionState === 'ready'
-    ? 'restart'
-    : updateActionState === 'downloading' || updateActionState === 'installing'
-      ? 'progress'
-      : 'update';
+  const updateVisualState = isVersionJumpEntry
+    ? 'updated'
+    : updateActionState === 'ready'
+      ? 'restart'
+      : updateActionState === 'downloading' || updateActionState === 'installing'
+        ? 'progress'
+        : 'update';
+  const updateEntryTitle = updateActionState === 'downloading'
+    ? t('update_notification.downloading', '下载中...')
+    : updateActionState === 'installing'
+      ? t('nav.quickUpdate.installing', '安装中')
+      : updateActionState === 'ready'
+        ? t('nav.quickUpdate.restart', '重启')
+        : isVersionJumpEntry
+          ? t('update_notification.versionJumpTitle', '更新成功！')
+          : t('nav.quickUpdate.update', '更新');
+  const updateEntryText = isVersionJumpEntry
+    ? t('nav.quickUpdate.update', '更新')
+    : updateActionState === 'ready'
+      ? t('nav.quickUpdate.restart', '重启')
+      : t('nav.quickUpdate.update', '更新');
 
   const morePopoverContent = showMore ? (
     <div
@@ -820,15 +870,7 @@ export function SideNav({
             type="button"
             className={`side-nav-update-btn is-${updateVisualState}`}
             onClick={onUpdateActionClick}
-            title={
-              updateActionState === 'downloading'
-                ? t('update_notification.downloading', '下载中...')
-                : updateActionState === 'installing'
-                  ? t('nav.quickUpdate.installing', '安装中')
-                  : updateActionState === 'ready'
-                    ? t('nav.quickUpdate.restart', '重启')
-                    : t('nav.quickUpdate.update', '更新')
-            }
+            title={updateEntryTitle}
             disabled={updateActionState === 'installing'}
           >
             {updateActionState === 'downloading' ? (
@@ -846,9 +888,7 @@ export function SideNav({
               <span className="side-nav-update-text">{t('nav.quickUpdate.installing', '安装中')}</span>
             ) : (
               <span className="side-nav-update-text">
-                {updateActionState === 'ready'
-                  ? t('nav.quickUpdate.restart', '重启')
-                  : t('nav.quickUpdate.update', '更新')}
+                {updateEntryText}
               </span>
             )}
           </button>

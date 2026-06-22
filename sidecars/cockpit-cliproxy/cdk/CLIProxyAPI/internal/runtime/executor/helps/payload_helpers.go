@@ -14,6 +14,51 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+const DisableImageGenerationHeader = "X-Agtools-Disable-Image-Generation"
+
+func EffectiveDisableImageGenerationMode(cfg *config.Config, headers http.Header) config.DisableImageGenerationMode {
+	mode := config.DisableImageGenerationOff
+	if cfg != nil {
+		mode = cfg.DisableImageGeneration
+	}
+	if mode == config.DisableImageGenerationAll {
+		return mode
+	}
+	headerMode := disableImageGenerationModeFromHeader(headers)
+	if headerMode == config.DisableImageGenerationAll {
+		return headerMode
+	}
+	if mode == config.DisableImageGenerationChat || headerMode == config.DisableImageGenerationChat {
+		return config.DisableImageGenerationChat
+	}
+	return mode
+}
+
+func ShouldInjectImageGenerationTool(cfg *config.Config, requestPath string, headers http.Header) bool {
+	mode := EffectiveDisableImageGenerationMode(cfg, headers)
+	return mode == config.DisableImageGenerationOff ||
+		(mode == config.DisableImageGenerationChat && isImagesEndpointRequestPath(requestPath))
+}
+
+func disableImageGenerationModeFromHeader(headers http.Header) config.DisableImageGenerationMode {
+	if headers == nil {
+		return config.DisableImageGenerationOff
+	}
+	switch strings.TrimSpace(strings.ToLower(headers.Get(DisableImageGenerationHeader))) {
+	case "true", "1", "on", "yes", "all", "disabled":
+		return config.DisableImageGenerationAll
+	case "chat", "images_only", "images-only":
+		return config.DisableImageGenerationChat
+	default:
+		return config.DisableImageGenerationOff
+	}
+}
+
+func shouldFilterImageGenerationPayload(mode config.DisableImageGenerationMode, requestPath string) bool {
+	return mode != config.DisableImageGenerationOff &&
+		(mode != config.DisableImageGenerationChat || !isImagesEndpointRequestPath(requestPath))
+}
+
 // ApplyPayloadConfigWithRoot behaves like applyPayloadConfig but treats all parameter
 // paths as relative to the provided root path (for example, "request" for Gemini CLI)
 // and restricts matches to the given protocol when supplied. Defaults are checked
@@ -26,18 +71,30 @@ func ApplyPayloadConfigWithRoot(cfg *config.Config, model, protocol, root string
 
 // ApplyPayloadConfigWithRequest applies payload config using source protocol and request header gates.
 func ApplyPayloadConfigWithRequest(cfg *config.Config, model, protocol, fromProtocol, root string, payload, original []byte, requestedModel string, requestPath string, headers http.Header) []byte {
-	if cfg == nil || len(payload) == 0 {
+	if len(payload) == 0 {
 		return payload
 	}
 	out := payload
 
-	// Apply disable-image-generation filtering before payload rules so config payload
-	// overrides can explicitly re-enable image_generation when desired.
-	if cfg.DisableImageGeneration != config.DisableImageGenerationOff {
-		if cfg.DisableImageGeneration != config.DisableImageGenerationChat || !isImagesEndpointRequestPath(requestPath) {
+	// Apply config disable-image-generation filtering before payload rules so
+	// conditions/defaults see the filtered shape. A final pass below enforces the
+	// effective mode again after overrides.
+	disableImageGeneration := config.DisableImageGenerationOff
+	if cfg != nil {
+		disableImageGeneration = cfg.DisableImageGeneration
+	}
+	if shouldFilterImageGenerationPayload(disableImageGeneration, requestPath) {
+		out = removeToolTypeFromPayloadWithRoot(out, root, "image_generation")
+		out = removeToolChoiceFromPayloadWithRoot(out, root, "image_generation")
+	}
+
+	if cfg == nil {
+		headerImageGeneration := disableImageGenerationModeFromHeader(headers)
+		if shouldFilterImageGenerationPayload(headerImageGeneration, requestPath) {
 			out = removeToolTypeFromPayloadWithRoot(out, root, "image_generation")
 			out = removeToolChoiceFromPayloadWithRoot(out, root, "image_generation")
 		}
+		return out
 	}
 
 	rules := cfg.Payload
@@ -177,6 +234,13 @@ func ApplyPayloadConfigWithRequest(cfg *config.Config, model, protocol, fromProt
 				}
 			}
 		}
+	}
+	// disable-image-generation is a hard request/output gate and must win over
+	// payload overrides that may have restored image_generation.
+	effectiveImageGeneration := EffectiveDisableImageGenerationMode(cfg, headers)
+	if shouldFilterImageGenerationPayload(effectiveImageGeneration, requestPath) {
+		out = removeToolTypeFromPayloadWithRoot(out, root, "image_generation")
+		out = removeToolChoiceFromPayloadWithRoot(out, root, "image_generation")
 	}
 	return out
 }

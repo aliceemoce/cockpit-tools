@@ -197,7 +197,7 @@
         "planEndsInHours": "Resetuje se za {{hours}}h"
       },
       "flowNotice": {
-        "alternative": "Alternativa: použijte izolaci více instancí (odlišné --user-data-dir). V každé instanci se přihlaste jednou a poté spouštějte podle instance pro rychlé přepnutí na cílové prostředí účtu."
+        "alternative": "Izolace více instancí: používejte oddělené spravované profily a v každé instanci se jednou přihlaste pro rychlé přepínání účtů."
       },
       "injecting": "Probíhá injektování...",
       "usage": {
@@ -261,7 +261,8 @@
     "switchClassicLayoutDontAskAgain": "Toto upozornění už nezobrazovat",
     "switchClassicLayoutConfirm": "Přepnout nyní",
     "2faManager": "Správa 2FA",
-    "apiRelay": "API relay"
+    "apiRelay": "API relay",
+    "claude": "Claude"
   },
   "sponsors": {
     "pageTitle": "Sponzoři",
@@ -593,6 +594,8 @@
       "closeBehaviorAsk": "Vždy se zeptat",
       "closeBehaviorMinimize": "Minimalizovat do lišty",
       "closeBehaviorQuit": "Ukončit aplikaci",
+      "startupMinimized": "Spustit minimalizované",
+      "startupMinimizedDesc": "Po spuštění aplikace automaticky minimalizuje hlavní okno; obnovíte ho z Docku, hlavního panelu nebo lišty",
       "minimizeBehavior": "Chování při minimalizaci okna (pouze macOS)",
       "minimizeBehaviorDesc": "Vyberte, zda po minimalizaci zůstane okno v Docku a na liště nabídek, nebo pouze na liště nabídek",
       "minimizeBehaviorDockAndTray": "Dock + lišta nabídek (doporučeno)",
@@ -778,7 +781,12 @@
       "codexAppSpeedFast": "Rychlá",
       "codexAppSpeedLaunch": "Restartovat Codex",
       "codexAppSpeedSaveFailed": "Nepodařilo se uložit rychlost Codexu: {{error}}",
-      "codexAppSpeedLaunchFailed": "Nepodařilo se restartovat Codex: {{error}}"
+      "codexAppSpeedLaunchFailed": "Nepodařilo se restartovat Codex: {{error}}",
+      "claudeSettingsTitle": "Nastavení Claude",
+      "claudeAutoRefresh": "Automatická obnova kvóty Claude",
+      "claudeAutoRefreshDesc": "Automaticky na pozadí obnovuje mezipaměť kvóty účtů Claude.",
+      "claudeAppPath": "Cíl spuštění Claude Desktop",
+      "claudeAppPathDesc": "Výchozí profil může použít cíl Microsoft Store; více instancí potřebuje skutečný Claude.exe."
     },
     "network": {
       "apiTitle": "Antigravity Cockpit API​",
@@ -1014,7 +1022,15 @@
       "title": "Cesta k aplikaci nebyla nalezena",
       "desc": "Nepodařilo se najít cestu k aplikaci {{app}}. Pro pokračování ji nyní nastavte.",
       "action": "Nastavit nyní",
-      "codexLaunchHint": "Po vypnutí se přepnutí účtu a přepsání přihlášení stále provede, ale aplikace Codex se už nespustí a tato výzva k cestě se znovu nezobrazí."
+      "codexLaunchHint": "Po vypnutí se přepnutí účtu a přepsání přihlášení stále provede, ale aplikace Codex se už nespustí a tato výzva k cestě se znovu nezobrazí.",
+      "claudeMultiInstanceRequiresExe": "Více instancí Claude vyžaduje skutečnou cestu k Claude.exe. Cíle Microsoft Store jsou jen pro výchozí desktopový profil.",
+      "scanApps": "Skenovat aplikace",
+      "scanRoots": "Rozsah skenovani",
+      "scanRootsPlaceholder": "Volitelne, vyberte slozku nebo koren disku; prazdne pole projde WindowsApps podle disku a prida aplikace Start.",
+      "windowsApp": "Aplikace Microsoft Store",
+      "defaultOnly": "Pouze výchozí desktop; pro více instancí vyberte skutečný Claude.exe.",
+      "claudeScanEmpty": "Nebyl nalezen žádný cíl Claude Desktop. Vyberte Claude.exe ručně nebo upravte rozsah skenování.",
+      "claudeTargetPlaceholder": "Cesta Claude.exe nebo shell:AppsFolder\\..."
     },
     "modal": {
       "desc": "Cesta k aplikaci {{app}} nebyla nalezena. Nastavte ji nyní pro pokračování."
@@ -1262,7 +1278,10 @@
     "switchSuccess": "Přepnuto úspěšně",
     "switched": "Přepnuto na {{email}}",
     "tagButton": "Upravit štítky",
-    "tagUpdated": "Štítek byl aktualizován"
+    "tagUpdated": "Štítek byl aktualizován",
+    "plan": {
+      "personal": "Osobní"
+    }
   },
   "overview": {
     "title": "Přehled účtů",
@@ -1907,7 +1926,12 @@
       },
       "oauthBinding": {
         "desc": "Volitelné. Vybrat lze pouze účty OAuth s refresh_token. Bez propojení služba API používá původní logiku API Key; po propojení se přihlášení bere z účtu OAuth a Provider z konfigurace služby API.",
-        "currentService": "Služba API: {{name}}"
+        "currentService": "Služba API: {{name}}",
+        "imageGenerationTooltip": "Po zapnutí služba API v místní bráně před přeposláním běžných textových konverzací odstraní deklaraci nástroje image_generation; obrazové modely se nemažou.",
+        "imageGenerationConfirm": {
+          "title": "Zakázat image_generation",
+          "message": "Po zapnutí služba API v místní bráně před přeposláním běžných textových konverzací odstraní deklaraci nástroje image_generation, aby se předešlo chybám typu „Image generation is not enabled“. Modely obrázků jako gpt-image se nemažou. Pokračovat?"
+        }
       },
       "customRoutingEdit": "Upravit vlastní směrování",
       "customRoutingTitle": "Vlastní směrování",
@@ -2026,7 +2050,29 @@
       "hourly": "Kvóta 5 hodin",
       "weekly": "Týdenní kvóta",
       "reset": "Reset​",
-      "weeklyBlocksHourly": "Týdenní kvóta je 0, proto není 5hodinová kvóta dostupná"
+      "weeklyBlocksHourly": "Týdenní kvóta je 0, proto není 5hodinová kvóta dostupná",
+      "resetCredits": "Resety {{count}}",
+      "resetCreditsTitle": "Zbývající resety pro 5hodinové okno: {{count}}",
+      "resetCreditConfirm": "Potvrdit?",
+      "resetCreditDialogTitle": "Resetovat využití?",
+      "resetCreditDialogDesc": "Resetujte rychlostní limit a pokračujte bez přerušení. Dostupné resety: {{count}}.",
+      "resetCreditDialogAction": "Resetovat využití",
+      "resetCreditNoCredits": "Žádné dostupné resety",
+      "resetCreditConsumed": "5hodinová kvóta byla resetována",
+      "resetCreditFailed": "Reset selhal: {{error}}",
+      "resetCreditRefreshAfterConsumeFailed": "Reset byl odeslán, ale obnova kvóty selhala: {{error}}",
+      "resetCreditsTitleWithExpiry": "Zbývající resety pro 5hodinové okno: {{count}}. Nejbližší expirace: {{time}}",
+      "resetCreditTimeUnknown": "Čas neznámý",
+      "resetCreditStatusAvailable": "K dispozici",
+      "resetCreditStatusRedeemed": "Použito",
+      "resetCreditStatusExpired": "Vypršelo",
+      "resetCreditStatusUnknown": "Neznámé",
+      "resetCreditNextExpiry": "Nejbližší expirace: {{time}}",
+      "resetCreditDetailsTitle": "Podrobnosti resetů",
+      "resetCreditNoRecords": "Žádné záznamy resetů",
+      "resetCreditRecordsLoadFailed": "Načtení záznamů resetů selhalo: {{error}}",
+      "resetCreditGrantedAt": "Přiděleno",
+      "resetCreditExpiresAt": "Vyprší"
     },
     "quotaError": {
       "badge": "Chyba kvóty",
@@ -2277,7 +2323,7 @@
     },
     "sessionManager": {
       "title": "Správce relací",
-      "desc": "Synchronizace a úklid jsou tady pohromadě: nahoře lze jedním kliknutím synchronizovat do všech instancí, níže pak rozbalit každý projekt, zkontrolovat relace a přesunout je do koše.",
+      "desc": "Synchronizace, oprava viditelnosti, čištění a obnova jsou na jednom místě: nahoře můžete synchronizovat relace, opravit jejich viditelnost nebo obnovit z koše, níže pak rozbalit projekty a přesouvat relace do koše.",
       "actions": {
         "moveToTrash": "Přesunout do koše",
         "syncSessions": "Synchronizovat relace",
@@ -2286,17 +2332,29 @@
         "repairVisibility": "Opravit viditelnost",
         "restoreSessions": "Obnovit relace",
         "copySessionId": "Kopírovat ID relace",
+        "selectAllSessions": "Vybrat všechny relace",
+        "clearSelectedSessions": "Zrušit výběr",
         "copyToInstance": "Kopírovat do instance"
       },
       "confirm": {
         "title": "Přesunout do koše",
         "message": "Vybrané relace budou přesunuty do koše z odpovídajících instancí, aby je bylo možné později obnovit; běžící instance mohou vyžadovat restart, než se změna projeví. Pokračovat?",
         "syncMessage": "Chybějící vlákna a jejich data relací budou synchronizována do všech instancí. Existující obsah se nebude zapisovat znovu a soubory cílové instance budou před zápisem zazálohovány. Pokračovat?",
-        "repairVisibilityMessage": "Tato akce opraví metadata poskytovatele v rollout souborech a v databázi state_5.sqlite podle hodnoty model_provider z kořenového souboru config.toml každé instance (pokud chybí, použije se openai). Soubory, které budou změněny, se před zápisem zálohují. Běžící instance mohou vyžadovat restart, než se změna projeví. Pokračovat?"
+        "repairVisibilityMessage": "Aktualizuje záznamy oficiální state DB Codexu, které řídí seznam relací v postranním panelu. Soubory state DB se před zápisem zálohují."
       },
       "empty": {
         "title": "Žádné relace ke správě",
-        "desc": "V aktuální sadě instancí nebyly nalezeny žádné záznamy relací."
+        "desc": "V aktuální sadě instancí nebyly nalezeny žádné záznamy relací.",
+        "searchTitle": "Nenalezeny žádné odpovídající relace",
+        "searchDesc": "Upravte klíčová slova názvu."
+      },
+      "search": {
+        "titleLabel": "Název",
+        "contentLabel": "Obsah konverzace",
+        "titlePlaceholder": "Hledat podle názvu",
+        "contentPlaceholder": "Hledat v obsahu konverzace",
+        "apply": "Hledat",
+        "clear": "Vymazat"
       },
       "messages": {
         "pickOne": "Vyberte prosím alespoň jednu relaci",
@@ -2328,6 +2386,59 @@
         "selectedCount": "Vybráno relací: {{count}}",
         "existingCount": "V cíli už existuje: {{count}}",
         "confirm": "Kopírovat relace"
+      },
+      "repairModal": {
+        "running": "Opravuji...",
+        "progress": {
+          "queued": "Spouští se oprava...",
+          "collectInstances": "Shromažďují se instance Codex...",
+          "scanInstances": "Připravuje se kontrola instancí...",
+          "scanInstance": "Kontrola {{instance}} ({{current}}/{{total}})...",
+          "backupInstance": "Záloha {{instance}} ({{current}}/{{total}})...",
+          "writeInstance": "Zápis {{instance}} ({{current}}/{{total}})...",
+          "rebuildMetadata": "Aktualizuje se oficiální stav relací pro {{instance}}...",
+          "pruneBackups": "Čistí se staré zálohy...",
+          "done": "Oprava dokončena",
+          "writeSqliteProvider": "Zápis viditelnosti SQLite pro {{instance}}...",
+          "writeRolloutFiles": "Zapisuji staré soubory relací...",
+          "writeSqliteTimestamps": "Oprava časů SQLite pro {{instance}}...",
+          "writeSessionIndex": "Zapisuji session_index..."
+        },
+        "targetProvider": "Cílový provider",
+        "defaultProvider": "Výchozí",
+        "loadingProviders": "Načítám providery...",
+        "noProvider": "Nenalezen žádný provider",
+        "providerLoadFailed": "Načtení providerů selhalo: {{error}}",
+        "modeTitle": "Režim opravy",
+        "modeQuick": "Rychlá oprava",
+        "modeQuickDesc": "Opraví oficiální state DB a první řádek metadat relace. Vhodné po běžném přepnutí účtu.",
+        "modeDeep": "Hloubková oprava",
+        "modeDeepDesc": "Zachová aktuální úplnou opravu metadat pro testování, když rychlá oprava nestačí.",
+        "scopeTitle": "Rozsah relací",
+        "scopeAll": "Všechny relace",
+        "scopeAllDesc": "Opraví {{count}} relací v aktuálním seznamu.",
+        "scopeSelected": "Vybrané relace",
+        "scopeSelectedDesc": "Opraví jen {{count}} vybraných relací.",
+        "scopeSelectedEmpty": "Nejprve vyberte relace v seznamu.",
+        "providerSource": {
+          "config": "Konfigurace",
+          "rollout": "Relace",
+          "sqlite": "Databáze SQLite"
+        },
+        "targetInstance": "Cílová instance",
+        "loadingInstances": "Načítání instancí...",
+        "noInstance": "Nebyla nalezena instance",
+        "instanceLoadFailed": "Načtení instancí selhalo: {{error}}",
+        "defaultInstance": "Výchozí instance",
+        "runningInstance": "Spuštěno",
+        "instanceProvider": "Aktuální provider",
+        "instanceScopeTitle": "Rozsah instancí",
+        "instanceScopeTarget": "Jen cílová instance",
+        "instanceScopeTargetDesc": "Opraví jen vybranou instanci, obvykle rychleji.",
+        "instanceScopeAll": "Všechny instance",
+        "instanceScopeAllDesc": "Opraví všechny instance Codex při obnově více instancí.",
+        "progressTitle": "Průběh opravy",
+        "start": "Opravit"
       }
     },
     "api": {
@@ -2438,7 +2549,13 @@
         "switchRequiresBinding": "Nejdříve připojte účet OAuth",
         "clearAction": "Odpojit",
         "clearSuccess": "Propojení OAuth bylo odebráno.",
-        "clearFailed": "Odebrání propojení OAuth selhalo: {{error}}"
+        "clearFailed": "Odebrání propojení OAuth selhalo: {{error}}",
+        "useLocalGateway": "Zakázat image_generation",
+        "localGatewayTooltip": "Po zapnutí textové konverzace API Key navázaného na OAuth půjdou přes místní bránu, která před přeposláním odstraní image_generation; obrazové modely se nemažou.",
+        "localGatewayConfirm": {
+          "title": "Zakázat schopnost image_generation",
+          "message": "Po zapnutí budou běžné textové konverzace tohoto účtu API Key navázaného na OAuth procházet místní bránou, kde se před přeposláním odstraní deklarace nástroje image_generation, aby se předešlo chybám typu „Image generation is not enabled“. Modely obrázků jako gpt-image se nemažou. Pokračovat?"
+        }
       }
     },
     "modelProviders": {
@@ -2582,6 +2699,46 @@
         "checkProviderStatus": "Zkontrolujte stav služby poskytovatele, proxy nebo kompatibilitu API.",
         "checkModelsApi": "Ověřte, že poskytovatel vrací seznam modelů kompatibilní s OpenAI."
       },
+      "batchTest": {
+        "entry": "Otestovat vše",
+        "entryHint": "Hromadně otestovat skutečnou schopnost chatu poskytovatelů",
+        "selectedCount": "Vybráno {{count}}",
+        "title": "Hromadný test poskytovatelů modelů",
+        "selectTitle": "Vyberte poskytovatele k testu",
+        "selectDesc": "Vybraní poskytovatelé se dočasně připojí k místní bráně pro test chatu a podle svého protokolu se předají upstreamu.",
+        "selectionSummary": "Vybráno {{selected}} / testovatelných {{total}}",
+        "emptySelection": "Vyberte alespoň jednoho poskytovatele s API Key.",
+        "noApiKey": "Chybí API Key",
+        "gatewayProtocol": "Chat Completions · brána",
+        "directProtocol": "Responses · brána",
+        "start": "Spustit test",
+        "kicker": "Test poskytovatele",
+        "resultsTitle": "Výsledky testu chatu poskytovatelů",
+        "totalCount": "{{count}} poskytovatelů",
+        "progress": "Průběh testu",
+        "selectVisible": "Vybrat viditelné",
+        "resultSelectedCount": "Vybráno {{count}}",
+        "selectFailed": "Vybrat neúspěšné",
+        "deleteConfirm": "Smazat {{providerCount}} vybraných poskytovatelů? Zároveň se smaže {{accountCount}} přesně propojených účtů Codex API Key.",
+        "deleteSuccess": "Smazáno {{providerCount}} poskytovatelů a {{accountCount}} propojených účtů.",
+        "deleteFailed": "Nepodařilo se smazat vybrané položky: {{error}}",
+        "protocolSummary": "{{protocol}} · {{mode}} · {{model}}",
+        "modelUnknown": "Model čeká",
+        "promptLabel": "Výzva",
+        "pendingDesc": "Čeká na spuštění.",
+        "runningDesc": "Odesílá se požadavek chatu.",
+        "noReply": "Upstream nevrátil čitelnou odpověď.",
+        "unknownError": "Neznámá chyba",
+        "status": {
+          "all": "Vše",
+          "success": "Úspěch",
+          "error": "Selhalo",
+          "running": "Běží",
+          "pending": "Čeká",
+          "completed": "Dokončeno"
+        },
+        "officialClientOnlyError": "Tento poskytovatel povoluje jen požadavky z oficiálního klienta Codex. Jednorázový test teď používá místní bránu, ale upstream tento testovací požadavek stále odmítl. Řiďte se skutečným chováním po spuštění v oficiálním Codexu."
+      },
       "enableAndStart": "Spustit",
       "instance": {
         "label": "Spustit instanci",
@@ -2656,6 +2813,15 @@
       "oauthBinding": {
         "desc": "Volitelné. Lze připojit libovolný OAuth účet s refresh_token. Bez propojení poskytovatel dál používá původní tok API Key.",
         "currentProvider": "Poskytovatel: {{name}}"
+      },
+      "sort": {
+        "custom": "Vlastní pořadí",
+        "customModalTitle": "Vlastní pořadí poskytovatelů",
+        "customModalDesc": "Přetáhněte poskytovatele nebo použijte tlačítka nahoru/dolů pro úpravu pořadí.",
+        "customDragHandle": "Přetáhnout pro řazení",
+        "customMoveUp": "Posunout nahoru",
+        "customMoveDown": "Posunout dolů",
+        "customReset": "Obnovit pořadí"
       }
     },
     "quickSwitch": {
@@ -2700,15 +2866,17 @@
     },
     "apiSwitchNotice": {
       "title": "Relace Codexu jsou skryté",
-      "message": "Bylo zjištěno, že Codex přešel z {{from}} na {{to}}. Kvůli oficiálnímu chování se existující relace po přímém přepnutí mezi API a účty nemusí zobrazit automaticky. Viditelnost relací se teď opravuje automaticky; později můžete použít také Správa relací > Opravit viditelnost.",
+      "message": "Codex se přepnul z {{from}} na {{to}}. Kvůli oficiálnímu chování se po takové změně existující relace nemusí zobrazit automaticky. Viditelnost relací se opravuje automaticky; později ji lze opravit i ve správě relací.",
       "repairing": "Opravuji viditelnost relací Codexu...",
-      "repairFailed": "Automatická oprava selhala. Zkuste to později ve Správa relací > Opravit viditelnost.",
+      "repairFailed": "Oprava viditelnosti selhala. Později ji můžete zopakovat ve Správě relací.",
       "type": {
         "api": "Režim API",
         "apiKey": "Klíč API",
         "apiService": "Služba API",
         "account": "Účet"
-      }
+      },
+      "manualMessage": "Oprava viditelnosti aktualizuje záznamy oficiální state DB Codexu, které řídí seznam relací v postranním panelu. Slouží k obnovení relací po přepnutí mezi účty a API Keys.",
+      "repairFailedWithError": "Oprava viditelnosti selhala: {{error}}"
     },
     "accountNote": {
       "title": "Poznámka účtu",
@@ -2957,6 +3125,13 @@
       "selectAllAccounts": "Vybrat všechny účty",
       "selectReady": "Vybrat účty OK",
       "clearSelection": "Zrušit výběr"
+    },
+    "autoRepairMode": {
+      "label": "Logika auto opravy",
+      "tooltip": "Vyberte logiku automatické opravy viditelnosti relací při přepnutí",
+      "legacyBefore4eb75d96": "Před 4eb75d96",
+      "legacy4eb75d96": "Logika 4eb75d96",
+      "current": "Aktuální logika"
     }
   },
   "githubCopilot": {
@@ -3228,6 +3403,11 @@
       "title": "Paměť filtrů",
       "enable": "Pamatovat filtry přehledu účtů (bez vyhledávání)",
       "hint": "Ve výchozím stavu vypnuto. Po zapnutí se pro každou platformu uloží filtry, štítky a řazení."
+    },
+    "claudeRefreshInterval": "Automatická obnova kvóty",
+    "claude": {
+      "appPath": "Cesta Claude",
+      "appTargetPlaceholder": "Cesta Claude.exe nebo shell:AppsFolder\\..."
     }
   },
   "quotaAlert": {
@@ -3766,7 +3946,11 @@
       "resetsIn": "Obnoví se za {{relative}}",
       "resetsSoon": "Brzy se obnoví",
       "resetsUnknown": "Čas obnovení není znám",
-      "onDemand": "Na vyžádání"
+      "onDemand": "Na vyžádání",
+      "gemini5h": "5h",
+      "geminiWeekly": "Weekly",
+      "claude5h": "5h",
+      "claudeWeekly": "Weekly"
     },
     "title": "Správa účtů Gemini Cli",
     "instances": {
@@ -4504,6 +4688,16 @@
       "queryFailed": "Kontrola kvóty selhala: {{error}}",
       "saveFailed": "Zápis selhal: {{error}}"
     },
+    "models": {
+      "title": "Dostupné modely",
+      "desc": "Načítá se z endpointu modelů aktuálního API Key a předá se do Codex nebo Claude CLI.",
+      "count": "{{count}} modelů",
+      "loading": "Načítání",
+      "loadingDesc": "Načítá se seznam modelů z aktuálního API Key...",
+      "empty": "Zadejte API Key pro načtení dostupných modelů.",
+      "emptyFromKey": "Aktuální API Key nevrátil žádné modely.",
+      "queryFailed": "Načtení seznamu modelů selhalo: {{error}}"
+    },
     "keyManager": {
       "title": "Správa klíčů",
       "desc": "Ukládejte API Keys pro rychlé přepínání a automatickou kontrolu kvóty.",
@@ -4516,9 +4710,276 @@
       "editAlias": "Edit alias​",
       "renamePlaceholder": "Enter alias...​",
       "createdAt": "Přidáno {{time}}",
-      "saveFlash": "Uloženo"
+      "saveFlash": "Uloženo",
+      "addingToCodex": "Přidávání do Codex...",
+      "addedToCodex": "Přidáno do Codex",
+      "addToCodexFailed": "Přidání do Codex selhalo: {{error}}",
+      "addingToClaude": "Přidávání do Claude CLI...",
+      "addedToClaude": "Přidáno do Claude CLI",
+      "addToClaudeFailed": "Přidání do Claude CLI selhalo: {{error}}",
+      "codexAdded": "Codex přidán",
+      "claudeAdded": "Claude přidán",
+      "addToCodex": "Přidat do Codex",
+      "addToClaude": "Přidat do Claude CLI",
+      "addToClaudeDesktop": "Přidat do Claude",
+      "addToClaudeCli": "Přidat do Claude CLI",
+      "codexShort": "Codex",
+      "claudeShort": "Claude CLI"
+    },
+    "prefill": {
+      "claudeDesktopReady": "Nastavení APIKEY.FUN je vyplněno. Potvrďte přidání do Claude."
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "claude": {
+    "import": {
+      "localSuccess": "Importováno místních přihlášení Claude: {{count}}",
+      "localClient": "Importovat aktuální Claude",
+      "jsonLabel": "Data JSON",
+      "jsonPlaceholder": "Vložte exportovaný JSON účtu Claude",
+      "localDesc": "Načte aktuální přihlášení z oficiální aplikace Claude a zkopíruje ho do tohoto nástroje jako místní snímek účtu.",
+      "desktopJsonPlaceholder": "Vložte exportovaný JSON účtu Claude Gateway",
+      "cliJsonPlaceholder": "Vložte exportovaný JSON účtu Claude CLI"
+    },
+    "deleteCurrentDisabled": "Aktuální účet nelze odstranit",
+    "flowNotice": {
+      "title": "Správa účtů Claude",
+      "desc": "Tento nástroj spravuje přihlášení Claude a Anthropic API Key. Claude přihlášení proběhne v autorizačním okně této platformy a nejprve se uloží lokálně; do oficiálního Claude se zapíše až při přepnutí účtu.",
+      "permission": "Rozsah oprávnění: čtení/zápis datové složky oficiální aplikace Claude. API Key a snímky Claude se ukládají do místních dat účtů tohoto nástroje.",
+      "network": "Síť: okno Claude přihlášení otevírá claude.ai; obnovení účtu může volat rozhraní Claude Web. Samotný import API Key síť nepoužívá.",
+      "desktopDesc": "Tento nástroj spravuje přihlášení Claude. Přihlášení se nejdříve uloží lokálně a do oficiálního Claude se zapíše až při přepnutí účtu.",
+      "cliDesc": "Tento nástroj spravuje Claude Code OAuth a API Key od více poskytovatelů. Přepnutí OAuth zapisuje do místní konfigurace Claude Code; API Key zapisuje env hodnoty poskytovatele do Claude Code settings.json.",
+      "desktopPermission": "Rozsah oprávnění: čtení/zápis datového adresáře oficiální aplikace Claude. Snímky Claudeu se ukládají do lokálních dat účtů tohoto nástroje.",
+      "cliPermission": "Rozsah oprávnění: čtení/zápis místní konfigurace Claude Code a přihlašovacích údajů Claude Code v macOS Keychain; účty API Key jsou uloženy lokálně v tomto nástroji a při přepnutí nebo spuštění CLI se zapisují jako prostý text do env v settings.json.",
+      "desktopNetwork": "Rozsah sítě: přihlašovací okno Claude otevírá claude.ai; obnovení účtu může volat koncové body Claude Web.",
+      "cliNetwork": "Síť: OAuth používá oficiální autorizaci Claude a endpointy token/profile/usage; import API Key je offline, po spuštění Claude CLI kontaktuje vybraného poskytovatele."
+    },
+    "search": "Hledat účty Claude...",
+    "noAccounts": "Žádné účty Claude",
+    "addAccount": {
+      "title": "Přidat účet Claude",
+      "desktopTitle": "Přidat účet Claude",
+      "cliTitle": "Přidat účet Claude CLI"
+    },
+    "deleteConfirm": "Smazat účet Claude {{email}}?",
+    "switch": {
+      "success": "Přepnutí proběhlo úspěšně"
+    },
+    "instances": {
+      "unsupportedDescPlatform": "Více instancí Claude je podporováno jen na macOS, Windows a Linuxu.",
+      "launchDialogTitle": "Spustit instanci",
+      "launchCommand": "Spouštěcí příkaz",
+      "executeInTerminal": "Spustit v terminálu",
+      "startSuccess": "Claude spuštěn"
+    },
+    "quota": {
+      "title": "Kvóta",
+      "fiveHour": "Aktuální relace",
+      "sevenDay": "Aktuální týden (všechny modely)",
+      "sonnet": "Sonnet 7 d",
+      "extra": "Extra využití",
+      "empty": "Bez kvóty",
+      "unsupported": "Nelze obnovit",
+      "updatedAt": "Aktualizováno: {{time}}",
+      "resetAt": "{{label}} reset: {{time}}",
+      "refreshSuccess": "Kvóta obnovena",
+      "refreshAllDone": "Obnova kvóty hotova",
+      "refreshFailed": "Obnova kvóty selhala: {{error}}",
+      "refreshWithWarning": "Obnova kvóty selhala: {{error}}",
+      "notUpdated": "Limit neobnoven",
+      "updated": "Aktualizováno",
+      "notUpdatedShort": "Neobnoveno",
+      "openVerification": "Otevřít ověření",
+      "openingVerification": "Otevírání...",
+      "verificationWindowOpened": "Okno ověření Claude bylo otevřeno. Po ověření znovu obnovte kvótu.",
+      "verificationWindowFailed": "Otevření ověření Claude selhalo: {{error}}"
+    },
+    "addTabs": {
+      "desktop": "Plocha",
+      "oauth": "OAuth",
+      "apiKey": "API klíč",
+      "import": "Místní/JSON",
+      "desktopGateway": "Brána"
+    },
+    "authMode": {
+      "oauth": "Režim OAuth",
+      "setup_token": "Token nastavení",
+      "api_key": "API klíč",
+      "desktop_oauth": "Claude přihlášení"
+    },
+    "apiKey": {
+      "desc": "Uloží Claude CLI API Key jako samostatné přihlašovací údaje. Přepnutí nebo spuštění CLI zapíše env hodnoty poskytovatele do Claude Code settings.json a nezapisuje přihlášení Claude.",
+      "nameLabel": "Název účtu",
+      "namePlaceholder": "Volitelné, např. APIKEY.FUN",
+      "keyLabel": "Klíč API",
+      "placeholder": "Vložte API Key poskytovatele",
+      "hide": "Skrýt API Key",
+      "show": "Zobrazit API Key",
+      "hint": "Účty API Key jsou pouze pro Claude CLI. Zapisují se jako prostý env text do Claude Code settings.json, neovlivňují Claude a nepodporují obnovu předplatitelského limitu.",
+      "importAction": "Importovat API Key",
+      "required": "Zadejte API Key",
+      "templateRequired": "Zadejte {{label}}",
+      "importSuccess": "Účet Claude API Key importován: {{name}}",
+      "quotaUnsupported": "Účty API Key nepodporují obnovení",
+      "switchDisabled": "Účet API Key nelze přepnout do Claude",
+      "cliUnsupported": "Účet API Key nespustí Claude CLI",
+      "providerLabel": "Poskytovatel",
+      "customProvider": "Vlastní",
+      "endpointLabel": "Endpoint",
+      "officialEndpoint": "Oficiální výchozí",
+      "baseUrlLabel": "Základní URL",
+      "baseUrlPlaceholder": "Prázdné použije Anthropic",
+      "keyFieldLabel": "Pole auth",
+      "baseUrlInvalid": "Base URL není platná URL"
+    },
+    "desktopOAuth": {
+      "title": "Přihlášení Claude",
+      "desc": "Přihlášení Claude v tomto nástroji; Google, Apple, e-mail a free.",
+      "start": "Otevřít",
+      "preparingRuntime": "Připravuji...",
+      "hint": "Nejdřív lokálně; zápis do Claude až při přepnutí.",
+      "runtimeHint": "Při prvním použití se může stáhnout a ověřit přihlašovací komponenta Electron do místní složky dat aplikace; není součástí instalátoru a později se používá z mezipaměti.",
+      "nameLabel": "Název účtu",
+      "namePlaceholder": "Volitelné, např. Claude Free",
+      "waiting": "Přihlaste se v okně Claude a dokončete import zde.",
+      "profileDir": "Izolovaný adresář profile",
+      "complete": "Dokončit",
+      "localTitle": "Import aktuálního Claude",
+      "localDesc": "Kopíruje aktuální relaci Claude jako lokální snímek.",
+      "localAction": "Import",
+      "localSuccess": "Lokální přihlášení Claude importováno: {{name}}",
+      "importSuccess": "Přihlášení Claude importováno: {{name}}",
+      "switchHint": "Přepnout na oficiální Claude",
+      "planUnknown": "Plán neznámý",
+      "progress": {
+        "start": "Příprava úlohy přihlášení",
+        "profile": "Vytváří se izolovaný profil",
+        "resolveRuntime": "Hledá se přihlašovací komponenta",
+        "checkCache": "Kontrola místní mezipaměti komponenty",
+        "cached": "Používá se místní mezipaměť komponenty",
+        "downloadStart": "Spouští se stažení komponenty",
+        "downloading": "Stahuje se přihlašovací komponenta",
+        "downloaded": "Přihlašovací komponenta stažena",
+        "verify": "Ověřuje se integrita komponenty",
+        "extract": "Rozbaluje se přihlašovací komponenta",
+        "runtimeReady": "Přihlašovací komponenta připravena",
+        "launch": "Otevírá se přihlašovací okno Claude",
+        "ready": "Přihlašovací okno otevřeno",
+        "default": "Příprava přihlašovací komponenty",
+        "bytesWithTotal": "Staženo {{downloaded}} z {{total}}",
+        "bytesOnly": "Staženo {{downloaded}}",
+        "hint": "Po prvním nastavení se místní mezipaměť použije přímo."
+      }
+    },
+    "oauth": {
+      "title": "Autorizace Claude OAuth",
+      "desc": "Otevřete oficiální stránku autorizace Claude OAuth a po dokončení vložte zpětný odkaz nebo kód pro import účtu.",
+      "start": "Autorizovat OAuth",
+      "proRequiredHint": "Oficiální OAuth Claude se obvykle používá pro Claude Code. Pokud stránka zůstane na upgradu nebo bez oprávnění, použijte přihlášení Claude.",
+      "openInstruction": "Klikněte na tlačítko níže a dokončete autorizaci Claude OAuth v prohlížeči.",
+      "waiting": "Po dokončení vložte níže finální adresu stránky nebo zobrazený kód.",
+      "authUrl": "Autorizační odkaz",
+      "preparing": "Generuji autorizační odkaz...",
+      "openInBrowser": "Otevřít v prohlížeči",
+      "openFailed": "Autorizační odkaz se nepodařilo otevřít: {{error}}",
+      "callbackPlaceholder": "Vložte zpětný odkaz nebo autorizační kód",
+      "callbackRequired": "Po dokončení autorizace vložte zpětný odkaz nebo kód",
+      "authorizeUrlNotCallback": "Vložili jste výše uvedený vstupní autorizační odkaz, ne dokončený kód. Nejprve dokončete autorizaci v prohlížeči a potom zkopírujte finální adresu stránky nebo zobrazený kód.",
+      "complete": "Dokončit import",
+      "emailPlaceholder": "E-mail (vyplňte, pokud se nerozpozná)",
+      "importSuccess": "Autorizace Claude OAuth importována: {{name}}"
+    },
+    "plan": {
+      "label": "Štítek tarifu",
+      "selectPlaceholder": "Vybrat tarif",
+      "updateFailed": "Nepodařilo se aktualizovat štítek tarifu: {{error}}"
+    },
+    "legacyOAuth": {
+      "switchDisabled": "Staré účty OAuth nelze přepnout do Claude",
+      "quotaUnsupported": "Staré účty OAuth už nepodporují obnovení",
+      "cliUnsupported": "Starší účty OAuth nemohou spustit Claude CLI"
+    },
+    "cli": {
+      "quickLaunch": "Spustit CLI",
+      "selectWorkingDir": "Vyberte pracovní složku Claude CLI",
+      "launchSuccess": "Claude CLI spuštěno",
+      "prepared": "Claude CLI je připraveno",
+      "launchFailed": "Claude CLI se nepodařilo spustit: {{error}}",
+      "localTitle": "Importovat aktuální Claude Code",
+      "localDesc": "Přečte aktuální lokální OAuth přihlášení Claude Code a zkopíruje ho jako lokální snímek účtu.",
+      "localSuccess": "Lokální přihlášení Claude Code importováno: {{name}}"
+    },
+    "accountNote": {
+      "title": "Poznámka účtu",
+      "desc": "Přidejte místní poznámku pro {{email}}, aby šel účet při přepínání snadno rozpoznat.",
+      "label": "Poznámka účtu",
+      "placeholder": "Např.: Free hlavní, Max 20x, týmový účet",
+      "saved": "Poznámka účtu uložena",
+      "saveFailed": "Poznámku se nepodařilo uložit: {{error}}",
+      "emptyTitle": "Přidat poznámku účtu",
+      "short": "Poznámka",
+      "addShort": "Poznámka"
+    },
+    "account": {
+      "signedInWith": "Přihlášeno přes {{provider}}",
+      "userId": "ID uživatele",
+      "nickname": "Přezdívka"
+    },
+    "selection": {
+      "selected": "Vybráno {{count}}"
+    },
+    "deleteSelectedLabel": "{{count}} účtů",
+    "subPlatform": {
+      "label": "Podplatforma Claude",
+      "desktop": "Claude aplikace",
+      "cli": "Claude příkazová řádka"
+    },
+    "searchDesktop": "Hledat účty Claude...",
+    "searchCli": "Hledat účty Claude CLI...",
+    "noDesktopAccounts": "Zatím žádné účty Claude",
+    "noCliAccounts": "Zatím žádné účty Claude CLI",
+    "desktopGateway": {
+      "label": "Brána",
+      "authScheme": "Schéma auth",
+      "importAction": "Import Gateway",
+      "importSuccess": "Účet Claude Gateway byl importován: {{name}}",
+      "baseUrlRequired": "Zadejte Gateway Base URL",
+      "noQuota": "Účty Gateway nezobrazují kvótu předplatného Claude",
+      "desc": "Uloží Gateway API key jako konfiguraci Claude 3P. Při přepnutí se zapíše do oficiální konfigurace Claude a spustí Claude.",
+      "hint": "Účty Gateway nečtou údaje o předplatném Claude. API key se zapíše do místního Claude podle oficiální konfigurace 3P.",
+      "modelsLabel": "Katalog modelů",
+      "modelsEmpty": "Tento Gateway nevrátil žádné modely.",
+      "modelsLoaded": "Načteno {{count}} modelů. Před uložením je můžete upravit.",
+      "modelsLoadFailed": "Načtení modelů selhalo: {{error}}.",
+      "usingPresetMappings": "Používá se přednastavené mapování. Před uložením ho můžete upravit.",
+      "manualModels": "Ruční modely",
+      "modelsPlaceholder": "Jedno ID modelu na řádek",
+      "modelsLoading": "Načítá se katalog modelů...",
+      "modelsRequired": "Zadejte katalog modelů",
+      "editTitle": "Upravit Claude Gateway",
+      "updateAction": "Uložit Gateway",
+      "updateSuccess": "Účet Claude Gateway byl aktualizován: {{name}}",
+      "connectionMode": "Připojení",
+      "modeDirect": "Přímo",
+      "modeLocalMapping": "Místní mapování",
+      "mappingsRequired": "Nastavte mapování modelů",
+      "mappingsIncomplete": "Doplňte mapování modelů",
+      "mappingDesktopModelDuplicated": "Názvy modelů Claude se nesmí opakovat: {{model}}",
+      "mappingDesktopModelInvalid": "Namapované názvy modelů Claude musí Claude rozpoznat",
+      "directModelsInvalid": "Přímý režim podporuje jen názvy Claude rozpoznané Claude",
+      "desktopModelPlaceholder": "Model Claude",
+      "upstreamModelPlaceholder": "Skutečný upstream model",
+      "addMapping": "Přidat mapování",
+      "mappingSummary": "Nastaveno {{count}} mapování",
+      "mappingSummaryHint": "Před uložením zkontrolujte nebo upravte.",
+      "editMappings": "Upravit mapování",
+      "moreMappings": "Další: {{count}}",
+      "mappingEditorTitle": "Mapování modelů",
+      "hideMappings": "Sbalit",
+      "labelOverridePlaceholder": "Název v nabídce",
+      "supports1mLabel": "Deklarovat 1M",
+      "supports1mShort": "1M kontext"
+    }
   }
 }

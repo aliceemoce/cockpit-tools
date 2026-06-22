@@ -70,8 +70,7 @@ fn read_config_toml(path: &Path) -> Result<Document, String> {
     if content.trim().is_empty() {
         return Ok(Document::new());
     }
-    content
-        .parse::<Document>()
+    crate::modules::codex_config_format::read_codex_config_doc_from_str(&content)
         .map_err(|err| format!("解析 Codex config.toml 失败: {}", err))
 }
 
@@ -280,7 +279,7 @@ fn write_app_speed_for_config_toml_path(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("创建 Codex 配置目录失败: {}", err))?;
     }
-    crate::modules::atomic_write::write_string_atomic(&path, &content)
+    crate::modules::codex_config_format::write_codex_config_toml_atomic(&path, &content)
         .map_err(|err| format!("写入 Codex config.toml 失败: {}", err))?;
 
     Ok(build_config_with_config_path(&path, speed))

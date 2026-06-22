@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   ArrowDownWideNarrow,
   ArrowDown,
@@ -12,6 +19,7 @@ import {
   Clock,
   Database,
   ExternalLink,
+  GripVertical,
   HelpCircle,
   KeyRound,
   Link2,
@@ -26,6 +34,7 @@ import {
   Settings,
   Activity,
   RefreshCw,
+  RotateCw,
   Play,
 } from "lucide-react";
 import {
@@ -49,6 +58,7 @@ import type {
 } from "../../types/codexLocalAccess";
 import {
   addCodexAccountWithApiKey,
+  deleteCodexAccounts,
   getCurrentCodexAccount,
   listCodexAccounts,
   updateCodexApiKeyBoundOAuthAccount,
@@ -72,8 +82,12 @@ import {
   queryCodexModelProviderUsage,
   saveCodexModelProviderDetectedIntegrationType,
   testCodexModelProviderConnection,
+  testCodexModelProviderChatBatch,
   type CodexModelProvider,
   type CodexModelProviderApiKey,
+  type CodexModelProviderChatTestProgressPayload,
+  type CodexModelProviderChatTestRecord,
+  type CodexModelProviderChatTestTarget,
   type CodexModelProviderUsageSummary,
   updateCodexModelProvider,
 } from "../../services/codexModelProviderService";
@@ -107,6 +121,7 @@ import {
   type CodexProviderEnableModePreference,
   type CodexProviderWireApi,
 } from "../../utils/codexProviderGateway";
+import { emitAccountsChanged } from "../../utils/accountSyncEvents";
 import { CodexQuickConfigCard } from "./CodexQuickConfigCard";
 import {
   CodexServicePanelModal,
@@ -117,6 +132,7 @@ import {
 const DEFAULT_INSTANCE_ID = "__default__";
 const OAUTH_BINDING_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 type OAuthBindingSortBy = "account" | "created_at" | "last_used" | "plan";
+type ProviderSortBy = "name" | "created_at" | "custom";
 type InstanceSortField = "createdAt" | "lastLaunchedAt";
 type InstanceSortDirection = "asc" | "desc";
 
@@ -198,6 +214,10 @@ function readCodexInstanceSortPreference(): {
   };
 }
 
+const CODEX_PROVIDER_CUSTOM_SORT_ORDER_KEY =
+  "agtools.codex.modelProviders.custom_sort_order.v1";
+const CODEX_PROVIDER_CUSTOM_SORT_ACTIVE_KEY =
+  "agtools.codex.modelProviders.custom_sort_active.v1";
 const PROVIDER_USAGE_CACHE_KEY = "agtools.codex.modelProviders.usage.cache.v1";
 
 type ProviderUsageState = {
@@ -250,6 +270,51 @@ function writeProviderUsageCache(value: Record<string, ProviderUsageState>): voi
           ]),
         ),
       ),
+    );
+  } catch {
+    // ignore persistence failures
+  }
+}
+
+function readCodexProviderCustomSortOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(CODEX_PROVIDER_CUSTOM_SORT_ORDER_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeCodexProviderCustomSortOrder(providerIds: string[]): void {
+  try {
+    localStorage.setItem(
+      CODEX_PROVIDER_CUSTOM_SORT_ORDER_KEY,
+      JSON.stringify(providerIds),
+    );
+  } catch {
+    // ignore persistence failures
+  }
+}
+
+function readCodexProviderCustomSortActive(): boolean {
+  try {
+    return localStorage.getItem(CODEX_PROVIDER_CUSTOM_SORT_ACTIVE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeCodexProviderCustomSortActive(active: boolean): void {
+  try {
+    localStorage.setItem(
+      CODEX_PROVIDER_CUSTOM_SORT_ACTIVE_KEY,
+      active ? "1" : "0",
     );
   } catch {
     // ignore persistence failures
@@ -309,6 +374,25 @@ interface ProviderPreviewPaths {
   codexAuthPath: string;
 }
 
+type ProviderBatchTestStatus = "pending" | "running" | "success" | "error";
+type ProviderBatchTestFilter = "all" | ProviderBatchTestStatus;
+
+type ProviderBatchTestRecordView = CodexModelProviderChatTestRecord & {
+  status: ProviderBatchTestStatus;
+};
+
+interface ProviderBatchTestSession {
+  runId: string;
+  total: number;
+  completed: number;
+  successCount: number;
+  failureCount: number;
+  running: boolean;
+  startedAt: number;
+  records: ProviderBatchTestRecordView[];
+  errorText?: string;
+}
+
 function resolveProviderApiKeyLabel(
   apiKey: CodexModelProviderApiKey,
   fallbackName: string,
@@ -358,8 +442,70 @@ function resolveProviderWireApi(provider: CodexModelProvider): CodexProviderWire
   }).wireApi;
 }
 
+const RESPONSES_NATIVE_CHAT_TEST_MODEL_PRIORITY = [
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5",
+  "gpt-4.1",
+  "gpt-4o",
+];
+
+function isImageGenerationModelId(modelId: string): boolean {
+  const lower = modelId.trim().toLowerCase();
+  return (
+    lower.startsWith("gpt-image") ||
+    lower.startsWith("dall-e") ||
+    lower.includes("image-gen")
+  );
+}
+
+function selectProviderBatchTestModelId(
+  wireApi: CodexProviderWireApi,
+  modelCatalog?: string[] | null,
+): string | null {
+  const models = (modelCatalog ?? [])
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (models.length === 0) return null;
+
+  if (wireApi === "responses") {
+    for (const preferred of RESPONSES_NATIVE_CHAT_TEST_MODEL_PRIORITY) {
+      const model = models.find(
+        (item) => item.toLowerCase() === preferred.toLowerCase(),
+      );
+      if (model) return model;
+    }
+    const textModel = models.find((item) => !isImageGenerationModelId(item));
+    if (textModel) return textModel;
+  }
+
+  return models[0] ?? null;
+}
+
 function formatDateTime(value: number): string {
   return new Date(value).toLocaleString();
+}
+
+function formatDurationMs(value?: number | null): string {
+  if (value === null || value === undefined) return "-";
+  if (value < 1000) return `${value}ms`;
+  return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)}s`;
+}
+
+function createProviderBatchTestRunId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `provider-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function toProviderBatchTestRecordView(
+  record: CodexModelProviderChatTestRecord,
+): ProviderBatchTestRecordView {
+  return {
+    ...record,
+    status: record.success ? "success" : "error",
+  };
 }
 
 export function CodexModelProviderManager({
@@ -426,6 +572,8 @@ export function CodexModelProviderManager({
   const [providerOauthSaving, setProviderOauthSaving] = useState(false);
   const [providerOauthSelectedAccountId, setProviderOauthSelectedAccountId] =
     useState("");
+  const [providerOauthUseLocalGateway, setProviderOauthUseLocalGateway] =
+    useState(false);
   const [providerOauthSearchQuery, setProviderOauthSearchQuery] = useState("");
   const [providerOauthFilterTypes, setProviderOauthFilterTypes] = useState<
     string[]
@@ -445,13 +593,39 @@ export function CodexModelProviderManager({
   const [providerViewMode, setProviderViewMode] = useState<"grid" | "compact">(
     "grid",
   );
-  const [providerSortBy, setProviderSortBy] = useState<"name" | "created_at">(
-    "created_at",
+  const [providerSortBy, setProviderSortBy] = useState<ProviderSortBy>(
+    () => (readCodexProviderCustomSortActive() ? "custom" : "created_at"),
   );
   const [providerSortDirection, setProviderSortDirection] = useState<"asc" | "desc">("asc");
+  const [providerCustomSortOrder, setProviderCustomSortOrder] = useState<
+    string[]
+  >(readCodexProviderCustomSortOrder);
+  const [showProviderCustomSortModal, setShowProviderCustomSortModal] =
+    useState(false);
+  const [
+    draggedProviderCustomSortId,
+    setDraggedProviderCustomSortId,
+  ] = useState<string | null>(null);
+  const [
+    providerCustomSortDropTargetId,
+    setProviderCustomSortDropTargetId,
+  ] = useState<string | null>(null);
   const [providerNameFilter, setProviderNameFilter] = useState<
     string[]
   >([]);
+  const [batchTestModalOpen, setBatchTestModalOpen] = useState(false);
+  const [batchTestStep, setBatchTestStep] = useState<"select" | "results">("select");
+  const [batchTestSearchQuery, setBatchTestSearchQuery] = useState("");
+  const [batchTestSelectedProviderIds, setBatchTestSelectedProviderIds] =
+    useState<Set<string>>(() => new Set());
+  const [batchTestSession, setBatchTestSession] =
+    useState<ProviderBatchTestSession | null>(null);
+  const [batchTestFilter, setBatchTestFilter] =
+    useState<ProviderBatchTestFilter>("all");
+  const [batchTestError, setBatchTestError] = useState<string | null>(null);
+  const [batchTestDeleting, setBatchTestDeleting] = useState(false);
+  const [batchTestResultSelectedProviderIds, setBatchTestResultSelectedProviderIds] =
+    useState<Set<string>>(() => new Set());
 
   const sponsorProviderTemplates = useMemo<SponsorProviderTemplate[]>(() => {
     const sponsors = sponsorModule?.sponsors ?? [];
@@ -488,6 +662,14 @@ export function CodexModelProviderManager({
     });
   }, [sponsorModule?.sponsors]);
 
+  const providerCustomSortOrderIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    providerCustomSortOrder.forEach((providerId, index) => {
+      map.set(providerId, index);
+    });
+    return map;
+  }, [providerCustomSortOrder]);
+
   const filteredProviders = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     let result = providers.filter((provider) => {
@@ -508,6 +690,18 @@ export function CodexModelProviderManager({
       );
     }
     result = [...result].sort((a, b) => {
+      if (providerSortBy === "custom") {
+        const aIndex =
+          providerCustomSortOrderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+        const bIndex =
+          providerCustomSortOrderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+        if (aIndex !== bIndex) {
+          return aIndex - bIndex;
+        }
+        const createdDiff = (b.createdAt || 0) - (a.createdAt || 0);
+        if (createdDiff !== 0) return createdDiff;
+        return a.name.localeCompare(b.name);
+      }
       const direction = providerSortDirection === "asc" ? 1 : -1;
       if (providerSortBy === "created_at") {
         return direction * ((a.createdAt || 0) - (b.createdAt || 0));
@@ -518,6 +712,7 @@ export function CodexModelProviderManager({
   }, [
     providers,
     providerNameFilter,
+    providerCustomSortOrderIndex,
     providerSortBy,
     providerSortDirection,
     searchQuery,
@@ -550,6 +745,99 @@ export function CodexModelProviderManager({
     () => filteredProviders.map((item) => item.id),
     [filteredProviders],
   );
+  const isProviderCustomSortActive = providerSortBy === "custom";
+  const providerCustomSortProviders = useMemo(() => {
+    const providerMap = new Map(
+      providers.map((provider) => [provider.id, provider]),
+    );
+    const result: CodexModelProvider[] = [];
+    const seen = new Set<string>();
+
+    providerCustomSortOrder.forEach((providerId) => {
+      const provider = providerMap.get(providerId);
+      if (!provider || seen.has(providerId)) return;
+      result.push(provider);
+      seen.add(providerId);
+    });
+
+    providers.forEach((provider) => {
+      if (seen.has(provider.id)) return;
+      result.push(provider);
+      seen.add(provider.id);
+    });
+
+    return result;
+  }, [providerCustomSortOrder, providers]);
+  const providerCustomSortProviderIds = useMemo(
+    () => providerCustomSortProviders.map((provider) => provider.id),
+    [providerCustomSortProviders],
+  );
+  const moveProviderCustomSortProvider = useCallback(
+    (providerId: string, direction: "up" | "down") => {
+      const currentIndex = providerCustomSortProviderIds.indexOf(providerId);
+      if (currentIndex < 0) return;
+      const targetIndex =
+        direction === "up" ? currentIndex - 1 : currentIndex + 1;
+      if (
+        targetIndex < 0 ||
+        targetIndex >= providerCustomSortProviderIds.length
+      ) {
+        return;
+      }
+      const next = [...providerCustomSortProviderIds];
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      setProviderCustomSortOrder(next);
+    },
+    [providerCustomSortProviderIds],
+  );
+  const stopProviderCustomSortDragging = useCallback(() => {
+    setDraggedProviderCustomSortId(null);
+    setProviderCustomSortDropTargetId(null);
+  }, []);
+  const handleProviderCustomSortDragStart = useCallback(
+    (event: ReactMouseEvent, providerId: string) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDraggedProviderCustomSortId(providerId);
+      setProviderCustomSortDropTargetId(null);
+    },
+    [],
+  );
+  const handleProviderCustomSortDragMove = useCallback(
+    (targetProviderId: string) => {
+      if (!draggedProviderCustomSortId) return;
+      if (draggedProviderCustomSortId === targetProviderId) {
+        setProviderCustomSortDropTargetId(null);
+        return;
+      }
+      const fromIndex = providerCustomSortProviderIds.indexOf(
+        draggedProviderCustomSortId,
+      );
+      const toIndex = providerCustomSortProviderIds.indexOf(targetProviderId);
+      if (fromIndex < 0 || toIndex < 0) return;
+      setProviderCustomSortDropTargetId(targetProviderId);
+      const next = [...providerCustomSortProviderIds];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      setProviderCustomSortOrder(next);
+    },
+    [draggedProviderCustomSortId, providerCustomSortProviderIds],
+  );
+  const resetProviderCustomSortOrder = useCallback(() => {
+    setProviderCustomSortOrder(providers.map((provider) => provider.id));
+  }, [providers]);
+  const handleProviderSortByChange = useCallback((value: string) => {
+    const nextSortBy: ProviderSortBy =
+      value === "custom" || value === "name" || value === "created_at"
+        ? value
+        : "created_at";
+    setProviderSortBy(nextSortBy);
+    if (nextSortBy === "custom") {
+      setShowProviderCustomSortModal(true);
+    }
+  }, []);
   const isAllProvidersSelected = useMemo(
     () =>
       filteredProviderIds.length > 0 &&
@@ -623,6 +911,55 @@ export function CodexModelProviderManager({
   }, [providerUsageMap]);
 
   useEffect(() => {
+    if (providers.length === 0) {
+      return;
+    }
+    const providerIds = providers.map((provider) => provider.id);
+    const providerIdSet = new Set(providerIds);
+    setProviderCustomSortOrder((previous) => {
+      const next = previous.filter((providerId) =>
+        providerIdSet.has(providerId),
+      );
+      const seen = new Set(next);
+      for (const providerId of providerIds) {
+        if (!seen.has(providerId)) {
+          next.push(providerId);
+          seen.add(providerId);
+        }
+      }
+      const unchanged =
+        next.length === previous.length &&
+        next.every((providerId, index) => providerId === previous[index]);
+      return unchanged ? previous : next;
+    });
+  }, [providers]);
+
+  useEffect(() => {
+    writeCodexProviderCustomSortOrder(providerCustomSortOrder);
+  }, [providerCustomSortOrder]);
+
+  useEffect(() => {
+    writeCodexProviderCustomSortActive(providerSortBy === "custom");
+  }, [providerSortBy]);
+
+  useEffect(() => {
+    if (!showProviderCustomSortModal || !draggedProviderCustomSortId) return;
+    const handleMouseUp = () => {
+      setDraggedProviderCustomSortId(null);
+      setProviderCustomSortDropTargetId(null);
+    };
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, [draggedProviderCustomSortId, showProviderCustomSortModal]);
+
+  useEffect(() => {
+    if (!showProviderCustomSortModal) {
+      setDraggedProviderCustomSortId(null);
+      setProviderCustomSortDropTargetId(null);
+    }
+  }, [showProviderCustomSortModal]);
+
+  useEffect(() => {
     let cancelled = false;
 
     void (async () => {
@@ -647,6 +984,62 @@ export function CodexModelProviderManager({
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+
+    void listen<CodexModelProviderChatTestProgressPayload>(
+      "codex://model-provider-test-progress",
+      (event) => {
+        const payload = event.payload;
+        setBatchTestSession((current) => {
+          if (!current || current.runId !== payload.runId) return current;
+
+          const nextRecords = current.records.map((record) => {
+            if (
+              payload.phase === "provider_started" &&
+              record.providerId === payload.currentProviderId
+            ) {
+              return { ...record, status: "running" as ProviderBatchTestStatus };
+            }
+            if (
+              payload.phase === "provider_completed" &&
+              payload.item &&
+              record.providerId === payload.item.providerId
+            ) {
+              return toProviderBatchTestRecordView(payload.item);
+            }
+            if (
+              payload.phase === "provider_started" &&
+              record.status === "running" &&
+              record.providerId !== payload.currentProviderId
+            ) {
+              return { ...record, status: "pending" as ProviderBatchTestStatus };
+            }
+            return record;
+          });
+
+          return {
+            ...current,
+            total: payload.total,
+            completed: payload.completed,
+            successCount: payload.successCount,
+            failureCount: payload.failureCount,
+            running: payload.running,
+            records: nextRecords,
+          };
+        });
+      },
+    ).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
     };
   }, []);
 
@@ -718,6 +1111,142 @@ export function CodexModelProviderManager({
       return provider.apiKeys[0] ?? null;
     },
     [selectedProviderApiKeyMap],
+  );
+
+  const providerBatchTestVisibleProviders = useMemo(() => {
+    const query = batchTestSearchQuery.trim().toLowerCase();
+    if (!query) return filteredProviders;
+    return filteredProviders.filter((provider) =>
+      [provider.name, provider.baseUrl, provider.website ?? "", provider.apiKeyUrl ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [batchTestSearchQuery, filteredProviders]);
+
+  const providerBatchTestSelectableIds = useMemo(
+    () =>
+      providerBatchTestVisibleProviders
+        .filter((provider) => !!getSelectedProviderApiKey(provider))
+        .map((provider) => provider.id),
+    [getSelectedProviderApiKey, providerBatchTestVisibleProviders],
+  );
+
+  const isAllBatchTestProvidersSelected = useMemo(
+    () =>
+      providerBatchTestSelectableIds.length > 0 &&
+      providerBatchTestSelectableIds.every((id) => batchTestSelectedProviderIds.has(id)),
+    [batchTestSelectedProviderIds, providerBatchTestSelectableIds],
+  );
+
+  const batchTestSelectedCount = useMemo(
+    () =>
+      providers.filter(
+        (provider) =>
+          batchTestSelectedProviderIds.has(provider.id) &&
+          !!getSelectedProviderApiKey(provider),
+      ).length,
+    [batchTestSelectedProviderIds, getSelectedProviderApiKey, providers],
+  );
+
+  const openBatchTestModal = useCallback(() => {
+    const defaultSource =
+      selectedProviderIds.size > 0
+        ? filteredProviders.filter((provider) => selectedProviderIds.has(provider.id))
+        : filteredProviders;
+    const initialIds = defaultSource
+      .filter((provider) => !!getSelectedProviderApiKey(provider))
+      .map((provider) => provider.id);
+    setBatchTestSelectedProviderIds(new Set(initialIds));
+    setBatchTestResultSelectedProviderIds(new Set());
+    setBatchTestSearchQuery("");
+    setBatchTestFilter("all");
+    setBatchTestError(null);
+    setBatchTestSession(null);
+    setBatchTestStep("select");
+    setBatchTestModalOpen(true);
+  }, [filteredProviders, getSelectedProviderApiKey, selectedProviderIds]);
+
+  const closeBatchTestModal = useCallback(() => {
+    if (batchTestSession?.running || batchTestDeleting) return;
+    setBatchTestModalOpen(false);
+    setBatchTestError(null);
+  }, [batchTestDeleting, batchTestSession?.running]);
+
+  useEscClose(batchTestModalOpen, closeBatchTestModal);
+
+  const toggleBatchTestProvider = useCallback((providerId: string) => {
+    setBatchTestSelectedProviderIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(providerId)) {
+        next.delete(providerId);
+      } else {
+        next.add(providerId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisibleBatchTestProviders = useCallback(() => {
+    setBatchTestSelectedProviderIds((previous) => {
+      const next = new Set(previous);
+      const allSelected =
+        providerBatchTestSelectableIds.length > 0 &&
+        providerBatchTestSelectableIds.every((id) => next.has(id));
+      providerBatchTestSelectableIds.forEach((id) => {
+        if (allSelected) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      });
+      return next;
+    });
+  }, [providerBatchTestSelectableIds]);
+
+  const buildBatchTestTarget = useCallback(
+    (provider: CodexModelProvider): CodexModelProviderChatTestTarget | null => {
+      const apiKey = getSelectedProviderApiKey(provider);
+      if (!apiKey) return null;
+      return {
+        providerId: provider.id,
+        providerName: provider.name,
+        baseUrl: provider.baseUrl,
+        apiKeyId: apiKey.id,
+        apiKeyName: apiKey.name || provider.name,
+        apiKey: apiKey.apiKey,
+        wireApi: resolveProviderWireApi(provider),
+        modelCatalog: provider.modelCatalog ?? [],
+      };
+    },
+    [getSelectedProviderApiKey],
+  );
+
+  const buildBatchTestPendingRecord = useCallback(
+    (
+      provider: CodexModelProvider,
+      target: CodexModelProviderChatTestTarget,
+      runStartedAt: number,
+    ): ProviderBatchTestRecordView => {
+      const wireApi = target.wireApi ?? resolveProviderWireApi(provider);
+      return {
+        providerId: target.providerId,
+        providerName: target.providerName,
+        apiKeyId: target.apiKeyId,
+        apiKeyName: target.apiKeyName,
+        wireApi,
+        accessMode: "gateway",
+        modelId: selectProviderBatchTestModelId(wireApi, target.modelCatalog),
+        success: false,
+        prompt: "",
+        reply: null,
+        error: null,
+        durationMs: null,
+        timestamp: runStartedAt,
+        status: "pending",
+      };
+    },
+    [],
   );
 
   const resolveBoundOAuthAccount = useCallback(
@@ -1032,6 +1561,305 @@ export function CodexModelProviderManager({
     },
     [t],
   );
+
+  const providerBatchTestCounts = useMemo(() => {
+    const records = batchTestSession?.records ?? [];
+    return {
+      all: records.length,
+      pending: records.filter((record) => record.status === "pending").length,
+      running: records.filter((record) => record.status === "running").length,
+      success: records.filter((record) => record.status === "success").length,
+      error: records.filter((record) => record.status === "error").length,
+    };
+  }, [batchTestSession?.records]);
+
+  const providerBatchTestFilterOptions = useMemo(
+    () => [
+      {
+        key: "all" as const,
+        label: t("codex.modelProviders.batchTest.status.all", "全部"),
+        count: providerBatchTestCounts.all,
+        tone: "all",
+      },
+      {
+        key: "success" as const,
+        label: t("codex.modelProviders.batchTest.status.success", "成功"),
+        count: providerBatchTestCounts.success,
+        tone: "success",
+      },
+      {
+        key: "error" as const,
+        label: t("codex.modelProviders.batchTest.status.error", "失败"),
+        count: providerBatchTestCounts.error,
+        tone: "error",
+      },
+      {
+        key: "running" as const,
+        label: t("codex.modelProviders.batchTest.status.running", "测试中"),
+        count: providerBatchTestCounts.running,
+        tone: "running",
+      },
+      {
+        key: "pending" as const,
+        label: t("codex.modelProviders.batchTest.status.pending", "等待中"),
+        count: providerBatchTestCounts.pending,
+        tone: "pending",
+      },
+    ],
+    [providerBatchTestCounts, t],
+  );
+
+  const filteredProviderBatchTestRecords = useMemo(() => {
+    const records = batchTestSession?.records ?? [];
+    if (batchTestFilter === "all") return records;
+    return records.filter((record) => record.status === batchTestFilter);
+  }, [batchTestFilter, batchTestSession?.records]);
+
+  const toggleBatchTestResultProvider = useCallback((providerId: string) => {
+    setBatchTestResultSelectedProviderIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(providerId)) {
+        next.delete(providerId);
+      } else {
+        next.add(providerId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisibleBatchTestResults = useCallback(() => {
+    setBatchTestResultSelectedProviderIds((previous) => {
+      const visibleIds = filteredProviderBatchTestRecords.map((record) => record.providerId);
+      const next = new Set(previous);
+      const allSelected =
+        visibleIds.length > 0 && visibleIds.every((id) => next.has(id));
+      visibleIds.forEach((id) => {
+        if (allSelected) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      });
+      return next;
+    });
+  }, [filteredProviderBatchTestRecords]);
+
+  const selectFailedBatchTestResults = useCallback(() => {
+    setBatchTestResultSelectedProviderIds(
+      new Set(
+        (batchTestSession?.records ?? [])
+          .filter((record) => record.status === "error")
+          .map((record) => record.providerId),
+      ),
+    );
+  }, [batchTestSession?.records]);
+
+  const formatProviderBatchTestErrorMessage = useCallback(
+    (error?: string | null) => {
+      const text = (error ?? "").trim();
+      if (!text) {
+        return t(
+          "codex.modelProviders.batchTest.unknownError",
+          "未知错误",
+        );
+      }
+      if (
+        text
+          .toLowerCase()
+          .includes("this account only allows codex official clients")
+      ) {
+        return t(
+          "codex.modelProviders.batchTest.officialClientOnlyError",
+          "该供应商限制只允许 Codex 官方客户端请求；当前一键测试已走本地网关，但上游仍拒绝了这次测试请求。请以官方 Codex 实际启动后的表现为准。",
+        );
+      }
+      return text;
+    },
+    [t],
+  );
+
+  const handleStartBatchProviderTest = useCallback(async () => {
+    if (batchTestSession?.running) return;
+    const selectedProviders = providers.filter((provider) =>
+      batchTestSelectedProviderIds.has(provider.id),
+    );
+    const targets: CodexModelProviderChatTestTarget[] = [];
+    const pendingRecords: ProviderBatchTestRecordView[] = [];
+    const startedAt = Date.now();
+    for (const provider of selectedProviders) {
+      const target = buildBatchTestTarget(provider);
+      if (!target) continue;
+      targets.push(target);
+      pendingRecords.push(buildBatchTestPendingRecord(provider, target, startedAt));
+    }
+    if (targets.length === 0) {
+      setBatchTestError(
+        t(
+          "codex.modelProviders.batchTest.emptySelection",
+          "请选择至少一个带 API Key 的供应商。",
+        ),
+      );
+      return;
+    }
+    const runId = createProviderBatchTestRunId();
+    setNotice(null);
+    setBatchTestError(null);
+    setBatchTestResultSelectedProviderIds(new Set());
+    setBatchTestFilter("all");
+    setBatchTestStep("results");
+    setBatchTestSession({
+      runId,
+      total: targets.length,
+      completed: 0,
+      successCount: 0,
+      failureCount: 0,
+      running: true,
+      startedAt,
+      records: pendingRecords,
+    });
+    try {
+      const result = await testCodexModelProviderChatBatch({
+        targets,
+        runId,
+      });
+      setBatchTestSession((current) => {
+        if (!current || current.runId !== result.runId) return current;
+        return {
+          ...current,
+          total: result.records.length,
+          completed: result.records.length,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+          running: false,
+          records: result.records.map(toProviderBatchTestRecordView),
+        };
+      });
+    } catch (err) {
+      const errorText = parseServiceError(err);
+      setBatchTestError(errorText);
+      setBatchTestSession((current) =>
+        current
+          ? {
+              ...current,
+              running: false,
+              errorText,
+              records: current.records.map((record) =>
+                record.status === "running"
+                  ? { ...record, status: "error", error: errorText }
+                  : record,
+              ),
+            }
+          : current,
+      );
+    }
+  }, [
+    batchTestSelectedProviderIds,
+    batchTestSession?.running,
+    buildBatchTestPendingRecord,
+    buildBatchTestTarget,
+    parseServiceError,
+    providers,
+    t,
+  ]);
+
+  const handleDeleteBatchTestResults = useCallback(async () => {
+    if (batchTestDeleting || batchTestSession?.running) return;
+    const providerIds = Array.from(batchTestResultSelectedProviderIds);
+    if (providerIds.length === 0) return;
+    const providerIdSet = new Set(providerIds);
+    const linkedAccountIds = accounts
+      .filter(
+        (account) =>
+          isCodexApiKeyAccount(account) &&
+          !!account.api_provider_id &&
+          providerIdSet.has(account.api_provider_id),
+      )
+      .map((account) => account.id);
+    const confirmed = await confirmDialog(
+      t("codex.modelProviders.batchTest.deleteConfirm", {
+        defaultValue:
+          "确认删除选中的 {{providerCount}} 个供应商吗？会同时删除 {{accountCount}} 个精确关联的 Codex API Key 账号。",
+        providerCount: providerIds.length,
+        accountCount: linkedAccountIds.length,
+      }),
+      {
+        title: t("common.delete", "删除"),
+        kind: "warning",
+        okLabel: t("common.delete", "删除"),
+        cancelLabel: t("common.cancel", "取消"),
+      },
+    );
+    if (!confirmed) return;
+
+    setBatchTestDeleting(true);
+    setBatchTestError(null);
+    try {
+      if (linkedAccountIds.length > 0) {
+        await deleteCodexAccounts(linkedAccountIds);
+        await emitAccountsChanged({
+          platformId: "codex",
+          reason: "delete",
+        });
+      }
+      for (const providerId of providerIds) {
+        await deleteCodexModelProvider(providerId);
+      }
+      setSelectedProviderIds((previous) => {
+        const next = new Set(previous);
+        providerIds.forEach((providerId) => next.delete(providerId));
+        return next;
+      });
+      setBatchTestSelectedProviderIds((previous) => {
+        const next = new Set(previous);
+        providerIds.forEach((providerId) => next.delete(providerId));
+        return next;
+      });
+      setBatchTestResultSelectedProviderIds(new Set());
+      setBatchTestSession((current) => {
+        if (!current) return current;
+        const nextRecords = current.records.filter(
+          (record) => !providerIdSet.has(record.providerId),
+        );
+        return {
+          ...current,
+          total: nextRecords.length,
+          completed: nextRecords.filter(
+            (record) => record.status === "success" || record.status === "error",
+          ).length,
+          successCount: nextRecords.filter((record) => record.status === "success").length,
+          failureCount: nextRecords.filter((record) => record.status === "error").length,
+          records: nextRecords,
+        };
+      });
+      await reloadProviders();
+      setNotice({
+        tone: "success",
+        text: t("codex.modelProviders.batchTest.deleteSuccess", {
+          defaultValue:
+            "已删除 {{providerCount}} 个供应商和 {{accountCount}} 个关联账号。",
+          providerCount: providerIds.length,
+          accountCount: linkedAccountIds.length,
+        }),
+      });
+    } catch (err) {
+      setBatchTestError(
+        t("codex.modelProviders.batchTest.deleteFailed", {
+          defaultValue: "删除选中项失败：{{error}}",
+          error: parseServiceError(err),
+        }),
+      );
+    } finally {
+      setBatchTestDeleting(false);
+    }
+  }, [
+    accounts,
+    batchTestDeleting,
+    batchTestResultSelectedProviderIds,
+    batchTestSession?.running,
+    parseServiceError,
+    reloadProviders,
+    t,
+  ]);
 
   const handleSaveProvider = useCallback(async () => {
     if (saving) return;
@@ -1468,13 +2296,45 @@ export function CodexModelProviderManager({
     defaultPageSize: OAUTH_BINDING_PAGE_SIZE_OPTIONS[0],
   });
 
+  const handleProviderOauthLocalGatewayToggle = useCallback(
+    async (checked: boolean) => {
+      if (!checked) {
+        setProviderOauthUseLocalGateway(false);
+        return;
+      }
+      const confirmed = await confirmDialog(
+        t(
+          "codex.api.oauthBinding.localGatewayConfirm.message",
+          "开启后，该 API Key 账号绑定 OAuth 后的普通文本对话会走本地网关，并在转发前移除 image_generation 工具声明，避免部分供应商报 “Image generation is not enabled”；不会删除 gpt-image 等生图模型。是否继续？",
+        ),
+        {
+          title: t(
+            "codex.api.oauthBinding.localGatewayConfirm.title",
+            "禁用 image_generation 能力",
+          ),
+          okLabel: t("common.confirm", "确认"),
+          cancelLabel: t("common.cancel", "取消"),
+        },
+      );
+      if (confirmed) {
+        setProviderOauthUseLocalGateway(true);
+      }
+    },
+    [t],
+  );
+
   const handleProviderOauthBindingChange = useCallback(
-    async (provider: CodexModelProvider, boundOauthAccountId: string | null) => {
+    async (
+      provider: CodexModelProvider,
+      boundOauthAccountId: string | null,
+      boundOauthUseLocalGateway = false,
+    ) => {
       setProviderOauthSaving(true);
       setNotice(null);
       try {
         await updateCodexModelProvider(provider.id, {
           boundOauthAccountId,
+          boundOauthUseLocalGateway,
         });
         await reloadProviders();
         setNotice({
@@ -1507,6 +2367,7 @@ export function CodexModelProviderManager({
   useEffect(() => {
     if (!providerOauthTarget) {
       setProviderOauthSelectedAccountId("");
+      setProviderOauthUseLocalGateway(false);
       setProviderOauthSearchQuery("");
       setProviderOauthFilterTypes([]);
       setProviderOauthTagFilter([]);
@@ -1517,6 +2378,9 @@ export function CodexModelProviderManager({
     const bound = resolveBoundOAuthAccount(providerOauthTarget);
     setProviderOauthSelectedAccountId(
       bound && isOAuthBindingEligibleAccount(bound) ? bound.id : "",
+    );
+    setProviderOauthUseLocalGateway(
+      providerOauthTarget.boundOauthUseLocalGateway === true,
     );
     setProviderOauthSearchQuery("");
     setProviderOauthFilterTypes([]);
@@ -1655,6 +2519,7 @@ export function CodexModelProviderManager({
         await updateCodexApiKeyBoundOAuthAccount(
           account.id,
           provider.boundOauthAccountId?.trim() || null,
+          provider.boundOauthUseLocalGateway === true,
         );
 
         await updateCodexInstance({
@@ -2055,24 +2920,28 @@ export function CodexModelProviderManager({
                 value: "created_at",
                 label: t("common.shared.sort.createdAt", "按创建时间"),
               },
+              {
+                value: "custom",
+                label: t("codex.modelProviders.sort.custom", "自定义顺序"),
+              },
             ]}
             ariaLabel={t("common.shared.sortLabel", "排序")}
             icon={<ArrowDownWideNarrow size={14} />}
-            onChange={(value) =>
-              setProviderSortBy(value as "name" | "created_at")
-            }
+            onChange={handleProviderSortByChange}
           />
-          <button
-            className="sort-direction-btn"
-            onClick={() =>
-              setProviderSortDirection((previous) =>
-                previous === "asc" ? "desc" : "asc",
-              )
-            }
-            title={t("common.shared.sort.toggleDirection", "切换排序方向")}
-          >
-            {providerSortDirection === "desc" ? "⬇" : "⬆"}
-          </button>
+          {!isProviderCustomSortActive && (
+            <button
+              className="sort-direction-btn"
+              onClick={() =>
+                setProviderSortDirection((previous) =>
+                  previous === "asc" ? "desc" : "asc",
+                )
+              }
+              title={t("common.shared.sort.toggleDirection", "切换排序方向")}
+            >
+              {providerSortDirection === "desc" ? "⬇" : "⬆"}
+            </button>
+          )}
         </div>
         <div className="toolbar-right">
           <button
@@ -2124,14 +2993,39 @@ export function CodexModelProviderManager({
 
       {filteredProviderIds.length > 0 && (
         <div className="codex-overview-selection-bar">
-          <label className="codex-overview-select-all">
-            <input
-              type="checkbox"
-              checked={isAllProvidersSelected}
-              onChange={() => toggleSelectAllProviders(filteredProviderIds)}
-            />
-            <span>{t("common.selectAll", "全选")}</span>
-          </label>
+          <div className="codex-overview-selection-left">
+            <label className="codex-overview-select-all">
+              <input
+                type="checkbox"
+                checked={isAllProvidersSelected}
+                onChange={() => toggleSelectAllProviders(filteredProviderIds)}
+              />
+              <span>{t("common.selectAll", "全选")}</span>
+            </label>
+            {selectedProviderIds.size > 0 && (
+              <span className="codex-overview-selected-count">
+                {t("codex.modelProviders.batchTest.selectedCount", {
+                  defaultValue: "已选 {{count}} 个",
+                  count: selectedProviderIds.size,
+                })}
+              </span>
+            )}
+          </div>
+          <div className="codex-overview-selection-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={openBatchTestModal}
+              disabled={filteredProviders.every((provider) => !getSelectedProviderApiKey(provider))}
+              title={t(
+                "codex.modelProviders.batchTest.entryHint",
+                "批量测试供应商真实对话能力",
+              )}
+            >
+              <Activity size={14} />
+              {t("codex.modelProviders.batchTest.entry", "一键测试")}
+            </button>
+          </div>
         </div>
       )}
 
@@ -2560,8 +3454,659 @@ export function CodexModelProviderManager({
         </div>
       )}
 
+      {batchTestModalOpen && (
+        <div className="modal-overlay codex-provider-batch-test-overlay">
+          <div
+            className={`modal codex-wakeup-modal codex-provider-batch-test-modal ${
+              batchTestStep === "results" ? "codex-wakeup-results-modal" : ""
+            }`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>{t("codex.modelProviders.batchTest.title", "一键测试模型供应商")}</h2>
+              <button
+                className="modal-close"
+                onClick={closeBatchTestModal}
+                aria-label={t("common.close", "关闭")}
+                disabled={batchTestSession?.running || batchTestDeleting}
+              >
+                <X />
+              </button>
+            </div>
+            <div className="modal-body codex-wakeup-modal-body codex-provider-batch-test-body">
+              {batchTestError && (
+                <div className="add-status error">
+                  <CircleAlert size={16} />
+                  <span>{batchTestError}</span>
+                </div>
+              )}
+
+              {batchTestStep === "select" ? (
+                <>
+                  <div className="codex-provider-batch-test-copy">
+                    <strong>
+                      {t(
+                        "codex.modelProviders.batchTest.selectTitle",
+                        "选择要测试的供应商",
+                      )}
+                    </strong>
+                    <span>
+                      {t(
+                        "codex.modelProviders.batchTest.selectDesc",
+                        "会把选中的供应商临时接入本地网关发起对话测试，并按供应商协议能力转发到上游。",
+                      )}
+                    </span>
+                  </div>
+                  <div className="search-box codex-provider-batch-test-search">
+                    <Search className="search-icon" size={16} />
+                    <input
+                      type="text"
+                      placeholder={t("common.search", "搜索...")}
+                      value={batchTestSearchQuery}
+                      onChange={(event) => setBatchTestSearchQuery(event.target.value)}
+                    />
+                  </div>
+                  <div className="codex-wakeup-account-selection-bar">
+                    <label className="codex-overview-select-all">
+                      <input
+                        type="checkbox"
+                        checked={isAllBatchTestProvidersSelected}
+                        onChange={toggleAllVisibleBatchTestProviders}
+                        disabled={providerBatchTestSelectableIds.length === 0}
+                      />
+                      <span>{t("common.selectAll", "全选")}</span>
+                    </label>
+                    <span className="codex-wakeup-account-selection-summary">
+                      {t("codex.modelProviders.batchTest.selectionSummary", {
+                        defaultValue: "已选 {{selected}} / 可测 {{total}}",
+                        selected: batchTestSelectedCount,
+                        total: providerBatchTestSelectableIds.length,
+                      })}
+                    </span>
+                  </div>
+                  <div className="codex-provider-batch-test-list">
+                    {providerBatchTestVisibleProviders.map((provider) => {
+                      const apiKey = getSelectedProviderApiKey(provider);
+                      const wireApi = resolveProviderWireApi(provider);
+                      const selected = batchTestSelectedProviderIds.has(provider.id);
+                      const disabled = !apiKey;
+                      return (
+                        <label
+                          key={provider.id}
+                          className={`codex-provider-batch-test-row ${
+                            selected ? "selected" : ""
+                          } ${disabled ? "disabled" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            disabled={disabled}
+                            onChange={() => toggleBatchTestProvider(provider.id)}
+                          />
+                          <div className="codex-provider-batch-test-row-copy">
+                            <strong>{provider.name}</strong>
+                            <span>{provider.baseUrl}</span>
+                            <div className="codex-provider-batch-test-row-meta">
+                              <span>
+                                {apiKey
+                                  ? resolveProviderApiKeyLabel(
+                                      apiKey,
+                                      provider.name,
+                                      t("codex.modelProviders.unnamedKey", "未命名 Key"),
+                                    )
+                                  : t(
+                                      "codex.modelProviders.batchTest.noApiKey",
+                                      "缺少 API Key",
+                                    )}
+                              </span>
+                              <span>
+                                {wireApi === "chat_completions"
+                                  ? t(
+                                      "codex.modelProviders.batchTest.gatewayProtocol",
+                                      "Chat Completions · 网关",
+                                    )
+                                  : t(
+                                      "codex.modelProviders.batchTest.directProtocol",
+                                      "Responses · 网关",
+                                    )}
+                              </span>
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                    {providerBatchTestVisibleProviders.length === 0 && (
+                      <p className="wakeup-hint">{t("common.none", "暂无")}</p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {batchTestSession && (
+                    <>
+                      <section className="codex-wakeup-results-summary-bar">
+                        <div className="codex-wakeup-results-summary-copy">
+                          <div className="codex-wakeup-results-summary-head">
+                            <span className="codex-wakeup-results-kicker">
+                              {t("codex.modelProviders.batchTest.kicker", "PROVIDER TEST")}
+                            </span>
+                            <h3>
+                              {t(
+                                "codex.modelProviders.batchTest.resultsTitle",
+                                "供应商对话测试结果",
+                              )}
+                            </h3>
+                          </div>
+                          <div className="codex-wakeup-results-summary-meta">
+                            <span>
+                              {batchTestSession.running
+                                ? t(
+                                    "codex.modelProviders.batchTest.status.running",
+                                    "测试中",
+                                  )
+                                : t(
+                                    "codex.modelProviders.batchTest.status.completed",
+                                    "已完成",
+                                  )}
+                            </span>
+                            <span>
+                              {t("codex.modelProviders.batchTest.totalCount", {
+                                defaultValue: "供应商 {{count}} 个",
+                                count: batchTestSession.total,
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="codex-wakeup-results-summary-progress">
+                          <strong>
+                            {batchTestSession.completed}/{batchTestSession.total}
+                          </strong>
+                          <span>
+                            {batchTestSession.running
+                              ? t(
+                                  "codex.modelProviders.batchTest.status.running",
+                                  "测试中",
+                                )
+                              : t(
+                                  "codex.modelProviders.batchTest.status.completed",
+                                  "已完成",
+                                )}
+                          </span>
+                        </div>
+                      </section>
+
+                      <section className="codex-wakeup-results-progress-strip">
+                        <div className="codex-wakeup-results-progress-head">
+                          <span>
+                            {t(
+                              "codex.modelProviders.batchTest.progress",
+                              "测试进度",
+                            )}
+                          </span>
+                          <strong>
+                            {batchTestSession.completed}/{batchTestSession.total}
+                          </strong>
+                        </div>
+                        <div className="codex-wakeup-results-progress-track">
+                          <div
+                            className="codex-wakeup-results-progress-fill"
+                            style={{
+                              width: `${
+                                batchTestSession.total > 0
+                                  ? (batchTestSession.completed /
+                                      batchTestSession.total) *
+                                    100
+                                  : 0
+                              }%`,
+                            }}
+                          />
+                        </div>
+                      </section>
+
+                      <div className="codex-wakeup-results-filter-bar">
+                        {providerBatchTestFilterOptions.map((option) => (
+                          <button
+                            key={option.key}
+                            type="button"
+                            className={`codex-wakeup-results-filter-chip ${
+                              batchTestFilter === option.key ? "active" : ""
+                            } tone-${option.tone}`}
+                            onClick={() => setBatchTestFilter(option.key)}
+                          >
+                            <span>{option.label}</span>
+                            <strong>{option.count}</strong>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="codex-provider-batch-test-result-toolbar">
+                        <label className="codex-overview-select-all">
+                          <input
+                            type="checkbox"
+                            checked={
+                              filteredProviderBatchTestRecords.length > 0 &&
+                              filteredProviderBatchTestRecords.every((record) =>
+                                batchTestResultSelectedProviderIds.has(record.providerId),
+                              )
+                            }
+                            onChange={toggleAllVisibleBatchTestResults}
+                            disabled={filteredProviderBatchTestRecords.length === 0}
+                          />
+                          <span>
+                            {t("codex.modelProviders.batchTest.selectVisible", "选择当前结果")}
+                          </span>
+                        </label>
+                        <div className="codex-provider-batch-test-result-actions">
+                          <span className="codex-overview-selected-count">
+                            {t("codex.modelProviders.batchTest.resultSelectedCount", {
+                              defaultValue: "已选 {{count}} 个",
+                              count: batchTestResultSelectedProviderIds.size,
+                            })}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={selectFailedBatchTestResults}
+                            disabled={providerBatchTestCounts.error === 0}
+                          >
+                            {t("codex.modelProviders.batchTest.selectFailed", "选择失败")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            onClick={() => void handleDeleteBatchTestResults()}
+                            disabled={
+                              batchTestResultSelectedProviderIds.size === 0 ||
+                              batchTestSession.running ||
+                              batchTestDeleting
+                            }
+                          >
+                            {batchTestDeleting ? (
+                              <RefreshCw size={14} className="loading-spinner" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                            {t("common.delete", "删除")}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="codex-wakeup-results-list">
+                        {filteredProviderBatchTestRecords.map((record) => {
+                          const selected = batchTestResultSelectedProviderIds.has(
+                            record.providerId,
+                          );
+                          const recordMessage =
+                            record.status === "pending"
+                              ? t(
+                                  "codex.modelProviders.batchTest.pendingDesc",
+                                  "等待开始测试。",
+                                )
+                              : record.status === "running"
+                                ? t(
+                                    "codex.modelProviders.batchTest.runningDesc",
+                                    "正在发送对话请求。",
+                                  )
+                                : record.status === "success"
+                                  ? record.reply ||
+                                    t(
+                                      "codex.modelProviders.batchTest.noReply",
+                                      "上游未返回可读回复。",
+                                    )
+                                  : formatProviderBatchTestErrorMessage(
+                                      record.error,
+                                    );
+                          const statusLabel =
+                            record.status === "success"
+                              ? t(
+                                  "codex.modelProviders.batchTest.status.success",
+                                  "成功",
+                                )
+                              : record.status === "error"
+                                ? t(
+                                    "codex.modelProviders.batchTest.status.error",
+                                    "失败",
+                                  )
+                                : record.status === "running"
+                                  ? t(
+                                      "codex.modelProviders.batchTest.status.running",
+                                      "测试中",
+                                    )
+                                  : t(
+                                      "codex.modelProviders.batchTest.status.pending",
+                                      "等待中",
+                                    );
+                          return (
+                            <article
+                              key={record.providerId}
+                              className={`codex-wakeup-execution-row codex-provider-batch-test-result-row is-${record.status}`}
+                            >
+                              <div className="codex-wakeup-execution-row-head">
+                                <div className="codex-provider-batch-test-result-title">
+                                  <label className="codex-provider-batch-test-result-check">
+                                    <input
+                                      type="checkbox"
+                                      checked={selected}
+                                      onChange={() =>
+                                        toggleBatchTestResultProvider(record.providerId)
+                                      }
+                                      disabled={record.status === "running"}
+                                    />
+                                  </label>
+                                  <div>
+                                    <h4 className="codex-wakeup-execution-row-title">
+                                      {record.providerName}
+                                    </h4>
+                                    <span className="codex-wakeup-execution-row-subtitle">
+                                      {record.apiKeyName ||
+                                        t(
+                                          "codex.modelProviders.unnamedKey",
+                                          "未命名 Key",
+                                        )}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className={`codex-wakeup-execution-badge is-${record.status}`}>
+                                  {record.status === "running" && (
+                                    <RefreshCw size={14} className="loading-spinner" />
+                                  )}
+                                  {statusLabel}
+                                </span>
+                              </div>
+                              <div className="codex-wakeup-execution-row-prompt">
+                                {t("codex.modelProviders.batchTest.protocolSummary", {
+                                  defaultValue:
+                                    "{{protocol}} · {{mode}} · {{model}}",
+                                  protocol:
+                                    record.wireApi === "chat_completions"
+                                      ? t(
+                                          "codex.modelProviders.wireApi.chatCompletions",
+                                          "Chat Completions",
+                                        )
+                                      : t(
+                                          "codex.modelProviders.wireApi.responses",
+                                          "Responses 原生",
+                                        ),
+                                  mode:
+                                    record.accessMode === "gateway"
+                                      ? t(
+                                          "codex.modelProviders.enableMode.gatewayMode",
+                                          "网关模式",
+                                        )
+                                      : t(
+                                          "codex.modelProviders.enableMode.directMode",
+                                          "直连模式",
+                                        ),
+                                  model:
+                                    record.modelId ||
+                                    t(
+                                      "codex.modelProviders.batchTest.modelUnknown",
+                                      "模型待定",
+                                    ),
+                                })}
+                              </div>
+                              {record.prompt && (
+                                <div className="codex-wakeup-execution-row-prompt">
+                                  {t("codex.modelProviders.batchTest.promptLabel", "提示词")}：
+                                  {record.prompt}
+                                </div>
+                              )}
+                              <p
+                                className="codex-wakeup-execution-row-message"
+                                title={
+                                  record.status === "error" && record.error
+                                    ? record.error
+                                    : undefined
+                                }
+                              >
+                                {recordMessage}
+                              </p>
+                              <div className="codex-wakeup-execution-row-meta">
+                                <span>{formatDateTime(record.timestamp)}</span>
+                                <span>{formatDurationMs(record.durationMs)}</span>
+                              </div>
+                            </article>
+                          );
+                        })}
+                        {filteredProviderBatchTestRecords.length === 0 && (
+                          <p className="wakeup-hint">{t("common.none", "暂无")}</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              {batchTestStep === "results" && !batchTestSession?.running && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setBatchTestStep("select")}
+                  disabled={batchTestDeleting}
+                >
+                  {t("common.back", "返回")}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeBatchTestModal}
+                disabled={batchTestSession?.running || batchTestDeleting}
+              >
+                {t("common.close", "关闭")}
+              </button>
+              {batchTestStep === "select" && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void handleStartBatchProviderTest()}
+                  disabled={batchTestSelectedCount === 0}
+                >
+                  <Activity size={14} />
+                  {t("codex.modelProviders.batchTest.start", "开始测试")}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProviderCustomSortModal && (
+        <div className="modal-overlay">
+          <div
+            className="modal codex-custom-sort-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <h2>
+                  {t(
+                    "codex.modelProviders.sort.customModalTitle",
+                    "自定义供应商排序",
+                  )}
+                </h2>
+                <p className="codex-custom-sort-modal-desc">
+                  {t(
+                    "codex.modelProviders.sort.customModalDesc",
+                    "拖动供应商或使用上下按钮调整展示顺序。",
+                  )}
+                </p>
+              </div>
+              <button
+                className="modal-close"
+                onClick={() => setShowProviderCustomSortModal(false)}
+                aria-label={t("common.close", "关闭")}
+              >
+                <X />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div
+                className={`codex-custom-sort-list ${
+                  draggedProviderCustomSortId ? "is-sorting" : ""
+                }`}
+                onMouseUp={stopProviderCustomSortDragging}
+                onMouseLeave={stopProviderCustomSortDragging}
+              >
+                {providerCustomSortProviders.map((provider, index) => {
+                  const wireApi = resolveProviderWireApi(provider);
+                  const rowClass = [
+                    "codex-custom-sort-row",
+                    draggedProviderCustomSortId === provider.id
+                      ? "is-dragging"
+                      : "",
+                    draggedProviderCustomSortId &&
+                    draggedProviderCustomSortId !== provider.id
+                      ? "is-drop-candidate"
+                      : "",
+                    draggedProviderCustomSortId &&
+                    draggedProviderCustomSortId !== provider.id &&
+                    providerCustomSortDropTargetId === provider.id
+                      ? "is-drop-target"
+                      : "",
+                  ]
+                    .join(" ")
+                    .trim();
+
+                  return (
+                    <div
+                      key={provider.id}
+                      className={rowClass}
+                      onMouseEnter={() =>
+                        handleProviderCustomSortDragMove(provider.id)
+                      }
+                    >
+                      <div className="codex-custom-sort-row-main">
+                        <button
+                          type="button"
+                          className="codex-custom-sort-drag-handle"
+                          onMouseDown={(event) =>
+                            handleProviderCustomSortDragStart(
+                              event,
+                              provider.id,
+                            )
+                          }
+                          title={t(
+                            "codex.modelProviders.sort.customDragHandle",
+                            "拖拽排序",
+                          )}
+                          aria-label={t(
+                            "codex.modelProviders.sort.customDragHandle",
+                            "拖拽排序",
+                          )}
+                        >
+                          <GripVertical size={16} />
+                        </button>
+                        <span className="codex-custom-sort-index">
+                          {index + 1}
+                        </span>
+                        <div className="codex-custom-sort-account">
+                          <div className="codex-custom-sort-account-title">
+                            <span title={provider.name}>{provider.name}</span>
+                            <span className="mini-tag">
+                              {wireApi === "chat_completions"
+                                ? t(
+                                    "codex.modelProviders.batchTest.gatewayProtocol",
+                                    "Chat Completions · 网关",
+                                  )
+                                : t(
+                                    "codex.modelProviders.batchTest.directProtocol",
+                                    "Responses · 网关",
+                                  )}
+                            </span>
+                          </div>
+                          <div className="codex-custom-sort-quota-line codex-custom-sort-provider-meta">
+                            <span title={provider.baseUrl}>
+                              {provider.baseUrl}
+                            </span>
+                            <span>
+                              {t("codex.modelProviders.apiKeysCount", {
+                                defaultValue: "API Key {{count}} 个",
+                                count: provider.apiKeys.length,
+                              })}
+                            </span>
+                            <span>
+                              {t("codex.modelProviders.referencesCount", {
+                                defaultValue: "引用账号 {{count}} 个",
+                                count: providerReferenceMap.get(provider.id) ?? 0,
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="codex-custom-sort-row-actions">
+                        <button
+                          type="button"
+                          className="folder-icon-btn"
+                          onClick={() =>
+                            moveProviderCustomSortProvider(provider.id, "up")
+                          }
+                          disabled={index === 0}
+                          title={t(
+                            "codex.modelProviders.sort.customMoveUp",
+                            "上移",
+                          )}
+                          aria-label={t(
+                            "codex.modelProviders.sort.customMoveUp",
+                            "上移",
+                          )}
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="folder-icon-btn"
+                          onClick={() =>
+                            moveProviderCustomSortProvider(provider.id, "down")
+                          }
+                          disabled={
+                            index === providerCustomSortProviders.length - 1
+                          }
+                          title={t(
+                            "codex.modelProviders.sort.customMoveDown",
+                            "下移",
+                          )}
+                          aria-label={t(
+                            "codex.modelProviders.sort.customMoveDown",
+                            "下移",
+                          )}
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {providerCustomSortProviders.length === 0 && (
+                  <p className="wakeup-hint">{t("common.none", "暂无")}</p>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn btn-secondary"
+                onClick={resetProviderCustomSortOrder}
+              >
+                <RotateCw size={14} />
+                {t(
+                  "codex.modelProviders.sort.customReset",
+                  "重置自定义顺序",
+                )}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowProviderCustomSortModal(false)}
+              >
+                {t("common.confirm", "确认")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showModal && (
-        <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal-overlay">
           <div
             className="modal codex-provider-modal"
             onClick={(event) => event.stopPropagation()}
@@ -3143,7 +4688,7 @@ export function CodexModelProviderManager({
             .includes(pickerSearchQuery.trim().toLowerCase()),
         );
         return (
-          <div className="modal-overlay" onClick={() => setApiKeyPickerProviderId(null)}>
+          <div className="modal-overlay">
             <div
               className="modal codex-provider-picker-modal"
               onClick={(event) => event.stopPropagation()}
@@ -3201,7 +4746,7 @@ export function CodexModelProviderManager({
             .includes(pickerSearchQuery.trim().toLowerCase()),
         );
         return (
-          <div className="modal-overlay" onClick={() => setInstancePickerProviderId(null)}>
+          <div className="modal-overlay">
             <div
               className="modal codex-provider-picker-modal"
               onClick={(event) => event.stopPropagation()}
@@ -3255,7 +4800,6 @@ export function CodexModelProviderManager({
       {providerOauthTarget && (
         <div
           className="modal-overlay"
-          onClick={() => !providerOauthSaving && setProviderOauthPickerId(null)}
         >
           <div
             className="modal-content codex-add-modal codex-oauth-binding-modal"
@@ -3289,9 +4833,36 @@ export function CodexModelProviderManager({
                   </div>
                 </div>
                 <div className="codex-oauth-binding-picker">
-                  <label>
-                    {t("codex.api.oauthBinding.selectLabel", "选择 OAuth 账号")}
-                  </label>
+                  <div className="codex-oauth-binding-picker-header">
+                    <label>
+                      {t("codex.api.oauthBinding.selectLabel", "选择 OAuth 账号")}
+                    </label>
+                    <label
+                      className="codex-oauth-binding-gateway-toggle"
+                      title={t(
+                        "codex.api.oauthBinding.localGatewayTooltip",
+                        "开启后，绑定 OAuth 的 API Key 文本对话会走本地网关，并在转发前移除 image_generation 工具声明；不会删除生图模型。",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={providerOauthUseLocalGateway}
+                        onChange={(event) =>
+                          void handleProviderOauthLocalGatewayToggle(
+                            event.target.checked,
+                          )
+                        }
+                        disabled={providerOauthSaving}
+                      />
+                      <span>
+                        {t(
+                          "codex.api.oauthBinding.useLocalGateway",
+                          "禁用 image_generation",
+                        )}
+                      </span>
+                      <HelpCircle size={14} />
+                    </label>
+                  </div>
                   {providerOauthAccounts.length === 0 ? (
                     <div className="add-status error">
                       <CircleAlert size={16} />
@@ -3506,6 +5077,7 @@ export function CodexModelProviderManager({
                         void handleProviderOauthBindingChange(
                           providerOauthTarget,
                           null,
+                          false,
                         )
                       }
                       disabled={providerOauthSaving}
@@ -3527,6 +5099,7 @@ export function CodexModelProviderManager({
                       void handleProviderOauthBindingChange(
                         providerOauthTarget,
                         selectedProviderOauthAccount.id,
+                        providerOauthUseLocalGateway,
                       )
                     }
                     disabled={

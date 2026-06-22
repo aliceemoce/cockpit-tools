@@ -1090,7 +1090,7 @@ export function PlatformLayoutModal({
   if (!open) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal modal-lg" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h2>{t('platformLayout.title', '平台布局')}</h2>
@@ -1550,7 +1550,7 @@ export function PlatformLayoutModal({
         </div>
 
         {groupEditorOpen && (
-          <div className="platform-layout-group-editor-overlay" onClick={closeGroupEditor}>
+          <div className="platform-layout-group-editor-overlay">
             <div className="platform-layout-group-editor-modal" onClick={(event) => event.stopPropagation()}>
               <div className="platform-layout-group-editor-header">
                 <span>
@@ -1668,7 +1668,7 @@ export function PlatformLayoutModal({
         )}
 
         {childEditorOpen && childEditorGroupId && childEditorPlatformId && (
-          <div className="platform-layout-group-editor-overlay" onClick={closeChildEditor}>
+          <div className="platform-layout-group-editor-overlay">
             <div className="platform-layout-group-editor-modal" onClick={(event) => event.stopPropagation()}>
               <div className="platform-layout-group-editor-header">
                 <span>{t('platformLayout.editChildPlatform', '编辑子级平台')}</span>

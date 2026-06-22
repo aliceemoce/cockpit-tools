@@ -24,9 +24,10 @@ import { Page } from './types/navigation';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
 import { useEasterEggTrigger } from './hooks/useEasterEggTrigger';
 import { useGlobalModal } from './hooks/useGlobalModal';
-import { changeLanguage, getCurrentLanguage, normalizeLanguage } from './i18n';
+import { changeLanguage, getCurrentLanguage, normalizeLanguage, syncLanguage } from './i18n';
 import { useAccountStore } from './stores/useAccountStore';
 import { useCodexAccountStore } from './stores/useCodexAccountStore';
+import { useClaudeAccountStore } from './stores/useClaudeAccountStore';
 import { useGitHubCopilotAccountStore } from './stores/useGitHubCopilotAccountStore';
 import { useWindsurfAccountStore } from './stores/useWindsurfAccountStore';
 import { useKiroAccountStore } from './stores/useKiroAccountStore';
@@ -42,6 +43,7 @@ import { useSideNavLayoutStore } from './stores/useSideNavLayoutStore';
 import { usePlatformLayoutStore } from './stores/usePlatformLayoutStore';
 import { useTopRightAdStore } from './stores/useTopRightAdStore';
 import { useSponsorStore } from './stores/useSponsorStore';
+import { useRemoteConfigStore } from './stores/useRemoteConfigStore';
 import type { UpdateCheckResult, UpdateInfo } from './components/UpdateNotification';
 import type { Update as UpdaterUpdate } from '@tauri-apps/plugin-updater';
 import { parseUpdaterReleaseNotes, resolveUpdaterDownloadUrl } from './utils/updaterReleaseNotes';
@@ -76,6 +78,9 @@ const CodexAccountsPage = lazy(() =>
 );
 const CodexApiServicePage = lazy(() =>
   import('./pages/CodexApiServicePage').then((module) => ({ default: module.CodexApiServicePage })),
+);
+const ClaudeAccountsPage = lazy(() =>
+  import('./pages/ClaudeAccountsPage').then((module) => ({ default: module.ClaudeAccountsPage })),
 );
 const GitHubCopilotAccountsPage = lazy(() =>
   import('./pages/GitHubCopilotAccountsPage').then((module) => ({
@@ -162,7 +167,11 @@ interface GeneralConfigTheme {
   ui_scale?: number;
 }
 
-interface GeneralConfig extends GeneralConfigTheme {
+interface GeneralConfigLanguage {
+  language: string;
+}
+
+interface GeneralConfig extends GeneralConfigTheme, GeneralConfigLanguage {
   opencode_app_path: string;
   antigravity_app_path: string;
   codex_app_path: string;
@@ -172,6 +181,8 @@ interface GeneralConfig extends GeneralConfigTheme {
   windsurf_app_path: string;
   kiro_app_path: string;
   cursor_app_path: string;
+  claude_app_path: string;
+  claude_app_scan_roots: string;
   codebuddy_app_path: string;
   codebuddy_cn_app_path: string;
   qoder_app_path: string;
@@ -183,6 +194,7 @@ type AppPathMissingDetail = {
   app:
     | 'antigravity'
     | 'codex'
+    | 'claude'
     | 'vscode'
     | 'windsurf'
     | 'kiro'
@@ -193,15 +205,29 @@ type AppPathMissingDetail = {
     | 'trae'
     | 'zed';
   retry?:
-    | { kind: 'default' }
-    | { kind: 'instance'; instanceId?: string }
+    | { kind: 'default'; runtimeTarget?: string }
+    | { kind: 'instance'; instanceId?: string; runtimeTarget?: string }
     | { kind: 'switchAccount'; accountId?: string; runtimeTarget?: string };
 };
+
+type ClaudeDesktopLaunchCandidate = {
+  target_type: string;
+  label: string;
+  target: string;
+  source: string;
+  supports_multi_instance: boolean;
+};
+
+function isClaudeWindowsAppLaunchTarget(value: string): boolean {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.startsWith('shell:appsfolder\\') || trimmed.startsWith('shell:appsfolder/');
+}
 
 const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
 const TASKS_STORAGE_KEY = 'agtools.wakeup.tasks';
 const WAKEUP_FORCE_DISABLE_MIGRATION_KEY = 'agtools.wakeup.migration.force_disable_0_8_14';
 const TOP_RIGHT_AD_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+const REMOTE_CONFIG_FALLBACK_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const EXTERNAL_IMPORT_DEDUPE_WINDOW_MS = 30 * 1000;
 
 type WakeupHistoryRecord = {
@@ -240,6 +266,7 @@ type QuotaAlertPayload = {
 type QuotaAlertPlatform =
   | 'antigravity'
   | 'codex'
+  | 'claude'
   | 'github_copilot'
   | 'windsurf'
   | 'kiro'
@@ -333,6 +360,9 @@ function normalizeQuotaAlertPlatform(platform: string | undefined): QuotaAlertPl
   switch (platform) {
     case 'codex':
       return 'codex';
+    case 'claude':
+    case 'claude-cli':
+      return 'claude';
     case 'github_copilot':
       return 'github_copilot';
     case 'windsurf':
@@ -365,6 +395,8 @@ function getQuotaAlertPlatformLabel(
   switch (platform) {
     case 'codex':
       return t('nav.codex', 'Codex');
+    case 'claude':
+      return t('nav.claude', 'Claude');
     case 'github_copilot':
       return t('nav.githubCopilot', 'GitHub Copilot');
     case 'windsurf':
@@ -394,6 +426,8 @@ function getQuotaAlertTargetPage(platform: QuotaAlertPlatform): Page {
   switch (platform) {
     case 'codex':
       return 'codex';
+    case 'claude':
+      return 'claude';
     case 'github_copilot':
       return 'github-copilot';
     case 'windsurf':
@@ -425,6 +459,8 @@ function getQuotaAlertQuickSettingsType(platform: QuotaAlertPlatform): QuickSett
   switch (platform) {
     case 'codex':
       return 'codex';
+    case 'claude':
+      return 'claude';
     case 'github_copilot':
       return 'github_copilot';
     case 'windsurf':
@@ -502,6 +538,8 @@ function MainApp() {
   const [appPathSetting, setAppPathSetting] = useState(false);
   const [appPathDetecting, setAppPathDetecting] = useState(false);
   const [appPathDraft, setAppPathDraft] = useState('');
+  const [appPathScanRootsDraft, setAppPathScanRootsDraft] = useState('');
+  const [claudeLaunchCandidates, setClaudeLaunchCandidates] = useState<ClaudeDesktopLaunchCandidate[]>([]);
   const [appPathActionError, setAppPathActionError] = useState('');
   const [appPathCodexLaunchOnSwitch, setAppPathCodexLaunchOnSwitch] = useState(true);
   const [appPathCodexLaunchSetting, setAppPathCodexLaunchSetting] = useState(false);
@@ -511,6 +549,7 @@ function MainApp() {
     release_notes: string;
     release_notes_zh: string;
   } | null>(null);
+  const [showVersionJumpNotification, setShowVersionJumpNotification] = useState(false);
   const [updateRuntimeInfo, setUpdateRuntimeInfo] = useState<UpdateRuntimeInfo | null>(null);
   const [updateRuntimeInfoLoaded, setUpdateRuntimeInfoLoaded] = useState(false);
   const [updateNotificationInfo, setUpdateNotificationInfo] = useState<UpdateInfo | null>(null);
@@ -540,6 +579,7 @@ function MainApp() {
   const sponsorModuleState = useSponsorStore((state) => state.state);
   const fetchSponsorModuleState = useSponsorStore((state) => state.fetchState);
   const sponsorModuleInitialized = useSponsorStore((state) => state.initialized);
+  const fetchRemoteConfigState = useRemoteConfigStore((state) => state.fetchState);
   const sponsorEntryVisible = Boolean(sponsorModuleState.sponsorModule);
   const [topRightAdVisible, setTopRightAdVisible] = useState(true);
   const trayRefreshInFlightRef = useRef(false);
@@ -681,6 +721,32 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+
+    const syncLanguageFromConfig = async () => {
+      try {
+        const config = await invoke<GeneralConfigLanguage>('get_general_config');
+        const nextLanguage = await syncLanguage(config.language);
+        if (disposed) {
+          return;
+        }
+        window.dispatchEvent(
+          new CustomEvent('general-language-updated', { detail: { language: nextLanguage } }),
+        );
+      } catch (error) {
+        console.error('Failed to sync language config:', error);
+      }
+    };
+
+    void syncLanguageFromConfig();
+    window.addEventListener('config-updated', syncLanguageFromConfig);
+    return () => {
+      disposed = true;
+      window.removeEventListener('config-updated', syncLanguageFromConfig);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleRefreshShortcut = (event: KeyboardEvent) => {
       const isRefreshKey = event.key.toLowerCase() === 'r';
       const isWindowsF5 = isWindowsPlatform() && event.key === 'F5';
@@ -728,6 +794,39 @@ function MainApp() {
   }, [fetchSponsorModuleState]);
 
   useEffect(() => {
+    let disposed = false;
+    let timer: number | null = null;
+
+    const scheduleNextRefresh = (delayMs: number) => {
+      if (disposed) return;
+      const normalizedDelay = Number.isFinite(delayMs) && delayMs >= 60_000
+        ? delayMs
+        : REMOTE_CONFIG_FALLBACK_REFRESH_INTERVAL_MS;
+      timer = window.setTimeout(() => {
+        void refresh(false);
+      }, normalizedDelay);
+    };
+
+    const refresh = async (force: boolean) => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      const state = await fetchRemoteConfigState(force);
+      scheduleNextRefresh(state.refreshIntervalMs);
+    };
+
+    void refresh(true);
+
+    return () => {
+      disposed = true;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [fetchRemoteConfigState]);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       void fetchTopRightAdState();
       void fetchSponsorModuleState();
@@ -767,14 +866,18 @@ function MainApp() {
     markSideNavClassicFirstSyncDone,
   ]);
 
-  const openUpdateNotification = useCallback((source: UpdateCheckSource) => {
-    if (source === 'manual') {
-      window.dispatchEvent(new CustomEvent('update-check-started', { detail: { source } }));
-    }
+  const openUpdateNotificationDetails = useCallback(() => {
     setUpdateSkipError('');
     setUpdateNotificationKey(Date.now());
     setShowUpdateNotification(true);
   }, []);
+
+  const openUpdateNotification = useCallback((source: UpdateCheckSource) => {
+    if (source === 'manual') {
+      window.dispatchEvent(new CustomEvent('update-check-started', { detail: { source } }));
+    }
+    openUpdateNotificationDetails();
+  }, [openUpdateNotificationDetails]);
 
   const closeUpdateNotification = useCallback(() => {
     setShowUpdateNotification(false);
@@ -1437,9 +1540,9 @@ function MainApp() {
     writeUpdateLog('info', `用户取消统一更新下载: version=${version || 'unknown'}`);
   }, [closeUpdaterHandle, updateAction.state, updateAction.version, writeUpdateLog]);
 
-  const handleQuickUpdateActionClick = useCallback(async () => {
+  const handleUpdatePrimaryAction = useCallback(async () => {
     if (updateAction.state === 'downloading') {
-      setShowUpdateNotification(true);
+      openUpdateNotificationDetails();
       return;
     }
     if (updateAction.state === 'installing') {
@@ -1450,9 +1553,9 @@ function MainApp() {
       try {
         await handleApplyPendingUpdate();
       } catch (error) {
-        console.error('[App] Quick update restart failed:', error);
-        writeUpdateLog('error', `侧边栏重启更新失败: error=${sanitizeUpdaterErrorMessage(error)}`);
-        openUpdateNotification('manual');
+        console.error('[App] Update restart failed:', error);
+        writeUpdateLog('error', `更新重启失败: error=${sanitizeUpdaterErrorMessage(error)}`);
+        openUpdateNotificationDetails();
       }
       return;
     }
@@ -1469,19 +1572,47 @@ function MainApp() {
         await runSharedUpdateDownload(expectedVersion);
       }
     } catch (error) {
-      console.error('[App] Quick update download failed:', error);
-      writeUpdateLog('error', `侧边栏更新失败: error=${sanitizeUpdaterErrorMessage(error)}`);
-      openUpdateNotification('manual');
+      console.error('[App] Update download failed:', error);
+      writeUpdateLog('error', `更新下载失败: error=${sanitizeUpdaterErrorMessage(error)}`);
+      openUpdateNotificationDetails();
     }
   }, [
     handleApplyPendingUpdate,
     isLinuxManagedUpdate,
-    openUpdateNotification,
+    openUpdateNotificationDetails,
     runLinuxManagedUpdate,
     runSharedUpdateDownload,
     updateAction,
     writeUpdateLog,
   ]);
+
+  const handleQuickUpdateActionClick = useCallback(() => {
+    const shouldOpenUpdateDetails = updateAction.state !== 'hidden'
+      && (
+        updateRemindersEnabled
+        || updateAction.state === 'downloading'
+        || updateAction.state === 'installing'
+        || updateAction.state === 'ready'
+      );
+
+    if (!shouldOpenUpdateDetails) {
+      if (versionJumpInfo) {
+        (
+          window as Window & {
+            __agtoolsVersionJumpModalRequestedAt?: number;
+          }
+        ).__agtoolsVersionJumpModalRequestedAt = performance.now();
+        setShowVersionJumpNotification(true);
+      }
+      return;
+    }
+
+    if (updateAction.state === 'installing') {
+      return;
+    }
+
+    openUpdateNotificationDetails();
+  }, [openUpdateNotificationDetails, updateAction.state, updateRemindersEnabled, versionJumpInfo]);
 
   const handleSkipUpdateVersion = useCallback(async () => {
     const targetVersion = updateNotificationInfo?.latest_version;
@@ -1939,7 +2070,7 @@ function MainApp() {
                   requiresInstall: true,
                 });
                 if (remindOnUpdate) {
-                  openUpdateNotification('auto');
+                  writeUpdateLog('info', `静默更新已在左上角显示待重启入口: version=${downloadedUpdate.version}`);
                 }
               }
             } else {
@@ -1966,7 +2097,7 @@ function MainApp() {
             updateDownloadOwnerRef.current = 'none';
             writeUpdateLog(
               'error',
-              `静默更新失败，展示更新弹窗: error=${sanitizeUpdaterErrorMessage(err)}`,
+              `静默更新失败，保留左上角更新入口: error=${sanitizeUpdaterErrorMessage(err)}`,
             );
             if (!remindOnUpdate) {
               setUpdateRetryStatus('');
@@ -1992,7 +2123,7 @@ function MainApp() {
                 progress: 0,
                 requiresInstall: true,
               });
-              openUpdateNotification('auto');
+              writeUpdateLog('info', `静默更新失败后已在左上角显示更新入口: version=${preparedUpdateInfo.latest_version}`);
             }
           }
         } else {
@@ -2000,10 +2131,10 @@ function MainApp() {
           if (autoInstall && isLinuxManagedUpdate) {
             writeUpdateLog(
               'info',
-              `Linux 包管理安装(${updateRuntimeInfo?.linux_install_kind || 'unknown'})跳过静默下载，改为一键安装弹窗`,
+              `Linux 包管理安装(${updateRuntimeInfo?.linux_install_kind || 'unknown'})跳过静默下载，改为左上角一键安装入口`,
             );
           }
-          writeUpdateLog('info', '后台自动更新关闭，先执行无弹窗检查，仅在发现新版本时展示弹窗');
+          writeUpdateLog('info', '后台自动更新关闭，先执行无弹窗检查，仅在发现新版本时显示左上角入口');
           try {
             const manualCheckStartedAt = performance.now();
             const update = await retryWithBackoff(
@@ -2055,11 +2186,8 @@ function MainApp() {
                   currentVersion: info.current_version,
                   latestVersion: info.latest_version,
                 });
-                writeUpdateLog('info', `检测到新版本，展示手动更新弹窗: version=${update.version}`);
+                writeUpdateLog('info', `检测到新版本，已在左上角显示更新入口: version=${update.version}`);
                 await closeUpdaterHandle(update);
-                if (remindOnUpdate) {
-                  openUpdateNotification('auto');
-                }
               }
             } else {
               writeUpdateLog('info', '更新检查完成：当前已是最新版本');
@@ -2122,7 +2250,6 @@ function MainApp() {
     closeUpdaterHandle,
     handleUpdateCheckResult,
     isLinuxManagedUpdate,
-    openUpdateNotification,
     prepareUpdateNotificationInfo,
     runUpdaterCheck,
     updateRuntimeInfo?.linux_install_kind,
@@ -2148,15 +2275,11 @@ function MainApp() {
         );
         if (jumpInfo) {
           console.log('[App] Version jump detected:', jumpInfo.previous_version, '->', jumpInfo.current_version);
-          (
-            window as Window & {
-              __agtoolsVersionJumpModalRequestedAt?: number;
-            }
-          ).__agtoolsVersionJumpModalRequestedAt = performance.now();
           setVersionJumpInfo(jumpInfo);
+          setShowVersionJumpNotification(false);
           requestAnimationFrame(() => {
             console.log(
-              `[StartupPerf][VersionJump] first frame after setVersionJumpInfo in ${(performance.now() - versionJumpStartedAt).toFixed(2)}ms`,
+              `[StartupPerf][VersionJump] first frame after collapsed version jump entry in ${(performance.now() - versionJumpStartedAt).toFixed(2)}ms`,
             );
           });
         }
@@ -2219,7 +2342,6 @@ function MainApp() {
           '当前账号配额已达到预警阈值，请尽快处理。'
         ),
         width: 'md',
-        closeOnOverlay: false,
         content: (
           <div className="quota-alert-modal-content">
             <div className="quota-alert-modal-row">
@@ -2279,6 +2401,9 @@ function MainApp() {
                     if (platform === 'codex') {
                       await useCodexAccountStore.getState().switchAccount(targetAccountId);
                       setPage('codex');
+                    } else if (platform === 'claude') {
+                      await useClaudeAccountStore.getState().switchAccount(targetAccountId);
+                      setPage('claude');
                     } else if (platform === 'github_copilot') {
                       await useGitHubCopilotAccountStore.getState().switchAccount(targetAccountId);
                       setPage('github-copilot');
@@ -2493,6 +2618,10 @@ function MainApp() {
         errorMessage: 'Failed to refresh Codex quotas:',
       },
       {
+        command: 'refresh_all_claude_quotas',
+        errorMessage: 'Failed to refresh Claude quotas:',
+      },
+      {
         command: 'refresh_all_github_copilot_tokens',
         errorMessage: 'Failed to refresh GitHub Copilot quotas:',
       },
@@ -2568,6 +2697,7 @@ function MainApp() {
       if (
         detail.app !== 'antigravity' &&
         detail.app !== 'codex' &&
+        detail.app !== 'claude' &&
         detail.app !== 'vscode' &&
         detail.app !== 'windsurf' &&
         detail.app !== 'kiro' &&
@@ -2605,6 +2735,8 @@ function MainApp() {
     let active = true;
     if (!appPathMissing) {
       setAppPathDraft('');
+      setAppPathScanRootsDraft('');
+      setClaudeLaunchCandidates([]);
       setAppPathDetecting(false);
       setAppPathActionError('');
       setAppPathCodexLaunchOnSwitch(true);
@@ -2620,6 +2752,8 @@ function MainApp() {
         const currentPath =
           appPathMissing.app === 'codex'
             ? config.codex_app_path
+            : appPathMissing.app === 'claude'
+              ? config.claude_app_path
             : appPathMissing.app === 'vscode'
               ? config.vscode_app_path
               : appPathMissing.app === 'windsurf'
@@ -2640,7 +2774,13 @@ function MainApp() {
                 ? config.zed_app_path
               : config.antigravity_app_path;
         if (active) {
-          setAppPathDraft(currentPath || '');
+          const normalizedPath = currentPath || '';
+          const shouldClearClaudeDefaultTarget =
+            appPathMissing.app === 'claude' &&
+            appPathMissing.retry?.kind === 'instance' &&
+            isClaudeWindowsAppLaunchTarget(normalizedPath);
+          setAppPathDraft(shouldClearClaudeDefaultTarget ? '' : normalizedPath);
+          setAppPathScanRootsDraft(config.claude_app_scan_roots || '');
           setAppPathCodexLaunchOnSwitch(config.codex_launch_on_switch ?? true);
         }
       } catch (error) {
@@ -2669,19 +2809,68 @@ function MainApp() {
     }
   };
 
+  const handlePickMissingClaudeScanRoot = async () => {
+    if (appPathSetting || appPathDetecting) return;
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: true,
+      });
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (path) {
+        setAppPathActionError('');
+        setAppPathScanRootsDraft(path);
+      }
+    } catch (error) {
+      console.error('选择 Claude 扫描范围失败:', error);
+    }
+  };
+
+  const handleClearMissingClaudeScanRoot = () => {
+    if (appPathSetting || appPathDetecting) return;
+    setAppPathActionError('');
+    setAppPathScanRootsDraft('');
+  };
+
   const handleSaveMissingAppPath = async () => {
     if (!appPathMissing || appPathSetting || appPathDetecting) return;
     const path = appPathDraft.trim();
     if (!path) return;
+    if (
+      appPathMissing.app === 'claude' &&
+      appPathMissing.retry?.kind === 'instance' &&
+      isClaudeWindowsAppLaunchTarget(path)
+    ) {
+      setAppPathActionError(
+        t(
+          'appPath.missing.claudeMultiInstanceRequiresExe',
+          'Claude 多开实例需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
+        ),
+      );
+      return;
+    }
     setAppPathSetting(true);
     setAppPathActionError('');
     try {
       const app = appPathMissing.app;
       const retry = appPathMissing.retry;
+      const antigravityInstanceStartCommand =
+        app === 'antigravity' && retry?.runtimeTarget === 'antigravity'
+          ? 'antigravity_legacy_start_instance'
+          : 'start_instance';
       await invoke('set_app_path', { app, path });
+      if (app === 'claude') {
+        await invoke('set_claude_app_scan_roots', {
+          scanRoots: appPathScanRootsDraft.trim(),
+        });
+      }
       if (retry?.kind === 'switchAccount' && retry.accountId && app === 'zed') {
         await useZedAccountStore.getState().switchAccount(retry.accountId);
         setPage('zed');
+      } else if (retry?.kind === 'switchAccount' && retry.accountId && app === 'claude') {
+        await useClaudeAccountStore.getState().switchAccount(retry.accountId);
+        await useClaudeAccountStore.getState().fetchCurrentAccountId();
+        setPage('claude');
       } else if (retry?.kind === 'switchAccount' && retry.accountId) {
         await invoke('switch_account', {
           accountId: retry.accountId,
@@ -2694,6 +2883,8 @@ function MainApp() {
       } else if (retry?.kind === 'instance' && retry.instanceId) {
         if (app === 'codex') {
           await invoke('codex_start_instance', { instanceId: retry.instanceId });
+        } else if (app === 'claude') {
+          await invoke('claude_start_instance', { instanceId: retry.instanceId });
         } else if (app === 'vscode') {
           await invoke('github_copilot_start_instance', { instanceId: retry.instanceId });
         } else if (app === 'windsurf') {
@@ -2713,11 +2904,13 @@ function MainApp() {
         } else if (app === 'zed') {
           await invoke('zed_start_default_session');
         } else {
-          await invoke('start_instance', { instanceId: retry.instanceId });
+          await invoke(antigravityInstanceStartCommand, { instanceId: retry.instanceId });
         }
       } else {
         if (app === 'codex') {
           await invoke('codex_start_instance', { instanceId: '__default__' });
+        } else if (app === 'claude') {
+          await invoke('claude_start_instance', { instanceId: '__default__' });
         } else if (app === 'vscode') {
           await invoke('github_copilot_start_instance', { instanceId: '__default__' });
         } else if (app === 'windsurf') {
@@ -2737,7 +2930,7 @@ function MainApp() {
         } else if (app === 'zed') {
           await invoke('zed_start_default_session');
         } else {
-          await invoke('start_instance', { instanceId: '__default__' });
+          await invoke(antigravityInstanceStartCommand, { instanceId: '__default__' });
         }
       }
       setAppPathMissing(null);
@@ -2751,10 +2944,53 @@ function MainApp() {
 
   const handleResetMissingAppPath = async () => {
     if (!appPathMissing || appPathSetting || appPathDetecting) return;
+    if (appPathMissing.app === 'claude') {
+      setAppPathDetecting(true);
+      setAppPathActionError('');
+      try {
+        const candidates = await invoke<ClaudeDesktopLaunchCandidate[]>(
+          'scan_claude_desktop_launch_targets',
+          {
+            scanRoots: appPathScanRootsDraft.trim() || null,
+          },
+        );
+        setClaudeLaunchCandidates(candidates);
+        if (appPathMissing.retry?.kind === 'instance') {
+          const exeCandidate = candidates.find((candidate) => candidate.supports_multi_instance);
+          if (exeCandidate) {
+            setAppPathDraft(exeCandidate.target);
+          } else if (candidates.length > 0) {
+            setAppPathActionError(
+              t(
+                'appPath.missing.claudeMultiInstanceRequiresExe',
+                'Claude 多开实例需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
+              ),
+            );
+          }
+        }
+        if (candidates.length === 0) {
+          setAppPathActionError(
+            t('appPath.missing.claudeScanEmpty', '未扫描到 Claude Desktop，请手动选择 Claude.exe 或调整扫描范围。'),
+          );
+        }
+      } catch (error) {
+        console.error('扫描 Claude Desktop 启动目标失败:', error);
+        setAppPathActionError(String(error));
+      } finally {
+        setAppPathDetecting(false);
+      }
+      return;
+    }
     setAppPathDetecting(true);
     try {
+      const detectApp =
+        appPathMissing.app === 'antigravity' && appPathMissing.retry?.runtimeTarget === 'antigravity'
+          ? 'antigravity_legacy'
+          : appPathMissing.app === 'antigravity' && appPathMissing.retry?.runtimeTarget === 'antigravity_ide'
+            ? 'antigravity_ide'
+            : appPathMissing.app;
       const detected = await invoke<string | null>('detect_app_path', {
-        app: appPathMissing.app,
+        app: detectApp,
         force: true,
       });
       setAppPathActionError('');
@@ -2785,6 +3021,18 @@ function MainApp() {
     }
   };
 
+  const handleSelectClaudeLaunchCandidate = (candidate: ClaudeDesktopLaunchCandidate) => {
+    if (
+      appPathMissing?.app === 'claude' &&
+      appPathMissing.retry?.kind === 'instance' &&
+      !candidate.supports_multi_instance
+    ) {
+      return;
+    }
+    setAppPathActionError('');
+    setAppPathDraft(candidate.target);
+  };
+
   // 监听窗口关闭请求事件
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -2810,6 +3058,8 @@ function MainApp() {
             case 'api-relay':
             case 'codex':
             case 'codex-api-service':
+            case 'claude':
+            case 'claude-cli':
             case 'github-copilot':
             case 'windsurf':
             case 'kiro':
@@ -2918,9 +3168,12 @@ function MainApp() {
     </div>
   );
 
+  const appPathMissingRuntimeTarget = appPathMissing?.retry?.runtimeTarget;
   const appPathMissingAppName = appPathMissing
     ? appPathMissing.app === 'codex'
       ? 'Codex'
+      : appPathMissing.app === 'claude'
+        ? 'Claude Desktop'
       : appPathMissing.app === 'vscode'
         ? 'VS Code'
         : appPathMissing.app === 'windsurf'
@@ -2937,12 +3190,16 @@ function MainApp() {
                 ? 'Qoder'
               : appPathMissing.app === 'trae'
                 ? 'Trae'
-              : 'Antigravity IDE'
+              : appPathMissing.app === 'antigravity' && appPathMissingRuntimeTarget === 'antigravity'
+                ? 'Antigravity'
+                : 'Antigravity IDE'
     : '';
 
   const appPathMissingPathLabel = appPathMissing
     ? appPathMissing.app === 'codex'
       ? t('quickSettings.codex.appPath', '启动路径')
+      : appPathMissing.app === 'claude'
+        ? t('quickSettings.claude.appPath', 'Claude Desktop 启动目标')
       : appPathMissing.app === 'vscode'
         ? t('quickSettings.githubCopilot.appPath', 'VS Code 路径')
         : appPathMissing.app === 'windsurf'
@@ -2962,6 +3219,8 @@ function MainApp() {
               : t('quickSettings.antigravity.appPath', '启动路径')
     : t('quickSettings.antigravity.appPath', '启动路径');
   const appPathMissingBusy = appPathSetting || appPathDetecting || appPathCodexLaunchSetting;
+  const claudeMultiInstanceNeedsExe =
+    appPathMissing?.app === 'claude' && appPathMissing.retry?.kind === 'instance';
   const shouldRenderUpdateNotification = showUpdateNotification
     || (updateRemindersEnabled && updateAction.state !== 'hidden');
 
@@ -2985,7 +3244,7 @@ function MainApp() {
             actionError={updateDownloadError}
             actionErrorDetails={updateErrorDetails}
             skipError={updateSkipError}
-            onPrimaryAction={handleQuickUpdateActionClick}
+            onPrimaryAction={handleUpdatePrimaryAction}
             onCancelUpdate={cancelUpdateDownload}
             onSkipUpdate={handleSkipUpdateVersion}
             onClose={closeUpdateNotification}
@@ -2996,10 +3255,15 @@ function MainApp() {
       {/* 版本跳跃通知（更新后首次启动） */}
       {versionJumpInfo && (
         <Suspense fallback={null}>
-          <VersionJumpNotification
-            info={versionJumpInfo}
-            onClose={() => setVersionJumpInfo(null)}
-          />
+          {showVersionJumpNotification && (
+            <VersionJumpNotification
+              info={versionJumpInfo}
+              onClose={() => {
+                setShowVersionJumpNotification(false);
+                setVersionJumpInfo(null);
+              }}
+            />
+          )}
         </Suspense>
       )}
       <GlobalModal />
@@ -3043,6 +3307,14 @@ function MainApp() {
                     app: appPathMissingAppName,
                   })}
                 </p>
+                {claudeMultiInstanceNeedsExe ? (
+                  <p className="app-path-missing-hint">
+                    {t(
+                      'appPath.missing.claudeMultiInstanceRequiresExe',
+                      'Claude 多开实例需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
+                    )}
+                  </p>
+                ) : null}
               </div>
 
               {appPathMissing.app === 'codex' ? (
@@ -3075,12 +3347,53 @@ function MainApp() {
                   <FolderOpen size={15} />
                   <span>{appPathMissingPathLabel}</span>
                 </div>
+                {appPathMissing.app === 'claude' ? (
+                  <div className="app-path-missing-scan-roots">
+                    <label>{t('appPath.missing.scanRoots', '扫描范围')}</label>
+                    <div className="app-path-missing-scan-root-row">
+                      <input
+                        type="text"
+                        className="qs-path-input app-path-missing-scan-roots-input"
+                        value={appPathScanRootsDraft}
+                        placeholder={t(
+                          'appPath.missing.scanRootsPlaceholder',
+                          '可选，选择一个目录或盘符；留空时按盘符扫描 WindowsApps 并补充开始菜单应用。',
+                        )}
+                        readOnly
+                        disabled={appPathMissingBusy}
+                      />
+                      <div className="qs-path-actions">
+                        <button
+                          className="qs-btn"
+                          onClick={handlePickMissingClaudeScanRoot}
+                          disabled={appPathMissingBusy}
+                        >
+                          {t('settings.general.codexPathSelect', '选择')}
+                        </button>
+                        <button
+                          className="qs-btn"
+                          onClick={handleClearMissingClaudeScanRoot}
+                          disabled={appPathMissingBusy || !appPathScanRootsDraft.trim()}
+                        >
+                          {t('common.clear', '清除')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="qs-path-control">
                   <input
                     type="text"
                     className="qs-path-input"
                     value={appPathDraft}
-                    placeholder={t('settings.general.codexAppPathPlaceholder', '默认路径')}
+                    placeholder={
+                      appPathMissing.app === 'claude'
+                        ? t(
+                            'appPath.missing.claudeTargetPlaceholder',
+                            'Claude.exe 路径或 shell:AppsFolder\\...',
+                          )
+                        : t('settings.general.codexAppPathPlaceholder', '默认路径')
+                    }
                     onChange={(e) => setAppPathDraft(e.target.value)}
                     disabled={appPathMissingBusy}
                   />
@@ -3120,10 +3433,56 @@ function MainApp() {
                           )
                       }
                     >
-                      <RefreshCw size={12} className={appPathDetecting ? 'spin' : undefined} />
+                      {appPathMissing.app === 'claude' ? (
+                        appPathDetecting
+                          ? t('common.loading', '加载中...')
+                          : t('appPath.missing.scanApps', '扫描应用')
+                      ) : (
+                        <RefreshCw size={12} className={appPathDetecting ? 'spin' : undefined} />
+                      )}
                     </button>
                   </div>
                 </div>
+                {appPathMissing.app === 'claude' ? (
+                  <>
+                    {claudeLaunchCandidates.length > 0 ? (
+                      <div className="app-path-candidate-list">
+                        {claudeLaunchCandidates.map((candidate) => (
+                          <button
+                            key={`${candidate.target_type}:${candidate.target}`}
+                            type="button"
+                            className={`app-path-candidate-item${
+                              appPathDraft.trim() === candidate.target ? ' selected' : ''
+                            }`}
+                            onClick={() => handleSelectClaudeLaunchCandidate(candidate)}
+                            disabled={
+                              appPathMissingBusy ||
+                              (claudeMultiInstanceNeedsExe && !candidate.supports_multi_instance)
+                            }
+                          >
+                            <div className="app-path-candidate-main">
+                              <span>{candidate.label || 'Claude Desktop'}</span>
+                              <span className="app-path-candidate-badge">
+                                {candidate.target_type === 'windows_app'
+                                  ? t('appPath.missing.windowsApp', 'Microsoft Store')
+                                  : 'EXE'}
+                              </span>
+                            </div>
+                            <div className="app-path-candidate-target">{candidate.target}</div>
+                            {!candidate.supports_multi_instance ? (
+                              <div className="app-path-candidate-note">
+                                {t(
+                                  'appPath.missing.defaultOnly',
+                                  '仅适用于默认桌面端；多开实例请选择真实 Claude.exe',
+                                )}
+                              </div>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 {appPathActionError ? (
                   <p className="app-path-missing-error">
                     {t('messages.switchFailed', { error: appPathActionError })}
@@ -3170,6 +3529,7 @@ function MainApp() {
         updateActionState={updateAction.state}
         updateProgress={updateAction.progress}
         onUpdateActionClick={handleQuickUpdateActionClick}
+        versionJumpAvailable={Boolean(versionJumpInfo)}
         updateRemindersEnabled={updateRemindersEnabled}
         sponsorEntryVisible={sponsorEntryVisible}
         onOpenLogViewer={() => setShowLogViewer(true)}
@@ -3219,6 +3579,8 @@ function MainApp() {
           {page === 'api-relay' && <ApiKeyFunPage />}
           {page === 'overview' && <AccountsPage onNavigate={setPage} />}
           {page === 'codex' && <CodexAccountsPage />}
+          {page === 'claude' && <ClaudeAccountsPage subPlatform="desktop" />}
+          {page === 'claude-cli' && <ClaudeAccountsPage subPlatform="cli" />}
           {page === 'codex-api-service' && <CodexApiServicePage />}
           {page === 'github-copilot' && <GitHubCopilotAccountsPage />}
           {page === 'windsurf' && <WindsurfAccountsPage />}

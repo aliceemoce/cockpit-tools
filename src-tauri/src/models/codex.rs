@@ -99,6 +99,8 @@ pub struct CodexAccount {
     pub api_vision_routing_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bound_oauth_account_id: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bound_oauth_use_local_gateway: bool,
     pub user_id: Option<String>,
     pub plan_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -176,9 +178,37 @@ pub struct CodexQuota {
     /// 次窗口是否存在（接口返回）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weekly_window_present: Option<bool>,
+    /// 主动重置次数（rate-limit reset credits）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_credits_available: Option<i64>,
+    /// 主动重置明细（rate-limit reset credits）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reset_credits: Vec<CodexResetCredit>,
+    /// 最近一张可用主动重置次数的到期时间 (Unix timestamp)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_credits_next_expires_at: Option<i64>,
     /// 原始响应数据
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_data: Option<serde_json::Value>,
+}
+
+/// Codex 主动重置次数明细
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexResetCredit {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub granted_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redeemed_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_status: Option<String>,
 }
 
 /// Codex 配额错误信息
@@ -310,6 +340,7 @@ impl CodexAccount {
             api_model_vision_support: HashMap::new(),
             api_vision_routing_model: None,
             bound_oauth_account_id: None,
+            bound_oauth_use_local_gateway: false,
             user_id: None,
             plan_type: None,
             subscription_active_until: None,

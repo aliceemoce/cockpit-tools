@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	goruntime "runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +29,7 @@ import (
 	internallogging "github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
 	internalregistry "github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	responsesconverter "github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/openai/responses"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/watcher/synthesizer"
 	sdkopenai "github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/openai"
 	sdkauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/auth"
@@ -365,6 +365,10 @@ func (e *eventEmitter) emit(v any) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	fmt.Println(string(data))
+}
+
+func (e *eventEmitter) emitStartupStage(stage string) {
+	e.emit(map[string]any{"type": "startup", "stage": stage})
 }
 
 func loadManifest(path string) (*manifest, error) {
@@ -2702,7 +2706,7 @@ func (s *relayServer) handleImagesRelayRequest(c *gin.Context, imageReq imageRel
 	defer cancelStream()
 	result, err := s.executeStreamWithOpenTimeout(c, streamCtx, []string{"codex"}, req, opts, model, startedAt, timeouts.open)
 	if err != nil {
-		writeExecutorError(c, err)
+		s.writeExecutorError(c, err)
 		return
 	}
 	if result == nil || result.Chunks == nil {
@@ -2715,7 +2719,7 @@ func (s *relayServer) handleImagesRelayRequest(c *gin.Context, imageReq imageRel
 	}
 	out, err := collectImagesResponse(streamCtx, result.Chunks, imageReq.responseFormat, timeouts.idle)
 	if err != nil {
-		writeExecutorError(c, err)
+		s.writeExecutorError(c, err)
 		return
 	}
 	writeUpstreamHeaders(c.Writer.Header(), result.Headers)
@@ -3247,6 +3251,34 @@ func (s *relayServer) handleExecutorBody(c *gin.Context, spec *apiKeySpec, body 
 	s.handleNonStream(c, body, model, sourceFormat, alt)
 }
 
+const providerGatewayMax429Retries = 5
+
+func providerGatewayRetryDelay(resp *http.Response, attempt int) time.Duration {
+	if resp != nil {
+		if ra := strings.TrimSpace(resp.Header.Get("Retry-After")); ra != "" {
+			if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
+				return time.Duration(secs) * time.Second
+			}
+		}
+	}
+	delay := time.Duration(2<<uint(attempt-1)) * time.Second
+	if delay > 30*time.Second {
+		delay = 30 * time.Second
+	}
+	return delay
+}
+
+func shouldRetryProviderGateway429(statusCode int, body []byte) bool {
+	if statusCode != http.StatusTooManyRequests {
+		return false
+	}
+	lower := strings.ToLower(string(body))
+	if strings.Contains(lower, "usage_limit_reached") {
+		return false
+	}
+	return true
+}
+
 func (s *relayServer) handleProviderGatewayRequest(c *gin.Context, gateway *providerGatewaySpec, body []byte, model string, sourceFormat sdktranslator.Format, fixedAlt string) {
 	if gateway == nil {
 		writeAPIError(c, http.StatusBadGateway, "provider gateway is not configured", "bad_gateway")
@@ -3316,34 +3348,59 @@ func (s *relayServer) handleProviderGatewayRequest(c *gin.Context, gateway *prov
 		writeAPIError(c, http.StatusBadGateway, err.Error(), "bad_gateway")
 		return
 	}
-	req, err := http.NewRequestWithContext(relayContext(c), http.MethodPost, upstreamURL, bytes.NewReader(upstreamBody))
-	if err != nil {
-		writeAPIError(c, http.StatusBadGateway, err.Error(), "bad_gateway")
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+gateway.APIKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	if stream {
-		req.Header.Set("Accept", "text/event-stream")
-	}
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		writeAPIError(c, http.StatusBadGateway, err.Error(), "bad_gateway")
-		return
+	var (
+		resp         *http.Response
+		errorPayload []byte
+	)
+	for attempt := 1; attempt <= providerGatewayMax429Retries; attempt++ {
+		req, reqErr := http.NewRequestWithContext(relayContext(c), http.MethodPost, upstreamURL, bytes.NewReader(upstreamBody))
+		if reqErr != nil {
+			writeAPIError(c, http.StatusBadGateway, reqErr.Error(), "bad_gateway")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+gateway.APIKey)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		if stream {
+			req.Header.Set("Accept", "text/event-stream")
+		}
+		copyProviderGatewayDiagnosticHeaders(req.Header, c.Request.Header)
+
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			writeAPIError(c, http.StatusBadGateway, err.Error(), "bad_gateway")
+			return
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			break
+		}
+		errorPayload, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if !shouldRetryProviderGateway429(resp.StatusCode, errorPayload) || attempt >= providerGatewayMax429Retries {
+			writeUpstreamHeaders(c.Writer.Header(), resp.Header)
+			if resp.StatusCode == http.StatusTooManyRequests && attempt >= providerGatewayMax429Retries {
+				c.Writer.Header().Set("X-Cockpit-Retry-Exhausted", fmt.Sprintf("%d", providerGatewayMax429Retries))
+			}
+			contentType := resp.Header.Get("Content-Type")
+			if contentType == "" {
+				contentType = "application/json"
+			}
+			c.Data(resp.StatusCode, contentType, errorPayload)
+			return
+		}
+		delay := providerGatewayRetryDelay(resp, attempt)
+		log.Printf(
+			"provider gateway upstream 429 for %s, retry %d/%d after %s",
+			upstreamModel,
+			attempt,
+			providerGatewayMax429Retries,
+			delay,
+		)
+		time.Sleep(delay)
 	}
 	defer resp.Body.Close()
 	writeUpstreamHeaders(c.Writer.Header(), resp.Header)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		payload, _ := io.ReadAll(resp.Body)
-		contentType := resp.Header.Get("Content-Type")
-		if contentType == "" {
-			contentType = "application/json"
-		}
-		c.Data(resp.StatusCode, contentType, payload)
-		return
-	}
 
 	if stream {
 		if wireAPI == "chat_completions" {
@@ -3438,6 +3495,31 @@ func sanitizeProviderGatewayChatCompletionsBody(body []byte) []byte {
 		return body
 	}
 	return next
+}
+
+func copyProviderGatewayDiagnosticHeaders(dst http.Header, src http.Header) {
+	if dst == nil || src == nil {
+		return
+	}
+	for key, values := range src {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+		lowerKey := strings.ToLower(trimmedKey)
+		if lowerKey != "x-client-request-id" && !strings.HasPrefix(lowerKey, "x-agtools-") {
+			continue
+		}
+		canonicalKey := http.CanonicalHeaderKey(trimmedKey)
+		dst.Del(canonicalKey)
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			dst.Add(canonicalKey, value)
+		}
+	}
 }
 
 func (s *relayServer) writeProviderGatewayChatStream(c *gin.Context, body io.Reader, model string, originalBody []byte, chatBody []byte) {
@@ -3633,16 +3715,59 @@ func providerGatewayURL(baseURL string, path string) (string, error) {
 	}
 	cleanPath := "/" + strings.TrimLeft(path, "/")
 	basePath := strings.TrimRight(parsed.Path, "/")
+	endpointPath := providerGatewayEndpointPath(cleanPath)
 	if strings.HasSuffix(basePath, strings.TrimSuffix(cleanPath, "/")) {
 		parsed.Path = basePath
-	} else if strings.HasSuffix(basePath, "/v1") && strings.HasPrefix(cleanPath, "/v1/") {
-		parsed.Path = basePath + strings.TrimPrefix(cleanPath, "/v1")
+	} else if endpointPath != "" && strings.HasSuffix(basePath, strings.TrimSuffix(endpointPath, "/")) {
+		parsed.Path = basePath
+	} else if endpointPath != "" && providerGatewayBasePathHasVersionSegment(basePath) {
+		parsed.Path = basePath + endpointPath
 	} else {
 		parsed.Path = basePath + cleanPath
 	}
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return parsed.String(), nil
+}
+
+func providerGatewayEndpointPath(path string) string {
+	cleanPath := "/" + strings.TrimLeft(strings.TrimSpace(path), "/")
+	if strings.HasPrefix(cleanPath, "/v1/") {
+		return strings.TrimPrefix(cleanPath, "/v1")
+	}
+	return ""
+}
+
+func providerGatewayBasePathHasVersionSegment(basePath string) bool {
+	for _, segment := range strings.Split(strings.Trim(basePath, "/"), "/") {
+		if providerGatewayPathSegmentIsVersion(segment) {
+			return true
+		}
+	}
+	return false
+}
+
+func providerGatewayPathSegmentIsVersion(segment string) bool {
+	segment = strings.TrimSpace(segment)
+	if len(segment) < 2 || (segment[0] != 'v' && segment[0] != 'V') {
+		return false
+	}
+	hasDigit := false
+	for i := 1; i < len(segment); i++ {
+		ch := segment[i]
+		if ch >= '0' && ch <= '9' {
+			hasDigit = true
+			continue
+		}
+		if !hasDigit {
+			return false
+		}
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '_' || ch == '.' {
+			continue
+		}
+		return false
+	}
+	return hasDigit
 }
 
 func (s *relayServer) handleNonStream(c *gin.Context, body []byte, model string, sourceFormat sdktranslator.Format, alt string) {
@@ -3654,7 +3779,7 @@ func (s *relayServer) handleNonStream(c *gin.Context, body []byte, model string,
 	stopWaitLogger()
 	if err != nil {
 		s.emitExecutorDiagnostic(c, "executor_failed", model, "execute", startedAt, err.Error())
-		writeExecutorError(c, err)
+		s.writeExecutorError(c, err)
 		return
 	}
 	s.emitExecutorDiagnostic(c, "executor_completed", model, "execute", startedAt, "")
@@ -3678,7 +3803,7 @@ func (s *relayServer) handleStream(c *gin.Context, body []byte, model string, so
 	stopWaitLogger()
 	if err != nil {
 		s.emitExecutorDiagnostic(c, "executor_failed", model, "execute_stream", startedAt, err.Error())
-		writeExecutorError(c, err)
+		s.writeExecutorError(c, err)
 		return
 	}
 	if result == nil || result.Chunks == nil {
@@ -4410,7 +4535,7 @@ func (s *relayServer) handleOllamaRuntimeNonStream(c *gin.Context, body []byte, 
 	req, opts := buildExecutorRequest(c, body, model, sdktranslator.FormatOpenAI, "", false)
 	resp, err := s.runtime.Execute(relayContext(c), []string{"codex"}, req, opts)
 	if err != nil {
-		writeExecutorError(c, err)
+		s.writeExecutorError(c, err)
 		return
 	}
 	payload := convertOpenAIChatResponseToOllama(resp.Payload, model)
@@ -4426,7 +4551,7 @@ func (s *relayServer) handleOllamaRuntimeStream(c *gin.Context, body []byte, mod
 	defer cancelStream()
 	result, err := s.executeStreamWithOpenTimeout(c, streamCtx, []string{"codex"}, req, opts, model, startedAt, timeouts.open)
 	if err != nil {
-		writeExecutorError(c, err)
+		s.writeExecutorError(c, err)
 		return
 	}
 	if result == nil || result.Chunks == nil {
@@ -4529,6 +4654,7 @@ func (s *relayServer) handleOllamaProviderGatewayChat(c *gin.Context, gateway *p
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
+	copyProviderGatewayDiagnosticHeaders(req.Header, c.Request.Header)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		writeAPIError(c, http.StatusBadGateway, err.Error(), "bad_gateway")
@@ -5102,7 +5228,7 @@ func writeAPIError(c *gin.Context, status int, message, code string) {
 	})
 }
 
-func writeExecutorError(c *gin.Context, err error) {
+func (s *relayServer) writeExecutorError(c *gin.Context, err error) {
 	status := statusCodeFromError(err)
 	code := "upstream_error"
 	if status == http.StatusUnauthorized || status == http.StatusForbidden {
@@ -5117,7 +5243,34 @@ func writeExecutorError(c *gin.Context, err error) {
 	if err != nil {
 		_ = c.Error(err)
 	}
+	if shouldThrottleDownstreamExecutorError(status) {
+		var ctx context.Context = context.Background()
+		if c != nil && c.Request != nil {
+			ctx = c.Request.Context()
+		}
+		if waitErr := util.SleepContext(ctx, s.downstreamExecutorErrorDelay()); waitErr != nil {
+			return
+		}
+	}
 	writeAPIError(c, status, errorMessage(err), code)
+}
+
+func shouldThrottleDownstreamExecutorError(status int) bool {
+	if status == http.StatusUnauthorized || status == http.StatusPaymentRequired ||
+		status == http.StatusForbidden || status == http.StatusRequestTimeout ||
+		status == http.StatusTooManyRequests {
+		return true
+	}
+	return status >= http.StatusInternalServerError
+}
+
+func (s *relayServer) downstreamExecutorErrorDelay() time.Duration {
+	if s == nil || s.cfg == nil {
+		return 0
+	}
+	base := time.Duration(s.cfg.Streaming.BootstrapRetryBaseDelayMS) * time.Millisecond
+	max := time.Duration(s.cfg.Streaming.BootstrapRetryMaxDelayMS) * time.Millisecond
+	return util.BackoffDelay(1, base, max)
 }
 
 func statusCodeFromError(err error) int {
@@ -5564,38 +5717,7 @@ func monitorParentProcess(ctx context.Context, parentPID int, cancel context.Can
 	if parentPID <= 0 || parentPID == os.Getpid() {
 		return
 	}
-	if goruntime.GOOS == "windows" {
-		if emitter != nil {
-			emitter.emit(map[string]any{
-				"type":      "parent_monitor_disabled",
-				"reason":    "windows_getppid_unreliable",
-				"parentPid": parentPID,
-			})
-		}
-		return
-	}
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if os.Getppid() == parentPID {
-					continue
-				}
-				if emitter != nil {
-					emitter.emit(map[string]any{
-						"type":      "parent_exit",
-						"parentPid": parentPID,
-					})
-				}
-				cancel()
-				return
-			}
-		}
-	}()
+	monitorParentProcessPlatform(ctx, parentPID, cancel, emitter)
 }
 
 func main() {
@@ -5610,21 +5732,25 @@ func main() {
 		os.Exit(2)
 	}
 
+	emitter.emitStartupStage("resolve_config_path")
 	absConfigPath, err := filepath.Abs(*configPath)
 	if err != nil {
 		emitter.emit(map[string]any{"type": "error", "message": err.Error()})
 		os.Exit(2)
 	}
+	emitter.emitStartupStage("load_config")
 	cfg, err := config.LoadConfig(absConfigPath)
 	if err != nil {
 		emitter.emit(map[string]any{"type": "error", "message": err.Error()})
 		os.Exit(2)
 	}
+	emitter.emitStartupStage("load_manifest")
 	m, err := loadManifest(*manifestPath)
 	if err != nil {
 		emitter.emit(map[string]any{"type": "error", "message": err.Error()})
 		os.Exit(2)
 	}
+	emitter.emitStartupStage("init_runtime")
 
 	usageTracker := newRequestUsageTracker()
 	policy := &requestPolicy{manifest: m, emitter: emitter, tracker: usageTracker}
@@ -5646,6 +5772,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer runtime.Stop()
+	emitter.emitStartupStage("start_http_server")
 
 	relay := &relayServer{
 		runtime:  runtime,

@@ -197,7 +197,7 @@
         "planEndsInHours": "Reinicia em {{hours}}h"
       },
       "flowNotice": {
-        "alternative": "Alternativa: usar isolamento por multi-instância (diferente --user-data-dir). Faça login uma vez por instância e depois inicie por instância para alternar rapidamente para o ambiente da conta desejada."
+        "alternative": "Isolamento multi-instância: use perfis gerenciados separados e faça login uma vez por instância para alternar contas rapidamente."
       },
       "injecting": "Injetando...",
       "usage": {
@@ -261,7 +261,8 @@
     "switchClassicLayoutDontAskAgain": "Não mostrar este aviso novamente",
     "switchClassicLayoutConfirm": "Mudar agora",
     "2faManager": "Gerenciar 2FA",
-    "apiRelay": "Relé API"
+    "apiRelay": "Relé API",
+    "claude": "Claude"
   },
   "sponsors": {
     "pageTitle": "Patrocinadores",
@@ -596,6 +597,8 @@
       "closeBehaviorAsk": "Perguntar sempre",
       "closeBehaviorMinimize": "Minimizar para a bandeja",
       "closeBehaviorQuit": "Sair do aplicativo",
+      "startupMinimized": "Iniciar minimizado",
+      "startupMinimizedDesc": "Minimiza automaticamente a janela principal após iniciar o app; restaure pelo Dock, barra de tarefas ou bandeja",
       "minimizeBehavior": "Comportamento ao minimizar a janela (somente macOS)",
       "minimizeBehaviorDesc": "Escolha se, ao minimizar a janela, ela permanece no Dock e na barra de menus ou somente na barra de menus",
       "minimizeBehaviorDockAndTray": "Dock + barra de menus (recomendado)",
@@ -778,7 +781,12 @@
       "codexAppSpeedFast": "Rápida",
       "codexAppSpeedLaunch": "Reiniciar Codex",
       "codexAppSpeedSaveFailed": "Falha ao salvar a velocidade do Codex: {{error}}",
-      "codexAppSpeedLaunchFailed": "Falha ao reiniciar o Codex: {{error}}"
+      "codexAppSpeedLaunchFailed": "Falha ao reiniciar o Codex: {{error}}",
+      "claudeSettingsTitle": "Configurações do Claude",
+      "claudeAutoRefresh": "Atualização automática de cota do Claude",
+      "claudeAutoRefreshDesc": "Atualiza automaticamente em segundo plano o cache de cota das contas do Claude.",
+      "claudeAppPath": "Alvo de inicialização do Claude Desktop",
+      "claudeAppPathDesc": "O perfil padrão pode usar um alvo da Microsoft Store; perfis multi-instância precisam do Claude.exe real."
     },
     "network": {
       "apiTitle": "API de cockpit antigravidade",
@@ -1014,7 +1022,15 @@
       "title": "Caminho do aplicativo não encontrado",
       "desc": "Não foi possível encontrar o caminho do aplicativo {{app}}. Defina agora para continuar.",
       "action": "Definir agora",
-      "codexLaunchHint": "Ao desativar, a troca de conta e a sobrescrita de login continuam funcionando, mas o app Codex não será mais iniciado e este aviso de caminho não aparecerá novamente."
+      "codexLaunchHint": "Ao desativar, a troca de conta e a sobrescrita de login continuam funcionando, mas o app Codex não será mais iniciado e este aviso de caminho não aparecerá novamente.",
+      "claudeMultiInstanceRequiresExe": "Perfis multi-instância do Claude exigem o caminho real do Claude.exe. Alvos da Microsoft Store servem apenas para o perfil desktop padrão.",
+      "scanApps": "Escanear apps",
+      "scanRoots": "Intervalo de varredura",
+      "scanRootsPlaceholder": "Opcional, escolha uma pasta ou raiz de unidade; deixe vazio para varrer WindowsApps por unidade e incluir apps do menu Iniciar.",
+      "windowsApp": "App da Microsoft Store",
+      "defaultOnly": "Apenas desktop padrão; escolha o Claude.exe real para perfis multi-instância.",
+      "claudeScanEmpty": "Nenhum alvo do Claude Desktop foi encontrado. Escolha o Claude.exe manualmente ou ajuste as raízes de escaneamento.",
+      "claudeTargetPlaceholder": "Caminho do Claude.exe ou shell:AppsFolder\\..."
     },
     "modal": {
       "desc": "O caminho do aplicativo {{app}} não foi encontrado. Configure-o agora para continuar."
@@ -1262,7 +1278,10 @@
     "switchSuccess": "Troca bem-sucedida",
     "switched": "Alternado para {{email}}",
     "tagButton": "Editar tags",
-    "tagUpdated": "Tag atualizado"
+    "tagUpdated": "Tag atualizado",
+    "plan": {
+      "personal": "Pessoal"
+    }
   },
   "overview": {
     "title": "Visão Geral das Contas",
@@ -1907,7 +1926,12 @@
       },
       "oauthBinding": {
         "desc": "Opcional. Só é possível selecionar contas OAuth com refresh_token. Sem vínculo, o serviço API mantém o fluxo de API Key original; ao vincular, o login usa a conta OAuth e o Provider usa a configuração do serviço API.",
-        "currentService": "Serviço de API: {{name}}"
+        "currentService": "Serviço de API: {{name}}",
+        "imageGenerationTooltip": "Ao ativar, o serviço API remove a declaração da ferramenta image_generation no gateway local antes de encaminhar conversas de texto; modelos de imagem não são removidos.",
+        "imageGenerationConfirm": {
+          "title": "Desativar image_generation",
+          "message": "Ao ativar, o serviço API removerá a declaração da ferramenta image_generation no gateway local antes de encaminhar conversas de texto, evitando erros como \"Image generation is not enabled\". gpt-image e outros modelos de imagem não são removidos. Continuar?"
+        }
       },
       "customRoutingEdit": "Editar roteamento personalizado",
       "customRoutingTitle": "Roteamento personalizado",
@@ -2026,7 +2050,29 @@
       "hourly": "Cota de 5 horas",
       "weekly": "Cota semanal",
       "reset": "Redefinir",
-      "weeklyBlocksHourly": "A cota semanal é 0, então a cota de 5 horas está indisponível"
+      "weeklyBlocksHourly": "A cota semanal é 0, então a cota de 5 horas está indisponível",
+      "resetCredits": "Redef. {{count}}",
+      "resetCreditsTitle": "Resets restantes para a janela de 5 horas: {{count}}",
+      "resetCreditConfirm": "Confirmar?",
+      "resetCreditDialogTitle": "Redefinir seu uso?",
+      "resetCreditDialogDesc": "Redefina o limite de taxa para continuar trabalhando sem interrupções. Redefinições disponíveis: {{count}}.",
+      "resetCreditDialogAction": "Redefinir uso",
+      "resetCreditNoCredits": "Nenhum reset disponível",
+      "resetCreditConsumed": "Cota de 5 horas redefinida",
+      "resetCreditFailed": "Falha ao redefinir: {{error}}",
+      "resetCreditRefreshAfterConsumeFailed": "Reset enviado, mas a atualização da cota falhou: {{error}}",
+      "resetCreditsTitleWithExpiry": "Redefinições restantes para a janela de 5 horas: {{count}}. Próximo vencimento: {{time}}",
+      "resetCreditTimeUnknown": "Hora desconhecida",
+      "resetCreditStatusAvailable": "Disponível",
+      "resetCreditStatusRedeemed": "Usada",
+      "resetCreditStatusExpired": "Expirada",
+      "resetCreditStatusUnknown": "Desconhecida",
+      "resetCreditNextExpiry": "Próximo vencimento: {{time}}",
+      "resetCreditDetailsTitle": "Detalhes das redefinições",
+      "resetCreditNoRecords": "Sem registros de redefinição",
+      "resetCreditRecordsLoadFailed": "Falha ao carregar registros de redefinição: {{error}}",
+      "resetCreditGrantedAt": "Concedida",
+      "resetCreditExpiresAt": "Expira"
     },
     "quotaError": {
       "badge": "Erro de cota",
@@ -2277,7 +2323,7 @@
     },
     "sessionManager": {
       "title": "Gerenciador de sessões",
-      "desc": "A sincronização e a limpeza ficam reunidas aqui: use a ação no topo para sincronizar com todas as instâncias e, abaixo, expanda cada projeto para revisar as sessões e movê-las para a lixeira.",
+      "desc": "Sincronização, reparo de visibilidade, limpeza e restauração ficam aqui: use as ações superiores para sincronizar sessões, reparar a visibilidade ou restaurar da lixeira; depois expanda cada projeto para revisar e enviar sessões para a lixeira.",
       "actions": {
         "moveToTrash": "Mover para a lixeira",
         "syncSessions": "Sincronizar sessões",
@@ -2286,17 +2332,29 @@
         "repairVisibility": "Reparar visibilidade",
         "restoreSessions": "Restaurar sessões",
         "copySessionId": "Copiar ID da sessão",
+        "selectAllSessions": "Selecionar sessões",
+        "clearSelectedSessions": "Desmarcar tudo",
         "copyToInstance": "Copiar para instância"
       },
       "confirm": {
         "title": "Mover para a lixeira",
         "message": "As sessões selecionadas serão movidas para a lixeira de suas instâncias para que possam ser restauradas depois. Instâncias em execução podem precisar ser reiniciadas antes que a mudança apareça. Continuar?",
         "syncMessage": "Os threads ausentes e seus dados de sessão serão sincronizados com todas as instâncias. O conteúdo existente não será gravado novamente, e os arquivos da instância de destino serão copiados antes de qualquer gravação. Continuar?",
-        "repairVisibilityMessage": "Isto vai reparar os metadados do provedor nos arquivos rollout e em state_5.sqlite usando o model_provider do config.toml raiz de cada instância (se estiver ausente, o padrão será openai). Os arquivos que serão alterados recebem backup antes da gravação. Instâncias em execução podem precisar ser reiniciadas antes que a mudança apareça. Continuar?"
+        "repairVisibilityMessage": "Atualiza os registros da state DB oficial do Codex que controlam a lista lateral de sessões. Os arquivos state DB são copiados antes da escrita."
       },
       "empty": {
         "title": "Nenhuma sessão para gerenciar",
-        "desc": "Nenhum registro de sessão foi encontrado no conjunto atual de instâncias."
+        "desc": "Nenhum registro de sessão foi encontrado no conjunto atual de instâncias.",
+        "searchTitle": "Nenhuma sessão encontrada",
+        "searchDesc": "Ajuste as palavras-chave do título."
+      },
+      "search": {
+        "titleLabel": "Título",
+        "contentLabel": "Conteúdo",
+        "titlePlaceholder": "Buscar por título",
+        "contentPlaceholder": "Buscar no conteúdo",
+        "apply": "Buscar",
+        "clear": "Limpar"
       },
       "messages": {
         "pickOne": "Selecione pelo menos uma sessão",
@@ -2328,6 +2386,59 @@
         "selectedCount": "{{count}} sessão(ões) selecionada(s)",
         "existingCount": "{{count}} já existe(m) no destino",
         "confirm": "Copiar sessões"
+      },
+      "repairModal": {
+        "running": "Reparando...",
+        "progress": {
+          "queued": "Iniciando reparo...",
+          "collectInstances": "Coletando instâncias do Codex...",
+          "scanInstances": "Preparando varredura...",
+          "scanInstance": "Varrendo {{instance}} ({{current}}/{{total}})...",
+          "backupInstance": "Fazendo backup de {{instance}} ({{current}}/{{total}})...",
+          "writeInstance": "Gravando {{instance}} ({{current}}/{{total}})...",
+          "rebuildMetadata": "Atualizando estado oficial de sessões para {{instance}}...",
+          "pruneBackups": "Limpando backups antigos...",
+          "done": "Reparo concluído",
+          "writeSqliteProvider": "Gravando visibilidade SQLite de {{instance}}...",
+          "writeRolloutFiles": "Gravando arquivos de sessão antigos...",
+          "writeSqliteTimestamps": "Corrigindo tempos SQLite de {{instance}}...",
+          "writeSessionIndex": "Gravando session_index..."
+        },
+        "targetProvider": "Provider de destino",
+        "defaultProvider": "Padrão",
+        "loadingProviders": "Carregando providers...",
+        "noProvider": "Nenhum provider encontrado",
+        "providerLoadFailed": "Falha ao carregar providers: {{error}}",
+        "modeTitle": "Modo de reparo",
+        "modeQuick": "Reparo rápido",
+        "modeQuickDesc": "Corrige o state DB oficial e a primeira linha de metadados da sessão. Ideal após trocas comuns de conta.",
+        "modeDeep": "Reparo profundo",
+        "modeDeepDesc": "Mantém o reparo completo atual dos metadados para testar quando o rápido não bastar.",
+        "scopeTitle": "Escopo de sessões",
+        "scopeAll": "Todas as sessões",
+        "scopeAllDesc": "Repara {{count}} sessão(ões) na lista atual.",
+        "scopeSelected": "Sessões selecionadas",
+        "scopeSelectedDesc": "Repara só {{count}} sessão(ões) selecionada(s).",
+        "scopeSelectedEmpty": "Selecione sessões na lista primeiro.",
+        "providerSource": {
+          "config": "Configuração",
+          "rollout": "Sessões",
+          "sqlite": "Banco SQLite"
+        },
+        "targetInstance": "Instância alvo",
+        "loadingInstances": "Carregando instâncias...",
+        "noInstance": "Nenhuma instância encontrada",
+        "instanceLoadFailed": "Falha ao carregar instâncias: {{error}}",
+        "defaultInstance": "Instância padrão",
+        "runningInstance": "Em execução",
+        "instanceProvider": "Provider atual",
+        "instanceScopeTitle": "Escopo de instâncias",
+        "instanceScopeTarget": "Só alvo",
+        "instanceScopeTargetDesc": "Repara apenas a instância selecionada, geralmente mais rápido.",
+        "instanceScopeAll": "Todas as instâncias",
+        "instanceScopeAllDesc": "Repara todas as instâncias Codex ao restaurar em conjunto.",
+        "progressTitle": "Progresso",
+        "start": "Reparar"
       }
     },
     "api": {
@@ -2438,7 +2549,13 @@
         "switchRequiresBinding": "Vincule uma conta OAuth primeiro",
         "clearAction": "Desvincular",
         "clearSuccess": "Vínculo OAuth removido.",
-        "clearFailed": "Falha ao remover vínculo OAuth: {{error}}"
+        "clearFailed": "Falha ao remover vínculo OAuth: {{error}}",
+        "useLocalGateway": "Desativar image_generation",
+        "localGatewayTooltip": "Ao ativar, conversas de texto da API Key vinculada ao OAuth passam pelo gateway local, que remove image_generation antes de encaminhar; modelos de imagem não são removidos.",
+        "localGatewayConfirm": {
+          "title": "Desativar capacidade image_generation",
+          "message": "Ao ativar, conversas de texto desta conta API Key vinculada ao OAuth passarão pelo gateway local, onde a declaração da ferramenta image_generation é removida antes do encaminhamento para evitar erros como \"Image generation is not enabled\". gpt-image e outros modelos de imagem não são removidos. Continuar?"
+        }
       }
     },
     "modelProviders": {
@@ -2582,6 +2699,46 @@
         "checkProviderStatus": "Verifique o status do provedor, proxy ou compatibilidade da API.",
         "checkModelsApi": "Confirme que o provedor retorna uma lista de modelos compatível com OpenAI."
       },
+      "batchTest": {
+        "entry": "Testar todos",
+        "entryHint": "Testar em lote a capacidade real de chat dos provedores",
+        "selectedCount": "{{count}} selecionados",
+        "title": "Teste em lote de provedores de modelo",
+        "selectTitle": "Escolha provedores para testar",
+        "selectDesc": "Os provedores selecionados são conectados temporariamente ao gateway local para testar chat e encaminhados ao upstream conforme o protocolo.",
+        "selectionSummary": "{{selected}} selecionados / {{total}} testáveis",
+        "emptySelection": "Selecione pelo menos um provedor com API Key.",
+        "noApiKey": "Sem API Key",
+        "gatewayProtocol": "Chat Completions · gateway",
+        "directProtocol": "Responses · gateway",
+        "start": "Iniciar teste",
+        "kicker": "Teste de provedor",
+        "resultsTitle": "Resultados do teste de chat dos provedores",
+        "totalCount": "{{count}} provedores",
+        "progress": "Progresso do teste",
+        "selectVisible": "Selecionar visíveis",
+        "resultSelectedCount": "{{count}} selecionados",
+        "selectFailed": "Selecionar falhos",
+        "deleteConfirm": "Excluir {{providerCount}} provedores selecionados? Isso também excluirá {{accountCount}} contas Codex API Key vinculadas exatamente.",
+        "deleteSuccess": "{{providerCount}} provedores e {{accountCount}} contas vinculadas foram excluídos.",
+        "deleteFailed": "Falha ao excluir os itens selecionados: {{error}}",
+        "protocolSummary": "{{protocol}} · {{mode}} · {{model}}",
+        "modelUnknown": "Modelo pendente",
+        "promptLabel": "Comando",
+        "pendingDesc": "Aguardando início.",
+        "runningDesc": "Enviando solicitação de chat.",
+        "noReply": "O upstream não retornou uma resposta legível.",
+        "unknownError": "Erro desconhecido",
+        "status": {
+          "all": "Todos",
+          "success": "Sucesso",
+          "error": "Falhou",
+          "running": "Executando",
+          "pending": "Pendente",
+          "completed": "Concluído"
+        },
+        "officialClientOnlyError": "Este provedor só aceita solicitações do cliente oficial do Codex. O teste com um clique agora usa o gateway local, mas o upstream ainda recusou esta solicitação de teste. Use o comportamento após abrir o Codex oficial como referência."
+      },
       "enableAndStart": "Iniciar",
       "instance": {
         "label": "Instância",
@@ -2656,6 +2813,15 @@
       "oauthBinding": {
         "desc": "Opcional. Qualquer conta OAuth com refresh_token pode ser vinculada. Sem vínculo, o provedor continua usando o fluxo original de API Key.",
         "currentProvider": "Provedor: {{name}}"
+      },
+      "sort": {
+        "custom": "Ordem personalizada",
+        "customModalTitle": "Ordem personalizada dos provedores",
+        "customModalDesc": "Arraste provedores ou use os botões subir/descer para ajustar a ordem.",
+        "customDragHandle": "Arrastar para ordenar",
+        "customMoveUp": "Mover para cima",
+        "customMoveDown": "Mover para baixo",
+        "customReset": "Redefinir ordem"
       }
     },
     "quickSwitch": {
@@ -2700,15 +2866,17 @@
     },
     "apiSwitchNotice": {
       "title": "Sessões do Codex ocultas",
-      "message": "Foi detectado que o Codex mudou de {{from}} para {{to}}. Pelo comportamento oficial, sessões existentes podem não aparecer automaticamente após alternar diretamente entre API e contas. A visibilidade das sessões está sendo reparada automaticamente; você também pode usar Gerenciamento de sessões > Reparar visibilidade depois.",
+      "message": "O Codex mudou de {{from}} para {{to}}. Pelo comportamento oficial, sessões existentes podem não aparecer automaticamente depois desse tipo de troca. A visibilidade das sessões está sendo reparada automaticamente; você também pode reparar depois em Gerenciamento de sessões.",
       "repairing": "Reparando a visibilidade das sessões do Codex...",
-      "repairFailed": "O reparo automático falhou. Você pode tentar novamente depois em Gerenciamento de sessões > Reparar visibilidade.",
+      "repairFailed": "Falha ao reparar a visibilidade. Você pode tentar novamente depois em Gerenciamento de sessões.",
       "type": {
         "api": "Modo API",
         "apiKey": "Chave API",
         "apiService": "Serviço API",
         "account": "Conta"
-      }
+      },
+      "manualMessage": "Reparar visibilidade atualiza os registros da state DB oficial do Codex que controlam a lista lateral de sessões. Use para recuperar sessões após trocar entre contas e API Keys.",
+      "repairFailedWithError": "Falha ao reparar a visibilidade: {{error}}"
     },
     "accountNote": {
       "title": "Nota da conta",
@@ -2957,6 +3125,13 @@
       "selectAllAccounts": "Selecionar todas",
       "selectReady": "Selecionar contas OK",
       "clearSelection": "Limpar seleção"
+    },
+    "autoRepairMode": {
+      "label": "Lógica de reparo automático",
+      "tooltip": "Escolha a lógica de reparo de visibilidade de sessões ao alternar",
+      "legacyBefore4eb75d96": "Antes de 4eb75d96",
+      "legacy4eb75d96": "Lógica 4eb75d96",
+      "current": "Lógica atual"
     }
   },
   "githubCopilot": {
@@ -3228,6 +3403,11 @@
       "title": "Memória de filtros",
       "enable": "Lembrar filtros da visão geral de contas (sem busca)",
       "hint": "Desativado por padrão. Ao ativar, cada plataforma mantém filtros, tags e ordenação."
+    },
+    "claudeRefreshInterval": "Atualização automática de cota",
+    "claude": {
+      "appPath": "Caminho do Claude",
+      "appTargetPlaceholder": "Caminho do Claude.exe ou shell:AppsFolder\\..."
     }
   },
   "quotaAlert": {
@@ -3766,7 +3946,11 @@
       "resetsIn": "Reinicia em {{relative}}",
       "resetsSoon": "Reinicia em breve",
       "resetsUnknown": "Hora de redefinição desconhecida",
-      "onDemand": "Sob demanda"
+      "onDemand": "Sob demanda",
+      "gemini5h": "5h",
+      "geminiWeekly": "Weekly",
+      "claude5h": "5h",
+      "claudeWeekly": "Weekly"
     },
     "title": "Gerenciamento de contas Gemini Cli",
     "instances": {
@@ -4504,6 +4688,16 @@
       "queryFailed": "Falha ao consultar cota: {{error}}",
       "saveFailed": "Falha ao gravar: {{error}}"
     },
+    "models": {
+      "title": "Modelos disponíveis",
+      "desc": "Carregados do endpoint de modelos da API Key atual e enviados ao Codex ou Claude CLI.",
+      "count": "{{count}} modelos",
+      "loading": "Carregando",
+      "loadingDesc": "Carregando a lista de modelos da API Key atual...",
+      "empty": "Informe uma API Key para carregar os modelos disponíveis.",
+      "emptyFromKey": "A API Key atual não retornou modelos.",
+      "queryFailed": "Falha ao carregar modelos: {{error}}"
+    },
     "keyManager": {
       "title": "Gerenciar chaves",
       "desc": "Salve API Keys para alternar rápido e consultar a cota automaticamente.",
@@ -4516,9 +4710,276 @@
       "editAlias": "Edit alias​",
       "renamePlaceholder": "Enter alias...​",
       "createdAt": "Adicionada em {{time}}",
-      "saveFlash": "Salva agora"
+      "saveFlash": "Salva agora",
+      "addingToCodex": "Adicionando ao Codex...",
+      "addedToCodex": "Adicionado ao Codex",
+      "addToCodexFailed": "Falha ao adicionar ao Codex: {{error}}",
+      "addingToClaude": "Adicionando ao Claude CLI...",
+      "addedToClaude": "Adicionado ao Claude CLI",
+      "addToClaudeFailed": "Falha ao adicionar ao Claude CLI: {{error}}",
+      "codexAdded": "Codex adicionado",
+      "claudeAdded": "Claude adicionado",
+      "addToCodex": "Adicionar ao Codex",
+      "addToClaude": "Adicionar ao Claude CLI",
+      "addToClaudeDesktop": "Adicionar ao Claude",
+      "addToClaudeCli": "Adicionar ao Claude CLI",
+      "codexShort": "Codex",
+      "claudeShort": "Claude CLI"
+    },
+    "prefill": {
+      "claudeDesktopReady": "A configuração da APIKEY.FUN foi preenchida. Confirme para adicionar ao Claude."
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "claude": {
+    "import": {
+      "localSuccess": "{{count}} login(s) local(is) do Claude importado(s)",
+      "localClient": "Importar Claude atual",
+      "jsonLabel": "Dados JSON",
+      "jsonPlaceholder": "Cole o JSON de conta Claude exportado",
+      "localDesc": "Lê a sessão atual do app oficial Claude e copia para esta ferramenta como snapshot local da conta.",
+      "desktopJsonPlaceholder": "Cole o JSON exportado da conta Claude Gateway",
+      "cliJsonPlaceholder": "Cole o JSON exportado da conta Claude CLI"
+    },
+    "deleteCurrentDisabled": "A conta atual não pode ser excluída",
+    "flowNotice": {
+      "title": "Contas Claude",
+      "desc": "Esta ferramenta gerencia o estado de login do Claude e Anthropic API Keys. O login Claude termina na janela de autorização da plataforma e é salvo primeiro localmente; só é gravado no Claude oficial ao trocar de conta.",
+      "permission": "Permissões: leitura/gravação no diretório de dados do app oficial Claude. API Keys e snapshots Claude são salvos nos dados locais desta ferramenta.",
+      "network": "Rede: a janela de login Claude abre claude.ai; atualização de conta pode chamar endpoints do Claude Web. A importação de API Key em si não usa rede.",
+      "desktopDesc": "Esta ferramenta gerencia o login do Claude. O login é salvo localmente primeiro e só é gravado no Claude oficial ao trocar de conta.",
+      "cliDesc": "Esta ferramenta gerencia OAuth do Claude Code e API Keys de vários provedores. A troca OAuth grava na configuração local do Claude Code; API Keys gravam valores env do provedor no Claude Code settings.json.",
+      "desktopPermission": "Escopo de permissão: ler/gravar o diretório de dados do app oficial Claude. Snapshots Claude são salvos nos dados locais de contas desta ferramenta.",
+      "cliPermission": "Escopo de permissão: ler/gravar a configuração local do Claude Code e credenciais do Claude Code no macOS Keychain; contas API Key são salvas localmente por esta ferramenta e gravadas como env em texto claro no settings.json ao trocar ou iniciar a CLI.",
+      "desktopNetwork": "Escopo de rede: a janela de login Claude abre claude.ai; a atualização da conta pode solicitar endpoints Claude Web.",
+      "cliNetwork": "Rede: OAuth acessa autorização oficial Claude e endpoints token/profile/usage; importar API Key não usa rede, e depois o Claude CLI acessa o provedor escolhido."
+    },
+    "search": "Buscar contas Claude...",
+    "noAccounts": "Nenhuma conta Claude",
+    "addAccount": {
+      "title": "Adicionar conta Claude",
+      "desktopTitle": "Adicionar conta Claude",
+      "cliTitle": "Adicionar conta Claude CLI"
+    },
+    "deleteConfirm": "Excluir conta Claude {{email}}?",
+    "switch": {
+      "success": "Alternado com sucesso"
+    },
+    "instances": {
+      "unsupportedDescPlatform": "Múltiplas instâncias do Claude só têm suporte no macOS, Windows e Linux.",
+      "launchDialogTitle": "Iniciar instância",
+      "launchCommand": "Comando de início",
+      "executeInTerminal": "Executar no terminal",
+      "startSuccess": "Claude iniciado"
+    },
+    "quota": {
+      "title": "Cota",
+      "fiveHour": "Sessão atual",
+      "sevenDay": "Semana atual (todos os modelos)",
+      "sonnet": "Sonnet 7 d",
+      "extra": "Uso extra",
+      "empty": "Sem cota",
+      "unsupported": "Não atualiza",
+      "updatedAt": "Atualizado: {{time}}",
+      "resetAt": "{{label}} reinicia: {{time}}",
+      "refreshSuccess": "Cota atualizada",
+      "refreshAllDone": "Atualização de cota concluída",
+      "refreshFailed": "Falha ao atualizar cota: {{error}}",
+      "refreshWithWarning": "Falha ao atualizar cota: {{error}}",
+      "notUpdated": "Cota não atualizada",
+      "updated": "Atualizada",
+      "notUpdatedShort": "Não atualizada",
+      "openVerification": "Abrir verificação",
+      "openingVerification": "Abrindo...",
+      "verificationWindowOpened": "Janela de verificação do Claude aberta. Atualize a cota novamente após verificar.",
+      "verificationWindowFailed": "Falha ao abrir a verificação do Claude: {{error}}"
+    },
+    "addTabs": {
+      "desktop": "Área",
+      "oauth": "OAuth",
+      "apiKey": "Chave API",
+      "import": "Local ou JSON",
+      "desktopGateway": "Portal"
+    },
+    "authMode": {
+      "oauth": "Modo OAuth",
+      "setup_token": "Token de configuração",
+      "api_key": "Chave API",
+      "desktop_oauth": "Login Claude"
+    },
+    "apiKey": {
+      "desc": "Salva uma API Key do Claude CLI como credencial separada. Ao trocar ou iniciar a CLI, grava valores env do provedor no Claude Code settings.json, sem gravar o estado de login do Claude.",
+      "nameLabel": "Nome da conta",
+      "namePlaceholder": "Opcional, ex. APIKEY.FUN",
+      "keyLabel": "Chave API",
+      "placeholder": "Cole a API Key do provedor",
+      "hide": "Ocultar API Key",
+      "show": "Mostrar API Key",
+      "hint": "Contas API Key são apenas para Claude CLI. Elas são gravadas como env em texto claro no Claude Code settings.json, não afetam o Claude e não suportam atualização de cota de assinatura.",
+      "importAction": "Importar API Key",
+      "required": "Informe uma API Key",
+      "templateRequired": "Informe {{label}}",
+      "importSuccess": "Conta Claude API Key importada: {{name}}",
+      "quotaUnsupported": "Contas API Key não atualizam",
+      "switchDisabled": "Conta API Key não alterna para Claude",
+      "cliUnsupported": "Conta API Key não inicia Claude CLI",
+      "providerLabel": "Provedor",
+      "customProvider": "Personalizado",
+      "endpointLabel": "Endpoint provedor",
+      "officialEndpoint": "Oficial padrão",
+      "baseUrlLabel": "URL base",
+      "baseUrlPlaceholder": "Vazio usa Anthropic oficial",
+      "keyFieldLabel": "Campo auth",
+      "baseUrlInvalid": "Base URL não é uma URL válida"
+    },
+    "desktopOAuth": {
+      "title": "Login Claude",
+      "desc": "Login Claude nesta ferramenta; aceita Google, Apple, e-mail e free.",
+      "start": "Abrir login",
+      "preparingRuntime": "Preparando login...",
+      "hint": "Salva localmente; grava no Claude só na troca.",
+      "runtimeHint": "No primeiro uso, o componente de login Electron pode ser baixado e verificado na pasta local de dados do app; ele não vem no instalador e será reutilizado depois.",
+      "nameLabel": "Nome da conta",
+      "namePlaceholder": "Opcional, exemplo Claude Free",
+      "waiting": "Faça login na janela Claude e finalize aqui.",
+      "profileDir": "Diretório profile isolado",
+      "complete": "Finalizar",
+      "localTitle": "Importar Claude atual",
+      "localDesc": "Copia a sessão atual do Claude como snapshot local.",
+      "localAction": "Importar",
+      "localSuccess": "Login local do Claude importado: {{name}}",
+      "importSuccess": "Login do Claude importado: {{name}}",
+      "switchHint": "Trocar para Claude oficial",
+      "planUnknown": "Plano desconhecido",
+      "progress": {
+        "start": "Preparando login",
+        "profile": "Criando perfil isolado",
+        "resolveRuntime": "Localizando componente de login",
+        "checkCache": "Verificando cache local do componente",
+        "cached": "Usando cache local do componente",
+        "downloadStart": "Iniciando download do componente",
+        "downloading": "Baixando componente de login",
+        "downloaded": "Componente de login baixado",
+        "verify": "Verificando integridade do componente",
+        "extract": "Extraindo componente de login",
+        "runtimeReady": "Componente de login pronto",
+        "launch": "Abrindo janela de login do Claude",
+        "ready": "Janela de login aberta",
+        "default": "Preparando componente de login",
+        "bytesWithTotal": "Baixado {{downloaded}} de {{total}}",
+        "bytesOnly": "Baixado {{downloaded}}",
+        "hint": "Após a primeira preparação, o cache local será reutilizado diretamente."
+      }
+    },
+    "oauth": {
+      "title": "Autorização Claude OAuth",
+      "desc": "Abra a página oficial de autorização OAuth do Claude e depois cole o link de callback ou o código para importar a conta.",
+      "start": "Autorizar OAuth",
+      "proRequiredHint": "O OAuth oficial do Claude geralmente é usado para autorizar o Claude Code. Se a página parar em upgrade ou sem permissão, use o login do Claude.",
+      "openInstruction": "Clique no botão abaixo e conclua a autorização Claude OAuth no navegador.",
+      "waiting": "Depois de concluir, cole abaixo a URL final ou o código exibido.",
+      "authUrl": "Link de autorização",
+      "preparing": "Gerando link de autorização...",
+      "openInBrowser": "Abrir no navegador",
+      "openFailed": "Falha ao abrir o link de autorização: {{error}}",
+      "callbackPlaceholder": "Cole o link de callback ou o código de autorização",
+      "callbackRequired": "Cole o link de callback ou o código após concluir a autorização",
+      "authorizeUrlNotCallback": "Você colou o link inicial de autorização acima, não o código final. Conclua a autorização no navegador e copie a URL final ou o código exibido.",
+      "complete": "Concluir importação",
+      "emailPlaceholder": "E-mail (preencha se não for detectado)",
+      "importSuccess": "Autorização Claude OAuth importada: {{name}}"
+    },
+    "plan": {
+      "label": "Selo do plano",
+      "selectPlaceholder": "Escolher plano",
+      "updateFailed": "Falha ao atualizar selo do plano: {{error}}"
+    },
+    "legacyOAuth": {
+      "switchDisabled": "Contas OAuth antigas não podem alternar para Claude",
+      "quotaUnsupported": "Contas OAuth antigas não suportam mais atualização",
+      "cliUnsupported": "Contas OAuth antigas não podem iniciar o Claude CLI"
+    },
+    "cli": {
+      "quickLaunch": "Abrir CLI",
+      "selectWorkingDir": "Escolha a pasta de trabalho do Claude CLI",
+      "launchSuccess": "Claude CLI iniciado",
+      "prepared": "Claude CLI pronto",
+      "launchFailed": "Falha ao iniciar o Claude CLI: {{error}}",
+      "localTitle": "Importar Claude Code atual",
+      "localDesc": "Lê o login OAuth local atual do Claude Code e copia como snapshot local da conta.",
+      "localSuccess": "Login local do Claude Code importado: {{name}}"
+    },
+    "accountNote": {
+      "title": "Nota da conta",
+      "desc": "Adicione uma nota local para {{email}} e identifique a conta ao alternar.",
+      "label": "Nota da conta",
+      "placeholder": "Ex.: Free principal, Max 20x, conta de equipe",
+      "saved": "Nota da conta salva",
+      "saveFailed": "Falha ao salvar a nota: {{error}}",
+      "emptyTitle": "Adicionar nota da conta",
+      "short": "Nota",
+      "addShort": "Nota"
+    },
+    "account": {
+      "signedInWith": "Entrou com {{provider}}",
+      "userId": "ID do usuário",
+      "nickname": "Apelido"
+    },
+    "selection": {
+      "selected": "{{count}} selecionadas"
+    },
+    "deleteSelectedLabel": "{{count}} contas",
+    "subPlatform": {
+      "label": "Subplataforma Claude",
+      "desktop": "Claude app",
+      "cli": "Claude linha de comando"
+    },
+    "searchDesktop": "Buscar contas Claude...",
+    "searchCli": "Buscar contas Claude CLI...",
+    "noDesktopAccounts": "Nenhuma conta Claude ainda",
+    "noCliAccounts": "Nenhuma conta Claude CLI ainda",
+    "desktopGateway": {
+      "label": "Portal",
+      "authScheme": "Esquema auth",
+      "importAction": "Importar Gateway",
+      "importSuccess": "Conta Claude Gateway importada: {{name}}",
+      "baseUrlRequired": "Informe o Gateway Base URL",
+      "noQuota": "Contas Gateway não mostram cota de assinatura Claude",
+      "desc": "Salva uma API Key Gateway como configuração Claude 3P. Ao alternar, grava na configuração oficial do Claude e inicia o Claude.",
+      "hint": "Contas Gateway não leem detalhes da assinatura Claude. A API Key é gravada no Claude local com a configuração 3P oficial.",
+      "modelsLabel": "Catálogo de modelos",
+      "modelsEmpty": "Este Gateway não retornou modelos.",
+      "modelsLoaded": "{{count}} modelos carregados. Você pode editar antes de salvar.",
+      "modelsLoadFailed": "Falha ao buscar modelos: {{error}}.",
+      "usingPresetMappings": "Usando mapeamentos predefinidos. Você pode editar antes de salvar.",
+      "manualModels": "Modelos manuais",
+      "modelsPlaceholder": "Um ID de modelo por linha",
+      "modelsLoading": "Carregando catálogo de modelos...",
+      "modelsRequired": "Informe o catálogo de modelos",
+      "editTitle": "Editar Claude Gateway",
+      "updateAction": "Salvar Gateway",
+      "updateSuccess": "Conta do Claude Gateway atualizada: {{name}}",
+      "connectionMode": "Conexão",
+      "modeDirect": "Direta",
+      "modeLocalMapping": "Mapeamento local",
+      "mappingsRequired": "Configure o mapeamento de modelos",
+      "mappingsIncomplete": "Complete o mapeamento de modelos",
+      "mappingDesktopModelDuplicated": "Nomes de modelos Claude não podem se repetir: {{model}}",
+      "mappingDesktopModelInvalid": "Os modelos Claude mapeados devem ser reconhecidos pelo Claude",
+      "directModelsInvalid": "O modo direto só aceita modelos Claude reconhecidos pelo Claude",
+      "desktopModelPlaceholder": "Modelo do Claude",
+      "upstreamModelPlaceholder": "Modelo real de origem",
+      "addMapping": "Adicionar mapeamento",
+      "mappingSummary": "{{count}} mapeamentos configurados",
+      "mappingSummaryHint": "Revise ou edite antes de salvar.",
+      "editMappings": "Editar",
+      "moreMappings": "Mais {{count}}",
+      "mappingEditorTitle": "Mapeamento de modelos",
+      "hideMappings": "Recolher",
+      "labelOverridePlaceholder": "Nome no menu",
+      "supports1mLabel": "Declarar 1M",
+      "supports1mShort": "1M contexto"
+    }
   }
 }

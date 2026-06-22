@@ -1392,7 +1392,7 @@ export function CursorAccountsPage() {
       />
 
       {deleteConfirm && (
-        <div className="modal-overlay" onClick={() => !deleting && setDeleteConfirm(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{t('common.confirm')}</h2>
@@ -1411,7 +1411,7 @@ export function CursorAccountsPage() {
       )}
 
       {tagDeleteConfirm && (
-        <div className="modal-overlay" onClick={() => !deletingTag && setTagDeleteConfirm(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{t('common.confirm')}</h2>
