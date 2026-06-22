@@ -53,7 +53,18 @@
 
 ---
 
-## 主仓库 `jlcodes99/cockpit-tools` v0.25.6（对照用）
+## 主仓库 `jlcodes99/cockpit-tools` v0.26.5（对照用，2026-06-22 合并后）
+
+| 项 | 值 |
+|----|-----|
+| 上游 | `upstream/main` @ `d5ad5cea` |
+| 集成分支 | `integrate-upstream-v0.26.5-20260622` @ `92cc6da0` |
+| 合并提交 | `c07109f0` merge(upstream): integrate v0.26.5 main into fork |
+
+- 含 upstream v0.25.7→v0.26.5：Claude 平台、Codex session visibility、远程配置等
+- 仍保留 fork：无忧切号 / nirvana_raw / 满额换绑 / NVIDIA provider / 多开 pick
+
+## 主仓库 `jlcodes99/cockpit-tools` v0.25.6（历史对照）
 
 - 有 Cursor 账号 **auth_id / 邮箱 / token** 去重（upstream 自带，**不是**你的 release 定义）
 - **无**额度池 `cursor_quota_pool_key` 合并

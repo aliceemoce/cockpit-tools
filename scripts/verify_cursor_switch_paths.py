@@ -23,7 +23,7 @@ def main() -> int:
     lib_rs = read(RUST / "lib.rs")
 
     required = [
-        ("pub async fn refresh_all_tokens()", cursor_account),
+        ("pub async fn refresh_all_tokens", cursor_account),
         ("refresh_account_async(&id).await", cursor_account),
     ]
     for needle, blob in required:

@@ -18,30 +18,33 @@ alwaysApply: true
 
 ---
 
-## 2. 当前已核实特征（2026-06-15 晚，合并构建后）
+## 2. 当前已核实特征（2026-06-22 上游 v0.26.5 合并后）
 
 ### 能用
 
 | 项 | 证据 |
 |----|------|
-| **合并验收包** `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` | SHA **`F5256511…`**，2026-06-15 19:03；`cockpit_identity.py` **ok: true** |
-| 源码分支 | `agent-build-20260615` @ **`44321ebf`**（Agent 切号 + `c81750a8` transient 合回） |
-| 默认实例切号 | `close_cursor(仅默认 profile)`，**不全杀**其它 Cursor |
+| **历史 Cursor 验收包** `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` | SHA **`F5256511…`**，2026-06-15；**合并前** Cursor 链对照 |
+| **合并后源码** | `integrate-upstream-v0.26.5-20260622` @ **`92cc6da0`**（含 upstream `d5ad5cea` + fork 切号/NVIDIA/Windsurf bootstrap） |
+| **合并后调试构建** | `target/debug/cockpit-tools.exe` SHA **`50E61F27…`**，v0.26.5，`cargo build` + `npm run build` 通过 |
+| 默认实例切号 | `close_cursor(仅默认 profile)`，**不全杀**其它 Cursor（源码仍在） |
 | 多开 + 默认 **可同时存在** | 默认 `close_cursor`；多开 `close_cursor_profile_strict` |
 | 配额 transient | 网络/超时失败 **不写盘**（`is_cursor_transient_quota_error`） |
-| 满额换号 + Kh 裸 JWT | `pick_full_quota_account`、`nirvana_kh_auth_tokens`、`verify_switch_tokens_written` |
+| 满额换号 + Kh 裸 JWT | `pick_full_quota_account`、`nirvana_kh_auth_tokens` |
+| `verify_cursor_switch_paths.py` | 2026-06-22 合并后 **PASS** |
+| cliproxy xhigh + upstream URL 测试 | 2026-06-22 合并后 **PASS** |
 | 历史备份 `9791D94F` | `Desktop\Cockpit-nirvana-token-20260614\` 仍在，作对照/回滚 |
 
 ### 不能用
 
 | 项 | 原因 |
 |----|------|
-| **`CB525188…`** `scripts/_release_staging_r2/…r2.exe` | Agent 误标「6/15 r2」；非用户验收包；GitHub Release 已删 |
+| **`CB525188…`** `scripts/_release_staging_r2/…r2.exe` | Agent 误标「6/15 r2」；非用户验收包 |
 | **`94B7D986…`** / **`316B5F2A…`** 等 Agent 中间桌面包 | 未合 transient 或含 `7761f453` 回归 |
 | **`7761f453`** / PR head `fork-on-upstream-0256` | 无条件写 `quota_query_last_error` + 全局 `accounts:changed` listener |
 | **`9E0E625C…`** 强制轮换补丁版 | 用户拒收 |
 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` 6/9 旧构建 | 旧 `inject_to_cursor` 链 |
-| 纯 **`eba93695`** 默认切号 | `close_cursor_nirvana_style` 全杀 Cursor（9791D94F 包行为） |
+| 纯 **`eba93695`** 默认切号 | `close_cursor_nirvana_style` 全杀 Cursor |
 
 ### 需要
 
@@ -49,20 +52,20 @@ alwaysApply: true
 - 无命令行闪屏
 - 多开 profile 隔离 + 满额换号（非每次强制轮换）
 - transient 失败不写盘；auth 类失败可写 `quota_query_last_error`
-- 验收 exe 以 **`F5256511` 合并包** 为准；日志 / `cockpit_identity.py` 可核对 SHA
-- 线上对照 PR base = `upstream-v0.25.6-base`，head = **`agent-build-20260615`**
+- **合并后**以 `integrate-upstream-v0.26.5-20260622` 为开发主线；release exe 待 GUI 点验后更新 SHA
+- 线上对照：base = **`upstream/main` @ `d5ad5cea`**，head = **`integrate-upstream-v0.26.5-20260622`**
 
 ### 不需要
 
 - 每次多开/全部启动 **强制轮换** 账号
 - 默认实例 **taskkill 全部 Cursor**（`close_cursor_nirvana_style` 作默认 Play）
-- 未说明就覆盖桌面验收 exe
-- `7761f453` 式全局 `accounts:changed` 监听（9791D94F patch 已回退）
+- 未说明就覆盖桌面 `Cockpit-nirvana-token-test.exe`
+- `7761f453` 式全局 `accounts:changed` 监听
 - 邮箱去重、额度池合并、scheduler/batch（见 `CURSOR-FORK-SCOPE.md`）
 
 ### 待修（代码层，非 exe 特征）
 
-- （无）合并包已合 transient；切号 GUI 全流程待用户点验 Play/多开
+- 合并后 **GUI** Play/多开/NVIDIA 点验；release 打包（NSIS 下载失败时需重试）
 
 ---
 
