@@ -1836,27 +1836,123 @@ fn ensure_profile_global_storage(profile_dir: &Path) -> Result<PathBuf, String> 
     Ok(global_storage)
 }
 
-fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> {
-    let db_path = profile_dir
+fn profile_state_db_path(profile_dir: &Path) -> PathBuf {
+    profile_dir
         .join("User")
         .join("globalStorage")
-        .join("state.vscdb");
+        .join("state.vscdb")
+}
+
+fn init_empty_state_vscdb(db_path: &Path) -> Result<(), String> {
+    if db_path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("创建 globalStorage 失败: {}", e))?;
+    }
+    let conn = Connection::open(db_path).map_err(|e| format!("创建 state.vscdb 失败: {}", e))?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+        [],
+    )
+    .map_err(|e| format!("初始化 state.vscdb 表结构失败: {}", e))?;
+    Ok(())
+}
+
+fn windsurf_profile_ready_for_injection(profile_dir: &Path) -> bool {
+    let db_path = profile_state_db_path(profile_dir);
+    if !db_path.exists() {
+        return false;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return profile_dir.join("Local State").exists();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        true
+    }
+}
+
+fn bootstrap_windsurf_profile_by_launch(profile_dir: &Path) -> Result<(), String> {
+    if windsurf_profile_ready_for_injection(profile_dir) {
+        return Ok(());
+    }
+
+    ensure_windsurf_launch_path_configured()?;
+    let profile_str = profile_dir.to_string_lossy().to_string();
+    modules::logger::log_info(&format!(
+        "[Windsurf Bootstrap] profile 缺少 state.vscdb/Local State，先启动 Windsurf 生成本地配置: dir={}",
+        profile_str
+    ));
+
+    let _ = close_windsurf(&[profile_str.clone()], 5);
+    let pid = start_windsurf_with_args_with_new_window(&profile_str, &[], true)?;
+    modules::logger::log_info(&format!(
+        "[Windsurf Bootstrap] 已发送启动命令 pid={}，等待 state.vscdb...",
+        pid
+    ));
+
+    let db_path = profile_state_db_path(profile_dir);
+    let timeout = std::time::Duration::from_secs(45);
+    let started = std::time::Instant::now();
+    while started.elapsed() < timeout {
+        if windsurf_profile_ready_for_injection(profile_dir) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    let _ = close_windsurf(&[profile_str], 20);
+
+    if !windsurf_profile_ready_for_injection(profile_dir) {
+        if !db_path.exists() {
+            init_empty_state_vscdb(&db_path)?;
+        }
+        if !windsurf_profile_ready_for_injection(profile_dir) {
+            return Err(
+                "Windsurf 首次启动后仍未生成完整本地配置（state.vscdb / Local State），请确认 Windsurf 启动路径正确"
+                    .to_string(),
+            );
+        }
+    }
+
+    modules::logger::log_info(&format!(
+        "[Windsurf Bootstrap] profile 已就绪: db={}",
+        db_path.to_string_lossy()
+    ));
+    Ok(())
+}
+
+fn ensure_state_db_for_injection(profile_dir: &Path) -> Result<PathBuf, String> {
+    let db_path = profile_state_db_path(profile_dir);
     if db_path.exists() {
         return Ok(db_path);
     }
 
     let default_dir = get_default_windsurf_user_data_dir()?;
-    let default_db = default_dir
-        .join("User")
-        .join("globalStorage")
-        .join("state.vscdb");
-    if default_db.exists() {
+    let default_db = profile_state_db_path(&default_dir);
+    if default_db.exists() && profile_dir != default_dir.as_path() {
         let _ = ensure_profile_global_storage(profile_dir)?;
         fs::copy(&default_db, &db_path).map_err(|e| format!("复制 state.vscdb 失败: {}", e))?;
     }
 
     if !db_path.exists() {
-        return Err("未找到 state.vscdb，请先勾选复制当前登录状态或先启动实例一次".to_string());
+        if let Err(err) = bootstrap_windsurf_profile_by_launch(profile_dir) {
+            modules::logger::log_warn(&format!(
+                "[Windsurf Inject] bootstrap 失败，尝试创建空 state.vscdb: {}",
+                err
+            ));
+            init_empty_state_vscdb(&db_path)?;
+        }
+    }
+
+    if !db_path.exists() {
+        return Err(
+            "未找到 state.vscdb，且无法自动生成。请确认 Windsurf 已安装并在设置中配置启动路径"
+                .to_string(),
+        );
     }
 
     let default_storage = default_dir

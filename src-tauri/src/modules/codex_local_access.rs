@@ -85,7 +85,7 @@ const CODEX_PROVIDER_MODEL_CATALOG_FILE: &str = "cockpit-provider-model-catalog.
 const CODEX_PROVIDER_MODEL_BACKUP_FILE: &str = ".cockpit-provider-model-backup.json";
 const MAX_HTTP_REQUEST_BYTES: usize = 256 * 1024 * 1024;
 const DEFAULT_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(15);
-const MAX_REQUEST_RETRY_ATTEMPTS: usize = 1;
+const MAX_REQUEST_RETRY_ATTEMPTS: usize = 5;
 const DEFAULT_UPSTREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 const DEFAULT_UPSTREAM_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_UPSTREAM_STREAM_TOTAL_TIMEOUT: Duration = Duration::from_secs(180);
@@ -4368,8 +4368,17 @@ fn build_cooldown_unavailable_message(model_key: &str, wait: Duration) -> String
 }
 
 fn parse_codex_retry_after(status: StatusCode, error_body: &str) -> Option<Duration> {
-    if status != StatusCode::TOO_MANY_REQUESTS || error_body.trim().is_empty() {
+    if status != StatusCode::TOO_MANY_REQUESTS {
         return None;
+    }
+
+    let lower = error_body.to_ascii_lowercase();
+    if lower.contains("too many requests") || lower.contains("rate limit") {
+        return Some(Duration::from_secs(2));
+    }
+
+    if error_body.trim().is_empty() {
+        return Some(Duration::from_secs(2));
     }
 
     let payload = serde_json::from_str::<Value>(error_body).ok()?;
@@ -13813,6 +13822,15 @@ fn should_try_next_account(status: StatusCode, body: &str) -> bool {
     let model_capacity =
         lower.contains("selected model is at capacity") || lower.contains("model is at capacity");
 
+    if status == StatusCode::TOO_MANY_REQUESTS
+        && (quota_exhausted
+            || model_capacity
+            || lower.contains("too many requests")
+            || lower.contains("rate limit"))
+    {
+        return true;
+    }
+
     matches!(
         status,
         StatusCode::TOO_MANY_REQUESTS | StatusCode::FORBIDDEN
@@ -15143,6 +15161,7 @@ fn should_retry_single_account_upstream_status(status: StatusCode) -> bool {
     matches!(
         status,
         StatusCode::REQUEST_TIMEOUT
+            | StatusCode::TOO_MANY_REQUESTS
             | StatusCode::INTERNAL_SERVER_ERROR
             | StatusCode::BAD_GATEWAY
             | StatusCode::SERVICE_UNAVAILABLE

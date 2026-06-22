@@ -32,13 +32,15 @@ def rebuild_index() -> None:
     summaries = []
     for path in account_files():
         account = load_json(path)
+        created_at = account.get("created_at", int(time.time()))
+        last_used = account.get("last_used") or created_at
         summaries.append(
             {
                 "id": account["id"],
                 "email": account["email"],
                 "plan_type": account.get("plan_type", "API_KEY"),
-                "created_at": account.get("created_at", int(time.time())),
-                "last_used": account.get("last_used"),
+                "created_at": created_at,
+                "last_used": last_used,
             }
         )
     summaries.sort(key=lambda item: (item.get("last_used") or 0, item.get("created_at") or 0), reverse=True)
@@ -69,6 +71,8 @@ def patch_accounts(models: list[str]) -> None:
     new["api_provider_id"] = NEW_PROVIDER_ID
     new["api_model_catalog"] = models
     new["api_wire_api"] = "chat_completions"
+    if not new.get("last_used"):
+        new["last_used"] = new.get("created_at", int(time.time()))
     write_json(new_path, new)
 
 
