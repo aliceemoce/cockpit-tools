@@ -261,6 +261,7 @@ export function CursorAccountsPage() {
 
   // ─── Platform-specific: Quota ──────────────────────────────────────
 
+  /** sort-only RR (36786727); display stays 590/upstream */
   const resolveRemainingQuotaPercent = useCallback((account: CursorAccount): number | null => {
     if (account.quota_query_last_error?.trim()) {
       return null;
@@ -272,6 +273,19 @@ export function CursorAccountsPage() {
       usage.planLimitCents > 0
         ? (usage.planUsedCents / usage.planLimitCents) * 100
         : null;
+    const usageDims = [
+      usage.autoPercentUsed,
+      usage.apiPercentUsed,
+      usage.totalPercentUsed,
+      usage.inlineSuggestionsUsedPercent,
+    ];
+    const updatedAt = account.usage_updated_at ?? 0;
+    const staleMs = 24 * 60 * 60 * 1000;
+    const isStale = updatedAt > 0 && Date.now() - updatedAt * 1000 > staleMs;
+    const allZeroOrNull = usageDims.every((value) => value == null || value === 0);
+    if (isStale && allZeroOrNull) {
+      return null;
+    }
     const usedCandidates = [
       usage.inlineSuggestionsUsedPercent ?? usage.totalPercentUsed ?? ratioPct,
       usage.autoPercentUsed,
@@ -292,16 +306,6 @@ export function CursorAccountsPage() {
 
   const resolveTotalQuota = useCallback(
     (account: CursorAccount) => {
-      const quotaError = account.quota_query_last_error?.trim();
-      if (quotaError) {
-        return {
-          percentage: 0,
-          quotaClass: 'unknown',
-          valueText: '—',
-          costText: null as string | null,
-          stale: true,
-        };
-      }
       const usage = getCursorUsage(account);
       const ratioPct =
         usage.planUsedCents != null &&
@@ -309,17 +313,7 @@ export function CursorAccountsPage() {
         usage.planLimitCents > 0
           ? (usage.planUsedCents / usage.planLimitCents) * 100
           : null;
-      const totalSource = usage.totalPercentUsed ?? ratioPct ?? usage.inlineSuggestionsUsedPercent;
-      if (totalSource == null && !account.cursor_usage_raw) {
-        return {
-          percentage: 0,
-          quotaClass: 'unknown',
-          valueText: '—',
-          costText: null,
-          stale: false,
-        };
-      }
-      const total = normalizeCursorPercent(totalSource);
+      const total = normalizeCursorPercent(usage.totalPercentUsed ?? ratioPct);
       const costText = usage.planUsedCents != null && usage.planLimitCents != null
         ? `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`
         : null;
@@ -336,13 +330,6 @@ export function CursorAccountsPage() {
   const resolveAutoQuota = useCallback(
     (account: CursorAccount) => {
       const usage = getCursorUsage(account);
-      if (usage.autoPercentUsed == null && !account.cursor_usage_raw) {
-        return {
-          percentage: 0,
-          quotaClass: 'unknown',
-          valueText: '—',
-        };
-      }
       const auto = normalizeCursorPercent(usage.autoPercentUsed);
       return {
         percentage: auto.bar,
@@ -356,13 +343,6 @@ export function CursorAccountsPage() {
   const resolveApiQuota = useCallback(
     (account: CursorAccount) => {
       const usage = getCursorUsage(account);
-      if (usage.apiPercentUsed == null && !account.cursor_usage_raw) {
-        return {
-          percentage: 0,
-          quotaClass: 'unknown',
-          valueText: '—',
-        };
-      }
       const api = normalizeCursorPercent(usage.apiPercentUsed);
       return {
         percentage: api.bar,
