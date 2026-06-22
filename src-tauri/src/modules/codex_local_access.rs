@@ -10539,6 +10539,12 @@ fn provider_gateway_models_for_account(account: &CodexAccount) -> Vec<String> {
     {
         return normalize_provider_gateway_models(vec!["glm-5.1"]);
     }
+    if provider_id == "nvidia" || base_url.contains("integrate.api.nvidia.com") {
+        return normalize_provider_gateway_models(vec![
+            "deepseek-ai/deepseek-v4-flash",
+            "deepseek-ai/deepseek-v4-pro",
+        ]);
+    }
     Vec::new()
 }
 
