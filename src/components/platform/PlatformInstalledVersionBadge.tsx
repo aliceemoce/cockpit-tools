@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import type { PlatformOverviewHeaderId } from './PlatformOverviewTabsHeader';
 import { getPlatformLabel } from '../../utils/platformMeta';
+import type { PlatformId } from '../../types/platform';
 import {
   installMissingPlatform,
   isInstallableAppPath,
@@ -14,6 +15,16 @@ const DETECT_DEFER_MS = 250;
 const INSTALL_RESULT_DISPLAY_MS = 3000;
 
 type InstallUiState = 'idle' | 'downloading' | 'installing' | 'success' | 'failure';
+
+function resolveOverviewPlatformLabel(
+  platform: PlatformOverviewHeaderId,
+  t: ReturnType<typeof useTranslation>['t'],
+): string {
+  if (platform === 'claude') {
+    return 'Claude';
+  }
+  return getPlatformLabel(platform as PlatformId, t);
+}
 
 function resolveDetectAppId(platform: PlatformOverviewHeaderId): string | null {
   switch (platform) {
@@ -69,7 +80,7 @@ export function PlatformInstalledVersionBadge({
   const detectAppId = useMemo(() => resolveDetectAppId(platform), [platform]);
   const installAppId = useMemo(() => resolveInstallAppId(platform), [platform]);
   const productLabel = useMemo(
-    () => getPlatformLabel(platform, t),
+    () => resolveOverviewPlatformLabel(platform, t),
     [platform, t],
   );
   const [loaded, setLoaded] = useState(false);

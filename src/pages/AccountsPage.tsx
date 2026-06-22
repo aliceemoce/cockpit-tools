@@ -2361,6 +2361,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
         : ''
       const verificationReason = account.disabled_reason || verificationStatusMap[account.id]
       const hasVerificationIssue = verificationReason === 'verification_required' || verificationReason === 'tos_violation'
+      const quotaDisplayItems = getQuotaDisplayItems(account)
 
       const hasModels = account.quota?.models && account.quota.models.length > 0
       if (!hasModels) {
@@ -3037,6 +3038,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
         : ''
       const verificationReason = account.disabled_reason || verificationStatusMap[account.id]
       const hasVerificationIssue = verificationReason === 'verification_required' || verificationReason === 'tos_violation'
+      const quotaDisplayItems = getQuotaDisplayItems(account)
 
       return (
         <tr
