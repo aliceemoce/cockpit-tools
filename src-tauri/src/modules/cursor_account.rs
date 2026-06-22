@@ -551,6 +551,13 @@ pub fn ensure_cursor_overview_pickable(account: &CursorAccount) -> Result<(), St
     }
 }
 
+/// 切号前拉实时额度并复用总览 pick 判定，避免磁盘缓存 remaining=100% 但 API 已耗尽仍 inject。
+pub async fn refresh_and_ensure_overview_pickable(account_id: &str) -> Result<CursorAccount, String> {
+    let refreshed = refresh_account_fast_async(account_id).await?;
+    ensure_cursor_overview_pickable(&refreshed.account)?;
+    Ok(refreshed.account)
+}
+
 pub fn account_has_auth_failure_marker(account: &CursorAccount) -> bool {
     account
         .quota_query_last_error

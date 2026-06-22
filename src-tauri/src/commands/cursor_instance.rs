@@ -83,11 +83,23 @@ async fn resolve_auto_switch_account_with_probe_retry(
             .ok_or_else(|| format!("Cursor 账号不存在: {}", pick.account_id))?;
         modules::cursor_switch_audit::write_pick(trace, &account, pick.pool, pick.candidates);
 
-        if let Err(err) = modules::cursor_account::ensure_cursor_overview_pickable(&account) {
-            modules::cursor_switch_audit::write_probe_pre(trace, &account, "auth_fail", Some(&err));
-            exclude.insert(pick.account_id);
-            continue;
-        }
+        let account = match modules::cursor_account::refresh_and_ensure_overview_pickable(&pick.account_id)
+            .await
+        {
+            Ok(refreshed) => refreshed,
+            Err(err) => {
+                let outcome = if err.contains("额度已耗尽") || err.contains("配额不可用") {
+                    "quota_exhausted"
+                } else if modules::cursor_account::is_cursor_transient_quota_error(&err) {
+                    "transient"
+                } else {
+                    "auth_fail"
+                };
+                modules::cursor_switch_audit::write_probe_pre(trace, &account, outcome, Some(&err));
+                exclude.insert(pick.account_id);
+                continue;
+            }
+        };
 
         let mut probe_ok = false;
         let mut last_probe_err: Option<String> = None;
@@ -111,7 +123,12 @@ async fn resolve_auto_switch_account_with_probe_retry(
             let from_bind = bind_account_id.unwrap_or("(none)");
             modules::logger::log_info(&format!(
                 "[Cursor Switch] 自动轮换账号: instance_id={}, from_bind={}, to={}, pool={}, remaining={}%",
-                instance_id, from_bind, account.email, pick.pool, pick.remaining_pct
+                instance_id,
+                from_bind,
+                account.email,
+                pick.pool,
+                modules::cursor_account::cursor_overview_remaining_percent(&account)
+                    .unwrap_or(pick.remaining_pct)
             ));
             return Ok(pick.account_id);
         }
@@ -201,11 +218,23 @@ pub async fn start_cursor_instance_with_account_switch(
     let auto_rotation = forced_account_id.is_none();
     let account_id = match forced_account_id {
         Some(id) => {
-            let account = modules::cursor_account::load_account(&id)
+            let stale = modules::cursor_account::load_account(&id)
                 .ok_or_else(|| format!("Cursor 账号不存在: {}", id))?;
-            if let Err(err) = modules::cursor_account::ensure_cursor_overview_pickable(&account) {
-                modules::cursor_switch_audit::write_probe_pre(&trace, &account, "auth_fail", Some(&err));
-                return Err(err);
+            match modules::cursor_account::refresh_and_ensure_overview_pickable(&id).await {
+                Ok(account) => {
+                    modules::cursor_switch_audit::write_probe_pre(&trace, &account, "ok", None);
+                }
+                Err(err) => {
+                    let outcome = if err.contains("额度已耗尽") || err.contains("配额不可用") {
+                        "quota_exhausted"
+                    } else if modules::cursor_account::is_cursor_transient_quota_error(&err) {
+                        "transient"
+                    } else {
+                        "auth_fail"
+                    };
+                    modules::cursor_switch_audit::write_probe_pre(&trace, &stale, outcome, Some(&err));
+                    return Err(err);
+                }
             }
             id
         }
