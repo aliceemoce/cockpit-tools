@@ -734,6 +734,59 @@ func TestRelayServerProviderGatewayRoutesResponsesToChatCompletions(t *testing.T
 	}
 }
 
+func TestSanitizeProviderGatewayChatCompletionsBodyMapsXHighToMax(t *testing.T) {
+	out := sanitizeProviderGatewayChatCompletionsBody([]byte(`{"model":"deepseek-v4-flash","reasoning_effort":"xhigh","messages":[{"role":"user","content":"hi"}]}`))
+	if !strings.Contains(string(out), `"reasoning_effort":"max"`) {
+		t.Fatalf("xhigh should map to max: %s", out)
+	}
+}
+
+func TestRelayServerProviderGatewayMapsXHighReasoningEffortForUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var upstreamBody string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		upstreamBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","object":"chat.completion","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer upstream.Close()
+
+	gateway := &providerGatewaySpec{
+		BaseURL:        upstream.URL,
+		APIKey:         "nvidia-key",
+		UpstreamModel:  "deepseek-v4-flash",
+		UpstreamModels: []string{"deepseek-v4-flash"},
+		WireAPI:        "chat_completions",
+	}
+	m := &manifest{
+		APIKeys:  []apiKeySpec{{ID: "provider_gateway_account_1", Label: "Provider Gateway", Key: "client-key", Enabled: true, ProviderGateway: gateway}},
+		ModelIDs: []string{"gpt-5.4"},
+		apiKeyByValue: map[string]*apiKeySpec{
+			"client-key": {ID: "provider_gateway_account_1", Label: "Provider Gateway", Key: "client-key", Enabled: true, ProviderGateway: gateway},
+		},
+	}
+	router := (&relayServer{
+		runtime:  &fakeRuntime{},
+		cfg:      &config.Config{},
+		manifest: m,
+		policy:   &requestPolicy{manifest: m},
+	}).router()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hello","reasoning":{"effort":"xhigh"},"stream":false}`))
+	req.Header.Set("Authorization", "Bearer client-key")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(upstreamBody, `"reasoning_effort":"max"`) || strings.Contains(upstreamBody, `"xhigh"`) {
+		t.Fatalf("upstream should receive max instead of xhigh: %s", upstreamBody)
+	}
+}
+
 func TestRelayServerProviderGatewayChatStreamTerminatesResponsesSSEFrames(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

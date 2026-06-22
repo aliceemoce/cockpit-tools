@@ -3305,6 +3305,7 @@ func (s *relayServer) handleProviderGatewayRequest(c *gin.Context, gateway *prov
 			return
 		}
 		upstreamPath = "/v1/chat/completions"
+		upstreamBody = sanitizeProviderGatewayChatCompletionsBody(upstreamBody)
 	} else if !sourceFormatEqual(sourceFormat, sdktranslator.FormatOpenAIResponse) {
 		writeAPIError(c, http.StatusBadRequest, "provider gateway responses wire API only accepts responses requests", "invalid_request")
 		return
@@ -3403,6 +3404,35 @@ func rewriteProviderGatewayBodyModel(body []byte, model string) []byte {
 		return body
 	}
 	payload["model"] = model
+	next, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return next
+}
+
+func sanitizeProviderGatewayChatCompletionsBody(body []byte) []byte {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	if effort, ok := payload["reasoning_effort"].(string); ok {
+		normalized := strings.ToLower(strings.TrimSpace(effort))
+		switch normalized {
+		case "none", "low", "medium", "high", "max":
+			payload["reasoning_effort"] = normalized
+		case "xhigh", "extra_high", "extra-high":
+			payload["reasoning_effort"] = "max"
+		case "minimal":
+			payload["reasoning_effort"] = "low"
+		case "auto":
+			payload["reasoning_effort"] = "medium"
+		default:
+			delete(payload, "reasoning_effort")
+		}
+	}
+	delete(payload, "reasoning")
+	delete(payload, "include")
 	next, err := json.Marshal(payload)
 	if err != nil {
 		return body
@@ -4482,6 +4512,7 @@ func (s *relayServer) handleOllamaProviderGatewayChat(c *gin.Context, gateway *p
 		body = providerGatewayStripVisionInput(body)
 	}
 	upstreamBody := rewriteProviderGatewayBodyModel(body, upstreamModel)
+	upstreamBody = sanitizeProviderGatewayChatCompletionsBody(upstreamBody)
 	upstreamURL, err := providerGatewayURL(gateway.BaseURL, "/v1/chat/completions")
 	if err != nil {
 		writeAPIError(c, http.StatusBadGateway, err.Error(), "bad_gateway")
