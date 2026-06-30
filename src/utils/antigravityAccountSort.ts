@@ -6,7 +6,6 @@ import {
 } from '../services/groupService';
 import { getAntigravityGroupResetTimestamp } from '../presentation/platformAccountPresentation';
 import { compareCurrentAccountFirst } from './currentAccountSort';
-import { isAccountSessionExpired } from './accountValidityFilter';
 
 export type AntigravitySortDirection = 'asc' | 'desc';
 
@@ -123,12 +122,6 @@ export const createAntigravityAccountComparator = ({
   const normalizedSortBy = normalizeAntigravitySortBy(sortBy);
 
   return (a: Account, b: Account) => {
-    const aExpired = isAccountSessionExpired(a.quota_error?.message);
-    const bExpired = isAccountSessionExpired(b.quota_error?.message);
-    if (aExpired !== bExpired) {
-      return aExpired ? 1 : -1;
-    }
-
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;

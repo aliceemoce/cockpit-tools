@@ -5,6 +5,7 @@ description = "Cockpit Tools"
 authors = ["jlcodes"]
 license = "CC-BY-NC-SA-4.0"
 edition = "2021"
+default-run = "cockpit-tools"
 
 [lib]
 name = "antigravity_cockpit_tools_lib"
@@ -19,7 +20,13 @@ path = "src/main.rs"
 name = "dual-cursor-launch"
 path = "src/bin/dual_cursor_launch.rs"
 
-default-run = "cockpit-tools"
+[[bin]]
+name = "cursor_refresh_batch"
+path = "src/bin/cursor_refresh_batch.rs"
+
+[[bin]]
+name = "cursor_refresh_ids"
+path = "src/bin/cursor_refresh_ids.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

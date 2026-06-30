@@ -6,8 +6,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
-use rand::Rng;
 use regex::Regex;
 use uuid::Uuid;
 
@@ -44,21 +44,39 @@ fn cursor_backups_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn random_mac_address() -> String {
-    let hex: Vec<char> = "0123456789ABCDEF".chars().collect();
-    let mut rng = rand::thread_rng();
-    loop {
-        let mut parts = Vec::with_capacity(6);
-        for _ in 0..6 {
-            let a = hex[rng.gen_range(0..16)];
-            let b = hex[rng.gen_range(0..16)];
-            parts.push(format!("{a}{b}"));
-        }
-        let mac = parts.join(":");
-        if mac != "00:00:00:00:00:00" && mac != "FF:FF:FF:FF:FF:FF" {
-            return mac;
-        }
+fn validate_js_syntax(path: &Path) -> Result<(), String> {
+    let output = Command::new("node")
+        .arg("--check")
+        .arg(path)
+        .output()
+        .map_err(|e| format!("node --check 不可用: {}", e))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("JS 语法校验失败: {}", stderr.trim()))
     }
+}
+
+fn validate_js_content(content: &str) -> Result<(), String> {
+    let temp = std::env::temp_dir().join(format!("cockpit_main_js_check_{}.js", Uuid::new_v4()));
+    fs::write(&temp, content).map_err(|e| format!("写入临时 JS 失败: {}", e))?;
+    let result = validate_js_syntax(&temp);
+    let _ = fs::remove_file(&temp);
+    result
+}
+
+fn restore_main_js_from_backup(main_js: &Path) -> Result<(), String> {
+    let backup = cursor_backups_dir()?.join("main.js.bak");
+    if !backup.is_file() {
+        return Err("main.js 损坏且无 .cursor-backups/main.js.bak".into());
+    }
+    fs::copy(&backup, main_js).map_err(|e| format!("从备份恢复 main.js 失败: {}", e))?;
+    logger::log_warn(&format!(
+        "[Cursor Switch] 已从备份恢复 main.js: {}",
+        backup.display()
+    ));
+    Ok(())
 }
 
 /// 对齐无忧 `patchCursorMachineId`（Yh）：patch `resources/app/out/main.js`。
@@ -69,8 +87,19 @@ pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
         .map_err(|e| format!("读取 main.js 失败({}): {}", main_js.display(), e))?;
 
     if content.contains("/*csp1*/") || content.contains("/*csp2*/") {
-        logger::log_info("[Cursor Switch] main.js 已 patch，跳过");
-        return Ok(());
+        if validate_js_content(&content).is_ok() {
+            logger::log_info("[Cursor Switch] main.js 已 patch，跳过");
+            return Ok(());
+        }
+        logger::log_warn("[Cursor Switch] main.js 含 patch 标记但语法无效，从备份恢复");
+        restore_main_js_from_backup(&main_js)?;
+        return patch_cursor_machine_id(cursor_exe);
+    }
+
+    if validate_js_content(&content).is_err() {
+        logger::log_warn("[Cursor Switch] main.js 当前语法无效，尝试从备份恢复");
+        restore_main_js_from_backup(&main_js)?;
+        return patch_cursor_machine_id(cursor_exe);
     }
 
     let already_patched = Regex::new(r"async getMachineId\(\)\{return [a-zA-Z_$][a-zA-Z0-9_$]*\}")
@@ -97,7 +126,6 @@ pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
     let mut patched = content.clone();
     let mut touched = Vec::<&str>::new();
     let csp1_id = Uuid::new_v4().to_string();
-    let mac = random_mac_address();
     let device_id = Uuid::new_v4().to_string();
 
     if let Ok(re) = Regex::new(r"=.{0,50}timeout.{0,10}5e3.*?,") {
@@ -109,15 +137,7 @@ pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
         }
     }
 
-    if let Ok(re) = Regex::new(r"(function .{0,50}\{).{0,300}Unable to retrieve mac address.*?(\})")
-    {
-        if re.is_match(&patched) {
-            patched = re
-                .replace(&patched, format!(r#"$1return/*csp2*/"{mac}"/*2csp*/;$2"#))
-                .into_owned();
-            touched.push("MacAddress");
-        }
-    }
+    // MacAddress 正则在新版 Cursor main.js 上会误匹配闭合括号，产生非法 JS；已禁用。
 
     if let Ok(re) = Regex::new(r"return.{0,50}vscode/deviceid.*?getDeviceId\(\)") {
         if re.is_match(&patched) {
@@ -157,6 +177,10 @@ pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
         logger::log_info("[Cursor Switch] main.js 未找到可 patch 模式，跳过（不影响换号）");
         return Ok(());
     }
+
+    validate_js_content(&patched).map_err(|e| {
+        format!("main.js patch 后语法无效，已放弃写入: {}", e)
+    })?;
 
     atomic_write::write_string_atomic(&main_js, &patched)
         .map_err(|e| format!("写入 main.js patch 失败: {}", e))?;

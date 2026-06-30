@@ -64,6 +64,7 @@ import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
 import {
   consumeQueuedExternalProviderImportForPlatform,
   EXTERNAL_PROVIDER_IMPORT_EVENT,
+  isNavigationOnlyExternalImportToken,
 } from '../utils/externalProviderImport';
 import {
   buildValidAccountsFilterOption,
@@ -540,6 +541,9 @@ export function QoderAccountsPage() {
   const consumeExternalProviderImport = useCallback(() => {
     const request = consumeQueuedExternalProviderImportForPlatform('qoder');
     if (!request) return;
+    if (isNavigationOnlyExternalImportToken(request.token)) {
+      return;
+    }
     openAddModal('token');
     setTokenInput(request.token);
     setAddStatus('idle');

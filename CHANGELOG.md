@@ -7,6 +7,31 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+
+## [0.26.5-fork] - 2026-06-30
+
+Fork branch `integrate-upstream-v0.26.5-20260622` — Cursor 切号链与用户历史要求同步至 GitHub。
+
+### Added
+- Cursor `accounts:changed` 前端监听（长驻会话列表刷新）
+- `main.js` patch 写入前 `node --check`；MacAddress patch 永久禁用
+- 用户历史要求主档 `.cursor/user-history-requirements.md` 纳入版本库
+
+### Changed
+- Cursor 邮箱去重仅认邮箱；ALL 计数按唯一邮箱
+- 多开 Play 与总览同一套 `pick_cursor_rotation_account`
+- 手动选号 Play 不因配额耗尽硬拦（`refresh_for_forced_account_switch`）
+- 创建时间排序时 pending 配额不整体沉底
+
+### Removed
+- Agent 未开口的 `cursor_profile_theme` 多开窗口配色模块
+- 多开侧栏从默认 profile 复制（`sync_sidebar_state_from_default_to_profile`）
+
+### Fixed
+- 禁止裸 `cargo build` debug exe 覆盖安装路径（WebView 网络错误）
+- Cursor `main.js` MacAddress patch 写坏语法之事故链
+
+---
 ## [0.26.5] - 2026-06-20
 
 ### Added

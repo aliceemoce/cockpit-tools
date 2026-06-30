@@ -551,11 +551,38 @@ pub fn ensure_cursor_overview_pickable(account: &CursorAccount) -> Result<(), St
     }
 }
 
-/// 切号前拉实时额度并复用总览 pick 判定，避免磁盘缓存 remaining=100% 但 API 已耗尽仍 inject。
+/// 切号前拉实时额度并复用总览 pick 判定，避免磁盘缓存 remaining 与 API 已耗尽仍 inject。
 pub async fn refresh_and_ensure_overview_pickable(account_id: &str) -> Result<CursorAccount, String> {
     let refreshed = refresh_account_fast_async(account_id).await?;
     ensure_cursor_overview_pickable(&refreshed.account)?;
     Ok(refreshed.account)
+}
+
+/// 用户显式选号 Play：刷新额度但不因配额耗尽/待查询而阻断切号（仅拦 auth/缺 token/封禁）。
+pub async fn refresh_for_forced_account_switch(account_id: &str) -> Result<CursorAccount, String> {
+    let account = match refresh_account_fast_async(account_id).await {
+        Ok(refreshed) => refreshed.account,
+        Err(err) if is_cursor_transient_quota_error(&err) => {
+            load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?
+        }
+        Err(err) => return Err(err),
+    };
+    if is_banned_account(&account) {
+        return Err(format!("Cursor 账号已被标记不可用: {}", account.email));
+    }
+    if !has_nirvana_switch_ready_tokens(&account) {
+        return Err(format!(
+            "Cursor 账号缺少可切号 token，请重新导入账号: {}",
+            account.email
+        ));
+    }
+    if account_has_auth_failure_marker(&account) {
+        return Err(format!(
+            "Cursor 账号会话已失效，请重新导入账号: {}",
+            account.email
+        ));
+    }
+    Ok(account)
 }
 
 pub fn account_has_auth_failure_marker(account: &CursorAccount) -> bool {
@@ -900,38 +927,12 @@ fn cursor_quota_pool_key(account: &CursorAccount) -> Option<String> {
 }
 
 fn accounts_are_duplicates(left: &CursorAccount, right: &CursorAccount) -> bool {
-    let left_auth_id = resolve_account_auth_id(left);
-    let right_auth_id = resolve_account_auth_id(right);
-    if let (Some(left_auth), Some(right_auth)) = (left_auth_id.as_ref(), right_auth_id.as_ref()) {
-        return left_auth == right_auth;
-    }
-    if left_auth_id.is_some() || right_auth_id.is_some() {
-        return false;
-    }
-
     let left_email = normalize_email_identity(Some(left.email.as_str()));
     let right_email = normalize_email_identity(Some(right.email.as_str()));
-    let left_token = normalize_token_identity(Some(left.access_token.as_str()));
-    let right_token = normalize_token_identity(Some(right.access_token.as_str()));
-
-    let email_conflict = matches!(
+    matches!(
         (left_email.as_ref(), right_email.as_ref()),
-        (Some(l), Some(r)) if l != r
-    );
-    if email_conflict {
-        return false;
-    }
-
-    let email_match = matches!(
-        (left_email.as_ref(), right_email.as_ref()),
-        (Some(l), Some(r)) if l == r
-    );
-    let token_match = matches!(
-        (left_token.as_ref(), right_token.as_ref()),
-        (Some(l), Some(r)) if l == r
-    );
-
-    email_match || token_match
+        (Some(le), Some(re)) if le == re
+    )
 }
 
 fn archive_duplicate_account_file(account_id: &str) -> Result<(), String> {
@@ -1217,21 +1218,22 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
         for account in &normalized_accounts {
             if let Err(err) = save_account_file(account) {
                 logger::log_warn(&format!(
-                    "[Cursor Account] 保存去重账号失败: id={}, error={}",
+                    "[Cursor Account] 保存邮箱去重账号失败: id={}, error={}",
                     account.id, err
                 ));
             }
         }
         for account_id in &removed_ids {
-            if let Err(err) = delete_account_file(account_id) {
+            if let Err(err) = archive_duplicate_account_file(account_id) {
                 logger::log_warn(&format!(
-                    "[Cursor Account] 删除重复账号文件失败: id={}, error={}",
+                    "[Cursor Account] 归档重复邮箱账号失败: id={}, error={}",
                     account_id, err
                 ));
             }
         }
         logger::log_warn(&format!(
-            "[Cursor Account] 检测到重复账号并已合并: removed_ids={}",
+            "[Cursor Account] 邮箱去重: merged_count={}, removed_ids={}",
+            removed_ids.len(),
             removed_ids.join(",")
         ));
     }
@@ -1265,7 +1267,7 @@ fn run_index_maintenance_once() -> Result<(), String> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
-    logger::log_info("[Cursor Account] 开始单次索引维护(目录补扫 + 额度池去重)");
+    logger::log_info("[Cursor Account] 开始单次索引维护(目录补扫 + 邮箱去重合并)");
     let started = std::time::Instant::now();
     let mut index = load_account_index();
     let had_index_accounts = !index.accounts.is_empty();
@@ -1361,7 +1363,7 @@ pub fn quota_pool_id_display(account: &CursorAccount) -> Option<String> {
     resolve_quota_pool_id(account).or_else(|| account.auth_id.clone())
 }
 
-fn has_quota_query_failed(account: &CursorAccount) -> bool {
+pub(crate) fn has_quota_query_failed(account: &CursorAccount) -> bool {
     account
         .quota_query_last_error
         .as_ref()
@@ -1483,47 +1485,40 @@ fn upsert_account_with_outcome(
     let mut index = load_account_index();
     let incoming_auth_id = resolve_payload_auth_id(&payload);
     let incoming_email = normalize_email_identity(Some(payload.email.as_str()));
-    let incoming_token = normalize_token_identity(Some(payload.access_token.as_str()));
 
-    let identity_seed = incoming_auth_id
+    // 邮箱优先身份：导入只认邮箱，避免跨邮箱覆盖同 id。
+    let identity_seed = incoming_email
         .clone()
-        .or_else(|| incoming_email.clone())
-        .or_else(|| incoming_token.clone())
+        .or_else(|| incoming_auth_id.clone())
+        .or_else(|| normalize_token_identity(Some(payload.access_token.as_str())))
         .unwrap_or_else(|| "cursor_user".to_string())
         .to_lowercase();
-    let generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
+    let mut generated_id = format!("cursor_{:x}", md5::compute(identity_seed.as_bytes()));
 
     let account_id = index
         .accounts
         .iter()
         .filter_map(|item| load_account(&item.id))
         .find(|account| {
-            let existing_auth_id = resolve_account_auth_id(account);
-            if let (Some(existing), Some(incoming)) =
-                (existing_auth_id.as_ref(), incoming_auth_id.as_ref())
-            {
-                return existing == incoming;
-            }
-            if existing_auth_id.is_some() || incoming_auth_id.is_some() {
-                return false;
-            }
-
             let existing_email = normalize_email_identity(Some(account.email.as_str()));
-            let existing_token = normalize_token_identity(Some(account.access_token.as_str()));
-            if let (Some(ex), Some(inc)) = (existing_email.as_ref(), incoming_email.as_ref()) {
-                if ex == inc {
-                    return true;
-                }
-            }
-            if let (Some(ex), Some(inc)) = (existing_token.as_ref(), incoming_token.as_ref()) {
-                if ex == inc {
-                    return true;
-                }
-            }
-            false
+            matches!(
+                (existing_email.as_ref(), incoming_email.as_ref()),
+                (Some(ex_email), Some(in_email)) if ex_email == in_email
+            )
         })
         .map(|account| account.id)
-        .unwrap_or(generated_id);
+        .unwrap_or_else(|| {
+            if let Some(existing) = load_account(&generated_id) {
+                let existing_email = normalize_email_identity(Some(existing.email.as_str()));
+                if existing_email != incoming_email {
+                    generated_id = format!(
+                        "cursor_{:x}",
+                        md5::compute(format!("{}::{}", identity_seed, Uuid::new_v4()).as_bytes())
+                    );
+                }
+            }
+            generated_id
+        });
 
     let existing = load_account(&account_id);
     let created = existing.is_none();
@@ -2174,103 +2169,6 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
         let _ = conn.execute("DELETE FROM ItemTable WHERE key = ?1", [key]);
     }
     Ok(())
-}
-
-/// 多开实例侧栏（Agent/Composer 会话列表与 glass 布局）与默认 profile 对齐的键前缀。
-const SIDEBAR_SYNC_KEY_PREFIXES: &[&str] = &[
-    "composer.",
-    "glass/",
-    "cursor/glass",
-    "workbench.backgroundComposer.",
-    "backgroundComposer.",
-    "cursor/agentLayout.",
-    "chat.",
-];
-
-/// 多开切号/启动前：从默认 profile 的 state.vscdb 同步左侧 Agent/Composer 侧栏状态。
-/// 新建实例走整目录复制；已有实例仅在此按前缀覆盖，避免整库 10GB+ 复制。
-pub fn sync_sidebar_state_from_default_to_profile(profile_dir: &Path) -> Result<usize, String> {
-    if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
-        return Ok(0);
-    }
-
-    let default_db = get_default_cursor_state_db_path()?;
-    let target_db = profile_dir
-        .join("User")
-        .join("globalStorage")
-        .join("state.vscdb");
-
-    if !default_db.exists() || !target_db.exists() {
-        logger::log_info("[Cursor Sidebar Sync] 跳过：default 或实例 state.vscdb 不存在");
-        return Ok(0);
-    }
-
-    remove_vscdb_sidecars(&target_db);
-
-    let src_conn = Connection::open(&default_db)
-        .map_err(|e| format!("打开默认 state.vscdb 失败({}): {}", default_db.display(), e))?;
-    let dst_conn = Connection::open(&target_db)
-        .map_err(|e| format!("打开实例 state.vscdb 失败({}): {}", target_db.display(), e))?;
-
-    dst_conn
-        .execute_batch("BEGIN;")
-        .map_err(|e| format!("BEGIN 失败: {}", e))?;
-
-    let mut deleted = 0usize;
-    let mut copied = 0usize;
-
-    let write_result = (|| -> Result<(), String> {
-        for prefix in SIDEBAR_SYNC_KEY_PREFIXES {
-            let pattern = format!("{prefix}%");
-            let deleted_count = dst_conn
-                .execute("DELETE FROM ItemTable WHERE key LIKE ?1", [&pattern])
-                .map_err(|e| format!("删除侧栏键 {} 失败: {}", pattern, e))?;
-            deleted += deleted_count;
-
-            let mut stmt = src_conn
-                .prepare("SELECT key, value FROM ItemTable WHERE key LIKE ?1")
-                .map_err(|e| format!("查询默认侧栏键 {} 失败: {}", pattern, e))?;
-            let mut rows = stmt
-                .query([&pattern])
-                .map_err(|e| format!("遍历默认侧栏键 {} 失败: {}", pattern, e))?;
-
-            while let Some(row) = rows
-                .next()
-                .map_err(|e| format!("读取默认侧栏键 {} 失败: {}", pattern, e))?
-            {
-                let key: String = row.get(0).map_err(|e| format!("读取 key 失败: {}", e))?;
-                let value: String = row.get(1).map_err(|e| format!("读取 value 失败: {}", e))?;
-                dst_conn
-                    .execute(
-                        "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?1, ?2)",
-                        (&key, &value),
-                    )
-                    .map_err(|e| format!("写入侧栏键 {} 失败: {}", key, e))?;
-                copied += 1;
-            }
-        }
-        Ok(())
-    })();
-
-    match write_result {
-        Ok(()) => {
-            dst_conn
-                .execute_batch("COMMIT;")
-                .map_err(|e| format!("COMMIT 失败: {}", e))?;
-        }
-        Err(e) => {
-            let _ = dst_conn.execute_batch("ROLLBACK;");
-            return Err(e);
-        }
-    }
-
-    logger::log_info(&format!(
-        "[Cursor Sidebar Sync] 多开侧栏已从默认 profile 同步: deleted={}, copied={}, profile={}",
-        deleted,
-        copied,
-        profile_dir.display()
-    ));
-    Ok(copied)
 }
 
 /// 无忧传统切号 `i()`：close → Kh → Gh → Jh → Yh → Nc（默认 profile）。
@@ -3385,13 +3283,113 @@ pub fn resolve_current_account_id_for_refresh() -> Option<String> {
     resolve_current_account_id(&accounts)
 }
 
+#[derive(Debug, Clone)]
+pub struct CursorLocalProfileSyncResult {
+    pub imported: bool,
+    pub current_updated: bool,
+    /// 同 id 账号邮箱等字段被本地 profile 更新（须通知前端重拉列表）
+    pub profile_updated: bool,
+    pub account: Option<CursorAccount>,
+}
+
+fn find_account_for_import_payload(payload: &CursorImportPayload) -> Option<CursorAccount> {
+    let incoming_email = normalize_email_identity(Some(payload.email.as_str()));
+
+    list_accounts().into_iter().find(|account| {
+        let existing_email = normalize_email_identity(Some(account.email.as_str()));
+        matches!(
+            (existing_email.as_ref(), incoming_email.as_ref()),
+            (Some(ex_email), Some(in_email)) if ex_email == in_email
+        )
+    })
+}
+
+fn local_import_payload_matches_account(
+    account: &CursorAccount,
+    payload: &CursorImportPayload,
+) -> bool {
+    normalize_email_identity(Some(account.email.as_str()))
+        == normalize_email_identity(Some(payload.email.as_str()))
+        && normalize_token_identity(Some(account.access_token.as_str()))
+            == normalize_token_identity(Some(payload.access_token.as_str()))
+}
+
+/// TokenKeeper 每 20s 读默认 profile `state.vscdb`：新号入库、current 对齐本地登录态。
+pub fn sync_local_cursor_from_default_profile() -> Result<CursorLocalProfileSyncResult, String> {
+    let payload = match read_local_cursor_auth()? {
+        Some(value) => value,
+        None => {
+            return Ok(CursorLocalProfileSyncResult {
+                imported: false,
+                current_updated: false,
+                profile_updated: false,
+                account: None,
+            });
+        }
+    };
+
+    let payload_for_backup = payload.clone();
+    let mut profile_updated = false;
+    let (account, imported) =
+        if let Some(existing) = find_account_for_import_payload(&payload) {
+            if local_import_payload_matches_account(&existing, &payload) {
+                (existing, false)
+            } else {
+                let email_changed = normalize_email_identity(Some(existing.email.as_str()))
+                    != normalize_email_identity(Some(payload.email.as_str()));
+                let outcome = upsert_account_with_outcome(payload)?;
+                record_import_backup(&payload_for_backup, &outcome)?;
+                profile_updated = !outcome.created && email_changed;
+                (outcome.account, outcome.created)
+            }
+        } else {
+            let outcome = upsert_account_with_outcome(payload)?;
+            record_import_backup(&payload_for_backup, &outcome)?;
+            (outcome.account, outcome.created)
+        };
+
+    let stored_current =
+        crate::modules::provider_current_state::get_current_account_id("cursor").ok().flatten();
+    let mut current_updated = false;
+    if stored_current.as_deref() != Some(account.id.as_str()) {
+        crate::modules::provider_current_state::set_current_account_id(
+            "cursor",
+            Some(account.id.as_str()),
+        )?;
+        current_updated = true;
+    }
+
+    if imported || current_updated || profile_updated {
+        logger::log_info(&format!(
+            "[Cursor Account] 本地 profile 同步: imported={}, current_updated={}, profile_updated={}, id={}, email={}",
+            imported, current_updated, profile_updated, account.id, account.email
+        ));
+    }
+
+    if !imported && !current_updated && !profile_updated {
+        return Ok(CursorLocalProfileSyncResult {
+            imported: false,
+            current_updated: false,
+            profile_updated: false,
+            account: None,
+        });
+    }
+
+    Ok(CursorLocalProfileSyncResult {
+        imported,
+        current_updated,
+        profile_updated,
+        account: Some(account),
+    })
+}
+
 fn remaining_credits_sort_key(account: &CursorAccount) -> (i32, i64) {
     let remaining = average_quota_percentage(&extract_quota_metrics(account)) as i32;
     let refreshed_at = account.usage_updated_at.unwrap_or(0);
     (remaining, refreshed_at)
 }
 
-/// 实例 Play / 多开启动：满额池均匀随机，否则好号按剩余额度加权随机。
+/// 实例 Play / 多开启动：每次强制轮换（排除当前绑定），满额池均匀随机，否则好号按剩余额度加权随机。
 pub fn pick_cursor_rotation_account(
     exclude_ids: &HashSet<String>,
 ) -> Result<CursorRotationPick, String> {

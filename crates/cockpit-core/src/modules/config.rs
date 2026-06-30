@@ -455,8 +455,8 @@ fn default_kiro_auto_refresh() -> i32 {
     10
 } // 默认 10 分钟
 fn default_cursor_auto_refresh() -> i32 {
-    60
-} // 默认 60 分钟
+    1440
+} // 默认 24 小时
 fn default_gemini_auto_refresh() -> i32 {
     10
 }

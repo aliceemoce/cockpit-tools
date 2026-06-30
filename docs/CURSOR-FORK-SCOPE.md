@@ -1,6 +1,18 @@
 # Cursor fork 范围说明（对照「你的版本」）
 
-## 你的正式测试版（唯一验收基线）
+## 当前最新安装/运行构建（2026-06-23）
+
+| 项 | 值 |
+|----|-----|
+| 路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
+| SHA-256 | `71E052FBDEA0049B2EE029C1FB0CAC93C5CF9CCA15F8C71E1C06972276635867` |
+| 版本 | `0.26.5` |
+| 形态 | NSIS 安装构建 |
+| 状态 | **当前正在运行** |
+
+> 说明：后文 `nirvana-token` 桌面包仍保留为**历史桌面验收基线**；若用户说“最新构建”或“当前运行”，默认以上述 `%LocalAppData%` 安装构建为准。
+
+## 历史正式测试版（历史验收基线）
 
 | 项 | 值 |
 |----|-----|
@@ -16,16 +28,17 @@
 
 1. 无忧 Kh **原样 token** 写 profile `state.vscdb`（`token=nirvana_raw`）
 2. 无忧切号链：profile 级关进程 → Kh/Gh/Jh/Yh（默认实例 Nc）
-3. **满额自动换号**（Play / 多开启动时绑定未满则换满额号）
+3. **每次 Play/多开强制轮换**（`pick_cursor_rotation_account`；用户 2026-06-26 裁决，取代 nirvana「仅满额才换」）
 4. **多开** profile 隔离
 
-### 这版不包含什么（勿写进 release 说明）
+### 这版不包含什么（nirvana 桌面包对照；非用户全版需求清单）
 
-- Cursor **邮箱去重 / 导入只认邮箱**（非本 release 需求）
-- **额度池 workos/sub 合并**（`cursor_quota_pool_key` 等，非本 release 需求）
-- `cursor_refresh_scheduler` / batch 并发全量刷新
-- UI「会话已过期」与「配额查询失败」分流（`isAccountSessionExpired`）
-- 配额 Agent 方案（日限额、transient 分级等）
+- **额度池 workos/sub 合并** — **不要**（2026-06-26）
+- `cursor_refresh_scheduler` / batch 并发全量刷新 — **不要**（2026-06-26，代码已删/串行）
+- UI「会话已过期」与「配额查询失败」分流 — **不要**（2026-06-26，已删）
+- 配额 Agent 方案（日限额、transient 分级等）— **待定**
+- 默认实例 **全杀 Cursor**（`close_cursor_nirvana_style` 降级）— **不要**（2026-06-26）
+> **邮箱去重**：nirvana 桌面包未含；**用户 2026-06-26 裁决：要，已恢复**（`e9d5182f` 口径）。全版 fork 需求以 `user-history-requirements.md` + `FORK-DESIGN-ARCHIVE.md` 为准，本文件仅作 release 对照。
 
 详见 `cockpit-credentials/.../nirvana-token-20260614/VERSION.md`。
 
@@ -35,15 +48,17 @@
 
 相对 `eba93695` + patch，**工作区/后续 Agent 提交**可能仍携带下列代码（与桌面测试包**不是同一交付物**）：
 
-| 类别 | 典型符号/文件 | 来源 | 你是否要求 |
-|------|---------------|------|------------|
-| 额度池合并 | `cursor_quota_pool_key`, `normalize_account_index` 按 pool 去重 | fork 提交 `92ec2ebf` / `cd022242` | **否** |
-| 导入只认邮箱 | `禁止非邮箱去重` 注释块 | fork `e9d5182f` 等 | **否** |
-| 刷新 scheduler | `cursor_refresh_scheduler.rs`（工作区已删，HEAD 或有） | Agent WIP | **否** |
-| batch 全量 | `refresh_all_tokens_batched`（工作区已改回串行） | Agent WIP | **否** |
-| UI 会话过期分流 | `isAccountSessionExpired`, CursorAccountsPage 双徽标 | fork `92ec2ebf` | **否** |
-| 平台安装徽标 | `PlatformInstalledVersionBadge.tsx` | fork WIP | **否** |
-| Cursor 定时 60min | `default_cursor_auto_refresh` = 60 | 2026-06-14 你明确要求 | **是** |
+| 类别 | 典型符号/文件 | 来源 | 用户裁决（2026-06-26） |
+|------|---------------|------|------------------------|
+| 额度池合并 | `cursor_quota_pool_key`, 按 pool 去重 | fork `92ec2ebf` | **不要** |
+| 导入只认邮箱 | `accounts_are_duplicates` 仅邮箱 | fork `e9d5182f` | **要（已恢复）** |
+| 刷新 scheduler | `cursor_refresh_scheduler.rs` | Agent WIP | **不要（已删）** |
+| batch 全量 | `refresh_all_tokens_batched` | Agent WIP | **不要（已串行）** |
+| UI 会话过期分流 | `isAccountSessionExpired` | fork `92ec2ebf` | **不要（已删）** |
+| 每次 Play/多开强制轮换 | `pick_cursor_rotation_account` | 当前 HEAD | **要** |
+| 默认实例全杀 Cursor | `close_cursor` → nirvana 降级 | 历史 | **不要（已删降级）** |
+| 平台安装徽标 | `PlatformInstalledVersionBadge.tsx` | fork WIP | **待定** |
+| Cursor 定时 60min | `default_cursor_auto_refresh` = 60 | 2026-06-14 你明确要求 | **要** |
 
 ### 为何会被加进去
 
@@ -74,6 +89,7 @@
 
 ## Agent 操作约束
 
-- **验收与部署默认用桌面** `Cockpit-nirvana-token-test.exe`，不要与 `%LocalAppData%` 里 Agent 随手编译的 exe 混为一谈。
-- 改 Cursor 账号逻辑前：先对照本文件与 `source-diff-uncommitted.patch`，**不得**把「邮箱去重 / 额度池合并 / 会话过期 UI」当 release 需求加回去。
-- 文档以 **nirvana-token 范围** 为准；开发仓多出的模块应标注「未纳入 release / 待还原 upstream」。
+- 说**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `71E052FB…`）。
+- 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
+- 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
+- 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。

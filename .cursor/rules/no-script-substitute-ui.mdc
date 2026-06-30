@@ -26,7 +26,8 @@ Shell / Python / `.ps1` / `.bat` **仅**用于后端与命令行，例如：
 
 以下均视为违规：
 
-- 程序窗口里是「网络错误」、空白 WebView、只有标题栏最小化/关闭，却脚本里 `walk` 乱点还称「GUI 验收」
+- **画面**为「网络错误」、空白、无目标业务内容，却脚本里 `walk` 乱点还称「GUI 验收」
+- UIA 树里只有最小化/关闭、找不到 Play/Cursor，却幻想能点或已点过
 - `agent_*_verify.py` 盲目遍历树点第一个像按钮的控件
 - 用 `cursor_switch_full_verify` 等 bin 跑通切号链，却称「已在 Cockpit 里点过 Play」
 - **不知道点的是哪个控件就点**——这种点击没有验收意义，是在浪费用户时间
@@ -36,8 +37,11 @@ Shell / Python / `.ps1` / `.bat` **仅**用于后端与命令行，例如：
 对 Cockpit / Cursor 等 GUI，**第一步永远是 MCP 只读探测**：
 
 1. `ui_find_window`（带 **processId** / exe 路径，勿认错题窗口）
-2. `ui_get_children` / `ui_find_control`：统计 **业务 Button**（含 Cursor、Play、切换账号等）
-3. 若只有「最小化/最大化/关闭」或 WebView 显示 **网络错误/空白** → **停止**：不得跑点击脚本，不得称 GUI 已验收；先修构建/前端加载
+2. `ui_get_children` / `ui_find_control`：找将要点击的业务 Button（含 Cursor、Play、切换账号等）
+3. **找不到可点业务控件 → 不点**；只读验收走 `post-build-ui-must-verify.mdc` 的画面核对（锁定 hwnd + 目检截图）
+4. **画面**为网络错误/空白/无目标页 → **停止**，先修构建；不得用 UIA 树条目多少代替画面判断
+
+**画面留证**：`ui_find_window` 锁定 hwnd 后，`PrintWindow(hwnd)` 仅当 `ui_screenshot` 目检失败时用于留证；禁止坐标/盲脚本代替 MCP 点击。
 
 **没有可点的业务控件 = 不点。** 不是幻想里有 Play 就能脚本点 Play。
 
@@ -47,12 +51,13 @@ Shell / Python / `.ps1` / `.bat` **仅**用于后端与命令行，例如：
 
 | 用途 | 工具 |
 |------|------|
-| 找控件、读树、截图 | MCP：`user-uiautomation` / `user-uia-pattern` 的 find、inspect、screenshot |
+| 找控件、读树 | MCP：`user-uiautomation` / `user-uia-pattern` 的 find、inspect |
+| 截图留证 | MCP `ui_screenshot` + **目检标题栏**；失败时 `PrintWindow(MCP 锁定 hwnd)`（见 `post-build-ui-must-verify.mdc`） |
 | 点击、切换、输入 | MCP：`ui_invoke` 等；或**与探测结果绑定的**脚本 |
 | 模拟鼠标坐标 | 默认禁止（见 `no-ui-mouse-automation.mdc`） |
 
 ## 完成标准
 
-- 「GUI 已验收」= MCP 证明**业务控件存在** + 对**该控件**完成操作 + 日志/audit 一致
+- 「GUI 已验收」= `ui_find_window` 锁定 Cockpit + **目检通过**的截图（非 Cursor/Codex 错窗）+ 标准项一致；能点业务控件时须 MCP 点对控件
 - 「后端已验收」= 编译/bin/日志核对通过，**不得**写成 GUI 已点过
 - 两者分开写；**禁止幻想 UI 状态**

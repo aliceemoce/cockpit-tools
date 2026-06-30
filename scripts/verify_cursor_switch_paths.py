@@ -45,16 +45,16 @@ def main() -> int:
     if (RUST / "modules" / "app_startup_defer.rs").exists():
         errors.append("app_startup_defer.rs 仍存在")
 
-    # 默认 60 分钟（cockpit-core + src-tauri config）
+    # 默认 24 小时（cockpit-core + src-tauri config）
     for cfg_path in (
         ROOT / "crates" / "cockpit-core" / "src" / "modules" / "config.rs",
         ROOT / "src-tauri" / "src" / "modules" / "config.rs",
     ):
         cfg = read(cfg_path)
-        if "fn default_cursor_auto_refresh()" not in cfg or "\n    60\n" not in cfg.split(
+        if "fn default_cursor_auto_refresh()" not in cfg or "\n    1440\n" not in cfg.split(
             "fn default_cursor_auto_refresh()", 1
         )[-1][:80]:
-            errors.append(f"{cfg_path.name} 中 default_cursor_auto_refresh 非 60")
+            errors.append(f"{cfg_path.name} 中 default_cursor_auto_refresh 非 1440")
 
     report = {
         "ok": len(errors) == 0,
@@ -69,7 +69,7 @@ def main() -> int:
         for err in errors:
             print(f"  - {err}")
         return 1
-    print("PASS: upstream 串行 refresh，无 fork 分批/调度器，Cursor 默认 60 分钟")
+    print("PASS: upstream 串行 refresh，无 fork 分批/调度器，Cursor 默认 24 小时")
     return 0
 
 

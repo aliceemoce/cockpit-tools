@@ -218,6 +218,20 @@ export function getCursorAccountDisplayEmail(account: CursorAccount): string {
   return account.id;
 }
 
+/** 邮箱去重后的账号数（ALL 筛选项计数口径） */
+export function countCursorUniqueEmails(accounts: CursorAccount[]): number {
+  const seen = new Set<string>();
+  for (const account of accounts) {
+    const email = getCursorAccountDisplayEmail(account).trim().toLowerCase();
+    if (email.includes('@')) {
+      seen.add(email);
+    }
+  }
+  return seen.size;
+}
+
+export const CURSOR_EMAIL_DEDUP_REPORT_MIN = 2000;
+
 function decodeJwtSub(accessToken: string): string | null {
   const parts = accessToken.split('.');
   if (parts.length < 2) return null;
@@ -478,4 +492,12 @@ export function isCursorAccountBanned(account: CursorAccount): boolean {
 
 export function hasCursorQuotaData(account: CursorAccount): boolean {
   return account.cursor_usage_raw != null;
+}
+
+/** 从未查过配额：无 usage_raw 且无 quota_query_last_error */
+export function isCursorQuotaPendingQuery(account: CursorAccount): boolean {
+  if ((account.quota_query_last_error || '').trim()) {
+    return false;
+  }
+  return !hasCursorQuotaData(account);
 }

@@ -177,6 +177,7 @@
       },
       "quota": {
         "noData": "暂无配额数据",
+        "pendingQuery": "待查询配额",
         "queryFailed": "配额查询失败",
         "resetDone": "已重置",
         "hourly": "Inline Suggestions",

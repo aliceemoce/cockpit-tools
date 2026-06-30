@@ -441,7 +441,7 @@ pub fn clear_all_pids() -> Result<(), String> {
     Ok(())
 }
 
-fn normalize_path_for_compare(raw: &str) -> String {
+pub fn normalize_path_for_compare(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return String::new();
@@ -1441,17 +1441,6 @@ fn append_workspace_arg(cmd: &mut Command, workspace: Option<&Path>) {
     }
 }
 
-fn foreign_cursor_profiles_running(target_dirs: &HashSet<String>, contains_default: bool) -> bool {
-    for (_, dir) in collect_cursor_process_entries() {
-        match dir {
-            Some(resolved) if !target_dirs.contains(&resolved) => return true,
-            None if !contains_default => return true,
-            _ => {}
-        }
-    }
-    false
-}
-
 fn cursor_pids_for_normalized_profile(target: &str, include_default_without_dir: bool) -> Vec<u32> {
     let mut pids = Vec::new();
     for (pid, dir) in collect_cursor_process_entries() {
@@ -1493,7 +1482,7 @@ fn spawn_cursor_windows(
 
     let mut cmd = Command::new(launch_path);
     crate::modules::process::apply_managed_proxy_env_to_command(&mut cmd);
-    cmd.creation_flags(0x08000000);
+    // Cursor 是 GUI 应用：禁止 CREATE_NO_WINDOW，否则易出现「有进程无窗口」。
     cmd.arg("--user-data-dir").arg(user_data_dir.trim());
     if use_new_window {
         cmd.arg("--new-window");
@@ -1952,22 +1941,11 @@ pub fn close_cursor(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), 
     pids.sort();
     pids.dedup();
     if pids.is_empty() {
-        // 按 user_data_dir 匹配不到任何 PID，但 Cursor.exe 可能确实在运行。
-        // 若存在其他 profile 的进程，禁止降级全杀（保护双开）。
         if is_any_cursor_process_running() {
-            if foreign_cursor_profiles_running(&target_dirs, contains_default) {
-                modules::logger::log_warn(&format!(
-                    "[Cursor Close] 按目录匹配未命中，但检测到其他 profile 的 Cursor 进程，跳过全杀: target_dirs={:?}",
-                    target_dirs
-                ));
-                return Ok(());
-            }
             modules::logger::log_warn(&format!(
-                "[Cursor Close] 按目录匹配未命中，降级为按镜像名关闭: target_dirs={:?}",
+                "[Cursor Close] 按目录匹配未命中，跳过关闭（禁止全杀）: target_dirs={:?}",
                 target_dirs
             ));
-            close_cursor_nirvana_style(timeout_secs)?;
-            return Ok(());
         }
         return Ok(());
     }

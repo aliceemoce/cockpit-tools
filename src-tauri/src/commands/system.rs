@@ -2995,7 +2995,11 @@ pub fn handle_window_close(
     // 执行操作
     match action.as_str() {
         "minimize" => {
-            let _ = window.hide();
+            #[cfg(not(target_os = "macos"))]
+            if let Err(err) = window.set_skip_taskbar(true) {
+                modules::logger::log_warn(&format!("[Window] 设置 skip_taskbar 失败: {}", err));
+            }
+            window.hide().map_err(|err| format!("最小化到托盘失败: {}", err))?;
             modules::logger::log_info("[Window] 窗口已最小化到托盘");
         }
         "quit" => {

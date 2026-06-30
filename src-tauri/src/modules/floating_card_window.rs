@@ -450,6 +450,10 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     };
 
     logger::log_info("[Window] 尝试恢复主窗口");
+    #[cfg(not(target_os = "macos"))]
+    if let Err(err) = window.set_skip_taskbar(false) {
+        logger::log_warn(&format!("[Window] 取消 skip_taskbar 失败: {}", err));
+    }
     #[cfg(target_os = "macos")]
     show_macos_application(app);
 

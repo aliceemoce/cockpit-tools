@@ -41,11 +41,13 @@ import {
   getCursorPlanBadgeClass,
   getCursorAccountDisplayEmail,
   getCursorAccountQuotaPoolId,
+  countCursorUniqueEmails,
   getCursorOnDemandSummary,
   getCursorUsage,
   formatCursorUsageDollars,
   hasCursorQuotaData,
   isCursorAccountBanned,
+  isCursorQuotaPendingQuery,
 } from '../types/cursor';
 import type { CursorAccount } from '../types/cursor';
 import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
@@ -53,7 +55,6 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
-  isAccountSessionExpired,
 } from '../utils/accountValidityFilter';
 import {
   buildPaginatedGroups,
@@ -234,8 +235,7 @@ export function CursorAccountsPage() {
   const isAbnormalAccount = useCallback(
     (account: CursorAccount) =>
       isCursorAccountBanned(account) ||
-      (account.status || '').toLowerCase() === 'error' ||
-      isAccountSessionExpired(account.quota_query_last_error),
+      (account.status || '').toLowerCase() === 'error',
     [],
   );
 
@@ -448,7 +448,14 @@ export function CursorAccountsPage() {
       .filter((tier) => !(CURSOR_KNOWN_PLAN_FILTERS as readonly string[]).includes(tier))
       .sort((a, b) => a.localeCompare(b));
 
-    return { all: accounts.length, validCount, knownCounts, dynamicCounts, extraKeys, displayLabels };
+    return {
+      all: countCursorUniqueEmails(accounts),
+      validCount,
+      knownCounts,
+      dynamicCounts,
+      extraKeys,
+      displayLabels,
+    };
   }, [accounts, isAbnormalAccount, resolvePlanKey, resolvePlanLabel]);
 
   useEffect(() => {
@@ -490,21 +497,23 @@ export function CursorAccountsPage() {
   // ─── Filtering & Sorting ──────────────────────────────────────────
 
   const compareAccountsBySort = useCallback((a: CursorAccount, b: CursorAccount) => {
-    const aExpired = isAccountSessionExpired(a.quota_query_last_error);
-    const bExpired = isAccountSessionExpired(b.quota_query_last_error);
-    if (aExpired !== bExpired) {
-      return aExpired ? 1 : -1;
-    }
-
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccountId);
     if (currentFirstDiff !== 0) {
       return currentFirstDiff;
     }
 
-    const aQuotaFailed = Boolean(a.quota_query_last_error?.trim());
-    const bQuotaFailed = Boolean(b.quota_query_last_error?.trim());
-    if (aQuotaFailed !== bQuotaFailed) {
-      return aQuotaFailed ? 1 : -1;
+    if (sortBy !== 'created_at') {
+      const aQuotaFailed = Boolean(a.quota_query_last_error?.trim());
+      const bQuotaFailed = Boolean(b.quota_query_last_error?.trim());
+      if (aQuotaFailed !== bQuotaFailed) {
+        return aQuotaFailed ? 1 : -1;
+      }
+
+      const aPending = isCursorQuotaPendingQuery(a);
+      const bPending = isCursorQuotaPendingQuery(b);
+      if (aPending !== bPending) {
+        return aPending ? 1 : -1;
+      }
     }
 
     if (sortBy === 'created_at') {
@@ -653,14 +662,13 @@ export function CursorAccountsPage() {
       const isSelected = selected.has(account.id);
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
+      const pendingQuota = isCursorQuotaPendingQuery(account);
       const hasQuotaData = hasCursorQuotaData(account);
       const isBanned = isCursorAccountBanned(account);
       const hasStatusError = (account.status || '').toLowerCase() === 'error';
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
-
-      const isSessionExpired = isAccountSessionExpired(quotaError);
 
       return (
         <div
@@ -681,17 +689,18 @@ export function CursorAccountsPage() {
                 {t('accounts.status.refreshFailed')}
               </span>
             )}
-            {isSessionExpired ? (
-              <span className="status-pill forbidden" title={quotaError}>
-                <CircleAlert size={12} />
-                {t('accounts.status.sessionExpired', '会话已过期')}
-              </span>
-            ) : quotaError ? (
+            {quotaError && (
               <span className="status-pill warning" title={quotaError}>
                 <CircleAlert size={12} />
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
-            ) : null}
+            )}
+            {!quotaError && pendingQuota && (
+              <span className="status-pill muted" title={t('common.shared.quota.pendingQuery', '待查询配额')}>
+                <RefreshCw size={12} />
+                {t('common.shared.quota.pendingQuery', '待查询配额')}
+              </span>
+            )}
             {isBanned && (
               <span className="status-pill forbidden" title={bannedTitle}>
                 <Lock size={12} />
@@ -717,9 +726,7 @@ export function CursorAccountsPage() {
           )}
 
           <div className="ghcp-quota-section">
-            {isSessionExpired ? (
-              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
-            ) : hasQuotaData ? (
+            {hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-credit-item">
                   <div className="quota-header">
@@ -776,6 +783,8 @@ export function CursorAccountsPage() {
                   </div>
                 </div>
               </>
+            ) : pendingQuota ? (
+              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}
@@ -829,13 +838,12 @@ export function CursorAccountsPage() {
       const isCurrent = currentAccountId === account.id;
       const isBanned = isCursorAccountBanned(account);
       const quotaError = account.quota_query_last_error?.trim();
+      const pendingQuota = isCursorQuotaPendingQuery(account);
       const hasQuotaData = hasCursorQuotaData(account);
       const hasStatusError = (account.status || '').toLowerCase() === 'error';
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
-
-      const isSessionExpired = isAccountSessionExpired(quotaError);
 
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={`${isCurrent ? 'current' : ''} ${isBanned ? 'disabled' : ''}`}>
@@ -852,21 +860,22 @@ export function CursorAccountsPage() {
                   {isBanned && (<span className="status-pill forbidden" title={bannedTitle}><Lock size={12} />{t('accounts.status.forbidden')}</span>)}
                 </div>
               )}
-              {isSessionExpired ? (
-                <div className="account-sub-line">
-                  <span className="status-pill forbidden" title={quotaError}>
-                    <CircleAlert size={12} />
-                    {t('accounts.status.sessionExpired', '会话已过期')}
-                  </span>
-                </div>
-              ) : quotaError ? (
+              {quotaError && (
                 <div className="account-sub-line">
                   <span className="status-pill warning" title={quotaError}>
                     <CircleAlert size={12} />
                     {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </span>
                 </div>
-              ) : null}
+              )}
+              {!quotaError && pendingQuota && (
+                <div className="account-sub-line">
+                  <span className="status-pill muted" title={t('common.shared.quota.pendingQuery', '待查询配额')}>
+                    <RefreshCw size={12} />
+                    {t('common.shared.quota.pendingQuery', '待查询配额')}
+                  </span>
+                </div>
+              )}
               <div className="account-sub-line">
                 <span className="kiro-table-subline">Auth ID: {maskedAuthIdText}</span>
               </div>
@@ -880,9 +889,7 @@ export function CursorAccountsPage() {
           </td>
           <td><span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span></td>
           <td>
-            {isSessionExpired ? (
-              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
-            ) : hasQuotaData ? (
+            {hasQuotaData ? (
               <div className="quota-item windsurf-table-credit-item">
                 <div className="quota-header">
                   <span className="quota-name">Total Usage</span>
@@ -902,14 +909,14 @@ export function CursorAccountsPage() {
                   <div className={`quota-progress-bar ${total.quotaClass}`} style={{ width: `${Math.min(total.percentage, 100)}%` }} />
                 </div>
               </div>
+            ) : pendingQuota ? (
+              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}
           </td>
           <td>
-            {isSessionExpired ? (
-              <div className="quota-empty">{t('accounts.status.sessionExpired', '会话已过期')}</div>
-            ) : hasQuotaData ? (
+            {hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-table-credit-item">
                   <div className="quota-header">
@@ -944,6 +951,8 @@ export function CursorAccountsPage() {
                   </div>
                 </div>
               </>
+            ) : pendingQuota ? (
+              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}

@@ -136,9 +136,50 @@ fn write_string_atomic_internal(
         let _ = fs::remove_file(&temp_path);
         return Err(err);
     }
+
+    let mut was_readonly = false;
+    if path.exists() {
+        if let Ok(metadata) = fs::metadata(path) {
+            let permissions = metadata.permissions();
+            if permissions.readonly() {
+                was_readonly = true;
+                let mut new_permissions = permissions.clone();
+                new_permissions.set_readonly(false);
+                if let Err(e) = fs::set_permissions(path, new_permissions) {
+                    crate::modules::logger::log_warn(&format!(
+                        "尝试清除文件只读属性失败: path={}, error={}",
+                        path.display(),
+                        e
+                    ));
+                }
+            }
+        }
+    }
+
     if let Err(err) = fs::rename(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
+        if was_readonly {
+            if let Ok(metadata) = fs::metadata(path) {
+                let mut permissions = metadata.permissions();
+                permissions.set_readonly(true);
+                let _ = fs::set_permissions(path, permissions);
+            }
+        }
         return Err(format_io_error("替换文件", path, &err));
+    }
+
+    if was_readonly {
+        if let Ok(metadata) = fs::metadata(path) {
+            let mut permissions = metadata.permissions();
+            permissions.set_readonly(true);
+            if let Err(e) = fs::set_permissions(path, permissions) {
+                crate::modules::logger::log_warn(&format!(
+                    "尝试恢复文件只读属性失败: path={}, error={}",
+                    path.display(),
+                    e
+                ));
+            }
+        }
     }
 
     Ok(())
@@ -157,9 +198,50 @@ pub fn write_bytes_atomic(path: &Path, content: &[u8]) -> Result<(), String> {
         let _ = fs::remove_file(&temp_path);
         return Err(err);
     }
+
+    let mut was_readonly = false;
+    if path.exists() {
+        if let Ok(metadata) = fs::metadata(path) {
+            let permissions = metadata.permissions();
+            if permissions.readonly() {
+                was_readonly = true;
+                let mut new_permissions = permissions.clone();
+                new_permissions.set_readonly(false);
+                if let Err(e) = fs::set_permissions(path, new_permissions) {
+                    crate::modules::logger::log_warn(&format!(
+                        "尝试清除文件只读属性失败: path={}, error={}",
+                        path.display(),
+                        e
+                    ));
+                }
+            }
+        }
+    }
+
     if let Err(err) = fs::rename(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
+        if was_readonly {
+            if let Ok(metadata) = fs::metadata(path) {
+                let mut permissions = metadata.permissions();
+                permissions.set_readonly(true);
+                let _ = fs::set_permissions(path, permissions);
+            }
+        }
         return Err(format_io_error("替换文件", path, &err));
+    }
+
+    if was_readonly {
+        if let Ok(metadata) = fs::metadata(path) {
+            let mut permissions = metadata.permissions();
+            permissions.set_readonly(true);
+            if let Err(e) = fs::set_permissions(path, permissions) {
+                crate::modules::logger::log_warn(&format!(
+                    "尝试恢复文件只读属性失败: path={}, error={}",
+                    path.display(),
+                    e
+                ));
+            }
+        }
     }
 
     Ok(())
@@ -280,5 +362,43 @@ mod tests {
             fs::read_to_string(&path).expect("current should remain unchanged"),
             r#"{"version":1}"#
         );
+    }
+
+    #[test]
+    fn write_string_atomic_handles_readonly_file() {
+        let dir = make_temp_dir("atomic_write_readonly");
+        let path = dir.join("readonly.json");
+        
+        // 第一次写入，文件本身不是只读的
+        write_string_atomic(&path, r#"{"test":1}"#).expect("first write");
+        
+        // 将文件设置为只读
+        if let Ok(metadata) = fs::metadata(&path) {
+            let mut permissions = metadata.permissions();
+            permissions.set_readonly(true);
+            fs::set_permissions(&path, permissions).expect("set readonly");
+        }
+        
+        // 确认文件当前确实是只读的
+        assert!(fs::metadata(&path).expect("metadata").permissions().readonly());
+        
+        // 尝试覆盖写入
+        write_string_atomic(&path, r#"{"test":2}"#).expect("second write to readonly");
+        
+        // 验证内容是否成功覆盖
+        assert_eq!(
+            fs::read_to_string(&path).expect("read content"),
+            r#"{"test":2}"#
+        );
+        
+        // 验证文件属性是否仍然是只读的
+        let metadata = fs::metadata(&path).expect("metadata after write");
+        assert!(metadata.permissions().readonly(), "file should remain readonly after write");
+        
+        // 清理：设为非只读才能正常删除
+        let mut permissions = metadata.permissions();
+        permissions.set_readonly(false);
+        fs::set_permissions(&path, permissions).expect("unset readonly");
+        let _ = fs::remove_dir_all(dir);
     }
 }

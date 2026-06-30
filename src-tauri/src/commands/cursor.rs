@@ -17,7 +17,7 @@ fn emit_cursor_accounts_changed(app: &AppHandle, account_id: &str, reason: &str)
 
 #[tauri::command]
 pub fn list_cursor_accounts() -> Result<Vec<CursorAccount>, String> {
-    Ok(cursor_account::list_accounts_sorted())
+    Ok(cursor_account::list_accounts())
 }
 
 #[tauri::command]

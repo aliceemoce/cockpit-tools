@@ -230,7 +230,7 @@ fn default_upstream_send_retry_max_delay_ms() -> u64 {
 }
 
 fn default_single_account_status_retry_attempts() -> u8 {
-    2
+    5
 }
 
 fn default_single_account_status_retry_base_delay_ms() -> u64 {
@@ -242,7 +242,7 @@ fn default_single_account_status_retry_max_delay_ms() -> u64 {
 }
 
 fn default_sidecar_streaming_bootstrap_retries() -> u8 {
-    1
+    3
 }
 
 fn default_timeout_preset_long_wait() -> String {

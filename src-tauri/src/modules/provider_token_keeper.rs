@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde_json::Value;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::modules::{
     codebuddy_account, codebuddy_cn_account, codex_account, cursor_account, gemini_account,
@@ -14,6 +14,7 @@ use crate::modules::{
 };
 
 const TOKEN_KEEPER_TICK_SECONDS: u64 = 60;
+const CURSOR_LOCAL_WATCH_SECONDS: u64 = 20;
 const TOKEN_REFRESH_LEAD_SECONDS: i64 = 5 * 60;
 const TOKEN_REFRESH_LEAD_MILLISECONDS: i64 = TOKEN_REFRESH_LEAD_SECONDS * 1000;
 const REFRESH_FAILURE_BACKOFF_SECONDS: i64 = 15 * 60;
@@ -31,6 +32,13 @@ pub fn ensure_started(app_handle: AppHandle) {
     }
 
     logger::log_info("[TokenKeeper] 后端 OAuth token 保活已启动");
+    let watch_app = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            sync_cursor_local_watch(&watch_app).await;
+            tokio::time::sleep(Duration::from_secs(CURSOR_LOCAL_WATCH_SECONDS)).await;
+        }
+    });
     tauri::async_runtime::spawn(async move {
         loop {
             run_refresh_cycle(&app_handle).await;
@@ -56,6 +64,55 @@ async fn run_refresh_cycle(app_handle: &AppHandle) {
     if refreshed_any {
         let _ = crate::modules::tray::update_tray_menu(app_handle);
     }
+}
+
+async fn sync_cursor_local_watch(app_handle: &AppHandle) {
+    let result = tokio::task::spawn_blocking(cursor_account::sync_local_cursor_from_default_profile)
+        .await;
+
+    let sync_result = match result {
+        Ok(Ok(value)) => value,
+        Ok(Err(err)) => {
+            logger::log_warn(&format!(
+                "[TokenKeeper][Cursor] 本地账号同步失败: {}",
+                err
+            ));
+            return;
+        }
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[TokenKeeper][Cursor] 本地账号同步任务异常: {}",
+                err
+            ));
+            return;
+        }
+    };
+
+    if !sync_result.imported && !sync_result.current_updated && !sync_result.profile_updated {
+        return;
+    }
+
+    let account_id = sync_result
+        .account
+        .as_ref()
+        .map(|account| account.id.as_str())
+        .unwrap_or("");
+    let reason = if sync_result.imported {
+        "local-auto-import"
+    } else if sync_result.current_updated {
+        "local-current-sync"
+    } else {
+        "local-profile-update"
+    };
+    let _ = app_handle.emit(
+        "accounts:changed",
+        serde_json::json!({
+            "platformId": "cursor",
+            "accountId": account_id,
+            "reason": reason,
+        }),
+    );
+    let _ = crate::modules::tray::update_tray_menu(app_handle);
 }
 
 fn now_ts() -> i64 {
@@ -220,9 +277,9 @@ async fn refresh_due_cursor_accounts() -> bool {
                         ));
                     }
                 }
-                if cursor_account::account_has_auth_failure_marker(&updated) {
+                if cursor_account::has_quota_query_failed(&updated) {
                     logger::log_warn(&format!(
-                        "[TokenKeeper][Cursor] Token 保活完成(会话失效): account_id={}, email={}",
+                        "[TokenKeeper][Cursor] Token 保活完成(配额查询失败): account_id={}, email={}",
                         updated.id, updated.email
                     ));
                 } else {

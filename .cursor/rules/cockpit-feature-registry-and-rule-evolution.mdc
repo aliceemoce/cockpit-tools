@@ -14,16 +14,17 @@ alwaysApply: true
 | **需要** | 用户明确要求保留或待实现的能力 | 改代码/编译前对照，不得删 |
 | **不需要** | 用户明确拒收或未纳入 release 的能力 | 禁止擅自加回或当验收项 |
 
-**优先级**：用户当场纠正 > 本规则注册表 > `project-brief.md` > `AGENTS.md` / `docs/CURSOR-FORK-SCOPE.md`（若冲突，**立即改注册表并同步旧文档**，不得沿用过期基线）。
+**优先级**：用户当场纠正 > 用户对历史冲突的裁决 > **历史要求**（`.cursor/user-history-requirements.md`，见 `user-history-requirements.mdc`）> 本规则注册表 > `docs/FORK-DESIGN-ARCHIVE.md` > `project-brief.md` > `AGENTS.md` / `docs/CURSOR-FORK-SCOPE.md`（若冲突，**立即改注册表并同步旧文档**，不得沿用过期基线）。
 
 ---
 
-## 2. 当前已核实特征（2026-06-22 上游 v0.26.5 合并后）
+## 2. 当前已核实特征（2026-06-23，已核对本机最新运行构建）
 
 ### 能用
 
 | 项 | 证据 |
 |----|------|
+| **当前最新安装/运行构建** `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` | SHA **`71E052FB…`**，v0.26.5，NSIS 安装构建 2026-06-23；已核对为当前正在运行的二进制 |
 | **历史 Cursor 验收包** `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` | SHA **`F5256511…`**，2026-06-15；**合并前** Cursor 链对照 |
 | **合并后源码** | `integrate-upstream-v0.26.5-20260622` @ **`92cc6da0`**（含 upstream `d5ad5cea` + fork 切号/NVIDIA/Windsurf bootstrap） |
 | **合并后调试构建** | `target/debug/cockpit-tools.exe` SHA **`50E61F27…`**，v0.26.5，`cargo build` + `npm run build` 通过 |
@@ -43,25 +44,29 @@ alwaysApply: true
 | **`94B7D986…`** / **`316B5F2A…`** 等 Agent 中间桌面包 | 未合 transient 或含 `7761f453` 回归 |
 | **`7761f453`** / PR head `fork-on-upstream-0256` | 无条件写 `quota_query_last_error` + 全局 `accounts:changed` listener |
 | **`9E0E625C…`** 强制轮换补丁版 | 用户拒收 |
-| `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` 6/9 旧构建 | 旧 `inject_to_cursor` 链 |
+| 同路径历史旧安装（`%LocalAppData%\Cockpit Tools\cockpit-tools.exe`，2026-06-09） | 旧 `inject_to_cursor` 链；**仅指旧文件，不代表当前 2026-06-23 安装构建** |
 | 纯 **`eba93695`** 默认切号 | `close_cursor_nirvana_style` 全杀 Cursor |
 
 ### 需要
 
 - 默认实例启动 **保留** 其它 Cursor 进程
 - 无命令行闪屏
-- 多开 profile 隔离 + 满额换号（非每次强制轮换）
+- 多开 profile 隔离 + **每次 Play/多开强制轮换**（`pick_cursor_rotation_account`，HR-20260626-005）
 - transient 失败不写盘；auth 类失败可写 `quota_query_last_error`
 - **合并后**以 `integrate-upstream-v0.26.5-20260622` 为开发主线；release exe 待 GUI 点验后更新 SHA
+- **邮箱去重**（`accounts_are_duplicates` / 导入只认邮箱，`e9d5182f` 口径；HR-20260626-004 恢复）
+- 提到**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`71E052FB…`**
+- 提到**历史桌面验收包 / nirvana-token 基线**时，默认指 `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` SHA **`F5256511…`**
 - 线上对照：base = **`upstream/main` @ `d5ad5cea`**，head = **`integrate-upstream-v0.26.5-20260622`**
 
 ### 不需要
 
-- 每次多开/全部启动 **强制轮换** 账号
-- 默认实例 **taskkill 全部 Cursor**（`close_cursor_nirvana_style` 作默认 Play）
+- 默认实例 **taskkill 全部 Cursor**（`close_cursor_nirvana_style` 作默认 Play 降级；HR-20260626-005 已删降级路径）
 - 未说明就覆盖桌面 `Cockpit-nirvana-token-test.exe`
 - `7761f453` 式全局 `accounts:changed` 监听
-- 邮箱去重、额度池合并、scheduler/batch（见 `CURSOR-FORK-SCOPE.md`）
+- **额度池 workos/sub 合并**（HR-20260626-004）
+- `cursor_refresh_scheduler` / batch 并发全量刷新（HR-20260626-005 删除）
+- UI「会话已过期」与「配额查询失败」分流（HR-20260626-005 删除）
 
 ### 待修（代码层，非 exe 特征）
 
@@ -114,3 +119,17 @@ alwaysApply: true
 - **主注册表**：本文件 §2（随纠正增量更新，注明日期）
 - **会话快照**：`.cursor/project-brief.md`
 - **release 边界**：`docs/CURSOR-FORK-SCOPE.md`（与 §2 冲突时以 §2 为准并回改文档）
+- **设计档案**：`docs/FORK-DESIGN-ARCHIVE.md`（长期功能设计档案；每次改动前先读，实际修改后按功能增量维护）
+- **Codex 规则镜像**：`.codex/rules/fork-design-archive-maintenance.md`（必须通过 `AGENTS.md`、自动化 prompt 或实际读取才对 Codex 可靠）
+
+---
+
+## 6. 设计档案协议
+
+- `docs/FORK-DESIGN-ARCHIVE.md` 是 fork 的长期功能设计档案，按功能记录用户目的、自然语言设计、代码设计、保留边界、验证方式和增量记录。
+- 每次手动 fork、自动化任务、代码或文档更新前，都要先读取设计档案；只要实际修改了内容，完成后必须按触碰功能增量维护。
+- 自然语言部分只写用户目标、边界和验收含义，保持简洁明确，不把实现手段写成目标，也不能被实现手段反向改写成另一个需求。
+- 代码设计部分记录实现手段、模块分工、依赖选择、验证方式与变更原因；这里可以随实现演进而更新。
+- 设计实现优先参考 upstream、官方文档、成熟库或 MCP 可访问的原作者做法，不自造术语和“语言”。
+- `.codex/rules/` 是 Codex 侧规则镜像，`.cursor/rules/` 是 Cursor 侧规则镜像；两者都不能替代 `AGENTS.md`。Codex 侧必须依赖 `AGENTS.md`、自动化 prompt 和实际读取来执行同一约束。
+- 若设计档案与注册表、范围文档或用户新纠正冲突，先更新注册表和设计档案，再同步其他文档。

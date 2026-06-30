@@ -4297,7 +4297,7 @@ mod tests {
         assert_eq!(missing, 1);
 
         let added = reconcile_session_index_from_sqlite(&data_dir).expect("reconcile index");
-        assert_eq!(added, 1);
+        assert_eq!(added.added_entries, 1);
 
         let index_map = read_session_index_map(&data_dir).expect("read session index");
         assert!(index_map.contains_key("missing-thread"));

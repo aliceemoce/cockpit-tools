@@ -138,6 +138,11 @@ function resolvePage(providerId: PlatformId, rawPage: unknown): Page {
   return PLATFORM_PAGE_MAP[providerId];
 }
 
+/** Deep link 占位 token：只切页面，不打开「添加账号」弹框。 */
+export function isNavigationOnlyExternalImportToken(rawToken: string): boolean {
+  return rawToken.trim().toLowerCase() === 'nav';
+}
+
 export function normalizeAntigravityExternalImportToken(rawToken: string): string {
   const trimmed = rawToken.trim();
   if (!trimmed) return '';

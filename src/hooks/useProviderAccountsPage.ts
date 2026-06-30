@@ -20,6 +20,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   isPrivacyModeEnabledByDefault,
@@ -38,6 +39,7 @@ import {
   consumeQueuedExternalProviderImportForPlatform,
   EXTERNAL_PROVIDER_IMPORT_EVENT,
   type ExternalProviderImportPayload,
+  isNavigationOnlyExternalImportToken,
 } from '../utils/externalProviderImport';
 import { useDropdownPanelPlacement } from './useDropdownPanelPlacement';
 import { useEscClose } from './useEscClose';
@@ -1132,6 +1134,40 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     fetchAccounts();
   }, [fetchAccounts]);
 
+  // TokenKeeper 本地换号 / 导入写盘后 emit accounts:changed；长驻页须重拉列表与 current
+  const ACCOUNTS_CHANGED_DEBOUNCE_MS = 500;
+  const accountsChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!platformId) return;
+    let unlisten: UnlistenFn | null = null;
+    void listen('accounts:changed', (event) => {
+      const payload = event.payload as {
+        platformId?: string;
+        accountId?: string | null;
+        reason?: string;
+      } | null;
+      if (payload?.platformId !== platformId) return;
+      if (payload.reason === 'delete') return;
+      if (accountsChangedTimerRef.current) {
+        clearTimeout(accountsChangedTimerRef.current);
+      }
+      accountsChangedTimerRef.current = setTimeout(() => {
+        accountsChangedTimerRef.current = null;
+        void fetchAccounts();
+      }, ACCOUNTS_CHANGED_DEBOUNCE_MS);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      if (accountsChangedTimerRef.current) {
+        clearTimeout(accountsChangedTimerRef.current);
+        accountsChangedTimerRef.current = null;
+      }
+      void unlisten?.();
+    };
+  }, [fetchAccounts, platformId]);
+
   // ─── CRUD ─────────────────────────────────────────────────────────────
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -1642,6 +1678,11 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     if (!request) return;
     if (request.importUrl || (platformId === 'codex' && request.token.trim())) {
       runExternalProviderImport(request);
+      return;
+    }
+
+    if (isNavigationOnlyExternalImportToken(request.token)) {
+      console.info('[ExternalImport] token=nav 仅导航，跳过添加账号弹框', { platformId });
       return;
     }
 

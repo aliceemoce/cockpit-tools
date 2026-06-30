@@ -119,7 +119,6 @@ import {
   buildValidAccountsFilterOption,
   splitValidityFilterValues,
   VALID_ACCOUNTS_FILTER_VALUE,
-  isAccountSessionExpired,
 } from '../utils/accountValidityFilter'
 import {
   FEATURE_UNLOCK_CHANGED_EVENT,
@@ -129,6 +128,7 @@ import {
 import {
   consumeQueuedExternalProviderImportForPlatform,
   EXTERNAL_PROVIDER_IMPORT_EVENT,
+  isNavigationOnlyExternalImportToken,
   normalizeAntigravityExternalImportToken,
 } from '../utils/externalProviderImport'
 import {
@@ -829,8 +829,8 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       const verificationReason = account.disabled_reason || verificationStatusMap[account.id]
       const hasVerificationIssue =
         verificationReason === 'verification_required' || verificationReason === 'tos_violation'
-      const isExpired = isAccountSessionExpired(account.quota_error?.message)
-      return isDisabled || isForbidden || hasWarning || hasVerificationIssue || isExpired
+      const hasQuotaErrorMessage = Boolean(account.quota_error?.message)
+      return isDisabled || isForbidden || hasWarning || hasVerificationIssue || hasQuotaErrorMessage
     },
     [refreshWarnings, verificationStatusMap]
   )
@@ -1376,6 +1376,10 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       tokenLength: request.token.length,
       source: request.source ?? null,
     })
+    if (isNavigationOnlyExternalImportToken(request.token)) {
+      console.info('[ExternalImport][AccountsPage] token=nav 仅导航，跳过添加账号弹框')
+      return
+    }
     openAddModal('token')
     const normalizedTokenInput = normalizeAntigravityExternalImportToken(request.token)
     setTokenInput(normalizedTokenInput)
@@ -2345,7 +2349,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       const isSelected = selected.has(account.id)
       const quotaError = account.quota_error
       const hasQuotaError = Boolean(quotaError?.message)
-      const isSessionExpired = isAccountSessionExpired(quotaError?.message)
       const accountTags = (account.tags || []).map((tag) => tag.trim()).filter(Boolean)
       const visibleTags = accountTags.slice(0, 2)
       const moreTagCount = Math.max(0, accountTags.length - visibleTags.length)
@@ -2394,13 +2397,13 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                 {t('accounts.status.current')}
               </span>
             )}
-            {isSessionExpired && (
-              <span className="status-pill forbidden" title={quotaError?.message}>
+            {hasQuotaError && (
+              <span className="status-pill warning" title={quotaError?.message}>
                 <CircleAlert size={12} />
-                {t('accounts.status.sessionExpired', '会话已过期')}
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
             )}
-            {warning && !isSessionExpired && (
+            {warning && !hasQuotaError && (
               <span className="status-pill warning" title={warningTitle}>
                 <CircleAlert size={12} />
                 {warningLabel}
@@ -2445,17 +2448,13 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
               </div>
             ) : (
               <>
-                {isSessionExpired ? (
+                {hasQuotaError && (
                   <div className="quota-empty" title={quotaError?.message}>
-                    {t('accounts.status.sessionExpired', '会话已过期')}
+                    {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </div>
-                ) : (
+                )}
+                {!hasQuotaError && (
                   <>
-                    {hasQuotaError && (
-                      <div className="quota-empty" title={quotaError?.message}>
-                        {t('common.shared.quota.queryFailed', '配额查询失败')}
-                      </div>
-                    )}
                     {quotaDisplayItems.map((item) => {
                       const resetLabel = formatResetTimeDisplay(item.resetTime, t)
                       return (
@@ -3025,7 +3024,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       const isForbidden = Boolean(account.quota?.is_forbidden)
       const quotaError = account.quota_error
       const hasQuotaError = Boolean(quotaError?.message)
-      const isSessionExpired = isAccountSessionExpired(quotaError?.message)
       const warning = refreshWarnings[account.email]
       const warningLabel =
         warning?.kind === 'auth'
@@ -3076,13 +3074,13 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                     </span>
                   ) : null
                 })()}
-                {isSessionExpired && (
-                  <span className="status-pill forbidden" title={quotaError?.message}>
+                {hasQuotaError && (
+                  <span className="status-pill warning" title={quotaError?.message}>
                     <CircleAlert size={12} />
-                    {t('accounts.status.sessionExpired', '会话已过期')}
+                    {t('common.shared.quota.queryFailed', '配额查询失败')}
                   </span>
                 )}
-                {warning && !isSessionExpired && (
+                {warning && !hasQuotaError && (
                   <span className="status-pill warning" title={warningTitle}>
                     <CircleAlert size={12} />
                     {warningLabel}
@@ -3125,17 +3123,13 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                 </div>
               ) : (
                 <>
-                  {isSessionExpired ? (
+                  {hasQuotaError && (
                     <div className="quota-empty" title={quotaError?.message}>
-                      {t('accounts.status.sessionExpired', '会话已过期')}
+                      {t('common.shared.quota.queryFailed', '配额查询失败')}
                     </div>
-                  ) : (
+                  )}
+                  {!hasQuotaError && (
                     <>
-                      {hasQuotaError && (
-                        <div className="quota-empty" title={quotaError?.message}>
-                          {t('common.shared.quota.queryFailed', '配额查询失败')}
-                        </div>
-                      )}
                       {quotaDisplayItems.map((item) => (
                         <div className="quota-item" key={item.key}>
                           <div className="quota-header">

@@ -371,8 +371,15 @@ pub fn run() {
                 match config.close_behavior {
                     CloseWindowBehavior::Minimize => {
                         api.prevent_close();
-                        let _ = window.hide();
-                        info!("[Window] 窗口已最小化到托盘");
+                        #[cfg(not(target_os = "macos"))]
+                        if let Err(err) = window.set_skip_taskbar(true) {
+                            logger::log_warn(&format!("[Window] 设置 skip_taskbar 失败: {}", err));
+                        }
+                        if let Err(err) = window.hide() {
+                            logger::log_warn(&format!("[Window] 最小化到托盘 hide 失败: {}", err));
+                        } else {
+                            info!("[Window] 窗口已最小化到托盘");
+                        }
                     }
                     CloseWindowBehavior::Quit => {
                         info!("[Window] 用户选择退出应用");
