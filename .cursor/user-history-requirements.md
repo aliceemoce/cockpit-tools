@@ -78,6 +78,14 @@
   3. 禁止再把裸 `target/debug/cockpit-tools.exe`（未经 tauri build）当安装版交付
   4. **2026-06-30 已恢复**：SHA `9DF4DF9E…`，UI 非网络错误（WebView 已嵌入 dist）
 
+### HR-20260630-008
+- **原文**：（续）规则和全局规则强化；github上传
+- **类型**：GitHub 同步 / 交付
+- **要求**：
+  1. fork 工作区改动 + `user-history-requirements.md` + 规则 **commit + push** 到 `origin`
+  2. 回复须含仓库 URL、分支、commit hash
+- **交付**：2026-06-30 `0149a597` 已 push 至 `integrate-upstream-v0.26.5-20260622`
+
 ---
 
 ## 2026-06-26

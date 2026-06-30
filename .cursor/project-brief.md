@@ -1,33 +1,17 @@
-# Cockpit Tools — 会话简报
+# 会话快照 — 2026-06-30
 
-**日期**: 2026-06-22  
-**任务**: 上游 v0.26.5 合并（保留 fork 改动）
+## 当前任务（已完成本轮）
+1. **规则强化**：工作区 + 全局 `cockpit-deploy-github-history.mdc`（禁止裸 debug 覆盖安装、须 GitHub 同步、对比口径）
+2. **GitHub 上传**：fork 数月工作区改动 + HR 主档 + 规则 + 设计档案 → commit `0149a597` push
+3. **覆盖前任务清单**：见 HR-20260630-007；勿用 git HEAD 冒充用户基线
 
-## 合并结果
+## 安装 exe 状态
+- 坏包（已替换）：SHA `96B2738B…`（裸 `cargo build` debug，WebView 网络错误）
+- 当前安装：SHA `9DF4DF9E…`（`npm run tauri build --debug` 嵌入 dist）
+- 本轮 commit 后**未**重编译覆盖安装（删除 `cursor_profile_theme` 后 SHA 会变）
 
-| 项 | 值 |
-|----|-----|
-| 集成分支 | `integrate-upstream-v0.26.5-20260622` @ `92cc6da0` |
-| 上游基线 | `upstream/main` @ `d5ad5cea`（v0.26.5 + 4 commits） |
-| Cargo 版本 | `0.26.5` |
-| 源分支（合并前） | `cockpit-rotation-pick-20260620-v3-codex-upstream` @ `77a9cc3f` |
-| 调试构建 | `target/debug/cockpit-tools.exe` SHA **`50E61F27…`** |
-| Release 构建 | `scripts/_release_staging/Cockpit-integrate-upstream-v0.26.5-20260622-release.exe` SHA **`FF01D890…`**（70.7MB） |
-
-## 保留的 fork 能力（静态/编译已核对）
-
-- Cursor 无忧切号：`pick_full_quota_account`、`is_cursor_transient_quota_error`、`close_cursor` profile 级
-- 多开 pick / 配额 UI 修复 / NVIDIA Codex catalog + cliproxy xhigh→max
-- Windsurf profile bootstrap（`bootstrap_windsurf_profile_by_launch`）
-- `verify_cursor_switch_paths.py` PASS
-- NVIDIA 双账号脚本：index 6 条，providers 含 NVIDIA API（外部/自建）
-- **GUI（MCP）**：`Cockpit Tools` 窗口已加载；探测到 Cursor 账号页文案、`Codex` 侧栏、`全部启动`、多开实例 Tab（WebView 控件 handle=0，未点 Play）
-
-## 历史 Cursor 验收 exe（合并前，仍作对照）
-
-- `Desktop\Cockpit-nirvana-token-test.exe` SHA `F5256511…` @ `44321ebf`
-- 合并后须用新构建重新点验 Play/多开后再更新「能用」基线
-
-## 待用户点验
-
-- GUI Play/多开切号、配额 UI、NVIDIA 双账号（后端链已编译通过）
+## 基线
+- 仓库：https://github.com/aliceemoce/cockpit-tools
+- 分支：`integrate-upstream-v0.26.5-20260622` @ `0149a597`
+- 历史要求：`.cursor/user-history-requirements.md`（HR-20260630-001～008）
+- 全局技能：`~/.cursor/skills/cockpit-cursor-switch-main-js/SKILL.md`
