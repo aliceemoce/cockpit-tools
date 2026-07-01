@@ -25,6 +25,18 @@ fork 功能改动完成（或用户明确要求上传）时：
 
 回复须写：**仓库 URL、分支、commit hash**。
 
+## 分支（硬禁止推旧分支）
+
+**禁止**把新的 fork 功能 / 历史要求 / 规则改动 **commit 或 push 到旧 integrate/合并基线分支**。
+
+| 类别 | 示例 | Agent 行为 |
+|------|------|----------|
+| **旧分支（禁止新 push）** | `integrate-upstream-v0.26.5-20260622` 等历史合并/对照分支 | 仅只读对照；**不得**再 `git push` 新提交上去 |
+| **新分支（必须）** | `fork-20260630` 或 `fork-YYYYMMDD-简短说明` | 用户要求上传或 fork 入库时：**先** `git checkout -b fork-YYYYMMDD-…`，再 commit + `git push -u origin <新分支>` |
+
+push 前须 `git branch --show-current` 核对当前分支**不是**旧 integrate 分支。  
+用户未指定分支名时，默认用 **任务日期** `fork-YYYYMMDD`（例：6/30 任务 → `fork-20260630`）。
+
 ## 对比「改之前」的口径
 
 - **禁止**用 git `HEAD` 提交冒充「用户一直在用的版本」；用户日常 exe 多来自**未提交工作区**编译。

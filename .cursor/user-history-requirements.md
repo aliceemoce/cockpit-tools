@@ -84,7 +84,16 @@
 - **要求**：
   1. fork 工作区改动 + `user-history-requirements.md` + 规则 **commit + push** 到 `origin`
   2. 回复须含仓库 URL、分支、commit hash
-- **交付**：2026-06-30 `0149a597` 已 push 至 `integrate-upstream-v0.26.5-20260622`
+- **交付**：2026-06-30 `0149a597` 已 push 至 `integrate-upstream-v0.26.5-20260622`（**误用旧分支**；见 HR-20260630-009 纠正）
+
+### HR-20260630-009
+- **原文**：提交怎么会提交到旧分支？禁止提交到旧分支写入规则，然后提交到新分支
+- **类型**：GitHub 分支 / 规则
+- **要求**：
+  1. **禁止**新 fork 功能 / HR / 规则改动 push 到 `integrate-upstream-v0.26.5-20260622` 等旧 integrate 分支
+  2. 用户要求上传时须 **新建** `fork-YYYYMMDD` 分支再 commit + push
+  3. 规则落盘：`.cursor/rules/cockpit-deploy-github-history.mdc` + 全局同名规则
+  4. 6/30 任务 canonical 分支改为 **`fork-20260630`**（非 `integrate-upstream-v0.26.5-20260622`）
 
 ---
 

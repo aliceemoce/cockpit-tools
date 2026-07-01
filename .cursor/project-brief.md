@@ -12,6 +12,6 @@
 
 ## 基线
 - 仓库：https://github.com/aliceemoce/cockpit-tools
-- 分支：`integrate-upstream-v0.26.5-20260622` @ `0149a597`
+- **fork 开发分支（6/30 起）**：`fork-20260630`（禁止再往 `integrate-upstream-v0.26.5-20260622` push 新提交）
 - 历史要求：`.cursor/user-history-requirements.md`（HR-20260630-001～008）
 - 全局技能：`~/.cursor/skills/cockpit-cursor-switch-main-js/SKILL.md`
