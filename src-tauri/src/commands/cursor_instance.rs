@@ -166,8 +166,16 @@ fn persist_auto_bind_account(instance_id: &str, account_id: &str) -> Result<(), 
     Ok(())
 }
 
-fn prepare_instance_for_account(user_data_dir: &str, account_id: &str) -> Result<(), String> {
-    modules::cursor_account::switch_cursor_account_to_profile(account_id, Path::new(user_data_dir))
+fn prepare_instance_for_account(
+    user_data_dir: &str,
+    account_id: &str,
+    manual_user_pick: bool,
+) -> Result<(), String> {
+    modules::cursor_account::switch_cursor_account_to_profile(
+        account_id,
+        Path::new(user_data_dir),
+        manual_user_pick,
+    )
 }
 
 struct InstanceLaunchContext {
@@ -213,6 +221,7 @@ pub async fn start_cursor_instance_with_account_switch(
 
     let update_default_bind = ctx.is_default && forced_account_id.is_some();
     let auto_rotation = forced_account_id.is_none();
+    let manual_user_pick = forced_account_id.is_some();
     let account_id = match forced_account_id {
         Some(id) => {
             let stale = modules::cursor_account::load_account(&id)
@@ -222,15 +231,16 @@ pub async fn start_cursor_instance_with_account_switch(
                     modules::cursor_switch_audit::write_probe_pre(&trace, &account, "ok", None);
                 }
                 Err(err) => {
-                    let outcome = if err.contains("额度已耗尽") || err.contains("配额不可用") {
-                        "quota_exhausted"
-                    } else if modules::cursor_account::is_cursor_transient_quota_error(&err) {
-                        "transient"
-                    } else {
-                        "auth_fail"
-                    };
-                    modules::cursor_switch_audit::write_probe_pre(&trace, &stale, outcome, Some(&err));
-                    return Err(err);
+                    modules::cursor_switch_audit::write_probe_pre(
+                        &trace,
+                        &stale,
+                        "manual_continue",
+                        Some(&err),
+                    );
+                    modules::logger::log_warn(&format!(
+                        "[Cursor Switch] 手动选号预检未过仍继续: id={}, error={}",
+                        id, err
+                    ));
                 }
             }
             id
@@ -270,7 +280,7 @@ pub async fn start_cursor_instance_with_account_switch(
     let user_data_dir = ctx.user_data_dir.clone();
     let account_id_for_switch = account_id.clone();
     let inject_result = tokio::task::spawn_blocking(move || {
-        prepare_instance_for_account(&user_data_dir, &account_id_for_switch)
+        prepare_instance_for_account(&user_data_dir, &account_id_for_switch, manual_user_pick)
     })
     .await
     .map_err(|err| format!("切号任务异常: {}", err))?;

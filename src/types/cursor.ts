@@ -164,8 +164,22 @@ function resolveCursorPlanLabel(account: CursorAccount): string {
   }
 }
 
+/** 账号字段为空时从 cursor_auth_raw 回退读取（导入/vscdb 可能已有缓存） */
+export function resolveCursorMembershipType(account: CursorAccount): string {
+  const fromField = normalizeCursorMembershipType(account.membership_type);
+  if (fromField) return fromField;
+  return normalizeCursorMembershipType(
+    getCursorAuthRawString(
+      account,
+      'stripeMembershipType',
+      'membershipType',
+      'membership_type',
+    ),
+  );
+}
+
 export function getCursorPlanBadge(account: CursorAccount): CursorPlanBadge {
-  const membership = normalizeCursorMembershipType(account.membership_type);
+  const membership = resolveCursorMembershipType(account);
   switch (membership) {
     case 'free':
       return 'FREE';
@@ -192,7 +206,9 @@ export function getCursorPlanBadgeClass(
   planType?: string | null,
   account?: CursorAccount,
 ): string {
-  const normalized = normalizeCursorMembershipType(planType);
+  const normalized = account
+    ? resolveCursorMembershipType(account)
+    : normalizeCursorMembershipType(planType);
   switch (normalized) {
     case 'ultra':
       return 'ultra';
@@ -500,4 +516,32 @@ export function isCursorQuotaPendingQuery(account: CursorAccount): boolean {
     return false;
   }
   return !hasCursorQuotaData(account);
+}
+
+/** 磁盘/后端旧文案识别（pick 判定与 UI 脱敏共用） */
+export function isCursorAuthQuotaError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('配额查询失败')
+    || lower.includes('会话已过期')
+    || lower.includes('会话已失效')
+    || lower.includes('未认证')
+    || lower.includes('请重新导入')
+    || lower.includes('请重新登录')
+    || lower.includes('session expired')
+    || lower.includes('invalid credentials')
+    || lower.includes('unauthenticated')
+  );
+}
+
+/** 切换失败等用户可见错误：禁止露出「会话已过期/失效」 */
+export function sanitizeCursorUserError(error: unknown): string {
+  const raw = String(error ?? '').trim();
+  if (!raw) return '配额查询失败';
+  if (!isCursorAuthQuotaError(raw)) return raw;
+  const emailMatch = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (emailMatch) {
+    return `配额查询失败，请重新导入账号: ${emailMatch[0]}`;
+  }
+  return '配额查询失败';
 }

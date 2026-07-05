@@ -1924,7 +1924,7 @@ export function DashboardPage({
     onEditTags?: () => void;
   }) => {
     const resolvedSublineText = sublineText || presentation.sublineText || '';
-    const shouldShowPlan = Boolean(presentation.planLabel) && presentation.planLabel !== 'UNKNOWN';
+    const shouldShowPlan = Boolean(presentation.planLabel) && presentation.planLabel.toUpperCase() !== 'UNKNOWN';
 
     return (
       <div className="account-mini-card">

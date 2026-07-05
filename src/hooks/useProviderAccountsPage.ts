@@ -28,6 +28,7 @@ import {
   persistPrivacyModeEnabled,
 } from '../utils/privacy';
 import { useModalErrorState } from '../components/ModalErrorMessage';
+import { sanitizeCursorUserError } from '../types/cursor';
 import { useExportJsonModal } from './useExportJsonModal';
 import { parseFileCorruptedError } from '../components/FileCorruptedModal';
 import {
@@ -1305,9 +1306,13 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
           }
         }
       } catch (e: unknown) {
+        const rawError =
+          platformKey === 'Cursor'
+            ? sanitizeCursorUserError(e)
+            : String(e) || t('common.failed', 'Failed');
         setMessage({
           text: t('messages.switchFailed', {
-            error: String(e) || t('common.failed', 'Failed'),
+            error: rawError,
           }),
           tone: 'error',
         });

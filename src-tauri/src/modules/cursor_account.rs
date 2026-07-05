@@ -24,6 +24,13 @@ const CURSOR_ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS: i64 = 5 * 60;
 const CURSOR_USAGE_QUERY_MIN_INTERVAL_SECONDS: i64 = 60;
 const CURSOR_INDEX_MAINTENANCE_DELAY_SECS: u64 = 10 * 60;
 const ARCHIVED_DUPLICATES_DIR: &str = "_archived_duplicates";
+/// 用户可见：统一配额失败文案（禁止「会话已过期/失效」，见 HR-20260626-005 / HR-20260701-002）
+const CURSOR_UI_QUOTA_QUERY_FAILED: &str = "配额查询失败";
+const CURSOR_UI_QUOTA_AUTH_REIMPORT: &str = "配额查询失败，请重新导入账号";
+
+fn cursor_quota_auth_reimport_for(email: &str) -> String {
+    format!("{}: {}", CURSOR_UI_QUOTA_AUTH_REIMPORT, email)
+}
 
 lazy_static::lazy_static! {
     static ref CURSOR_ACCOUNT_INDEX_LOCK: Mutex<()> = Mutex::new(());
@@ -477,7 +484,9 @@ pub(crate) fn is_cursor_transient_quota_error(message: &str) -> bool {
 
 fn is_cursor_auth_quota_error(message: &str) -> bool {
     let lower = message.to_lowercase();
-    lower.contains("会话已过期")
+    lower.contains(CURSOR_UI_QUOTA_QUERY_FAILED)
+        || lower.contains("会话已过期")
+        || lower.contains("会话已失效")
         || lower.contains("未认证")
         || lower.contains("请重新导入")
         || lower.contains("请重新登录")
@@ -525,10 +534,7 @@ pub fn ensure_cursor_overview_pickable(account: &CursorAccount) -> Result<(), St
             .as_deref()
             .is_some_and(is_cursor_auth_quota_error)
         {
-            return Err(format!(
-                "Cursor 账号会话已失效，请重新导入账号: {}",
-                account.email
-            ));
+            return Err(cursor_quota_auth_reimport_for(&account.email));
         }
         return Err(format!("Cursor 账号状态异常: {}", account.email));
     }
@@ -558,31 +564,41 @@ pub async fn refresh_and_ensure_overview_pickable(account_id: &str) -> Result<Cu
     Ok(refreshed.account)
 }
 
-/// 用户显式选号 Play：刷新额度但不因配额耗尽/待查询而阻断切号（仅拦 auth/缺 token/封禁）。
+/// 用户显式选号 Play：尽力刷新；不因配额/封禁/磁盘失败标记阻断（仅缺 token 硬拦）。自动轮换仍走 pickable。
 pub async fn refresh_for_forced_account_switch(account_id: &str) -> Result<CursorAccount, String> {
     let account = match refresh_account_fast_async(account_id).await {
         Ok(refreshed) => refreshed.account,
-        Err(err) if is_cursor_transient_quota_error(&err) => {
-            load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?
+        Err(err) if is_cursor_transient_quota_error(&err) => load_account(account_id)
+            .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?,
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Switch] 手动选号刷新失败，仍继续切号: id={}, error={}",
+                account_id, err
+            ));
+            load_account(account_id)
+                .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?
         }
-        Err(err) => return Err(err),
     };
-    if is_banned_account(&account) {
-        return Err(format!("Cursor 账号已被标记不可用: {}", account.email));
-    }
-    if !has_nirvana_switch_ready_tokens(&account) {
+    ensure_cursor_manual_pick_allowed(&account)?;
+    Ok(account)
+}
+
+/// 用户手动点 Play/多开指定账号：只校验能否落盘 token，不拦 pending/失败标记/额度耗尽/封禁。
+pub fn ensure_cursor_manual_pick_allowed(account: &CursorAccount) -> Result<(), String> {
+    if !has_nirvana_switch_ready_tokens(account) {
         return Err(format!(
             "Cursor 账号缺少可切号 token，请重新导入账号: {}",
             account.email
         ));
     }
-    if account_has_auth_failure_marker(&account) {
-        return Err(format!(
-            "Cursor 账号会话已失效，请重新导入账号: {}",
-            account.email
-        ));
+    Ok(())
+}
+
+fn ensure_cursor_switch_allowed(account: &CursorAccount, manual_user_pick: bool) -> Result<(), String> {
+    if manual_user_pick {
+        return ensure_cursor_manual_pick_allowed(account);
     }
-    Ok(account)
+    ensure_cursor_switch_ready_account(account)
 }
 
 pub fn account_has_auth_failure_marker(account: &CursorAccount) -> bool {
@@ -1398,17 +1414,14 @@ pub fn ensure_cursor_switch_ready_account(account: &CursorAccount) -> Result<(),
         ));
     }
     if account_has_auth_failure_marker(account) {
-        return Err(format!(
-            "Cursor 账号会话已失效，请重新导入账号: {}",
-            account.email
-        ));
+        return Err(cursor_quota_auth_reimport_for(&account.email));
     }
     if let Some(error) = account.quota_query_last_error.as_deref() {
         let error = error.trim();
         if !error.is_empty() {
             return Err(format!(
-                "Cursor 账号最近刷新失败，已跳过切号以避免进入登录页: {} ({})",
-                account.email, error
+                "Cursor 账号{}，已跳过切号: {}",
+                CURSOR_UI_QUOTA_QUERY_FAILED, account.email
             ));
         }
     }
@@ -2172,10 +2185,10 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
 }
 
 /// 无忧传统切号 `i()`：close → Kh → Gh → Jh → Yh → Nc（默认 profile）。
-fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
+fn nirvana_traditional_switch_steps(account_id: &str, manual_user_pick: bool) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-    ensure_cursor_switch_ready_account(&account)?;
+    ensure_cursor_switch_allowed(&account, manual_user_pick)?;
     logger::log_info(&format!("[Cursor Switch] 无忧传统切号: {}", account.email));
 
     let default_dir = get_default_cursor_data_dir()?;
@@ -2183,7 +2196,7 @@ fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
     // 对齐 r2：仅关闭默认 profile 的 Cursor，保留其它多开实例（禁止 taskkill 全杀）。
     crate::modules::cursor_instance::close_cursor(&[default_dir_str], 20)?;
 
-    switch_tokens_in_profile_db(&default_dir, account_id)?;
+    switch_tokens_in_profile_db(&default_dir, account_id, manual_user_pick)?;
     reset_storage_json_ids_for_profile(&default_dir)?;
     reset_machine_id_file_for_profile(&default_dir)?;
 
@@ -2199,23 +2212,24 @@ fn nirvana_traditional_switch_steps(account_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 账号总览 Play 与多开 Start：默认实例走无忧传统链；多开仅关闭本 profile（strict），不 taskkill 全部 Cursor。
+/// 账号总览 Play 与多开实例启动的切号落盘。`manual_user_pick=true` 时为用户点选，不拦配额/失败标记。
 pub fn switch_cursor_account_to_profile(
     account_id: &str,
     profile_dir: &Path,
+    manual_user_pick: bool,
 ) -> Result<(), String> {
     if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
-        return nirvana_traditional_switch_steps(account_id);
+        return nirvana_traditional_switch_steps(account_id, manual_user_pick);
     }
 
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-    ensure_cursor_switch_ready_account(&account)?;
+    ensure_cursor_switch_allowed(&account, manual_user_pick)?;
     let profile_dir_str = profile_dir.to_string_lossy().to_string();
     crate::modules::cursor_instance::close_cursor_profile_strict(&profile_dir_str, 20)?;
     crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
 
-    switch_tokens_in_profile_db(profile_dir, account_id)?;
+    switch_tokens_in_profile_db(profile_dir, account_id, manual_user_pick)?;
     reset_storage_json_ids_for_profile(profile_dir)?;
     reset_machine_id_file_for_profile(profile_dir)?;
 
@@ -2285,10 +2299,14 @@ fn verify_switch_tokens_written(db_path: &Path) -> Result<(), String> {
 }
 
 /// 对齐无忧 `switchTokensInDb`（Kh）：删旧 auth → 重置 state.vscdb telemetry → 原样写 token。
-pub fn switch_tokens_in_profile_db(profile_dir: &Path, account_id: &str) -> Result<(), String> {
+pub fn switch_tokens_in_profile_db(
+    profile_dir: &Path,
+    account_id: &str,
+    manual_user_pick: bool,
+) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
-    ensure_cursor_switch_ready_account(&account)?;
+    ensure_cursor_switch_allowed(&account, manual_user_pick)?;
     let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
     let db_path = profile_dir
         .join("User")
@@ -2705,7 +2723,7 @@ async fn fetch_user_meta_with_client(
 
     let status = response.status().as_u16();
     if status == 401 {
-        return Err("Cursor 会话已过期或未认证，请重新导入账号".to_string());
+        return Err(CURSOR_UI_QUOTA_QUERY_FAILED.to_string());
     }
     if status == 403 {
         return Err("Cursor 用户信息查询被限流，请稍后重试".to_string());
@@ -2737,7 +2755,7 @@ async fn fetch_stripe_profile_with_client(
 
     let full_status = full_response.status().as_u16();
     if full_status == 401 || full_status == 403 {
-        return Err("Cursor 会话已过期或未认证，请重新导入账号".to_string());
+        return Err(CURSOR_UI_QUOTA_QUERY_FAILED.to_string());
     }
     if full_status == 200 {
         let body = full_response
@@ -2759,7 +2777,7 @@ async fn fetch_stripe_profile_with_client(
 
     let fallback_status = fallback_response.status().as_u16();
     if fallback_status == 401 || fallback_status == 403 {
-        return Err("Cursor 会话已过期或未认证，请重新导入账号".to_string());
+        return Err(CURSOR_UI_QUOTA_QUERY_FAILED.to_string());
     }
     if fallback_status != 200 {
         return Ok(None);
@@ -2816,7 +2834,7 @@ async fn fetch_usage_summary_with_client(
 
     let status = response.status().as_u16();
     if status == 401 {
-        return Err("Cursor 会话已过期或未认证，请重新导入账号".to_string());
+        return Err(CURSOR_UI_QUOTA_QUERY_FAILED.to_string());
     }
     if status == 403 {
         return Err("Cursor 配额查询被限流，请稍后重试".to_string());
@@ -3720,10 +3738,24 @@ mod cursor_overview_pick_tests {
     #[test]
     fn session_expired_is_abnormal_and_not_pickable() {
         let mut account = account_with_usage("c", 0, 0);
-        account.quota_query_last_error = Some("Cursor 会话已过期或未认证".into());
+        account.quota_query_last_error = Some(CURSOR_UI_QUOTA_QUERY_FAILED.into());
         assert!(is_cursor_overview_abnormal(&account));
         assert!(cursor_overview_remaining_percent(&account).is_none());
         assert!(ensure_cursor_overview_pickable(&account).is_err());
+    }
+
+    #[test]
+    fn manual_pick_allows_quota_error_when_tokens_present() {
+        let mut account = account_with_usage("d", 0, 0);
+        account.quota_query_last_error = Some(CURSOR_UI_QUOTA_QUERY_FAILED.into());
+        account.cursor_auth_raw = Some(serde_json::json!({
+            "accessToken": "eyJhbGciOiJIUzI1NiJ9.test",
+            "refreshToken": "eyJhbGciOiJIUzI1NiJ9.refresh"
+        }));
+        assert!(ensure_cursor_switch_ready_account(&account).is_err());
+        assert!(ensure_cursor_manual_pick_allowed(&account).is_ok());
+        assert!(ensure_cursor_switch_allowed(&account, true).is_ok());
+        assert!(ensure_cursor_switch_allowed(&account, false).is_err());
     }
 }
 

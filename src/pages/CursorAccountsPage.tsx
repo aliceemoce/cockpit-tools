@@ -669,6 +669,7 @@ export function CursorAccountsPage() {
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
+      const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
 
       return (
         <div
@@ -695,19 +696,19 @@ export function CursorAccountsPage() {
                 {t('common.shared.quota.queryFailed', '配额查询失败')}
               </span>
             )}
-            {!quotaError && pendingQuota && (
-              <span className="status-pill muted" title={t('common.shared.quota.pendingQuery', '待查询配额')}>
-                <RefreshCw size={12} />
-                {t('common.shared.quota.pendingQuery', '待查询配额')}
-              </span>
-            )}
             {isBanned && (
               <span className="status-pill forbidden" title={bannedTitle}>
                 <Lock size={12} />
                 {t('accounts.status.forbidden')}
               </span>
             )}
-            <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
+            {planLabel && planLabel !== 'UNKNOWN' ? (
+              <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
+            ) : !quotaError && pendingQuota ? (
+              <span className="tier-badge pending-query" title={pendingBadgeLabel}>
+                {pendingBadgeLabel}
+              </span>
+            ) : null}
           </div>
 
           <div className="account-sub-line">
@@ -726,7 +727,11 @@ export function CursorAccountsPage() {
           )}
 
           <div className="ghcp-quota-section">
-            {hasQuotaData ? (
+            {quotaError ? (
+              <div className="quota-empty" title={quotaError}>
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
+              </div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-credit-item">
                   <div className="quota-header">
@@ -844,6 +849,7 @@ export function CursorAccountsPage() {
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
+      const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
 
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={`${isCurrent ? 'current' : ''} ${isBanned ? 'disabled' : ''}`}>
@@ -868,14 +874,6 @@ export function CursorAccountsPage() {
                   </span>
                 </div>
               )}
-              {!quotaError && pendingQuota && (
-                <div className="account-sub-line">
-                  <span className="status-pill muted" title={t('common.shared.quota.pendingQuery', '待查询配额')}>
-                    <RefreshCw size={12} />
-                    {t('common.shared.quota.pendingQuery', '待查询配额')}
-                  </span>
-                </div>
-              )}
               <div className="account-sub-line">
                 <span className="kiro-table-subline">Auth ID: {maskedAuthIdText}</span>
               </div>
@@ -887,9 +885,21 @@ export function CursorAccountsPage() {
               )}
             </div>
           </td>
-          <td><span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span></td>
           <td>
-            {hasQuotaData ? (
+            {planLabel && planLabel !== 'UNKNOWN' ? (
+              <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
+            ) : !quotaError && pendingQuota ? (
+              <span className="tier-badge pending-query" title={pendingBadgeLabel}>
+                {pendingBadgeLabel}
+              </span>
+            ) : null}
+          </td>
+          <td>
+            {quotaError ? (
+              <div className="quota-empty" title={quotaError}>
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
+              </div>
+            ) : hasQuotaData ? (
               <div className="quota-item windsurf-table-credit-item">
                 <div className="quota-header">
                   <span className="quota-name">Total Usage</span>
@@ -916,7 +926,11 @@ export function CursorAccountsPage() {
             )}
           </td>
           <td>
-            {hasQuotaData ? (
+            {quotaError ? (
+              <div className="quota-empty" title={quotaError}>
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
+              </div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-table-credit-item">
                   <div className="quota-header">

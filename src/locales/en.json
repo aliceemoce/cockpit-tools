@@ -177,6 +177,8 @@
       },
       "quota": {
         "noData": "No quota data",
+        "pendingQuery": "Quota pending",
+        "pendingQueryBadge": "Quota not queried",
         "queryFailed": "Quota query failed",
         "resetDone": "Reset",
         "hourly": "Inline Suggestions",
