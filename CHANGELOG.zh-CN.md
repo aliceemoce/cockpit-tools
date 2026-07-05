@@ -7,6 +7,20 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [0.26.5-fork-20260705] - 2026-07-05
+
+Fork 分支 `fork-20260705` — 与本地安装版 `cockpit-tools.exe`（SHA 前缀 `141CB61C`，2026-07-02 构建）对齐。
+
+### 变更
+- Cursor 套餐角标：待查配额显示 **配额未查询**，禁止红色 `UNKNOWN`（HR-20260701-003）
+- 配额失败文案统一为 **配额查询失败**；禁止用户可见 **会话已失效/过期**（HR-20260701-004）
+- 手动 Play / 指定账号切号：不因 pending、配额失败、额度耗尽阻断；仅缺 token 时失败（HR-20260701-005）
+
+### 新增
+- `.cursor/rules/cockpit-cursor-data-paths.mdc` — Cursor 运行时账号路径规则（HR-20260702-001）
+- `docs/MIGRATED-HR-NON-COCKPIT.md` — 非 Cockpit 历史要求迁出索引
+
+---
 ## [0.26.5] - 2026-06-20
 
 ### 新增
