@@ -114,7 +114,16 @@ alwaysApply: true
 
 ---
 
-## 5. 维护入口
+## 5. Cursor 运行时路径（2026-07-02，HR-20260702-001）
+
+| 正确 | 错误 |
+|------|------|
+| `%USERPROFILE%\.antigravity_cockpit\cursor_accounts\` | `%USERPROFILE%\.antigravity_cockpit\data\cursor_accounts\` |
+| 索引 `%USERPROFILE%\.antigravity_cockpit\cursor_accounts.json` | 把 `data\cursor_accounts` 当运行时池（会系统性少数百～上千） |
+
+细则见 `.cursor/rules/cockpit-cursor-data-paths.mdc`。
+
+## 6. 维护入口
 
 - **主注册表**：本文件 §2（随纠正增量更新，注明日期）
 - **会话快照**：`.cursor/project-brief.md`

@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.26.5-fork-20260705] - 2026-07-05
+
+Fork branch `fork-20260705` — aligns with locally installed `cockpit-tools.exe` (SHA prefix `141CB61C`, 2026-07-02 build).
+
+### Changed
+- Cursor tier badge: show **配额未查询** for pending accounts instead of red `UNKNOWN` (HR-20260701-003)
+- Quota failure copy unified to **配额查询失败**; remove user-visible **会话已失效/过期** wording (HR-20260701-004)
+- Manual Play / forced account switch: do not block on pending quota, quota errors, or exhaustion; only hard-fail on missing token (HR-20260701-005)
+- Cursor instances page and account types extended for manual pick and quota display
+
+### Added
+- `.cursor/rules/cockpit-cursor-data-paths.mdc` — runtime account path rules (HR-20260702-001)
+- `docs/MIGRATED-HR-NON-COCKPIT.md` — non-Cockpit HR index moved out of main HR file
+
+---
+
 ## [0.26.5-fork] - 2026-06-30
 
 Fork branch `integrate-upstream-v0.26.5-20260622` — Cursor 切号链与用户历史要求同步至 GitHub。

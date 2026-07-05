@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-07-01
+
+### HR-20260701-001
+- **原文**：你最近几个改动是不是又出问题了？怎么错误显示角标？
+- **类型**：故障归因 / UI 角标
+- **要求**：
+  1. 待查询配额账号不得同时显示红色 UNKNOWN 套餐角标（与「待查询配额」状态重复、误导）
+  2. 有缓存 membership（`cursor_auth_raw` / `stripeMembershipType`）时应正确显示 FREE/PRO 等，而非 UNKNOWN
+  3. 修复后须编译并 UI 验收 Cursor 账号卡
+
+### HR-20260701-002
+- **原文**：Codex 重试默认值是什么东西？角标改回之前的，只不过你不要告诉我之前的是会话已过期；编译，启动，检验
+- **类型**：说明 / UI 角标回退 / 编译验收
+- **要求**：
+  1. Cursor 角标恢复改前逻辑：套餐 tier-badge 始终显示；去掉卡片顶栏「待查询配额」条；配额错误统一「配额查询失败」
+  2. 编译部署并 UI 验收 Cursor 账号页
+
+---
+
 ## 2026-06-30
 
 ### HR-20260630-001
@@ -457,4 +476,57 @@
   1. 点主窗口 X 应最小化到托盘（配置 `close_behavior=minimize`）
   2. 根因：Windows 上 Tauri `hide()` 对 overlay 主窗无效，非编译失败
   3. 修复：补 native `ShowWindow(SW_HIDE)` + `skip_taskbar`；需重编译部署后生效
+
+---
+
+## 2026-07-01
+
+### HR-20260701-001
+- **原文**：续杯换号不同步到 Cursor、须 Cockpit 手动 Play；后称「突然好了」，要求定位好的原因（操作/程序变化/阻塞消失，非代码）
+- **类型**：故障归因 / 磁盘证据
+- **约束**：Cockpit 只读 Cursor 磁盘；续杯逻辑无问题；Cockpit 逻辑无问题；重启无效；禁止猜测；禁止 authId 当主因；禁止再给 Cockpit 换号方案
+- **已核实**：
+  1. 坏态（19:04）：续杯先改 `state.vscdb`（19:04:34），`storage.json`/`machineId` 滞后至 Cockpit Play（19:04:59）
+  2. 最后一次 Cockpit Play：**20:27:51**；之后 `cursor_switch_audit` 无 Play、`app.log` 无 `storage.json telemetry 已重置`
+  3. 好态（22:05:17）：`state.vscdb` + `storage.json` + `machineId` + `active_token` 同秒更新；22:05:27 仅 Cockpit 读盘同步
+  4. 用户侧变化：20:28 后不再每次续杯换号后点 Cockpit Play
+
+### HR-20260701-003
+- **原文**：我记得位置套餐是让你显示配额未查询，这段代码消失了？
+- **类型**：UI 纠正 / 角标
+- **要求**：
+  1. **套餐角标位**（tier-badge）：未查配额且无 `quota_query_last_error` 时显示 **「配额未查询」**，禁止红色 `UNKNOWN`
+  2. 已知套餐仍显示 FREE/PRO 等；顶栏**不要**单独「待查询配额」status-pill
+  3. 配额区 pending 占位保留「待查询配额」
+
+### HR-20260701-004
+- **原文**：截图「切换失败：Cursor 账号会话已失效…」——你确定我的要求允许你出现这个？
+- **类型**：UI 硬禁止 / 切号错误文案
+- **要求**：
+  1. **禁止**用户可见处出现「会话已过期」「会话已失效」（含切号失败横幅、账号卡、写盘 `quota_query_last_error` 新文案）
+  2. 统一用户可见：**配额查询失败** / **配额查询失败，请重新导入账号: {email}**
+  3. 依据 HR-20260626-005、HR-20260701-002
+
+### HR-20260701-005
+- **原文**：任何情况不能限制我手动选打开，只能限制你（自动）打开
+- **类型**：切号硬约束
+- **要求**：
+  1. **用户手动点 Play / 多开指定账号**：不得因 pending、配额失败标记、额度耗尽、封禁、磁盘 `quota_query_last_error` 阻断切号
+  2. 手动仅可在**缺可切号 token / 账号不存在**时失败
+  3. **自动轮换**（无 forced_account_id）仍走 `pick_cursor_rotation_account` + `ensure_cursor_overview_pickable`
+
+### HR-20260702-001
+- **原文**：1.正确地址写入规则 2.桌面多的这些邮箱导入cockpit 3.查看在线仓库是否有这些账号，也就是cockpit自动上传有没有起作用
+- **类型**：路径规则 / 数据合并 / 远端核对
+- **要求**：
+  1. **Cursor 运行时账号目录** = `%USERPROFILE%\.antigravity_cockpit\cursor_accounts\`；索引 = 同目录上一级 `cursor_accounts.json`；**禁止**用 `data\cursor_accounts\` 当 Cockpit 池（规则：`.cursor/rules/cockpit-cursor-data-paths.mdc`）
+  2. 桌面 `CursorRunningAccounts` 多出的邮箱须合并进 Cockpit 运行时（脚本 `scripts/merge_desktop_cursor_into_runtime.py`）
+  3. 自动上传仅 `cursor_import_backup_sync` → `aliceemoce/cockpit-credentials` / `cursor-import-backups/`；桌面直写或脚本合并**不触发**上传；核对用 `scripts/audit_desk_imported_vs_online_fast.py`
+
+### HR-20260702-002
+- **原文**：1.上传这32个邮箱。2.那么不是这32个呢？就看今天，有没有账号通过cockpit备份
+- **类型**：远端上传 / 今日备份核对
+- **要求**：
+  1. 32 个桌面导入邮箱须上传至 `aliceemoce/cockpit-credentials` / `cursor-import-backups/`（脚本 `scripts/upload_cursor_import_backups.py`）
+  2. 今日 Cockpit 自动备份核对：`scripts/audit_cockpit_backups_today.py`（本地 `cursor_local_import_backups` + 凭证仓 git log）
 
