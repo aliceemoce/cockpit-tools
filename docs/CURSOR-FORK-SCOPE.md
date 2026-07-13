@@ -1,16 +1,20 @@
 # Cursor fork 范围说明（对照「你的版本」）
 
-## 当前最新安装/运行构建（2026-06-23）
+## 当前最新安装/运行构建（2026-07-14）
 
 | 项 | 值 |
 |----|-----|
 | 路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
-| SHA-256 | `71E052FBDEA0049B2EE029C1FB0CAC93C5CF9CCA15F8C71E1C06972276635867` |
-| 版本 | `0.26.5` |
-| 形态 | NSIS 安装构建 |
-| 状态 | **当前正在运行** |
+| SHA-256 | `1A0EC65E5672615BAC8A0DEBCFB1B6AD15DB546DE17545BAE1173060CD936DC5` |
+| 版本 | `1.3.0`（ProductVersion） |
+| 形态 | **release**（`npm run tauri build`）；NSIS/WiX 本轮未齐，交付物为 exe |
+| 源码 | `sync-upstream-v1.3.0-20260714-full` @ `102904ee` |
+| 上游锚点 | tag `v1.3.0` / `da0deca4` |
+| GitHub Release | `sync-upstream-v1.3.0-20260714` → `cockpit-tools.exe` |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/5 |
+| 状态 | **当前最新基线**（debug `09BA38D3…` 已撤销） |
 
-> 说明：后文 `nirvana-token` 桌面包仍保留为**历史桌面验收基线**；若用户说“最新构建”或“当前运行”，默认以上述 `%LocalAppData%` 安装构建为准。
+> 说明：后文 `nirvana-token` 桌面包仍保留为**历史桌面验收基线**；若用户说“最新构建”或“当前运行”，默认以上述 `%LocalAppData%` 安装构建为准。历史 NSIS `71E052FB…` / v0.26.5 仅对照。
 
 ## 历史正式测试版（历史验收基线）
 
@@ -89,7 +93,8 @@
 
 ## Agent 操作约束
 
-- 说**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `71E052FB…`）。
+- 说**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `1A0EC65E…`，release 1.3.0）。
 - 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
+- **禁止**把 debug 构建或删减上游 UI 的半成品同步标为最新基线。
 - 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
 - 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。

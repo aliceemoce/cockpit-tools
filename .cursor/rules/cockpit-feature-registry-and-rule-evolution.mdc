@@ -18,33 +18,34 @@ alwaysApply: true
 
 ---
 
-## 2. 当前已核实特征（2026-06-23，已核对本机最新运行构建）
+## 2. 当前已核实特征（2026-07-14，已核对本机最新运行构建）
 
 ### 能用
 
 | 项 | 证据 |
 |----|------|
-| **当前最新安装/运行构建** `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` | SHA **`71E052FB…`**，v0.26.5，NSIS 安装构建 2026-06-23；已核对为当前正在运行的二进制 |
+| **当前最新安装/运行构建** `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` | SHA **`1A0EC65E5672615BAC8A0DEBCFB1B6AD15DB546DE17545BAE1173060CD936DC5`**，ProductVersion **1.3.0**，**release**（`npm run tauri build`）；本机安装与 `target/release/cockpit-tools.exe` 一致 |
+| **同步源码分支** | `sync-upstream-v1.3.0-20260714-full` @ **`102904ee`**（完整合入 upstream `v1.3.0` / `da0deca4` + Cursor fork；对照 PR #5） |
+| **Release 资产** | tag `sync-upstream-v1.3.0-20260714` → `cockpit-tools.exe` digest 同上 SHA；**无**完整 NSIS 安装包（WiX/NSIS 本轮未齐） |
+| **历史 NSIS 锚点（2026-06-23）** | SHA **`71E052FB…`**，v0.26.5 — 仅作历史对照，**不再**当「当前最新」 |
 | **历史 Cursor 验收包** `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` | SHA **`F5256511…`**，2026-06-15；**合并前** Cursor 链对照 |
-| **合并后源码** | `integrate-upstream-v0.26.5-20260622` @ **`92cc6da0`**（含 upstream `d5ad5cea` + fork 切号/NVIDIA/Windsurf bootstrap） |
-| **合并后调试构建** | `target/debug/cockpit-tools.exe` SHA **`50E61F27…`**，v0.26.5，`cargo build` + `npm run build` 通过 |
 | 默认实例切号 | `close_cursor(仅默认 profile)`，**不全杀**其它 Cursor（源码仍在） |
 | 多开 + 默认 **可同时存在** | 默认 `close_cursor`；多开 `close_cursor_profile_strict` |
 | 配额 transient | 网络/超时失败 **不写盘**（`is_cursor_transient_quota_error`） |
 | 满额换号 + Kh 裸 JWT | `pick_full_quota_account`、`nirvana_kh_auth_tokens` |
-| `verify_cursor_switch_paths.py` | 2026-06-22 合并后 **PASS** |
-| cliproxy xhigh + upstream URL 测试 | 2026-06-22 合并后 **PASS** |
 | 历史备份 `9791D94F` | `Desktop\Cockpit-nirvana-token-20260614\` 仍在，作对照/回滚 |
 
 ### 不能用
 
 | 项 | 原因 |
 |----|------|
+| **`09BA38D3…` debug 覆盖安装**（第一轮 sync-upstream-v1.3.0-20260714） | 未批准把 **debug** 当最新基线；已撤销 |
+| **第一轮「半成品同步」**（删 Grok/Zcode 等上游 UI 以过 tsc） | ProductVersion=1.3.0 ≠ 完整吃进 v1.3.0；PR #4 旧 tip 作废，以 `-full` / PR #5 为准 |
 | **`CB525188…`** `scripts/_release_staging_r2/…r2.exe` | Agent 误标「6/15 r2」；非用户验收包 |
 | **`94B7D986…`** / **`316B5F2A…`** 等 Agent 中间桌面包 | 未合 transient 或含 `7761f453` 回归 |
 | **`7761f453`** / PR head `fork-on-upstream-0256` | 无条件写 `quota_query_last_error` + 全局 `accounts:changed` listener |
 | **`9E0E625C…`** 强制轮换补丁版 | 用户拒收 |
-| 同路径历史旧安装（`%LocalAppData%\Cockpit Tools\cockpit-tools.exe`，2026-06-09） | 旧 `inject_to_cursor` 链；**仅指旧文件，不代表当前 2026-06-23 安装构建** |
+| 同路径历史旧安装（`%LocalAppData%\Cockpit Tools\cockpit-tools.exe`，2026-06-09） | 旧 `inject_to_cursor` 链；**仅指旧文件** |
 | 纯 **`eba93695`** 默认切号 | `close_cursor_nirvana_style` 全杀 Cursor |
 
 ### 需要
@@ -53,11 +54,12 @@ alwaysApply: true
 - 无命令行闪屏
 - 多开 profile 隔离 + **每次 Play/多开强制轮换**（`pick_cursor_rotation_account`，HR-20260626-005）
 - transient 失败不写盘；auth 类失败可写 `quota_query_last_error`
-- **合并后**以 `integrate-upstream-v0.26.5-20260622` 为开发主线；release exe 待 GUI 点验后更新 SHA
+- **完整合入** upstream 正式版前端/接线（不得为过编译删上游平台 UI）
+- 覆盖安装必须用 **release** 构建；debug 仅 OOM 备用编译，不得冒充最新基线
 - **邮箱去重**（`accounts_are_duplicates` / 导入只认邮箱，`e9d5182f` 口径；HR-20260626-004 恢复）
-- 提到**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`71E052FB…`**
+- 提到**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`1A0EC65E…`**（release 1.3.0）
 - 提到**历史桌面验收包 / nirvana-token 基线**时，默认指 `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` SHA **`F5256511…`**
-- 线上对照：base = **`upstream/main` @ `d5ad5cea`**，head = **`integrate-upstream-v0.26.5-20260622`**
+- 线上对照：upstream tag **`v1.3.0`** (`da0deca4`) ↔ head **`sync-upstream-v1.3.0-20260714-full`** @ `102904ee`（PR #5）
 
 ### 不需要
 
@@ -67,10 +69,12 @@ alwaysApply: true
 - **额度池 workos/sub 合并**（HR-20260626-004）
 - `cursor_refresh_scheduler` / batch 并发全量刷新（HR-20260626-005 删除）
 - UI「会话已过期」与「配额查询失败」分流（HR-20260626-005 删除）
+- 用户未要求时**清理历史符号**（如擅自清 `cursor_quota_pool_key` 作无关「剩余风险」任务）
 
 ### 待修（代码层，非 exe 特征）
 
-- 合并后 **GUI** Play/多开/NVIDIA 点验；release 打包（NSIS 下载失败时需重试）
+- NSIS/WiX 本轮失败：Release 仅有 release exe 资产，完整安装包未齐
+- 合并后 GUI Play/多开/NVIDIA 继续点验（本轮已证 WebView 非网络错误、上游壳可见）
 
 ---
 
