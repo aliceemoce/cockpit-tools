@@ -1,6 +1,6 @@
 # Cockpit Tools Fork Persistent Design Archive
 
-**最后更新**: 2026-06-26  
+**最后更新**: 2026-07-14  
 **维护人**: 用户 + Codex/Cursor Agent  
 **性质**: 这个 fork 的长期功能设计档案，用来防止后续修改覆盖、回退或误解用户目标。
 
@@ -95,7 +95,7 @@
 
 **自然语言设计**: 用户说“最新构建/当前运行”默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`；用户说“历史桌面验收包/nirvana-token 基线”才指桌面的 `Cockpit-nirvana-token-test.exe`。
 
-**代码设计**: 版本记录和规则文档必须写明路径、SHA、分支、upstream 基线。发布或更新后同步维护特征注册表、范围文档和本档案。
+**代码设计**: 版本记录和规则文档必须写明路径、SHA、分支、upstream 基线。发布或更新后同步维护特征注册表、范围文档和本档案。当前记录：安装 exe SHA `09BA38D3…`、分支 `sync-upstream-v1.3.0-20260714`、upstream 正式 tag `v1.3.0` @ `da0deca4`。
 
 **保留边界**: 未经用户说明，不允许把当前最新构建回退到历史验收包。
 
@@ -107,7 +107,7 @@
 
 **自然语言设计**: “发布新更新”指 release/tag/版本号变化，不是 `main` 有新提交。若没有正式版本更新，任务立即停止，不做动作。
 
-**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支，保留 fork 功能和 release 边界。
+**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用 fork 分支（2026-07-14：`fork-20260705`），合入正式 tag（非未发布 main tip），保留 fork 功能和 release 边界。冲突时对 fork 已有路径优先保留 fork；未能安全接线的上游新增 UI（如 Grok/Zcode stub）可剔除以免破坏构建，并在增量记录中写明。
 
 **保留边界**: `announcements.json`、广告位开关、公告配置、普通 commit 不触发同步、构建、发布或文档改动。
 
@@ -119,7 +119,7 @@
 
 **自然语言设计**: 每次正式版本同步都要可回看、可对照、可回退。代码和 exe 都不能只留在本机。
 
-**代码设计**: 自动化以个人仓库 `aliceemoce/cockpit-tools` 为交付位置；合并前检查分支/提交和 release 资产，合并后推送同步分支、创建 PR 对照、上传 exe release asset，并更新最新构建记录。
+**代码设计**: 自动化以个人仓库 `aliceemoce/cockpit-tools` 为交付位置；合并前检查分支/提交和 release 资产，合并后推送同步分支、创建 PR 对照、上传 exe release asset，并更新最新构建记录。2026-07-14 样例：PR #4、Release `sync-upstream-v1.3.0-20260714`（含 `cockpit-tools.exe` 与 NSIS）。
 
 **保留边界**: 未确认合并前代码和 exe 已存在时，不继续合并；发布后未网页复核时，不宣称完成。
 
@@ -330,3 +330,18 @@
 - **触碰功能**: F-005 GUI 验收、沟通结论。
 - **用户要求**: 不发明「按什么标准说已修好」的分拆话术；已修好=已修好，没修好=没修好，撒谎=撒谎。
 - **规则**: `.cursor/rules/honest-fix-status-only.mdc`（`alwaysApply`）；同步修订 `post-build-ui-must-verify.mdc`、`chinese-response-style.mdc`；Codex 镜像 `.codex/rules/honest-fix-status-only.md`；历史 **HR-20260626-002**。
+
+### 2026-07-14（upstream 正式 v1.3.0 同步交付）
+
+- **触碰功能**: F-006 构建基线区分、F-007 upstream 正式版本触发、F-008 同步交付链、F-011 部署链。
+- **用户目标是否变化**: 否。
+- **本次目的**: 主仓 latest release v1.3.0 高于已记 0.26.5，执行完整合并/构建/对照 PR/release/网页复核，并回写最新构建记录。
+- **实现手段**:
+  1. 以 `fork-20260705` 为 ours，合入 annotated tag `v1.3.0` 指向提交 `da0deca4`（不用未发布 main 1.3.1 tip）。
+  2. 冲突后对 fork 已有文件恢复 fork 内容，剔除未接线上游 Grok/Zcode 等 UI stub，保证 `tsc`/前端可构建。
+  3. 产品版本对齐 `1.3.0`；`npm run tauri build -- --debug`（release OOM；缺签名私钥）。
+  4. 覆盖安装 + UIA 锁定 hwnd `1120030`，截图证实仪表盘（非 localhost 网络错误）。
+  5. push `sync-upstream-v1.3.0-20260714`，PR #4，Release 上传 exe/NSIS。
+- **涉及文件/模块**: 合并树；版本字段；特征注册表；`docs/CURSOR-FORK-SCOPE.md`；`AGENTS.md`；本档案。
+- **验证方式**: UIA 仪表盘；系统浏览器打开分支/PR/release；`gh release view` 资产含 `cockpit-tools.exe` 与 NSIS。
+- **风险或注意事项**: 上游 1.3.0 新增平台 UI 未完整接入 fork 前端类型系统；完整接线属后续任务。release 签名环境仍缺私钥。`cursor_quota_pool_key` 等历史符号若仍在源树，不因本次同步加码扩展。
