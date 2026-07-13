@@ -221,151 +221,6 @@ export function DashboardPage({
   topCenterBanner,
 }: DashboardPageProps) {
   const { t } = useTranslation();
-  const antigravityRuntimeTarget = useAntigravityRuntimeTarget();
-
-  const [tagModalState, setTagModalState] = React.useState<{ accountId: string; platform: PlatformId | 'codebuddy_cn'; tags: string[] } | null>(null);
-  const [dashboardCardCollapse, setDashboardCardCollapse] = React.useState<DashboardCardCollapseState>({
-    workbuddy: false,
-  });
-
-  const toggleDashboardCardCollapse = useCallback((platform: keyof DashboardCardCollapseState) => {
-    setDashboardCardCollapse((prev) => ({
-      ...prev,
-      [platform]: !prev[platform],
-    }));
-  }, []);
-
-  const handleSaveTags = async (newTags: string[]) => {
-    if (!tagModalState) return;
-    try {
-      const accountId = tagModalState.accountId;
-      switch (tagModalState.platform) {
-        case 'antigravity':
-          await useAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'codex':
-          await useCodexAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'claude_manager':
-          await useClaudeAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'github-copilot':
-          await useGitHubCopilotAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'windsurf':
-          await useWindsurfAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'kiro':
-          await useKiroAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'cursor':
-          await useCursorAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'gemini':
-          await useGeminiAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'grok':
-          await useGrokAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'codebuddy':
-          await useCodebuddyAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'codebuddy_cn':
-          await useCodebuddyCnAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'qoder':
-          await useQoderAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'zcode':
-          await useZcodeAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'trae':
-          await useTraeAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'workbuddy':
-          await useWorkbuddyAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'zed':
-          await useZedAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-      }
-      setTagModalState(null);
-    } catch (error) {
-      console.error('Save tags failed:', error);
-    }
-  };
-
-  const {
-    orderedEntryIds,
-    hiddenEntryIds,
-    platformGroups,
-    apiRelayDashboardVisible,
-    apiRelayEntryOrder,
-    setHiddenEntry,
-  } = usePlatformLayoutStore();
-  const apiRelayEntryEnabled = useSponsorStore((state) => Boolean(state.state.sponsorModule));
-  const remoteHiddenPlatformIds = useRemoteConfigStore((state) => state.hiddenPlatformIds);
-  const apiRelayDashboardEnabled = apiRelayEntryEnabled && apiRelayDashboardVisible;
-  const hiddenEntrySet = useMemo(() => new Set(hiddenEntryIds), [hiddenEntryIds]);
-  const remoteHiddenPlatformSet = useMemo(
-    () => new Set(remoteHiddenPlatformIds),
-    [remoteHiddenPlatformIds],
-  );
-  const visibleEntryOrder = useMemo(
-    () =>
-      orderedEntryIds.filter((entryId) => {
-        if (hiddenEntrySet.has(entryId)) {
-          return false;
-        }
-        return resolveEntryPlatformIds(entryId, platformGroups).some(
-          (platformId) => !remoteHiddenPlatformSet.has(platformId),
-        );
-      }),
-    [orderedEntryIds, hiddenEntrySet, platformGroups, remoteHiddenPlatformSet],
-  );
-  const visibleDashboardEntryOrder = useMemo<DashboardEntryId[]>(() => {
-    const result: DashboardEntryId[] = [...visibleEntryOrder];
-    if (!apiRelayDashboardEnabled) {
-      return result;
-    }
-    const insertIndex = Math.max(0, Math.min(apiRelayEntryOrder, result.length));
-    result.splice(insertIndex, 0, API_RELAY_LAYOUT_ENTRY_ID);
-    return result;
-  }, [apiRelayDashboardEnabled, apiRelayEntryOrder, visibleEntryOrder]);
-  const [privacyModeEnabled, setPrivacyModeEnabled] = React.useState<boolean>(() =>
-    isPrivacyModeEnabledByDefault()
-  );
-  const maskAccountText = React.useCallback(
-    (value?: string | null) => maskSensitiveValue(value, privacyModeEnabled),
-    [privacyModeEnabled],
-  );
-  const [agDisplayGroups, setAgDisplayGroups] = React.useState<DisplayGroup[]>([]);
-  const navigateToPlatform = useCallback((platformId: PlatformId) => {
-    setAntigravityRuntimeTargetFromPlatform(platformId);
-    onNavigate(PLATFORM_PAGE_MAP[platformId]);
-  }, [onNavigate]);
-
-  React.useEffect(() => {
-    const syncPrivacyMode = () => {
-      setPrivacyModeEnabled(isPrivacyModeEnabledByDefault());
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        syncPrivacyMode();
-      }
-    };
-
-    window.addEventListener('focus', syncPrivacyMode);
-    window.addEventListener('storage', syncPrivacyMode);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      window.removeEventListener('focus', syncPrivacyMode);
-      window.removeEventListener('storage', syncPrivacyMode);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
-
 
   const [tagModalState, setTagModalState] = React.useState<{ accountId: string; platform: PlatformId | 'codebuddy_cn'; tags: string[] } | null>(null);
   const [dashboardCardCollapse, setDashboardCardCollapse] = React.useState<DashboardCardCollapseState>({
@@ -513,7 +368,6 @@ export function DashboardPage({
     fetchAccounts: fetchAgAccounts,
     fetchCurrentAccount: fetchAgCurrent
   } = useAccountStore();
-  const agCurrent = agCurrentAccountsByTarget[antigravityRuntimeTarget] ?? null;
 
   // Codex Data
   const {
@@ -711,23 +565,6 @@ export function DashboardPage({
     };
   }, []);
 
-  React.useEffect(() => {
-    void fetchAgCurrent(antigravityRuntimeTarget);
-  }, [antigravityRuntimeTarget, fetchAgCurrent]);
-
-  const traeAccountsByPlatform = useMemo<Record<TraePlatformId, TraeAccount[]>>(() => {
-    const result: Record<TraePlatformId, TraeAccount[]> = {
-      trae: [],
-      trae_solo: [],
-      trae_cn: [],
-      trae_solo_cn: [],
-    };
-    for (const account of traeAccounts) {
-      result[getTraeAccountPlatformId(account)].push(account);
-    }
-    return result;
-  }, [traeAccounts]);
-
   // Statistics
   const stats = useMemo(() => {
     return {
@@ -837,7 +674,7 @@ export function DashboardPage({
     if (refreshing.has(accountId)) return;
     setRefreshing(prev => new Set(prev).add(accountId));
     try {
-      await useAccountStore.getState().refreshQuota(accountId, antigravityRuntimeTarget);
+      await useAccountStore.getState().refreshQuota(accountId);
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
@@ -1020,7 +857,7 @@ export function DashboardPage({
     const idsToRefresh = Array.from(new Set([agCurrentAccount?.id, agRecommended?.id].filter(Boolean))) as string[];
     try {
       for (const id of idsToRefresh) {
-        await useAccountStore.getState().refreshQuota(id, antigravityRuntimeTarget);
+        await useAccountStore.getState().refreshQuota(id);
       }
     } catch (error) {
       console.error('Card refresh failed:', error);
@@ -3385,20 +3222,6 @@ export function DashboardPage({
           <AnnouncementCenter onNavigate={onNavigate} variant="inline" trigger="button" />
         </div>
       </div>
-
-      {grokActionMessage && (
-        <div className={`action-message ${grokActionMessage.tone}`} role="alert">
-          <span className="action-message-text">{grokActionMessage.text}</span>
-          <button
-            type="button"
-            className="action-message-close"
-            onClick={() => setGrokActionMessage(null)}
-            aria-label={t('common.close', '关闭')}
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
 
       {/* Top Stats */}
       <div className="stats-row">

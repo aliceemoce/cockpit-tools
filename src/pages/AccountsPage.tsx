@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Fragment, MouseEvent as ReactMouseEvent } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Plus,
@@ -25,9 +25,6 @@ import {
   RotateCw,
   History,
   ArrowDownWideNarrow,
-  ArrowUp,
-  ArrowDown,
-  Wrench,
   Rows3,
   GripVertical,
   Eye,
@@ -42,10 +39,10 @@ import {
   LogOut,
   Pencil
 } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { useTranslation, Trans } from 'react-i18next'
 import { useAccountStore } from '../stores/useAccountStore'
 import * as accountService from '../services/accountService'
-import { Account } from '../types/account'
+import { FingerprintWithStats, Account } from '../types/account'
 import { Page } from '../types/navigation'
 import {
   getAntigravityTierBadge,
@@ -229,7 +226,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
   const untaggedKey = '__untagged__'
   const {
     accounts,
-    currentAccountsByTarget,
+    currentAccount,
     loading,
     error: storeError,
     fetchAccounts,
@@ -241,7 +238,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     switchAccount,
     updateAccountTags
   } = useAccountStore()
-  const currentAccount = currentAccountsByTarget[antigravityRuntimeTarget] ?? null
 
   const formatSwitchError = useCallback((error: unknown) => String(error), [])
 
@@ -385,7 +381,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
   const [addTab, setAddTab] = useState<'oauth' | 'token' | 'import'>('oauth')
   const [refreshing, setRefreshing] = useState<Set<string>>(new Set())
   const [refreshingAll, setRefreshingAll] = useState(false)
-  const [wakeupRunning, setWakeupRunning] = useState(false)
   const [switching, setSwitching] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [refreshWarnings, setRefreshWarnings] = useState<
@@ -845,194 +840,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     [accounts, isAbnormalAccount]
   )
 
-  useEffect(() => {
-    writeAntigravityCustomSortOrder(customSortOrder)
-  }, [customSortOrder])
-
-  useEffect(() => {
-    writeAntigravityCustomSortActive(sortBy === 'custom')
-  }, [sortBy])
-
-  useEffect(() => {
-    if (!showCustomSortModal || !draggedCustomSortAccountId) return
-    const handleMouseUp = () => {
-      setDraggedCustomSortAccountId(null)
-      setCustomSortDropTargetId(null)
-    }
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => window.removeEventListener('mouseup', handleMouseUp)
-  }, [showCustomSortModal, draggedCustomSortAccountId])
-
-  useEffect(() => {
-    if (!showCustomSortModal) {
-      setDraggedCustomSortAccountId(null)
-      setCustomSortDropTargetId(null)
-    }
-  }, [showCustomSortModal])
-
-  const isCustomSortActive = sortBy === 'custom'
-  const customSortAccounts = useMemo(() => {
-    const accountMap = new Map(
-      accounts.map((account) => [account.id, account])
-    )
-    const result: Account[] = []
-    const seen = new Set<string>()
-
-    customSortOrder.forEach((accountId) => {
-      const account = accountMap.get(accountId)
-      if (!account || seen.has(accountId)) return
-      result.push(account)
-      seen.add(accountId)
-    })
-
-    accounts.forEach((account) => {
-      if (seen.has(account.id)) return
-      result.push(account)
-      seen.add(account.id)
-    })
-
-    return result
-  }, [accounts, customSortOrder])
-
-  const customSortAccountIds = useMemo(
-    () => customSortAccounts.map((account) => account.id),
-    [customSortAccounts]
-  )
-
-  const moveCustomSortAccount = useCallback(
-    (accountId: string, direction: 'up' | 'down') => {
-      const currentIndex = customSortAccountIds.indexOf(accountId)
-      if (currentIndex < 0) return
-      const targetIndex =
-        direction === 'up' ? currentIndex - 1 : currentIndex + 1
-      if (targetIndex < 0 || targetIndex >= customSortAccountIds.length) return
-      const next = [...customSortAccountIds]
-      const [moved] = next.splice(currentIndex, 1)
-      next.splice(targetIndex, 0, moved)
-      setCustomSortOrder(next)
-    },
-    [customSortAccountIds]
-  )
-
-  const stopCustomSortDragging = useCallback(() => {
-    setDraggedCustomSortAccountId(null)
-    setCustomSortDropTargetId(null)
-  }, [])
-
-  const handleCustomSortDragStart = useCallback(
-    (event: ReactMouseEvent, accountId: string) => {
-      if (event.button !== 0) return
-      event.preventDefault()
-      event.stopPropagation()
-      setDraggedCustomSortAccountId(accountId)
-      setCustomSortDropTargetId(null)
-    },
-    []
-  )
-
-  const handleCustomSortDragMove = useCallback(
-    (targetAccountId: string) => {
-      if (!draggedCustomSortAccountId) return
-      if (draggedCustomSortAccountId === targetAccountId) {
-        setCustomSortDropTargetId(null)
-        return
-      }
-      const fromIndex = customSortAccountIds.indexOf(
-        draggedCustomSortAccountId
-      )
-      const toIndex = customSortAccountIds.indexOf(targetAccountId)
-      if (fromIndex < 0 || toIndex < 0) return
-      setCustomSortDropTargetId(targetAccountId)
-      const next = [...customSortAccountIds]
-      const [moved] = next.splice(fromIndex, 1)
-      next.splice(toIndex, 0, moved)
-      setCustomSortOrder(next)
-    },
-    [customSortAccountIds, draggedCustomSortAccountId]
-  )
-
-  const resetCustomSortOrder = useCallback(() => {
-    setCustomSortOrder(accounts.map((account) => account.id))
-  }, [accounts])
-
-  const handleSortByChange = useCallback(
-    (value: string) => {
-      setSortBy(value)
-      if (value === 'custom') {
-        setShowCustomSortModal(true)
-      }
-    },
-    [setSortBy]
-  )
-
-  useEffect(() => {
-    if (!displayGroupsLoaded) {
-      return
-    }
-    const normalizedSortBy = normalizeAntigravitySortBy(sortBy)
-    if (
-      normalizedSortBy === 'overall' ||
-      normalizedSortBy === 'created_at' ||
-      normalizedSortBy === 'default' ||
-      normalizedSortBy === 'custom'
-    ) {
-      return
-    }
-
-    if (normalizedSortBy.startsWith(ANTIGRAVITY_RESET_SORT_PREFIX)) {
-      const targetGroupId = normalizedSortBy.slice(ANTIGRAVITY_RESET_SORT_PREFIX.length)
-      if (displayGroups.some((group) => group.id === targetGroupId)) {
-        return
-      }
-      setSortBy(DEFAULT_ANTIGRAVITY_SORT_BY)
-      return
-    }
-
-    if (!displayGroups.some((group) => group.id === normalizedSortBy)) {
-      setSortBy(DEFAULT_ANTIGRAVITY_SORT_BY)
-    }
-  }, [displayGroups, displayGroupsLoaded, sortBy])
-
-  const customSortOrderIndex = useMemo(() => {
-    const map = new Map<string, number>()
-    customSortOrder.forEach((accountId, index) => {
-      map.set(accountId, index)
-    })
-    return map
-  }, [customSortOrder])
-
-  const accountSortComparator = useMemo(
-    () =>
-      createAntigravityAccountComparator({
-        sortBy,
-        sortDirection,
-        displayGroups,
-        currentAccountId: currentAccount?.id ?? null,
-        customSortOrderIndex,
-      }),
-    [currentAccount?.id, displayGroups, sortBy, sortDirection, customSortOrderIndex]
-  )
-
-  const availableTags = useMemo(() => collectAvailableAccountTags(accounts), [accounts])
-
-  const isAbnormalAccount = useCallback(
-    (account: Account): boolean => {
-      const isDisabled = account.disabled
-      const isForbidden = Boolean(account.quota?.is_forbidden)
-      const hasWarning = Boolean(refreshWarnings[account.email])
-      const verificationReason = account.disabled_reason || verificationStatusMap[account.id]
-      const hasVerificationIssue =
-        verificationReason === 'verification_required' || verificationReason === 'tos_violation'
-      return isDisabled || isForbidden || hasWarning || hasVerificationIssue
-    },
-    [refreshWarnings, verificationStatusMap]
-  )
-
-  const validAccountCount = useMemo(
-    () => accounts.reduce((count, account) => (isAbnormalAccount(account) ? count : count + 1), 0),
-    [accounts, isAbnormalAccount]
-  )
-
   // 筛选后的账号
   const filteredAccounts = useMemo(() => {
     let result = [...accounts]
@@ -1173,33 +980,14 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     ]
   )
 
-  const hasVisibleAccountGroups = useMemo(
-    () => !activeGroupId && !groupByTag && accountGroups.length > 0,
-    [activeGroupId, groupByTag, accountGroups]
-  )
-
-  // 统计数量
-  const tierCounts = useMemo(
-    () => buildAccountTierCounts(accounts, verificationStatusMap),
-    [accounts, verificationStatusMap]
-  )
-
-  const tierFilterOptions = useMemo<MultiSelectFilterOption[]>(
-    () => [
-      ...buildAccountTierFilterOptions(t, tierCounts),
-      buildValidAccountsFilterOption(t, validAccountCount),
-    ],
-    [
-      t,
-      tierCounts.FREE,
-      tierCounts.PRO,
-      tierCounts.TOS_VIOLATION,
-      tierCounts.ULTRA,
-      tierCounts.UNKNOWN,
-      tierCounts.VERIFICATION_REQUIRED,
-      validAccountCount,
-    ]
-  )
+  const loadFingerprints = async () => {
+    try {
+      const list = await accountService.listFingerprints()
+      setFingerprints(list)
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   // 加载显示用分组配置
   const loadDisplayGroups = async () => {
@@ -1350,7 +1138,8 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
 
   useEffect(() => {
     fetchAccounts()
-    fetchCurrentAccount(antigravityRuntimeTarget)
+    fetchCurrentAccount()
+    loadFingerprints()
     loadDisplayGroups()
     loadVerificationHistory()
 
@@ -1358,14 +1147,14 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
 
     listen<string>('accounts:refresh', async () => {
       await fetchAccounts()
-      await fetchCurrentAccount(antigravityRuntimeTarget)
+      await fetchCurrentAccount()
       const latestAccounts = useAccountStore.getState().accounts
       const accountsWithoutQuota = latestAccounts.filter(
         (acc) => !acc.quota?.models?.length
       )
       if (accountsWithoutQuota.length > 0) {
         await Promise.allSettled(
-          accountsWithoutQuota.map((acc) => refreshQuota(acc.id, antigravityRuntimeTarget))
+          accountsWithoutQuota.map((acc) => refreshQuota(acc.id))
         )
         await fetchAccounts()
       }
@@ -1446,7 +1235,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       if (unlistenUrl) unlistenUrl()
       if (unlistenCallback) unlistenCallback()
     }
-  }, [assignAccountsToAddTargetGroup, fetchAccounts, fetchCurrentAccount])
+  }, [fetchAccounts, fetchCurrentAccount])
 
   useEffect(() => {
     if (!showAddModal || addTab !== 'oauth' || oauthUrl) return
@@ -1513,56 +1302,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     } finally {
       await loadVerificationHistory()
       setRefreshingAll(false)
-    }
-  }
-
-  const handleWakeupSelected = async () => {
-    if (selected.size === 0 || wakeupRunning) return
-    setWakeupRunning(true)
-    setMessage(null)
-    const selectedIdSet = new Set(selected)
-    const selectedAccounts = accounts.filter((account) => selectedIdSet.has(account.id))
-    try {
-      const models = await invoke<Array<{ id: string }>>('fetch_available_models')
-      const model = models.find((item) => item.id)?.id
-      if (!model) {
-        throw new Error(t('wakeup.notice.testMissingModel'))
-      }
-      const officialLsVersionMode = loadWakeupOfficialLsVersionMode()
-      const results = await Promise.allSettled(
-        selectedAccounts.map((account) =>
-          invoke('trigger_wakeup', {
-            accountId: account.id,
-            model,
-            prompt: undefined,
-            maxOutputTokens: 0,
-            cancelScopeId: undefined,
-            officialLsVersionMode,
-          }),
-        ),
-      )
-      const failed = results.filter((result) => result.status === 'rejected').length
-      const success = results.length - failed
-      setMessage({
-        text:
-          failed > 0
-            ? t('messages.actionFailed', {
-                action: t('wakeup.runTest'),
-                error: `${success}/${results.length}`,
-              })
-            : t('messages.actionSuccess', { action: t('wakeup.runTest') }),
-        tone: failed > 0 ? 'error' : undefined,
-      })
-    } catch (error) {
-      setMessage({
-        text: t('messages.actionFailed', {
-          action: t('wakeup.runTest'),
-          error: String(error).replace(/^Error:\s*/, ''),
-        }),
-        tone: 'error',
-      })
-    } finally {
-      setWakeupRunning(false)
     }
   }
 
@@ -1670,7 +1409,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       accountService.cancelOAuthLogin().catch(() => { })
     }
     setShowAddModal(false)
-    setAddTargetGroupId(null)
     resetAddModalState()
     setOauthUrl('')
   }
@@ -1705,19 +1443,17 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
 
   const handleOAuthStart = async () => {
     await runModalAction(t('modals.import.oauthAction'), async () => {
-      const account = await startOAuthLogin()
+      await startOAuthLogin()
       await fetchAccounts()
-      await fetchCurrentAccount(antigravityRuntimeTarget)
-      await assignAccountsToAddTargetGroup([account])
+      await fetchCurrentAccount()
     })
   }
 
   const handleOAuthComplete = async () => {
     await runModalAction(t('modals.import.oauthAction'), async () => {
-      const account = await accountService.completeOAuthLogin()
+      await accountService.completeOAuthLogin()
       await fetchAccounts()
-      await fetchCurrentAccount(antigravityRuntimeTarget)
-      await assignAccountsToAddTargetGroup([account])
+      await fetchCurrentAccount()
     })
   }
 
@@ -1892,9 +1628,9 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     try {
       const imported = await accountService.importFromOldTools()
       await fetchAccounts()
-      await Promise.allSettled(imported.map((acc) => refreshQuota(acc.id, antigravityRuntimeTarget)))
+      await loadFingerprints()
+      await Promise.allSettled(imported.map((acc) => refreshQuota(acc.id)))
       await fetchAccounts()
-      await assignAccountsToAddTargetGroup(imported)
       if (imported.length === 0) {
         setAddStatus('error')
         setAddMessage(t('modals.import.noAccountsFound'))
@@ -1924,9 +1660,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
       await fetchAccounts()
       await refreshQuota(imported.id)
       await fetchAccounts()
-      await refreshQuota(imported.id, antigravityRuntimeTarget)
-      await fetchAccounts()
-      await assignAccountsToAddTargetGroup([imported])
       setAddStatus('success')
       setAddMessage(
         t('messages.importLocalSuccess', { email: maskAccountText(imported.email) })
@@ -2129,7 +1862,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
 
     if (importedAccounts.length > 0) {
       await Promise.allSettled(
-        importedAccounts.map((acc) => refreshQuota(acc.id, antigravityRuntimeTarget))
+        importedAccounts.map((acc) => refreshQuota(acc.id))
       )
       await fetchAccounts()
       // 如果在文件夹内添加，自动归入当前文件夹
@@ -2428,32 +2161,12 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     } catch (e) {
       setFpSelectError(t('messages.bindFailed', { error: String(e) }))
     }
+  }
 
-    if (accountGroups.some((group) => group.id !== groupId && group.name === nextName)) {
-      throw new Error(t('accounts.groups.error.duplicate'))
-    }
-
-    const currentIds = new Set(currentGroup.accountIds)
-    const nextIds = new Set(accountIds)
-    const addedIds = accountIds.filter((accountId) => !currentIds.has(accountId))
-    const removedIds = currentGroup.accountIds.filter((accountId) => !nextIds.has(accountId))
-    const shouldRename = nextName !== currentGroup.name
-
-    if (!shouldRename && addedIds.length === 0 && removedIds.length === 0) return
-
-    if (shouldRename) {
-      await renameGroup(groupId, nextName)
-    }
-
-    if (accountIds.length > 0) {
-      await assignAccountsToGroup(groupId, accountIds)
-    }
-
-    if (removedIds.length > 0) {
-      await removeAccountsFromGroup(groupId, removedIds)
-    }
-
-    await reloadAccountGroups()
+  const getFingerprintName = (fpId?: string) => {
+    if (!fpId || fpId === 'original') return t('modals.fingerprint.original')
+    const fp = fingerprints.find((f) => f.id === fpId)
+    return fp?.name || fpId
   }
 
   const formatDate = (timestamp: number) => {
@@ -2813,6 +2526,13 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                 title={t('accounts.actions.viewDetails')}
               >
                 <CircleAlert size={14} />
+              </button>
+              <button
+                className="card-action-btn"
+                onClick={() => openFpSelectModal(account.id)}
+                title={t('accounts.actions.fingerprint')}
+              >
+                <Fingerprint size={14} />
               </button>
               <button
                 className="card-action-btn"
@@ -3382,6 +3102,19 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
             </div>
           </td>
           <td>
+            <button
+              className="fp-select-btn"
+              onClick={() => openFpSelectModal(account.id)}
+              title={t('accounts.actions.selectFingerprint')}
+            >
+              <Fingerprint size={14} />
+              <span className="fp-select-name">
+                {getFingerprintName(account.fingerprint_id)}
+              </span>
+              <Link size={12} />
+            </button>
+          </td>
+          <td>
             <div className="quota-grid">
               {isForbidden ? (
                 <div className="quota-forbidden" title={forbiddenTitle}>
@@ -3532,6 +3265,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
               />
             </th>
             <th style={{ width: 220 }}>{t('accounts.columns.email')}</th>
+            <th style={{ width: 130 }}>{t('accounts.columns.fingerprint')}</th>
             <th>{t('accounts.columns.quota')}</th>
             <th className="sticky-action-header table-action-header">
               {t('accounts.columns.actions')}
@@ -3781,32 +3515,21 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
               onChange={setSortBy}
             />
 
-            {/* 排序方向切换按钮 / 自定义排序配置按钮 */}
-            {!isCustomSortActive ? (
-              <button
-                className="sort-direction-btn"
-                onClick={() =>
-                  setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))
-                }
-                title={
-                  sortDirection === 'desc'
-                    ? t('accounts.sort.descTooltip', '当前：降序，点击切换为升序')
-                    : t('accounts.sort.ascTooltip', '当前：升序，点击切换为降序')
-                }
-                aria-label={t('accounts.sort.toggleDirection', '切换排序方向')}
-              >
-                {sortDirection === 'desc' ? '⬇' : '⬆'}
-              </button>
-            ) : (
-              <button
-                className="sort-direction-btn"
-                onClick={() => setShowCustomSortModal(true)}
-                title={t('accounts.sort.customSettingsTooltip', '配置自定义顺序')}
-                aria-label={t('accounts.sort.customSettingsTooltip', '配置自定义顺序')}
-              >
-                <Wrench size={14} />
-              </button>
-            )}
+            {/* 排序方向切换按钮 */}
+            <button
+              className="sort-direction-btn"
+              onClick={() =>
+                setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+              }
+              title={
+                sortDirection === 'desc'
+                  ? t('accounts.sort.descTooltip', '当前：降序，点击切换为升序')
+                  : t('accounts.sort.ascTooltip', '当前：升序，点击切换为降序')
+              }
+              aria-label={t('accounts.sort.toggleDirection', '切换排序方向')}
+            >
+              {sortDirection === 'desc' ? '⬇' : '⬆'}
+            </button>
           </div>
 
           <div className="toolbar-right">
@@ -3907,49 +3630,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
           </div>
         </div>
 
-        {filteredAccounts.length > 0 && (
-          <AccountSelectionToolbar
-            selectedCount={selected.size}
-            allSelected={allPaginatedSelected}
-            disabled={paginatedIds.length === 0}
-            onToggleSelectAll={toggleSelectAll}
-            onClearSelection={() => setSelected(new Set())}
-            actions={(
-              <>
-                <button
-                  className="btn btn-secondary icon-only"
-                  onClick={() => void handleWakeupSelected()}
-                  disabled={wakeupRunning || selected.size === 0}
-                  title={`${t('wakeup.runTest')} (${selected.size})`}
-                  aria-label={`${t('wakeup.runTest')} (${selected.size})`}
-                >
-                  {wakeupRunning ? (
-                    <RefreshCw size={14} className="loading-spinner" />
-                  ) : (
-                    <Rocket size={14} />
-                  )}
-                </button>
-                <button
-                  className="btn btn-secondary icon-only"
-                  onClick={() => setShowAddToGroupModal(true)}
-                  title={t('accounts.groups.addToGroup')}
-                  aria-label={t('accounts.groups.addToGroup')}
-                >
-                  <FolderPlus size={14} />
-                </button>
-                <button
-                  className="btn btn-danger icon-only"
-                  onClick={handleBatchDelete}
-                  title={`${t('common.delete')} (${selected.size})`}
-                  aria-label={`${t('common.delete')} (${selected.size})`}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </>
-            )}
-          />
-        )}
-
         {message && (
           <div
             className={`action-message${message.tone ? ` ${message.tone}` : ''}`}
@@ -4028,7 +3708,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
 
       {/* Add Account Modal */}
       {showAddModal && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={closeAddModal}>
           <div
             className="modal modal-lg add-account-modal"
             onClick={(e) => e.stopPropagation()}

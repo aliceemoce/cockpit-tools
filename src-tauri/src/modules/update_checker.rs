@@ -347,7 +347,7 @@ pub fn save_pending_update_notes(
 }
 
 /// Load update settings from config file
-fn load_update_settings_unlocked() -> Result<UpdateSettings, String> {
+pub fn load_update_settings() -> Result<UpdateSettings, String> {
     let data_dir = get_data_dir()?;
     let settings_path = data_dir.join("update_settings.json");
 
@@ -412,94 +412,14 @@ pub fn save_update_settings(settings: &UpdateSettings) -> Result<(), String> {
         .map_err(|e| format!("Failed to write settings file: {}", e))
 }
 
-pub fn save_update_settings(settings: &UpdateSettings) -> Result<(), String> {
-    let _guard = update_settings_lock()
-        .lock()
-        .map_err(|_| "Update settings lock poisoned".to_string())?;
-    save_update_settings_unlocked(settings)
-}
-
-pub fn patch_update_settings<F>(patch: F) -> Result<UpdateSettings, String>
-where
-    F: FnOnce(&mut UpdateSettings),
-{
-    let _guard = update_settings_lock()
-        .lock()
-        .map_err(|_| "Update settings lock poisoned".to_string())?;
-    let mut settings = load_update_settings_unlocked()?;
-    patch(&mut settings);
-    save_update_settings_unlocked(&settings)?;
-    Ok(settings)
-}
-
 /// Update last check time
 pub fn update_last_check_time() -> Result<(), String> {
-    let last_check_time = SystemTime::now()
+    let mut settings = load_update_settings()?;
+    settings.last_check_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    patch_update_settings(|settings| settings.last_check_time = last_check_time)?;
-    Ok(())
-}
-
-/// Check if a version jump occurred (app was updated since last run)
-/// Returns Some(VersionJumpInfo) if the current version is higher than the last recorded version
-pub fn check_version_jump() -> Result<Option<VersionJumpInfo>, String> {
-    let _guard = update_settings_lock()
-        .lock()
-        .map_err(|_| "Update settings lock poisoned".to_string())?;
-    let mut settings = load_update_settings_unlocked()?;
-    let current = CURRENT_VERSION.to_string();
-
-    // First run or same version – just record and return
-    if settings.last_run_version.is_empty() || settings.last_run_version == current {
-        if settings.last_run_version != current {
-            settings.last_run_version = current;
-            save_update_settings_unlocked(&settings)?;
-        }
-        return Ok(None);
-    }
-
-    let previous = settings.last_run_version.clone();
-
-    // Only trigger if current > previous (upgrade, not downgrade)
-    if !compare_versions(&current, &previous) {
-        settings.last_run_version = current;
-        save_update_settings_unlocked(&settings)?;
-        return Ok(None);
-    }
-
-    let mut release_notes = String::new();
-    let mut release_notes_zh = String::new();
-    match load_pending_update_notes() {
-        Ok(Some(pending)) => {
-            if pending.version == current {
-                release_notes = pending.release_notes;
-                release_notes_zh = pending.release_notes_zh;
-                remove_pending_update_notes_file();
-            } else if compare_versions(&current, &pending.version) {
-                // 当前版本已经超过缓存版本，缓存内容过期，直接清理。
-                remove_pending_update_notes_file();
-            }
-        }
-        Ok(None) => {}
-        Err(err) => {
-            logger::log_error(&format!("读取待安装更新说明失败: {}", err));
-        }
-    }
-
-    // Update the stored version
-    settings.last_run_version = current.clone();
-    save_update_settings_unlocked(&settings)?;
-
-    logger::log_info(&format!("检测到版本跳跃: {} -> {}", previous, current));
-
-    Ok(Some(VersionJumpInfo {
-        previous_version: previous,
-        current_version: current,
-        release_notes,
-        release_notes_zh,
-    }))
+    save_update_settings(&settings)
 }
 
 /// Check if a version jump occurred (app was updated since last run)

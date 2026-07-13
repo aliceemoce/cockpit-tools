@@ -524,8 +524,6 @@ export function SettingsPage() {
   const [showUnlockFireworks, setShowUnlockFireworks] = useState(false);
   const unlockFireworksTimerRef = useRef<number | null>(null);
   const [generalLoaded, setGeneralLoaded] = useState(false);
-  const [generalLoadFailed, setGeneralLoadFailed] = useState(false);
-  const [generalConfigHydrationRevision, setGeneralConfigHydrationRevision] = useState(0);
   const generalSaveTimerRef = useRef<number | null>(null);
   const suppressGeneralSaveRef = useRef(false);
   const currentAccountRefreshPersistReadyRef = useRef(false);
@@ -744,8 +742,6 @@ export function SettingsPage() {
   useEffect(() => {
     loadGeneralConfig();
     loadNetworkConfig();
-    loadDiagnosticsConfig();
-    loadGrokCliStatus();
   }, []);
   
   useEffect(() => {
@@ -770,7 +766,6 @@ export function SettingsPage() {
 
     if (generalSaveTimerRef.current) {
       window.clearTimeout(generalSaveTimerRef.current);
-      generalSaveTimerRef.current = null;
     }
 
     if (
@@ -830,22 +825,6 @@ export function SettingsPage() {
       suppressGeneralSaveRef.current = false;
       return;
     }
-
-    const persistedPayload = persistedGeneralPayloadRef.current;
-    if (!persistedPayload) {
-      persistedGeneralPayloadRef.current = payload;
-      return;
-    }
-    const updates = Object.fromEntries(
-      Object.entries(payload).filter(
-        ([key, value]) =>
-          !areGeneralConfigPayloadValuesEqual(value, persistedPayload[key]),
-      ),
-    );
-    if (Object.keys(updates).length === 0) {
-      return;
-    }
-    generalStateRevisionRef.current += 1;
 
     generalSaveTimerRef.current = window.setTimeout(async () => {
       try {
@@ -1099,7 +1078,8 @@ export function SettingsPage() {
       if (!detail?.language) {
         return;
       }
-      setLanguage(normalizeLanguage(detail.language));
+      suppressGeneralSaveRef.current = true;
+      setLanguage(detail.language);
     };
 
     window.addEventListener('general-language-updated', handleLanguageUpdated);
@@ -1277,29 +1257,8 @@ export function SettingsPage() {
   }, [theme]);
   
   const loadGeneralConfig = async () => {
-    const loadVersion = generalConfigLoadVersionRef.current + 1;
-    generalConfigLoadVersionRef.current = loadVersion;
-    const stateRevisionAtStart = generalStateRevisionRef.current;
-    generalConfigLoadInFlightRef.current = true;
-    setGeneralLoadFailed(false);
-    if (hasHydratedGeneralConfigRef.current) {
-      setGeneralLoaded(false);
-    }
     try {
       const config = await invoke<GeneralConfig>('get_general_config');
-      if (loadVersion !== generalConfigLoadVersionRef.current) {
-        return;
-      }
-      if (
-        hasHydratedGeneralConfigRef.current &&
-        stateRevisionAtStart !== generalStateRevisionRef.current
-      ) {
-        pendingExternalConfigReloadRef.current = true;
-        setGeneralLoaded(true);
-        return;
-      }
-      skipNextGeneralSaveRef.current = true;
-      setGeneralConfigHydrationRevision((revision) => revision + 1);
       setLanguage(normalizeLanguage(config.language));
       setDefaultTerminal(config.default_terminal || 'system');
       setTheme(config.theme);
@@ -1437,31 +1396,9 @@ export function SettingsPage() {
       // 同步语言
       changeLanguage(config.language);
       applyTheme(config.theme);
-      hasHydratedGeneralConfigRef.current = true;
-      setGeneralLoadFailed(false);
       setGeneralLoaded(true);
     } catch (err) {
-      if (loadVersion !== generalConfigLoadVersionRef.current) {
-        return;
-      }
       console.error('加载通用配置失败:', err);
-      setGeneralLoadFailed(true);
-      if (hasHydratedGeneralConfigRef.current) {
-        setGeneralLoaded(true);
-      }
-    } finally {
-      if (loadVersion !== generalConfigLoadVersionRef.current) {
-        return;
-      }
-      generalConfigLoadInFlightRef.current = false;
-      if (
-        pendingExternalConfigReloadRef.current &&
-        generalSaveTimerRef.current === null &&
-        !generalSaveInFlightRef.current
-      ) {
-        pendingExternalConfigReloadRef.current = false;
-        void loadGeneralConfig();
-      }
     }
   };
 
@@ -1483,59 +1420,6 @@ export function SettingsPage() {
       setNeedsRestart(false);
     } catch (err) {
       console.error('加载网络配置失败:', err);
-    }
-  };
-
-  const loadGrokCliStatus = async () => {
-    try {
-      const status = await invoke<GrokCliStatus>('grok_get_cli_status');
-      setGrokCliStatus(status);
-      setGrokCliPath(status.configuredPath || '');
-      setGrokCliStatusError(null);
-    } catch (error) {
-      setGrokCliStatusError(String(error));
-    }
-  };
-
-  const saveGrokCliPath = async () => {
-    setGrokCliSaving(true);
-    setGrokCliStatusError(null);
-    try {
-      const status = await invoke<GrokCliStatus>('grok_update_cli_runtime_config', {
-        grokCliPath: grokCliPath.trim() || null,
-      });
-      setGrokCliStatus(status);
-      setGrokCliPath(status.configuredPath || '');
-    } catch (error) {
-      setGrokCliStatusError(String(error));
-    } finally {
-      setGrokCliSaving(false);
-    }
-  };
-
-  const loadDiagnosticsConfig = async () => {
-    try {
-      const config = await invoke<DiagnosticsConfig>('get_diagnostics_config');
-      setErrorReportingEnabled(config.errorReportingEnabled);
-    } catch (err) {
-      console.warn('加载诊断配置失败:', err);
-    }
-  };
-
-  const handleErrorReportingEnabledChange = async (enabled: boolean) => {
-    const previous = errorReportingEnabled;
-    setErrorReportingEnabled(enabled);
-    setErrorReportingSaving(true);
-    try {
-      await invoke('save_diagnostics_config', {
-        errorReportingEnabled: enabled,
-        errorReportingDebug: false,
-      });
-    } catch (err) {
-      setErrorReportingEnabled(previous);
-      console.error('保存诊断配置失败:', err);
-    } finally {
-      setErrorReportingSaving(false);
     }
   };
   
@@ -5919,14 +5803,6 @@ export function SettingsPage() {
               </div>
             </div>
 
-          </fieldset>
-          </>
-        )}
-
-        {activeTab === 'data' && (
-          <>
-            <SettingsAccountTransferSection />
-            <SettingsWebdavSyncSection />
           </>
         )}
 

@@ -31,17 +31,12 @@ export async function reorderAccounts(accountIds: string[]): Promise<void> {
     return await invoke('reorder_accounts', { accountIds });
 }
 
-export async function getCurrentAccount(
-    runtimeTarget?: AntigravityRuntimeTarget,
-): Promise<Account | null> {
-    return await invoke('get_current_account', { runtimeTarget });
+export async function getCurrentAccount(): Promise<Account | null> {
+    return await invoke('get_current_account');
 }
 
-export async function setCurrentAccount(
-    accountId: string,
-    runtimeTarget?: AntigravityRuntimeTarget,
-): Promise<void> {
-    return await invoke('set_current_account', { accountId, runtimeTarget });
+export async function setCurrentAccount(accountId: string): Promise<void> {
+    return await invoke('set_current_account', { accountId });
 }
 
 export async function fetchAccountQuota(accountId: string): Promise<Account> {
@@ -70,6 +65,38 @@ export async function submitOAuthCallbackUrl(callbackUrl: string): Promise<void>
 
 export async function cancelOAuthLogin(): Promise<void> {
     return await invoke('cancel_oauth_login');
+}
+
+export async function getDeviceProfiles(accountId: string): Promise<DeviceProfiles> {
+    return await invoke('get_device_profiles', { accountId });
+}
+
+export async function bindDeviceProfile(accountId: string, mode: 'capture' | 'generate'): Promise<DeviceProfile> {
+    return await invoke('bind_device_profile', { accountId, mode });
+}
+
+export async function bindDeviceProfileWithProfile(accountId: string, profile: DeviceProfile): Promise<DeviceProfile> {
+    return await invoke('bind_device_profile_with_profile', { accountId, profile });
+}
+
+export async function listDeviceVersions(accountId: string): Promise<DeviceProfiles> {
+    return await invoke('list_device_versions', { accountId });
+}
+
+export async function restoreDeviceVersion(accountId: string, versionId: string): Promise<DeviceProfile> {
+    return await invoke('restore_device_version', { accountId, versionId });
+}
+
+export async function deleteDeviceVersion(accountId: string, versionId: string): Promise<void> {
+    return await invoke('delete_device_version', { accountId, versionId });
+}
+
+export async function restoreOriginalDevice(): Promise<string> {
+    return await invoke('restore_original_device');
+}
+
+export async function openDeviceFolder(): Promise<void> {
+    return await invoke('open_device_folder');
 }
 
 export async function openDataFolder(): Promise<void> {
@@ -152,6 +179,13 @@ export async function importFromOldTools(): Promise<Account[]> {
     return await invoke('import_from_old_tools');
 }
 
+export async function importFingerprintsFromOldTools(): Promise<number> {
+    return await invoke('import_fingerprints_from_old_tools');
+}
+
+export async function importFingerprintsFromJson(jsonContent: string): Promise<number> {
+    return await invoke('import_fingerprints_from_json', { jsonContent });
+}
 
 export async function importFromLocal(): Promise<Account> {
     return await invoke('import_from_local');

@@ -6,7 +6,6 @@
     "saving": "Đang lưu...",
     "delete": "Xóa",
     "refresh": "Làm mới",
-    "reauthorize": "Ủy quyền lại",
     "loading": "Đang tải...",
     "success": "Thành công",
     "failed": "Thất bại",
@@ -2050,7 +2049,6 @@
     "quota": {
       "hourly": "Hạn mức 5 giờ",
       "weekly": "Hạn mức tuần",
-      "additional": "Hạn mức bổ sung",
       "reset": "Đặt lại",
       "weeklyBlocksHourly": "Hạn mức tuần là 0 nên hạn mức 5 giờ không khả dụng",
       "resetCredits": "Lượt đặt lại {{count}}",

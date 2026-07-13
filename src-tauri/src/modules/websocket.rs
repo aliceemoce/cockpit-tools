@@ -1037,7 +1037,7 @@ fn handle_delete_account_by_email(email: &str) -> Result<String, String> {
 
 /// 处理语言设置请求
 fn handle_set_language(language: &str, source: Option<&str>) -> Result<String, String> {
-    use crate::modules::config;
+    use crate::modules::config::{self, UserConfig};
 
     if language.trim().is_empty() {
         return Err("语言不能为空".to_string());
@@ -1046,16 +1046,8 @@ fn handle_set_language(language: &str, source: Option<&str>) -> Result<String, S
     // 标准化语言代码为小写，确保格式一致
     let normalized = language.to_lowercase();
 
-    let mut changed = false;
-    config::patch_user_config(|current| {
-        changed = current.language != normalized;
-        if changed {
-            current.language = normalized.clone();
-        }
-        Ok(())
-    })?;
-
-    if !changed {
+    let current = config::get_user_config();
+    if current.language == normalized {
         return Ok(format!("语言已是 {}", normalized));
     }
 

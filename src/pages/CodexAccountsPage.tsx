@@ -22,7 +22,6 @@ import {
   Copy,
   Check,
   Play,
-  Pause,
   RotateCw,
   CircleAlert,
   Info,
@@ -3523,7 +3522,6 @@ export function CodexAccountsPage() {
       if (disposed) fn();
       else unlistenTimeout = fn;
     });
-  }, [accounts]);
 
     return () => {
       disposed = true;
@@ -6826,7 +6824,6 @@ export function CodexAccountsPage() {
         return searchable.includes(query);
       });
     }
-  }, [activeGroupId, reloadCodexGroups, selected, setMessage, setSelected, t]);
 
     if (oauthBindingFilterTypes.length > 0) {
       const { selectedTypes } = splitValidityFilterValues(
@@ -11604,35 +11601,6 @@ export function CodexAccountsPage() {
               <p>
                 {t("common.shared.noMatch.desc", "请尝试调整搜索或筛选条件")}
               </p>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  justifyContent: "center",
-                  marginTop: "16px",
-                }}
-              >
-                <button
-                  className="btn btn-primary"
-                  onClick={() => openCodexAddModal("oauth")}
-                >
-                  <Plus size={16} />
-                  {t("common.shared.addAccount", "添加账号")}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() =>
-                    window.dispatchEvent(
-                      new CustomEvent("app-request-navigate", {
-                        detail: "manual",
-                      }),
-                    )
-                  }
-                >
-                  <BookOpen size={16} />
-                  {t("manual.navTitle", "功能使用手册")}
-                </button>
-              </div>
             </div>
           ) : (
             <>
