@@ -32,6 +32,7 @@ import { ExportJsonModal } from '../components/ExportJsonModal';
 import { ModalErrorMessage, useModalErrorState } from '../components/ModalErrorMessage';
 import { MfaQuickCodeSelect } from '../components/MfaQuickCodeSelect';
 import { PaginationControls } from '../components/PaginationControls';
+import { AccountSelectionToolbar } from '../components/AccountSelectionToolbar';
 import { QuickSettingsPopover } from '../components/QuickSettingsPopover';
 import { MultiSelectFilterDropdown, type MultiSelectFilterOption } from '../components/MultiSelectFilterDropdown';
 import { SingleSelectFilterDropdown } from '../components/SingleSelectFilterDropdown';
@@ -64,7 +65,6 @@ import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
 import {
   consumeQueuedExternalProviderImportForPlatform,
   EXTERNAL_PROVIDER_IMPORT_EVENT,
-  isNavigationOnlyExternalImportToken,
 } from '../utils/externalProviderImport';
 import {
   buildValidAccountsFilterOption,
@@ -541,9 +541,6 @@ export function QoderAccountsPage() {
   const consumeExternalProviderImport = useCallback(() => {
     const request = consumeQueuedExternalProviderImportForPlatform('qoder');
     if (!request) return;
-    if (isNavigationOnlyExternalImportToken(request.token)) {
-      return;
-    }
     openAddModal('token');
     setTokenInput(request.token);
     setAddStatus('idle');
@@ -1897,7 +1894,7 @@ export function QoderAccountsPage() {
                 <div className="ghcp-flow-notice-desc">
                   {t(
                     'qoder.flowNotice.desc',
-                    '当前支持官方授权登录（回调）、本地导入、JSON 导入、切号注入、多开实例绑定与配额概览。登录流程沿用 Qoder 客户端真实落盘数据。',
+                    '当前支持官方授权登录（回调）、本地导入、JSON 导入、切号注入、应用多开绑定与配额概览。登录流程沿用 Qoder 客户端真实落盘数据。',
                   )}
                 </div>
                 <ul className="ghcp-flow-notice-list">
@@ -2089,19 +2086,30 @@ export function QoderAccountsPage() {
               >
                 <Upload size={14} />
               </button>
-              {selected.size > 0 && (
+              <QuickSettingsPopover type="qoder" />
+            </div>
+          </div>
+
+          {filteredAccounts.length > 0 && (
+            <AccountSelectionToolbar
+              selectedCount={selected.size}
+              allSelected={allSelected}
+              disabled={paginatedIds.length === 0}
+              onToggleSelectAll={toggleSelectAll}
+              onClearSelection={() => setSelected(new Set())}
+              actions={(
                 <button
                   className="btn btn-danger icon-only"
                   onClick={() => void handleDeleteAccounts(Array.from(selected))}
                   disabled={deleting}
-                  title={t('accounts.actions.deleteSelected', '删除选中')}
+                  title={`${t('common.delete', '删除')} (${selected.size})`}
+                  aria-label={`${t('common.delete', '删除')} (${selected.size})`}
                 >
                   <Trash2 size={14} />
                 </button>
               )}
-              <QuickSettingsPopover type="qoder" />
-            </div>
-          </div>
+            />
+          )}
 
           {loading && accounts.length === 0 ? (
             <div className="loading-container">

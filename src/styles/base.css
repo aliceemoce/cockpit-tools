@@ -118,18 +118,6 @@ body {
   line-height: 1.6;
   color-scheme: light;
   -webkit-font-smoothing: antialiased;
-  height: 100%;
-  overflow: hidden;
-}
-
-html {
-  height: 100%;
-  overflow: hidden;
-}
-
-#root {
-  height: 100%;
-  overflow: hidden;
 }
 
 /* Dark mode body background */

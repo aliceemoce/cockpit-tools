@@ -1,7 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { PlatformId } from '../types/platform';
 import { ALL_PLATFORM_IDS } from '../types/platform';
-import type { RemoteConfigAppliedRule, RemoteConfigState } from '../types/remoteConfig';
+import type {
+  RemoteConfigAppliedRule,
+  RemoteConfigState,
+  RemoteUpdatePromptMode,
+} from '../types/remoteConfig';
 
 type RemoteConfigAppliedRuleRaw = {
   platformIds?: unknown;
@@ -21,10 +25,18 @@ type RemoteConfigStateRaw = {
   applied_rules?: unknown;
   refreshIntervalMs?: unknown;
   refresh_interval_ms?: unknown;
+  updatePromptMode?: unknown;
+  update_prompt_mode?: unknown;
 };
 
 const DEFAULT_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const NEVER_REMOTE_HIDE_PLATFORM_IDS = new Set<PlatformId>(['claude_manager']);
+
+function normalizeUpdatePromptMode(value: unknown): RemoteUpdatePromptMode {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'popup'
+    ? 'popup'
+    : 'normal';
+}
 
 function normalizePlatformIds(value: unknown): PlatformId[] {
   if (!Array.isArray(value)) return [];
@@ -82,6 +94,9 @@ function normalizeRemoteConfigState(raw: RemoteConfigStateRaw): RemoteConfigStat
       Number.isFinite(refreshIntervalMs) && refreshIntervalMs >= 60_000
         ? refreshIntervalMs
         : DEFAULT_REFRESH_INTERVAL_MS,
+    updatePromptMode: normalizeUpdatePromptMode(
+      raw.updatePromptMode ?? raw.update_prompt_mode,
+    ),
   };
 }
 

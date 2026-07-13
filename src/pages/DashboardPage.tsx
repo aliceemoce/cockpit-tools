@@ -7,10 +7,12 @@ import { useWindsurfAccountStore } from '../stores/useWindsurfAccountStore';
 import { useKiroAccountStore } from '../stores/useKiroAccountStore';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
 import { useGeminiAccountStore } from '../stores/useGeminiAccountStore';
+import { useGrokAccountStore } from '../stores/useGrokAccountStore';
 import { useClaudeAccountStore } from '../stores/useClaudeAccountStore';
 import { useCodebuddyAccountStore } from '../stores/useCodebuddyAccountStore';
 import { useCodebuddyCnAccountStore } from '../stores/useCodebuddyCnAccountStore';
 import { useQoderAccountStore } from '../stores/useQoderAccountStore';
+import { useZcodeAccountStore } from '../stores/useZcodeAccountStore';
 import { useTraeAccountStore } from '../stores/useTraeAccountStore';
 import { useWorkbuddyAccountStore } from '../stores/useWorkbuddyAccountStore';
 import { useZedAccountStore } from '../stores/useZedAccountStore';
@@ -27,7 +29,7 @@ import {
   usePlatformLayoutStore,
 } from '../stores/usePlatformLayoutStore';
 import { Page } from '../types/navigation';
-import { Users, CheckCircle2, Sparkles, RotateCw, Play, Github, Tag, ChevronDown, EyeOff } from 'lucide-react';
+import { Users, CheckCircle2, Sparkles, RotateCw, Play, Github, Tag, ChevronDown, EyeOff, X } from 'lucide-react';
 import { TagEditModal } from '../components/TagEditModal';
 import { Account } from '../types/account';
 import {
@@ -41,8 +43,10 @@ import {
   QoderAccount,
   getQoderSubscriptionInfo,
 } from '../types/qoder';
+import type { ZcodeAccount } from '../types/zcode';
 import {
   TraeAccount,
+  getTraeAccountPlatformId,
   getTraeUsage,
 } from '../types/trae';
 import {
@@ -65,6 +69,7 @@ import {
   GeminiAccount,
   getGeminiTierQuotaSummary,
 } from '../types/gemini';
+import { GrokAccount, getGrokUsage } from '../types/grok';
 import { ClaudeAccount } from '../types/claude';
 import { ZedAccount, getZedUsage } from '../types/zed';
 import {
@@ -83,11 +88,12 @@ import { GeminiIcon } from '../components/icons/GeminiIcon';
 import { ClaudeIcon } from '../components/icons/ClaudeIcon';
 import { CodebuddyIcon } from '../components/icons/CodebuddyIcon';
 import { QoderIcon } from '../components/icons/QoderIcon';
-import { TraeIcon } from '../components/icons/TraeIcon';
+import { ZcodeIcon } from '../components/icons/ZcodeIcon';
 import { WorkbuddyIcon } from '../components/icons/WorkbuddyIcon';
 import { PlatformId, PLATFORM_PAGE_MAP } from '../types/platform';
 import { getPlatformLabel, renderPlatformIcon } from '../utils/platformMeta';
 import { setAntigravityRuntimeTargetFromPlatform } from '../utils/antigravityRuntimeTarget';
+import { useAntigravityRuntimeTarget } from '../hooks/useAntigravityRuntimeTarget';
 import { ManualHelpIconButton } from '../components/ManualHelpIconButton';
 import { AnnouncementCenter } from '../components/AnnouncementCenter';
 import { isPrivacyModeEnabledByDefault, maskSensitiveValue } from '../utils/privacy';
@@ -99,9 +105,11 @@ import {
   buildCodexAccountPresentation,
   buildCursorAccountPresentation,
   buildGeminiAccountPresentation,
+  buildGrokAccountPresentation,
   buildGitHubCopilotAccountPresentation,
   buildKiroAccountPresentation,
   buildQoderAccountPresentation,
+  buildZcodeAccountPresentation,
   buildTraeAccountPresentation,
   buildWorkbuddyAccountPresentation,
   buildZedAccountPresentation,
@@ -110,15 +118,21 @@ import {
   UnifiedQuotaMetric,
 } from '../presentation/platformAccountPresentation';
 import {
-  queryModelProviderUsage,
+  CODEX_API_KEY_USAGE_REFRESHED_EVENT,
+  readCodexApiKeyUsageCache,
+  refreshCodexApiKeyUsageForAccounts,
+} from '../services/codexApiKeyUsageRefreshService';
+import {
+  isModelProviderUsageUnavailableError,
   type ModelProviderUsageSummary,
 } from '../services/modelProviderUsageService';
+import * as traeService from '../services/traeService';
+import type { TraePlatformId } from '../services/traeService';
 
 interface DashboardPageProps {
   onNavigate: (page: Page) => void;
   onOpenPlatformLayout: () => void;
   onEasterEggTriggerClick: () => void;
-  topCenterBanner?: React.ReactNode;
 }
 
 const DASHBOARD_DEFERRED_PREFETCH_DELAY_MS = 6000;
@@ -128,6 +142,55 @@ let dashboardStartupPrefetched = false;
 
 function normalizeDashboardCardPlatformId(platformId: PlatformId): PlatformId {
   return platformId === 'antigravity_ide' ? 'antigravity' : platformId;
+}
+
+function isTraeSuitePlatform(platformId: PlatformId): boolean {
+  return (
+    platformId === 'trae' ||
+    platformId === 'trae_solo' ||
+    platformId === 'trae_cn' ||
+    platformId === 'trae_solo_cn'
+  );
+}
+
+const TRAE_SUITE_DASHBOARD_PLATFORM_IDS: TraePlatformId[] = [
+  'trae',
+  'trae_solo',
+  'trae_cn',
+  'trae_solo_cn',
+];
+
+function buildEmptyTraeCurrentIdsByPlatform(): Record<TraePlatformId, string | null> {
+  return {
+    trae: null,
+    trae_solo: null,
+    trae_cn: null,
+    trae_solo_cn: null,
+  };
+}
+
+function pickRecommendedTraeAccount(accounts: TraeAccount[], currentId?: string | null): TraeAccount | null {
+  if (accounts.length <= 1) return null;
+  const others = accounts.filter((account) => account.id !== currentId);
+  if (others.length === 0) return null;
+
+  const getScore = (account: TraeAccount) => {
+    const usage = getTraeUsage(account);
+    const usedPercent = usage.usedPercent ?? 101;
+    return {
+      remaining: 100 - usedPercent,
+      freshness: account.last_used || account.created_at || 0,
+    };
+  };
+
+  return others.reduce((best, candidate) => {
+    const bestScore = getScore(best);
+    const candidateScore = getScore(candidate);
+    if (candidateScore.remaining !== bestScore.remaining) {
+      return candidateScore.remaining > bestScore.remaining ? candidate : best;
+    }
+    return candidateScore.freshness > bestScore.freshness ? candidate : best;
+  });
 }
 
 function toFiniteNumber(value: number | null | undefined): number | null {
@@ -218,7 +281,6 @@ export function DashboardPage({
   onNavigate,
   onOpenPlatformLayout,
   onEasterEggTriggerClick,
-  topCenterBanner,
 }: DashboardPageProps) {
   const { t } = useTranslation();
   const antigravityRuntimeTarget = useAntigravityRuntimeTarget();
@@ -367,148 +429,10 @@ export function DashboardPage({
   }, []);
 
 
-  const [tagModalState, setTagModalState] = React.useState<{ accountId: string; platform: PlatformId | 'codebuddy_cn'; tags: string[] } | null>(null);
-  const [dashboardCardCollapse, setDashboardCardCollapse] = React.useState<DashboardCardCollapseState>({
-    workbuddy: false,
-  });
-
-  const toggleDashboardCardCollapse = useCallback((platform: keyof DashboardCardCollapseState) => {
-    setDashboardCardCollapse((prev) => ({
-      ...prev,
-      [platform]: !prev[platform],
-    }));
-  }, []);
-
-  const handleSaveTags = async (newTags: string[]) => {
-    if (!tagModalState) return;
-    try {
-      const accountId = tagModalState.accountId;
-      switch (tagModalState.platform) {
-        case 'antigravity':
-          await useAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'codex':
-          await useCodexAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'claude_manager':
-          await useClaudeAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'github-copilot':
-          await useGitHubCopilotAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'windsurf':
-          await useWindsurfAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'kiro':
-          await useKiroAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'cursor':
-          await useCursorAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'gemini':
-          await useGeminiAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'codebuddy':
-          await useCodebuddyAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'codebuddy_cn':
-          await useCodebuddyCnAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'qoder':
-          await useQoderAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'trae':
-          await useTraeAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'workbuddy':
-          await useWorkbuddyAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-        case 'zed':
-          await useZedAccountStore.getState().updateAccountTags(accountId, newTags);
-          break;
-      }
-      setTagModalState(null);
-    } catch (error) {
-      console.error('Save tags failed:', error);
-    }
-  };
-
-  const {
-    orderedEntryIds,
-    hiddenEntryIds,
-    platformGroups,
-    apiRelayDashboardVisible,
-    apiRelayEntryOrder,
-    setHiddenEntry,
-  } = usePlatformLayoutStore();
-  const apiRelayEntryEnabled = useSponsorStore((state) => Boolean(state.state.sponsorModule));
-  const remoteHiddenPlatformIds = useRemoteConfigStore((state) => state.hiddenPlatformIds);
-  const apiRelayDashboardEnabled = apiRelayEntryEnabled && apiRelayDashboardVisible;
-  const hiddenEntrySet = useMemo(() => new Set(hiddenEntryIds), [hiddenEntryIds]);
-  const remoteHiddenPlatformSet = useMemo(
-    () => new Set(remoteHiddenPlatformIds),
-    [remoteHiddenPlatformIds],
-  );
-  const visibleEntryOrder = useMemo(
-    () =>
-      orderedEntryIds.filter((entryId) => {
-        if (hiddenEntrySet.has(entryId)) {
-          return false;
-        }
-        return resolveEntryPlatformIds(entryId, platformGroups).some(
-          (platformId) => !remoteHiddenPlatformSet.has(platformId),
-        );
-      }),
-    [orderedEntryIds, hiddenEntrySet, platformGroups, remoteHiddenPlatformSet],
-  );
-  const visibleDashboardEntryOrder = useMemo<DashboardEntryId[]>(() => {
-    const result: DashboardEntryId[] = [...visibleEntryOrder];
-    if (!apiRelayDashboardEnabled) {
-      return result;
-    }
-    const insertIndex = Math.max(0, Math.min(apiRelayEntryOrder, result.length));
-    result.splice(insertIndex, 0, API_RELAY_LAYOUT_ENTRY_ID);
-    return result;
-  }, [apiRelayDashboardEnabled, apiRelayEntryOrder, visibleEntryOrder]);
-  const [privacyModeEnabled, setPrivacyModeEnabled] = React.useState<boolean>(() =>
-    isPrivacyModeEnabledByDefault()
-  );
-  const maskAccountText = React.useCallback(
-    (value?: string | null) => maskSensitiveValue(value, privacyModeEnabled),
-    [privacyModeEnabled],
-  );
-  const [agDisplayGroups, setAgDisplayGroups] = React.useState<DisplayGroup[]>([]);
-  const navigateToPlatform = useCallback((platformId: PlatformId) => {
-    setAntigravityRuntimeTargetFromPlatform(platformId);
-    onNavigate(PLATFORM_PAGE_MAP[platformId]);
-  }, [onNavigate]);
-
-  React.useEffect(() => {
-    const syncPrivacyMode = () => {
-      setPrivacyModeEnabled(isPrivacyModeEnabledByDefault());
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        syncPrivacyMode();
-      }
-    };
-
-    window.addEventListener('focus', syncPrivacyMode);
-    window.addEventListener('storage', syncPrivacyMode);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      window.removeEventListener('focus', syncPrivacyMode);
-      window.removeEventListener('storage', syncPrivacyMode);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
-
-
   // Antigravity Data
   const {
     accounts: agAccounts,
-    currentAccount: agCurrent,
+    currentAccountsByTarget: agCurrentAccountsByTarget,
     switchAccount: switchAgAccount,
     fetchAccounts: fetchAgAccounts,
     fetchCurrentAccount: fetchAgCurrent
@@ -572,6 +496,14 @@ export function DashboardPage({
     switchAccount: switchGeminiAccount,
   } = useGeminiAccountStore();
 
+  // Grok CLI Data
+  const {
+    accounts: grokAccounts,
+    currentAccountId: grokCurrentId,
+    fetchAccounts: fetchGrokAccounts,
+    switchAccount: switchGrokAccount,
+  } = useGrokAccountStore();
+
   const {
     accounts: codebuddyAccounts,
     currentAccountId: codebuddyCurrentId,
@@ -594,11 +526,48 @@ export function DashboardPage({
   } = useQoderAccountStore();
 
   const {
+    accounts: zcodeAccounts,
+    currentAccountId: zcodeCurrentId,
+    fetchAccounts: fetchZcodeAccounts,
+    switchAccount: switchZcodeAccount,
+  } = useZcodeAccountStore();
+
+  const {
     accounts: traeAccounts,
     currentAccountId: traeCurrentId,
     fetchAccounts: fetchTraeAccounts,
-    switchAccount: switchTraeAccount,
   } = useTraeAccountStore();
+  const [traeCurrentIdsByPlatform, setTraeCurrentIdsByPlatform] = React.useState<
+    Record<TraePlatformId, string | null>
+  >(buildEmptyTraeCurrentIdsByPlatform);
+
+  const refreshTraeCurrentIdsByPlatform = React.useCallback(async () => {
+    try {
+      const entries = await Promise.all(
+        TRAE_SUITE_DASHBOARD_PLATFORM_IDS.map(async (platformId) => [
+          platformId,
+          await traeService.getTraeCurrentAccountId(platformId),
+        ] as const),
+      );
+      setTraeCurrentIdsByPlatform((prev) => ({
+        ...prev,
+        ...Object.fromEntries(entries),
+      }) as Record<TraePlatformId, string | null>);
+    } catch (error) {
+      console.error('Failed to refresh Trae current ids:', error);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void refreshTraeCurrentIdsByPlatform();
+  }, [refreshTraeCurrentIdsByPlatform, traeAccounts.length]);
+
+  React.useEffect(() => {
+    setTraeCurrentIdsByPlatform((prev) => ({
+      ...prev,
+      trae: traeCurrentId ?? null,
+    }));
+  }, [traeCurrentId]);
 
   const {
     accounts: workbuddyAccounts,
@@ -648,7 +617,7 @@ export function DashboardPage({
     };
 
     // 首屏优先：先拉 Antigravity 数据，其它平台延后，避免启动期并发请求过多。
-    void Promise.allSettled([fetchAgAccounts(), fetchAgCurrent()]);
+    void Promise.allSettled([fetchAgAccounts(), fetchAgCurrent(antigravityRuntimeTarget)]);
     loadDisplayGroups();
 
     const deferredTasks: Array<() => Promise<unknown>> = [
@@ -661,9 +630,11 @@ export function DashboardPage({
       fetchKiroAccounts,
       fetchCursorAccounts,
       fetchGeminiAccounts,
+      fetchGrokAccounts,
       fetchCodebuddyAccounts,
       fetchCodebuddyCnAccounts,
       fetchQoderAccounts,
+      fetchZcodeAccounts,
       fetchTraeAccounts,
       fetchWorkbuddyAccounts,
     ];
@@ -741,9 +712,11 @@ export function DashboardPage({
         kiroAccounts.length +
         cursorAccounts.length +
         geminiAccounts.length +
+        grokAccounts.length +
         codebuddyAccounts.length +
         codebuddyCnAccounts.length +
         qoderAccounts.length +
+        zcodeAccounts.length +
         traeAccounts.length +
         workbuddyAccounts.length,
       antigravity: agAccounts.length,
@@ -755,13 +728,18 @@ export function DashboardPage({
       kiro: kiroAccounts.length,
       cursor: cursorAccounts.length,
       gemini: geminiAccounts.length,
+      grok: grokAccounts.length,
       codebuddy: codebuddyAccounts.length,
       codebuddy_cn: codebuddyCnAccounts.length,
       qoder: qoderAccounts.length,
-      trae: traeAccounts.length,
+      zcode: zcodeAccounts.length,
+      trae: traeAccountsByPlatform.trae.length,
+      trae_solo: traeAccountsByPlatform.trae_solo.length,
+      trae_cn: traeAccountsByPlatform.trae_cn.length,
+      trae_solo_cn: traeAccountsByPlatform.trae_solo_cn.length,
       workbuddy: workbuddyAccounts.length,
     };
-  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorAccounts, geminiAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, traeAccounts, workbuddyAccounts]);
+  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorAccounts, geminiAccounts, grokAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, zcodeAccounts, traeAccounts, traeAccountsByPlatform, workbuddyAccounts]);
 
   const dashboardAvailableTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -775,9 +753,11 @@ export function DashboardPage({
       ...kiroAccounts,
       ...cursorAccounts,
       ...geminiAccounts,
+      ...grokAccounts,
       ...codebuddyAccounts,
       ...codebuddyCnAccounts,
       ...qoderAccounts,
+      ...zcodeAccounts,
       ...traeAccounts,
       ...workbuddyAccounts,
     ];
@@ -789,17 +769,23 @@ export function DashboardPage({
       }
     }
     return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
-  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorAccounts, geminiAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, traeAccounts, workbuddyAccounts]);
+  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorAccounts, geminiAccounts, grokAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, zcodeAccounts, traeAccounts, workbuddyAccounts]);
 
 
   // Refresh States
   const [refreshing, setRefreshing] = React.useState<Set<string>>(new Set());
   const [switching, setSwitching] = React.useState<Set<string>>(new Set());
+  const [grokActionMessage, setGrokActionMessage] = React.useState<{
+    text: string;
+    tone: 'error';
+  } | null>(null);
   const [codexApiUsageMap, setCodexApiUsageMap] = React.useState<Record<string, {
     loading: boolean;
     summary?: ModelProviderUsageSummary;
     error?: string;
-  }>>({});
+    unavailable?: boolean;
+    updatedAt?: number;
+  }>>(() => readCodexApiKeyUsageCache());
   const [cardRefreshing, setCardRefreshing] = React.useState<{
     ag: boolean;
     codex: boolean;
@@ -810,9 +796,11 @@ export function DashboardPage({
     kiro: boolean;
     cursor: boolean;
     gemini: boolean;
+    grok: boolean;
     codebuddy: boolean;
     codebuddyCn: boolean;
     qoder: boolean;
+    zcode: boolean;
     trae: boolean;
     workbuddy: boolean;
   }>({
@@ -825,9 +813,11 @@ export function DashboardPage({
     kiro: false,
     cursor: false,
     gemini: false,
+    grok: false,
     codebuddy: false,
     codebuddyCn: false,
     qoder: false,
+    zcode: false,
     trae: false,
     workbuddy: false,
   });
@@ -897,7 +887,10 @@ export function DashboardPage({
     }
   };
 
-  const refreshCodexApiUsage = useCallback(async (account: CodexAccount) => {
+  const refreshCodexApiUsage = useCallback(async (
+    account: CodexAccount,
+    options?: { force?: boolean },
+  ) => {
     if (isCodexChatCompletionsApiKeyAccount(account)) return;
     const apiKey = (account.openai_api_key || '').trim();
     const baseUrl = (account.api_base_url || '').trim();
@@ -908,18 +901,19 @@ export function DashboardPage({
         ...prev[account.id],
         loading: true,
         error: undefined,
+        unavailable: false,
       },
     }));
     try {
-      const summary = await queryModelProviderUsage({
-        baseUrl,
-        apiKey,
+      await refreshCodexApiKeyUsageForAccounts([account], {
+        force: options?.force,
       });
+      const usageState = readCodexApiKeyUsageCache()[account.id];
       setCodexApiUsageMap((prev) => ({
         ...prev,
         [account.id]: {
+          ...usageState,
           loading: false,
-          summary,
         },
       }));
     } catch (error) {
@@ -928,10 +922,27 @@ export function DashboardPage({
         [account.id]: {
           loading: false,
           summary: prev[account.id]?.summary,
-          error: String(error).replace(/^Error:\s*/, ''),
+          error: isModelProviderUsageUnavailableError(error)
+            ? undefined
+            : String(error).replace(/^Error:\s*/, ''),
+          unavailable: isModelProviderUsageUnavailableError(error),
+          updatedAt: Date.now(),
         },
       }));
     }
+  }, []);
+
+  React.useEffect(() => {
+    const syncUsageCache = () => {
+      const cache = readCodexApiKeyUsageCache();
+      setCodexApiUsageMap((previous) => ({ ...previous, ...cache }));
+    };
+    window.addEventListener(CODEX_API_KEY_USAGE_REFRESHED_EVENT, syncUsageCache);
+    return () =>
+      window.removeEventListener(
+        CODEX_API_KEY_USAGE_REFRESHED_EVENT,
+        syncUsageCache,
+      );
   }, []);
 
   const handleRefreshGitHubCopilot = async (accountId: string) => {
@@ -1005,6 +1016,29 @@ export function DashboardPage({
       await useGeminiAccountStore.getState().refreshToken(accountId);
     } catch (error) {
       console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing((prev) => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
+      });
+    }
+  };
+
+  const handleRefreshGrok = async (accountId: string) => {
+    if (refreshing.has(accountId)) return;
+    setGrokActionMessage(null);
+    setRefreshing((prev) => new Set(prev).add(accountId));
+    try {
+      await useGrokAccountStore.getState().refreshToken(accountId);
+    } catch (error) {
+      console.error('Refresh failed:', error);
+      setGrokActionMessage({
+        text: t('messages.refreshFailed', {
+          error: String(error).replace(/^Error:\s*/, ''),
+        }),
+        tone: 'error',
+      });
     } finally {
       setRefreshing((prev) => {
         const next = new Set(prev);
@@ -1134,6 +1168,28 @@ export function DashboardPage({
     }
   };
 
+  const handleRefreshGrokCard = async () => {
+    if (cardRefreshing.grok) return;
+    setGrokActionMessage(null);
+    setCardRefreshing((prev) => ({ ...prev, grok: true }));
+    const idsToRefresh = [grokCurrent?.id, grokRecommended?.id].filter(Boolean) as string[];
+    try {
+      for (const id of idsToRefresh) {
+        await useGrokAccountStore.getState().refreshToken(id);
+      }
+    } catch (error) {
+      console.error('Card refresh failed:', error);
+      setGrokActionMessage({
+        text: t('messages.refreshFailed', {
+          error: String(error).replace(/^Error:\s*/, ''),
+        }),
+        tone: 'error',
+      });
+    } finally {
+      setCardRefreshing((prev) => ({ ...prev, grok: false }));
+    }
+  };
+
   const handleSwitchGitHubCopilot = async (accountId: string) => {
     if (switching.has(accountId)) return;
     setSwitching((prev) => new Set(prev).add(accountId));
@@ -1257,6 +1313,29 @@ export function DashboardPage({
     }
   };
 
+  const handleSwitchGrok = async (accountId: string) => {
+    if (switching.has(accountId)) return;
+    setGrokActionMessage(null);
+    setSwitching((prev) => new Set(prev).add(accountId));
+    try {
+      await switchGrokAccount(accountId);
+    } catch (error) {
+      console.error('Switch failed:', error);
+      setGrokActionMessage({
+        text: t('messages.switchFailed', {
+          error: String(error).replace(/^Error:\s*/, ''),
+        }),
+        tone: 'error',
+      });
+    } finally {
+      setSwitching((prev) => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
+      });
+    }
+  };
+
   const handleRefreshCodebuddy = async (accountId: string) => {
     if (refreshing.has(accountId)) return;
     setRefreshing((prev) => new Set(prev).add(accountId));
@@ -1294,6 +1373,22 @@ export function DashboardPage({
     setRefreshing((prev) => new Set(prev).add(accountId));
     try {
       await useQoderAccountStore.getState().refreshToken(accountId);
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing((prev) => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
+      });
+    }
+  };
+
+  const handleRefreshZcode = async (accountId: string) => {
+    if (refreshing.has(accountId)) return;
+    setRefreshing((prev) => new Set(prev).add(accountId));
+    try {
+      await useZcodeAccountStore.getState().refreshToken(accountId);
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
@@ -1382,10 +1477,29 @@ export function DashboardPage({
     }
   };
 
-  const handleRefreshTraeCard = async () => {
+  const handleRefreshZcodeCard = async () => {
+    if (cardRefreshing.zcode) return;
+    setCardRefreshing((prev) => ({ ...prev, zcode: true }));
+    const idsToRefresh = Array.from(
+      new Set([zcodeCurrent?.id, zcodeRecommended?.id].filter(Boolean)),
+    ) as string[];
+    try {
+      for (const id of idsToRefresh) {
+        await useZcodeAccountStore.getState().refreshToken(id);
+      }
+    } catch (error) {
+      console.error('Card refresh failed:', error);
+    } finally {
+      setCardRefreshing((prev) => ({ ...prev, zcode: false }));
+    }
+  };
+
+  const handleRefreshTraeCard = async (platformId: TraePlatformId = 'trae') => {
     if (cardRefreshing.trae) return;
     setCardRefreshing((prev) => ({ ...prev, trae: true }));
-    const idsToRefresh = [traeCurrent?.id, traeRecommended?.id].filter(Boolean) as string[];
+    const current = getTraeCurrentForPlatform(platformId);
+    const recommended = getTraeRecommendedForPlatform(platformId);
+    const idsToRefresh = [current?.id, recommended?.id].filter(Boolean) as string[];
     try {
       for (const id of idsToRefresh) {
         await useTraeAccountStore.getState().refreshToken(id);
@@ -1460,11 +1574,29 @@ export function DashboardPage({
     }
   };
 
-  const handleSwitchTrae = async (accountId: string) => {
+  const handleSwitchZcode = async (accountId: string) => {
     if (switching.has(accountId)) return;
     setSwitching((prev) => new Set(prev).add(accountId));
     try {
-      await switchTraeAccount(accountId);
+      await switchZcodeAccount(accountId);
+    } catch (error) {
+      console.error('Switch failed:', error);
+    } finally {
+      setSwitching((prev) => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
+      });
+    }
+  };
+
+  const handleSwitchTrae = async (accountId: string, platformId: TraePlatformId = 'trae') => {
+    if (switching.has(accountId)) return;
+    setSwitching((prev) => new Set(prev).add(accountId));
+    try {
+      await traeService.injectTraeAccount(accountId, platformId);
+      await useTraeAccountStore.getState().fetchAccounts();
+      await refreshTraeCurrentIdsByPlatform();
     } catch (error) {
       console.error('Switch failed:', error);
     } finally {
@@ -1624,6 +1756,11 @@ export function DashboardPage({
     [geminiAccounts, geminiCurrentId],
   );
 
+  const grokCurrent = useMemo(
+    () => resolveDashboardCurrentAccount(grokAccounts, grokCurrentId),
+    [grokAccounts, grokCurrentId],
+  );
+
   const codebuddyCurrent = useMemo(
     () => resolveDashboardCurrentAccount(codebuddyAccounts, codebuddyCurrentId),
     [codebuddyAccounts, codebuddyCurrentId],
@@ -1639,9 +1776,9 @@ export function DashboardPage({
     [qoderAccounts, qoderCurrentId],
   );
 
-  const traeCurrent = useMemo(
-    () => resolveDashboardCurrentAccount(traeAccounts, traeCurrentId),
-    [traeAccounts, traeCurrentId],
+  const zcodeCurrent = useMemo(
+    () => resolveDashboardCurrentAccount(zcodeAccounts, zcodeCurrentId),
+    [zcodeAccounts, zcodeCurrentId],
   );
 
   const workbuddyCurrent = useMemo(
@@ -1834,6 +1971,35 @@ export function DashboardPage({
     });
   }, [geminiAccounts, geminiCurrent?.id]);
 
+  const grokRecommended = useMemo(() => {
+    if (grokAccounts.length <= 1) return null;
+    const others = grokAccounts.filter((account) => {
+      if (account.id === grokCurrent?.id) return false;
+      const usage = getGrokUsage(account);
+      return (
+        usage.isNormal &&
+        !usage.exhausted &&
+        usage.totalUsedPercent != null
+      );
+    });
+    if (others.length === 0) return null;
+    const score = (account: GrokAccount) => {
+      const usage = getGrokUsage(account);
+      return {
+        remaining: 100 - (usage.totalUsedPercent ?? 100),
+        freshness: account.last_used || account.created_at || 0,
+      };
+    };
+    return others.reduce((best, candidate) => {
+      const bestScore = score(best);
+      const candidateScore = score(candidate);
+      if (candidateScore.remaining !== bestScore.remaining) {
+        return candidateScore.remaining > bestScore.remaining ? candidate : best;
+      }
+      return candidateScore.freshness > bestScore.freshness ? candidate : best;
+    });
+  }, [grokAccounts, grokCurrent?.id]);
+
   const codebuddyRecommended = useMemo(() => {
     if (codebuddyAccounts.length <= 1) return null;
     const currentId = codebuddyCurrent?.id;
@@ -1923,17 +2089,20 @@ export function DashboardPage({
     });
   }, [qoderAccounts, qoderCurrent?.id]);
 
-  const traeRecommended = useMemo(() => {
-    if (traeAccounts.length <= 1) return null;
-    const currentId = traeCurrent?.id;
-    const others = traeAccounts.filter((a) => a.id !== currentId);
+  const zcodeRecommended = useMemo(() => {
+    if (zcodeAccounts.length <= 1) return null;
+    const currentId = zcodeCurrent?.id;
+    const others = zcodeAccounts.filter((account) => account.id !== currentId);
     if (others.length === 0) return null;
 
-    const getScore = (account: TraeAccount) => {
-      const usage = getTraeUsage(account);
-      const usedPercent = usage.usedPercent ?? 101;
+    const getScore = (account: ZcodeAccount) => {
+      const total = account.quota_total;
+      const remaining = account.quota_remaining;
       return {
-        remaining: 100 - usedPercent,
+        remaining:
+          typeof total === 'number' && total > 0 && typeof remaining === 'number'
+            ? (remaining / total) * 100
+            : -1,
         freshness: account.last_used || account.created_at || 0,
       };
     };
@@ -1946,7 +2115,16 @@ export function DashboardPage({
       }
       return candidateScore.freshness > bestScore.freshness ? candidate : best;
     });
-  }, [traeAccounts, traeCurrent?.id]);
+  }, [zcodeAccounts, zcodeCurrent?.id]);
+
+  const getTraeCurrentForPlatform = (platformId: TraePlatformId): TraeAccount | null => {
+    const currentId = traeCurrentIdsByPlatform[platformId] ?? (platformId === 'trae' ? traeCurrentId : null);
+    return resolveDashboardCurrentAccount(traeAccountsByPlatform[platformId], currentId);
+  };
+
+  const getTraeRecommendedForPlatform = (platformId: TraePlatformId): TraeAccount | null => {
+    return pickRecommendedTraeAccount(traeAccountsByPlatform[platformId], getTraeCurrentForPlatform(platformId)?.id);
+  };
 
   const workbuddyRecommended = useMemo(() => {
     if (workbuddyAccounts.length <= 1) return null;
@@ -2087,7 +2265,7 @@ export function DashboardPage({
     onEditTags?: () => void;
   }) => {
     const resolvedSublineText = sublineText || presentation.sublineText || '';
-    const shouldShowPlan = Boolean(presentation.planLabel) && presentation.planLabel.toUpperCase() !== 'UNKNOWN';
+    const shouldShowPlan = Boolean(presentation.planLabel) && presentation.planLabel !== 'UNKNOWN';
 
     return (
       <div className="account-mini-card">
@@ -2204,7 +2382,7 @@ export function DashboardPage({
           </button>
           <button
             className="mini-icon-btn"
-            onClick={() => switchAgAccount(account.id)}
+            onClick={() => switchAgAccount(account.id, antigravityRuntimeTarget)}
             title={t('dashboard.switch', '切换')}
           >
             <Play size={14} />
@@ -2304,7 +2482,7 @@ export function DashboardPage({
             {!isChatCompletionsApiKey && (
               <button
                 className="mini-icon-btn"
-                onClick={() => void refreshCodexApiUsage(account)}
+                onClick={() => void refreshCodexApiUsage(account, { force: true })}
                 title={t('common.refresh', '刷新')}
                 disabled={refreshing.has(account.id) || usageState?.loading}
               >
@@ -2344,10 +2522,17 @@ export function DashboardPage({
         !isCodexChatCompletionsApiKeyAccount(account!),
     );
     targetAccounts.forEach((account) => {
-      if (codexApiUsageMap[account.id]?.loading || codexApiUsageMap[account.id]?.summary) {
+      const usageState = codexApiUsageMap[account.id];
+      if (
+        usageState?.loading ||
+        usageState?.summary ||
+        usageState?.unavailable ||
+        usageState?.error ||
+        usageState?.updatedAt !== undefined
+      ) {
         return;
       }
-      void refreshCodexApiUsage(account);
+      void refreshCodexApiUsage(account, { force: false });
     });
   }, [codexApiUsageMap, codexCurrentAccount, codexRecommended, refreshCodexApiUsage]);
 
@@ -2486,6 +2671,19 @@ export function DashboardPage({
     });
   };
 
+  const renderGrokAccountContent = (account: GrokAccount | null) => {
+    if (!account) return <div className="empty-slot">{t('dashboard.noAccount', '无账号')}</div>;
+    const presentation = buildGrokAccountPresentation(account, t);
+    return renderUnifiedAccountCard({
+      presentation,
+      onRefresh: () => handleRefreshGrok(account.id),
+      onSwitch: () => handleSwitchGrok(account.id),
+      isRefreshing: refreshing.has(account.id),
+      isSwitching: switching.has(account.id),
+      onEditTags: () => setTagModalState({ accountId: account.id, platform: 'grok', tags: account.tags || [] }),
+    });
+  };
+
   const renderCodebuddyAccountContent = (account: CodebuddyAccount | null) => {
     if (!account) return <div className="empty-slot">{t('dashboard.noAccount', '无账号')}</div>;
 
@@ -2536,14 +2734,28 @@ export function DashboardPage({
     });
   };
 
-  const renderTraeAccountContent = (account: TraeAccount | null) => {
+  const renderZcodeAccountContent = (account: ZcodeAccount | null) => {
+    if (!account) return <div className="empty-slot">{t('dashboard.noAccount', '无账号')}</div>;
+
+    const presentation = buildZcodeAccountPresentation(account, t);
+    return renderUnifiedAccountCard({
+      presentation,
+      onRefresh: () => handleRefreshZcode(account.id),
+      onSwitch: () => handleSwitchZcode(account.id),
+      isRefreshing: refreshing.has(account.id),
+      isSwitching: switching.has(account.id),
+      onEditTags: () => setTagModalState({ accountId: account.id, platform: 'zcode', tags: account.tags || [] }),
+    });
+  };
+
+  const renderTraeAccountContent = (account: TraeAccount | null, platformId: TraePlatformId = 'trae') => {
     if (!account) return <div className="empty-slot">{t('dashboard.noAccount', '无账号')}</div>;
 
     const presentation = buildTraeAccountPresentation(account, t);
     return renderUnifiedAccountCard({
       presentation,
       onRefresh: () => handleRefreshTrae(account.id),
-      onSwitch: () => handleSwitchTrae(account.id),
+      onSwitch: () => handleSwitchTrae(account.id, platformId),
       isRefreshing: refreshing.has(account.id),
       isSwitching: switching.has(account.id),
       onEditTags: () => setTagModalState({ accountId: account.id, platform: 'trae', tags: account.tags || [] }),
@@ -2575,10 +2787,15 @@ export function DashboardPage({
     kiro: stats.kiro,
     cursor: stats.cursor,
     gemini: stats.gemini,
+    grok: stats.grok,
     codebuddy: stats.codebuddy,
     codebuddy_cn: stats.codebuddy_cn,
     qoder: stats.qoder,
+    zcode: stats.zcode,
     trae: stats.trae,
+    trae_solo: stats.trae_solo,
+    trae_cn: stats.trae_cn,
+    trae_solo_cn: stats.trae_solo_cn,
     workbuddy: stats.workbuddy,
   };
 
@@ -3089,6 +3306,51 @@ export function DashboardPage({
       );
     }
 
+    if (platformId === 'grok') {
+      return (
+        <div className="main-card windsurf-card" key={platformId}>
+          <div className="main-card-header">
+            <div className="header-title">
+              {renderPlatformIcon('grok', 18)}
+              <h3>Grok CLI</h3>
+            </div>
+            <div className="header-action-group">
+              <button
+                className="header-action-btn"
+                onClick={handleRefreshGrokCard}
+                disabled={cardRefreshing.grok}
+                title={t('common.refresh', '刷新')}
+              >
+                <RotateCw size={14} className={cardRefreshing.grok ? 'loading-spinner' : ''} />
+                <span>{t('common.refresh', '刷新')}</span>
+              </button>
+              {renderHideCardButton(platformId)}
+            </div>
+          </div>
+
+          <div className="split-content">
+            <div className="split-half current-half">
+              <span className="half-label"><CheckCircle2 size={12} /> {t('dashboard.current', '当前账户')}</span>
+              {renderGrokAccountContent(grokCurrent)}
+            </div>
+            <div className="split-divider"></div>
+            <div className="split-half recommend-half">
+              <span className="half-label"><Sparkles size={12} /> {t('dashboard.recommended', '推荐账号')}</span>
+              {grokRecommended ? (
+                renderGrokAccountContent(grokRecommended)
+              ) : (
+                <div className="empty-slot-text">{t('dashboard.noRecommendation', '暂无更好推荐')}</div>
+              )}
+            </div>
+          </div>
+
+          <button className="card-footer-action" onClick={() => onNavigate('grok')}>
+            {t('dashboard.viewAllAccounts', '查看所有账号')}
+          </button>
+        </div>
+      );
+    }
+
     if (platformId === 'codebuddy') {
       return (
         <div className="main-card windsurf-card" key={platformId}>
@@ -3230,18 +3492,69 @@ export function DashboardPage({
       );
     }
 
-    if (platformId === 'trae') {
+    if (platformId === 'zcode') {
       return (
         <div className="main-card windsurf-card" key={platformId}>
           <div className="main-card-header">
             <div className="header-title">
-              <TraeIcon style={{ width: 18, height: 18 }} />
+              <ZcodeIcon size={18} />
               <h3>{getPlatformLabel(platformId, t)}</h3>
             </div>
             <div className="header-action-group">
               <button
                 className="header-action-btn"
-                onClick={handleRefreshTraeCard}
+                onClick={handleRefreshZcodeCard}
+                disabled={cardRefreshing.zcode}
+                title={t('common.refresh', '刷新')}
+              >
+                <RotateCw size={14} className={cardRefreshing.zcode ? 'loading-spinner' : ''} />
+                <span>{t('common.refresh', '刷新')}</span>
+              </button>
+              {renderHideCardButton(platformId)}
+            </div>
+          </div>
+
+          <div className="split-content">
+            <div className="split-half current-half">
+              <span className="half-label"><CheckCircle2 size={12} /> {t('dashboard.current', '当前账户')}</span>
+              {renderZcodeAccountContent(zcodeCurrent)}
+            </div>
+
+            <div className="split-divider"></div>
+
+            <div className="split-half recommend-half">
+              <span className="half-label"><Sparkles size={12} /> {t('dashboard.recommended', '推荐账号')}</span>
+              {zcodeRecommended ? (
+                renderZcodeAccountContent(zcodeRecommended)
+              ) : (
+                <div className="empty-slot-text">{t('dashboard.noRecommendation', '暂无更好推荐')}</div>
+              )}
+            </div>
+          </div>
+
+          <button className="card-footer-action" onClick={() => onNavigate('zcode')}>
+            {t('dashboard.viewAllAccounts', '查看所有账号')}
+          </button>
+        </div>
+      );
+    }
+
+    if (isTraeSuitePlatform(platformId)) {
+      const traePlatformId = platformId as TraePlatformId;
+      const current = getTraeCurrentForPlatform(traePlatformId);
+      const recommended = getTraeRecommendedForPlatform(traePlatformId);
+
+      return (
+        <div className="main-card windsurf-card" key={platformId}>
+          <div className="main-card-header">
+            <div className="header-title">
+              {renderPlatformIcon(platformId, 18)}
+              <h3>{getPlatformLabel(platformId, t)}</h3>
+            </div>
+            <div className="header-action-group">
+              <button
+                className="header-action-btn"
+                onClick={() => handleRefreshTraeCard(traePlatformId)}
                 disabled={cardRefreshing.trae}
                 title={t('common.refresh', '刷新')}
               >
@@ -3255,22 +3568,22 @@ export function DashboardPage({
           <div className="split-content">
             <div className="split-half current-half">
               <span className="half-label"><CheckCircle2 size={12} /> {t('dashboard.current', '当前账户')}</span>
-              {renderTraeAccountContent(traeCurrent)}
+              {renderTraeAccountContent(current, traePlatformId)}
             </div>
 
             <div className="split-divider"></div>
 
             <div className="split-half recommend-half">
               <span className="half-label"><Sparkles size={12} /> {t('dashboard.recommended', '推荐账号')}</span>
-              {traeRecommended ? (
-                renderTraeAccountContent(traeRecommended)
+              {recommended ? (
+                renderTraeAccountContent(recommended, traePlatformId)
               ) : (
                 <div className="empty-slot-text">{t('dashboard.noRecommendation', '暂无更好推荐')}</div>
               )}
             </div>
           </div>
 
-          <button className="card-footer-action" onClick={() => onNavigate('trae')}>
+          <button className="card-footer-action" onClick={() => navigateToPlatform(platformId)}>
             {t('dashboard.viewAllAccounts', '查看所有账号')}
           </button>
         </div>
@@ -3377,7 +3690,6 @@ export function DashboardPage({
           <span>{t('nav.dashboard', '仪表盘')}</span>
           <ManualHelpIconButton className="header-action-btn dashboard-manual-btn dashboard-title-manual-btn" />
         </div>
-        {topCenterBanner}
         <div className="dashboard-top-actions">
           <button className="header-action-btn" onClick={onOpenPlatformLayout}>
             <span>{t('platformLayout.title', '平台布局')}</span>

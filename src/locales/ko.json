@@ -126,6 +126,8 @@
         "failed": "인증 실패",
         "hint": "인증이 완료되면 이 창이 자동으로 업데이트됩니다",
         "openBrowser": "브라우저에서 열기",
+        "normalWindow": "일반 창",
+        "incognitoWindow": "시크릿 창",
         "success": "인증 성공",
         "meta": "만료까지: {{expires}}s; 폴링 간격: {{interval}}s",
         "preparing": "인증 링크 준비 중...",
@@ -176,7 +178,9 @@
         "resetDone": "재설정됨",
         "hourly": "5시간 쿼터",
         "weekly": "주간 쿼터",
-        "resetAt": "초기화: {{time}}"
+        "resetAt": "초기화: {{time}}",
+        "expiresAt": "만료 시간: {{time}}",
+        "leftPercent": "{{value}}% 남음"
       },
       "subtitle": "GitHub Copilot 계정을 관리합니다",
       "time": {
@@ -250,6 +254,9 @@
     "codebuddy": "CodeBuddy​",
     "qoder": "Qoder​",
     "trae": "Trae​",
+    "traeSolo": "TRAE SOLO​",
+    "traeCn": "Trae CN​",
+    "traeSoloCn": "TRAE SOLO CN​",
     "codebuddyCn": "CodeBuddy CN​",
     "zed": "Zed 플랫폼",
     "expandSidebar": "사이드바 확장",
@@ -758,9 +765,13 @@
       "codebuddyCnPathReset": "기본값으로 초기화",
       "codebuddyCnPathSelect": "선택",
       "codebuddyCnSettingsTitle": "CodeBuddy CN 설정",
+      "zcodeAppPath": "ZCode 실행 경로",
+      "zcodeAppPathDesc": "비워 두면 기본 경로를 사용합니다",
       "qoderAppPath": "Qoder 앱 경로",
       "qoderAppPathDesc": "비워두면 기본 경로를 사용합니다",
       "qoderAppPathPlaceholder": "기본 경로",
+      "zcodeAutoRefresh": "ZCode 자동 새로 고침",
+      "zcodeAutoRefreshDesc": "백그라운드 할당량 갱신 간격",
       "qoderAutoRefresh": "Qoder 자동 할당량 갱신",
       "qoderAutoRefreshDesc": "백그라운드 자동 갱신 빈도",
       "qoderPathSelect": "선택",
@@ -788,7 +799,15 @@
       "claudeAutoRefresh": "Claude 할당량 자동 새로고침",
       "claudeAutoRefreshDesc": "백그라운드에서 Claude 계정의 할당량 캐시를 자동으로 갱신합니다.",
       "claudeAppPath": "Claude Desktop 시작 대상",
-      "claudeAppPathDesc": "기본 프로필은 Microsoft Store 대상을 사용할 수 있지만, 다중 인스턴스에는 실제 Claude.exe가 필요합니다."
+      "claudeAppPathDesc": "기본 프로필은 Microsoft Store 대상을 사용할 수 있지만, 다중 인스턴스에는 실제 Claude.exe가 필요합니다.",
+      "antigravityLaunchOnSwitch": "전환 시 Antigravity IDE 실행",
+      "antigravityLaunchOnSwitchDesc": "끄면 전환 시 Antigravity IDE 기본 계정 데이터만 쓰고 앱을 닫거나 실행하거나 다시 시작하지 않습니다.",
+      "tokenKeeper": "인증 유지",
+      "tokenKeeperDesc": "인증 만료가 가까운 경우에만 계정 Token을 작은 묶음으로 갱신해 많은 계정에서 백그라운드 요청 부담을 줄입니다.",
+      "platformAutoRefresh": "{{platform}} 자동 할당량 새로고침",
+      "traeSoloAppPath": "TRAE SOLO 실행 경로",
+      "traeCnAppPath": "Trae CN 실행 경로",
+      "traeSoloCnAppPath": "TRAE SOLO CN 실행 경로"
     },
     "network": {
       "apiTitle": "반중력 조종석 API",
@@ -933,7 +952,7 @@
       "importModalDesc": "가져올 항목을 선택하세요. 구버전 계정 백업은 계정 데이터만 가져오는 방식으로 처리됩니다.",
       "selectionTitle": "데이터 범위",
       "accountsOptionTitle": "계정 데이터",
-      "accountsOptionDesc": "플랫폼 계정 백업을 포함하며 기존 계정 JSON과의 호환성도 유지합니다.",
+      "accountsOptionDesc": "복원 가능한 플랫폼 계정 백업을 포함하며 기존 계정 JSON과의 호환성도 유지합니다. Grok CLI 인증 정보는 제외되므로 공식 auth.json을 별도로 가져오세요.",
       "configOptionTitle": "설정 데이터",
       "configOptionDesc": "앱 설정, 그룹, 인스턴스, 깨우기 작업, 모델 제공자 구성을 포함합니다.",
       "exportConfirm": "데이터 내보내기",
@@ -1618,6 +1637,7 @@
     "restartRequiredAfterInstall": "업데이트는 설치되었습니다. 전환을 완료하려면 앱을 수동으로 다시 시작하세요.",
     "stoppingApiService": "API 서비스 중지 중...",
     "stopApiServiceFailed": "API 서비스를 중지하지 못했습니다. 먼저 비활성화한 뒤 다시 시도하세요.",
+    "stopApiServiceFailedContinue": "API 서비스가 정상적으로 종료되지 않았습니다. 계속 재시작합니다...",
     "skipThisVersion": "이 버전 건너뛰기",
     "skipFailed": "이 업데이트를 건너뛰지 못했습니다: {{error}}"
   },
@@ -1882,6 +1902,7 @@
       "refreshStatsSuccess": "API 서비스 통계를 새로고침했습니다",
       "routingStrategy": {
         "auto": "자동(권장)",
+        "singleAccount": "단일 계정",
         "quotaHighFirst": "높은 할당량 우선",
         "quotaLowFirst": "낮은 할당량 우선",
         "planHighFirst": "상위 요금제 우선",
@@ -1929,6 +1950,11 @@
       "oauthBinding": {
         "desc": "선택 사항입니다. refresh_token이 있어 자동 갱신할 수 있는 OAuth 계정만 선택할 수 있습니다. 연결하지 않으면 API 서비스는 기존 API Key 로직으로 실행됩니다. 연결하면 로그인 상태는 OAuth 계정을 사용하고 Provider는 현재 API 서비스 설정을 사용합니다.",
         "currentService": "API 서비스: {{name}}",
+        "quotaReserveToggle": "OAuth 할당량 보존",
+        "quotaReserveDesc": "API 서비스는 5시간 및 주간 잔여 할당량이 모두 보존 값보다 높을 때만 이 OAuth 계정을 사용합니다.",
+        "quotaReserveHourlyLabel": "5시간 보존",
+        "quotaReserveWeeklyLabel": "주간 보존",
+        "quotaReserveInvalid": "1에서 100 사이의 정수를 입력하세요.",
         "imageGenerationTooltip": "켜면 API 서비스가 일반 텍스트 대화를 전달하기 전에 로컬 게이트웨이에서 image_generation 도구 선언을 제거합니다. 이미지 모델은 삭제하지 않습니다.",
         "imageGenerationConfirm": {
           "title": "image_generation 비활성화",
@@ -1938,6 +1964,9 @@
       "customRoutingEdit": "사용자 지정 라우팅 편집",
       "customRoutingTitle": "사용자 지정 라우팅",
       "customRoutingDesc": "계정별 우선순위와 가중치를 설정해 계정 선택 순서와 같은 우선순위 내 부하 분산을 제어합니다.",
+      "customRoutingBackupTitle": "예비 계정",
+      "customRoutingBackupDesc": "모든 일반 계정을 사용할 수 없을 때만 사용합니다. 일반 계정이 복구되면 새 요청은 자동으로 다시 전환됩니다.",
+      "customRoutingBackupShort": "예비",
       "customRoutingPriorityTitle": "우선순위",
       "customRoutingPriorityDesc": "값이 높을수록 먼저 선택됩니다. 높은 우선순위 계정을 사용할 수 없을 때만 낮은 우선순위를 시도합니다.",
       "customRoutingWeightTitle": "가중치",
@@ -2092,7 +2121,8 @@
       "enterprise": "ENTERPRISE​"
     },
     "list": {
-      "showCodeReviewQuota": "Code Review 할당량 표시"
+      "showCodeReviewQuota": "Code Review 할당량 표시",
+      "showAdditionalQuota": "모델 전용 할당량 표시"
     },
     "time": {
       "today": "오늘 {{time}}",
@@ -2113,6 +2143,7 @@
       "hourlyReset": "5시간 할당량 재설정 시간",
       "subscriptionExpiry": "구독 만료",
       "custom": "사용자 순서",
+      "customSettingsTooltip": "사용자 순서 설정",
       "customModalTitle": "계정 순서 설정",
       "customModalDesc": "계정을 끌거나 위/아래 버튼으로 표시 순서를 조정하세요.",
       "customDragHandle": "끌어서 정렬",
@@ -2221,6 +2252,16 @@
       "accountSearchPlaceholder": "이메일 검색...",
       "accountFilterEmpty": "일치하는 계정이 없습니다",
       "accountFilteredCount": "현재 필터에 {{count}}개 계정",
+      "fullQuotaAction": "계정 깨우기",
+      "fullQuotaActionTitle": "계정 깨우기 테스트를 엽니다. 기본적으로 5h 할당량이 높은 순서로 정렬됩니다.",
+      "fullQuotaNoAccounts": "현재 목록에 깨울 수 있는 OAuth 계정이 없습니다.",
+      "fullQuotaAccountsLabel": "깨울 계정",
+      "accountSort": {
+        "default": "기본 순서",
+        "hourly": "5h 할당량순",
+        "weekly": "주간 할당량순",
+        "email": "이메일순"
+      },
       "testTitle": "Codex 깨우기 테스트",
       "testAccountsLabel": "테스트 계정",
       "testAccountsRequired": "최소 한 개의 테스트 계정을 선택하세요.",
@@ -2334,10 +2375,14 @@
         "collapse": "접기",
         "repairVisibility": "표시 복구",
         "restoreSessions": "세션 복원",
+        "exportSessions": "세션 내보내기",
+        "importSessions": "세션 가져오기",
         "copySessionId": "세션 ID 복사",
+        "openLocation": "위치 열기",
         "selectAllSessions": "모든 세션 선택",
         "clearSelectedSessions": "선택 해제",
-        "copyToInstance": "인스턴스에 복사"
+        "copyToInstance": "인스턴스에 복사",
+        "trash": "휴지통"
       },
       "confirm": {
         "title": "휴지통으로 이동",
@@ -2375,11 +2420,25 @@
       "locationRunning": " (실행 중)",
       "untitled": "제목 없는 세션",
       "restoreModal": {
-        "title": "세션 복원",
-        "hint": "복원하면 rollout 파일, SQLite 스레드 행, session_index 항목이 함께 원래 인스턴스로 돌아갑니다.",
+        "title": "휴지통",
+        "hint": "휴지통의 세션은 원래 인스턴스로 복원하거나 영구 삭제하여 디스크 공간을 확보할 수 있습니다.",
         "emptyTitle": "휴지통이 비어 있습니다",
         "emptyDesc": "휴지통으로 이동한 세션이 여기에 표시됩니다.",
-        "restoreAction": "선택한 세션 복원"
+        "restoreAction": "선택한 세션 복원",
+        "summary": "{{count}}개 항목, {{size}}",
+        "selectedSummary": "{{count}}개 선택, {{size}}",
+        "selectAll": "전체 선택",
+        "clearSelected": "선택 해제",
+        "emptyTrash": "휴지통 비우기",
+        "itemSize": "크기 {{size}}",
+        "deleteOne": "영구 삭제",
+        "deleteSelected": "선택 삭제",
+        "pickDeleteOne": "영구 삭제할 세션을 하나 이상 선택하세요",
+        "deleteOneConfirm": "이 세션을 영구 삭제할까요? 되돌릴 수 없습니다. 예상 확보 공간: {{size}}.",
+        "deleteSelectedConfirm": "선택한 {{count}}개 세션을 영구 삭제할까요? 되돌릴 수 없습니다. 예상 확보 공간: {{size}}.",
+        "permanentDeleteTitle": "영구 삭제",
+        "permanentDeleteAction": "영구 삭제",
+        "emptyTrashConfirm": "휴지통을 비울까요? {{count}}개 세션이 영구 삭제되어 복원할 수 없습니다. 예상 확보 공간: {{size}}."
       },
       "targetModal": {
         "title": "인스턴스에 복사",
@@ -2441,7 +2500,90 @@
         "instanceScopeAll": "모든 인스턴스",
         "instanceScopeAllDesc": "여러 Codex 인스턴스를 함께 복구할 때 모두 처리합니다.",
         "progressTitle": "복구 진행률",
-        "start": "복구 시작"
+        "start": "복구 시작",
+        "previewing": "미리보는 중...",
+        "previewAgain": "다시 미리보기",
+        "preview": "변경 미리보기",
+        "previewFailedWithError": "세션 복구 미리보기에 실패했습니다: {{error}}",
+        "confirmRepair": "복구 확인"
+      },
+      "importModal": {
+        "title": "세션 가져오기",
+        "hint": "세션 패키지는 rollout 파일과 session_index 항목만 가져옵니다. 계정, Token, API Key, 앱 설정은 포함되지 않으며 대상 인스턴스에 같은 ID 세션이 있으면 건너뜁니다.",
+        "noTarget": "가져올 수 있는 Codex 인스턴스가 없습니다",
+        "noPackage": "먼저 세션 패키지를 선택하세요",
+        "pickOne": "가져올 수 있는 세션을 하나 이상 선택하세요",
+        "totalCount": "패키지 세션 {{count}}개",
+        "readyCount": "가져오기 가능 {{count}}개",
+        "selectReady": "가능한 항목 선택",
+        "previewing": "세션 패키지 미리 보는 중...",
+        "existsIn": "이미 있음: {{names}}",
+        "statusReady": "가능",
+        "statusDuplicate": "있음",
+        "statusConflict": "충돌",
+        "statusInvalid": "잘못됨",
+        "confirm": "선택한 세션 가져오기"
+      },
+      "transferModal": {
+        "exportTitle": "세션 내보내기",
+        "importTitle": "세션 가져오기",
+        "minimize": "최소화",
+        "reopen": "진행 보기",
+        "clear": "지우기",
+        "runningSummary": "{{total}}개 중 {{current}}개 처리 중",
+        "completedSummary": "작업 완료",
+        "failedSummary": "작업 실패",
+        "current": "{{total}}개 중 {{current}}개",
+        "phase": {
+          "exportPrepare": "내보내기 준비 중...",
+          "exportCollect": "세션 수집 중...",
+          "exportHash": "세션 파일 확인 중...",
+          "exportWrite": "세션 패키지 작성 중...",
+          "importPrepare": "가져오기 준비 중...",
+          "importRead": "세션 패키지 읽는 중...",
+          "importWrite": "대상 인스턴스에 쓰는 중...",
+          "importRebuild": "공식 세션 인덱스 새로 고치는 중...",
+          "done": "작업 완료"
+        }
+      },
+      "exportModal": {
+        "title": "세션 내보내기",
+        "hint": "내보내기 전에 세션 목록, 원본 인스턴스, 파일 크기를 확인할 수 있습니다. 패키지는 rollout 파일과 session_index 항목만 포함하며 계정, 토큰, API 키, 앱 설정은 포함하지 않습니다.",
+        "previewing": "세션 미리 보는 중...",
+        "selectedCount": "{{count}}개 선택됨",
+        "exportableCount": "{{count}}개 내보낼 수 있음",
+        "missingCount": "{{count}}개 없음",
+        "totalSize": "총 {{size}}",
+        "exportPath": "내보내기 위치",
+        "pathUnset": "위치가 선택되지 않음",
+        "choosePath": "위치 선택",
+        "missingNotice": "{{count}}개 세션은 현재 인스턴스 집합에 없어 건너뜁니다.",
+        "sourceInstance": "원본: {{name}}",
+        "emptyTitle": "내보낼 세션 없음",
+        "noPreview": "먼저 미리보기를 완료하세요",
+        "noExportable": "내보낼 수 있는 세션 없음",
+        "pickPath": "내보내기 위치를 선택하세요",
+        "confirm": "내보내기",
+        "selectedExportCount": "선택 {{selected}} / 내보내기 가능 {{total}}",
+        "selectedSize": "선택 크기 {{selected}} / 전체 {{total}}",
+        "removedNotice": "{{count}}개를 이번 내보내기 목록에서 제외했습니다",
+        "restoreRemoved": "목록 복원",
+        "sourceLabel": "출처",
+        "allSources": "모든 출처",
+        "selectionLabel": "선택",
+        "filterAll": "전체",
+        "filterSelected": "선택됨",
+        "filterUnselected": "미선택",
+        "visibleCount": "표시 {{visible}} / {{total}}",
+        "selectVisible": "필터 선택",
+        "clearVisible": "필터 해제",
+        "keepVisibleOnly": "필터만 유지",
+        "removeVisible": "필터 제외",
+        "removeUnchecked": "미선택 제외",
+        "selectItem": "내보낼 세션 선택",
+        "removeItem": "제외",
+        "emptyFilteredTitle": "일치하는 세션 없음",
+        "emptyFilteredDesc": "검색어, 출처 또는 선택 상태를 조정하세요."
       }
     },
     "api": {
@@ -2589,7 +2731,8 @@
         "modelCatalog": "모델 카탈로그",
         "visionCapability": "이미지 입력",
         "visionModels": "비전 모델",
-        "visionRoutingModel": "이미지 라우팅 모델"
+        "visionRoutingModel": "이미지 라우팅 모델",
+        "supportsWebsockets": "WebSocket 전송"
       },
       "validation": {
         "nameRequired": "공급자 이름은 필수입니다.",
@@ -2825,6 +2968,12 @@
         "customMoveUp": "위로",
         "customMoveDown": "아래로",
         "customReset": "순서 초기화"
+      },
+      "websockets": {
+        "title": "Codex가 WebSocket을 통해 Responses를 사용하도록 허용",
+        "help": "공급자가 WebSocket을 통한 Responses를 명시적으로 지원하는 경우에만 켜세요. 연결 방식은 Codex 또는 프록시 서비스 로그에서 확인할 수 있습니다.",
+        "enabled": "사용",
+        "disabled": "사용 안 함"
       }
     },
     "quickSwitch": {
@@ -2865,7 +3014,9 @@
       "filterWithin24h": "24시간 ({{count}})",
       "filterWithin7d": "7일 ({{count}})",
       "filterWithin30d": "30일 ({{count}})",
-      "filterMissing": "알 수 없음 ({{count}})"
+      "filterMissing": "알 수 없음 ({{count}})",
+      "accessTokenOnlyUsable": "토큰 사용 가능",
+      "accessTokenOnlyUsableDetail": "구독 정보 엔드포인트는 제한되지만 할당량과 Codex 사용은 정상입니다"
     },
     "apiSwitchNotice": {
       "title": "Codex 세션이 보이지 않음",
@@ -2884,8 +3035,46 @@
     "accountNote": {
       "title": "계정 메모",
       "label": "계정 메모",
-      "desc": "{{account}}에 별도 계정 메모를 추가합니다.",
-      "placeholder": "이메일, 비밀번호, 복구 이메일 또는 전달 메모",
+      "desc": "{{account}}에 비밀번호, 2FA, 메일 URL, 전화번호, 기타 메모를 추가합니다.",
+      "twoFactorSecretLabel": "2FA 시크릿",
+      "twoFactorSecretShort": "2FA",
+      "twoFactorSecretPlaceholder": "Base32 secret 또는 otpauth:// URI",
+      "twoFactorSecretInvalid": "2FA 시크릿이 올바르지 않습니다. Base32 secret 또는 otpauth:// URI를 입력하세요.",
+      "currentOtp": "현재 코드",
+      "otpShort": "코드",
+      "otpRemaining": "{{seconds}}초",
+      "passwordLabel": "비밀번호",
+      "passwordShort": "비밀번호",
+      "passwordPlaceholder": "로그인 또는 임시 비밀번호",
+      "phoneNumberLabel": "전화번호",
+      "phoneShort": "전화",
+      "phoneNumberPlaceholder": "연결된 전화번호",
+      "mailUrlLabel": "메일 URL",
+      "mailUrlPlaceholder": "열 수 있는 메일 조회 페이지 URL 입력",
+      "mailPreviewRefresh": "메일 새로고침",
+      "mailPreviewOpen": "브라우저에서 보기",
+      "mailPreviewLoading": "메일 읽는 중...",
+      "mailPreviewNoCode": "연속 6자리 코드를 찾지 못했습니다",
+      "mailPreviewFetchFailed": "메일 읽기 실패: {{error}}",
+      "mailPreviewUrlRequired": "메일 URL을 입력하세요",
+      "mailPreviewUrlInvalid": "메일 URL 형식이 올바르지 않습니다. http:// 또는 https:// 전체 주소를 입력하세요.",
+      "mailPreviewUnsupportedProtocol": "메일 URL은 http 또는 https만 지원합니다.",
+      "mailPreviewHttpFailed": "메일 URL 요청 실패: HTTP {{status}}",
+      "mailPreviewCode": "최근 이메일 인증 코드",
+      "mailPreviewStatusInitial": "{{time}}에 가져옴",
+      "mailPreviewStatusChanged": "새 코드 · {{time}}",
+      "mailPreviewStatusUnchanged": "변경 없음 · {{time}}",
+      "mailPreviewTruncated": "내용이 잘렸습니다",
+      "mailOpenFailed": "메일 URL 열기 실패: {{error}}",
+      "otherNoteLabel": "기타 메모",
+      "otherNoteShort": "메모",
+      "placeholder": "전달 메모, 복구 이메일 또는 계정 세부 정보",
+      "exportSensitiveNotice": "내보내기에는 2FA 시크릿, 비밀번호, 전화번호 또는 메일 URL이 포함됩니다. 신뢰할 수 있는 위치에만 저장하세요.",
+      "exportSensitiveIncluded": "민감한 메모 포함",
+      "exportSensitiveExcluded": "민감한 메모 제외",
+      "exportSensitiveToggleHint": "내보내는 JSON에 2FA 시크릿, 비밀번호, 전화번호, 메일 URL을 포함할지 제어합니다.",
+      "show": "표시",
+      "hide": "숨기기",
       "emptyTitle": "계정 메모 추가",
       "short": "메모",
       "addShort": "추가",
@@ -2980,7 +3169,9 @@
         "pricingUnset": "미설정",
         "pricingReset": "재설정",
         "pricingSaved": "가격 저장됨",
-        "pricingInvalid": "가격은 0 이상의 숫자여야 합니다"
+        "pricingInvalid": "가격은 0 이상의 숫자여야 합니다",
+        "pricingReprice": "기록 재계산",
+        "pricingRepriced": "현재 가격으로 기록 추정값을 다시 계산했습니다"
       },
       "keys": {
         "policyTitle": "모델 정책",
@@ -3093,6 +3284,15 @@
       "renameSuccess": "이름이 변경되었습니다",
       "renameFailed": "이름 변경 실패"
     },
+    "importApiService": {
+      "toggle": "API 서비스에 추가",
+      "description": "조건에 맞는 가져온 계정을 API 서비스 계정 풀에 추가합니다.",
+      "syncFailed": "계정은 가져왔지만 API 서비스에 추가하지 못했습니다: {{error}}",
+      "guideTitle": "API 서비스에 계정 추가됨",
+      "guideDescription": "{{count}}개 계정을 API 서비스에 추가했습니다. ‘API 서비스 시작’을 눌러 전환하고 사용하세요.",
+      "later": "나중에",
+      "startAction": "API 서비스 시작"
+    },
     "batchImport": {
       "title": "Codex 일괄 가져오기",
       "resultSubtitle": "가져오기 결과",
@@ -3127,7 +3327,12 @@
       "selectedCount": "선택 {{count}}/{{total}}",
       "selectAllAccounts": "전체 계정 선택",
       "selectReady": "정상 계정 선택",
-      "clearSelection": "선택 해제"
+      "clearSelection": "선택 해제",
+      "hiddenTask": "Codex 일괄 가져오기 작업",
+      "taskRunning": "{{current}} / {{total}} 처리 중",
+      "taskPreview": "미리보기 {{total}}개 준비됨",
+      "reopen": "작업 보기",
+      "dismissTask": "닫기"
     },
     "autoRepairMode": {
       "label": "자동 복구 로직",
@@ -3135,6 +3340,45 @@
       "legacyBefore4eb75d96": "4eb75d96 이전",
       "legacy4eb75d96": "4eb75d96 로직",
       "current": "현재 로직"
+    },
+    "pendingAuth": {
+      "badge": "인증 대기",
+      "emailRequired": "계정 이메일을 입력하세요",
+      "saving": "인증 대기 계정을 저장하는 중...",
+      "saved": "인증 대기 계정이 저장되었습니다",
+      "saveFailed": "인증 대기 계정 저장 실패: {{error}}",
+      "emailLabel": "인증 대기 계정",
+      "emailPlaceholder": "OpenAI 계정 이메일 입력",
+      "saveDraft": "인증 대기 카드 저장",
+      "authorizeAction": "인증 추가",
+      "cardHint": "메모가 저장되었습니다. OAuth 완료 후 사용할 수 있습니다."
+    },
+    "batchDelete": {
+      "title": "Codex 일괄 삭제",
+      "running": "삭제 중",
+      "paused": "일시 중지됨",
+      "failed": "일부 실패",
+      "completed": "삭제 완료",
+      "preparing": "삭제 작업 준비 중...",
+      "retryFailed": "실패 항목 재시도",
+      "pause": "일시 중지",
+      "resume": "계속",
+      "clear": "정리",
+      "summary": "{{completed}} / {{total}} 처리됨, 실패 {{failed}}",
+      "started": "Codex 계정 {{count}}개 삭제를 시작했습니다",
+      "pollFailed": "일괄 삭제 진행 상황을 새로 고치지 못했습니다: {{error}}",
+      "actionFailed": "일괄 삭제 작업 실패: {{error}}"
+    },
+    "filters": {
+      "allPlans": "전체 요금제 ({{count}})",
+      "visibleOfTotal": "{{visible}} / {{total}}",
+      "activeBanner": "필터 표시 {{visible}}/{{total}}",
+      "clearAll": "필터 해제",
+      "chipGroup": "그룹",
+      "chipTags": "태그",
+      "chipSearch": "검색",
+      "chipPlan": "요금제",
+      "chipFolder": "폴더"
     }
   },
   "githubCopilot": {
@@ -3372,6 +3616,14 @@
       "syncWslDesc": "계정 전환 시 WSL의 .gemini 구성을 자동으로 덮어씁니다"
     },
     "geminiRefreshInterval": "할당량 자동 새로고침",
+    "grok": {
+      "title": "Grok CLI 설정",
+      "appPath": "Grok CLI 경로",
+      "cliPath": "CLI 경로",
+      "cliDetected": "감지됨: {{version}} · {{path}}",
+      "cliMissing": "Grok CLI를 찾지 못했습니다. 사용자 경로를 입력하세요."
+    },
+    "grokRefreshInterval": "할당량 자동 새로고침",
     "codebuddy": {
       "title": "CodeBuddy 설정",
       "appPath": "CodeBuddy 경로"
@@ -3398,6 +3650,10 @@
       "title": "WorkBuddy 설정",
       "appPath": "WorkBuddy 경로"
     },
+    "zcode": {
+      "title": "ZCode 설정",
+      "appPath": "ZCode 경로"
+    },
     "zed": {
       "title": "Zed 설정",
       "appPath": "Zed 경로"
@@ -3411,6 +3667,18 @@
     "claude": {
       "appPath": "Claude 경로",
       "appTargetPlaceholder": "Claude.exe 경로 또는 shell:AppsFolder\\..."
+    },
+    "traeSolo": {
+      "appPath": "TRAE SOLO 경로",
+      "title": "TRAE SOLO 설정"
+    },
+    "traeCn": {
+      "appPath": "Trae CN 경로",
+      "title": "Trae CN 설정"
+    },
+    "traeSoloCn": {
+      "appPath": "TRAE SOLO CN 경로",
+      "title": "TRAE SOLO CN 설정"
     }
   },
   "quotaAlert": {
@@ -4175,17 +4443,21 @@
   "trae": {
     "title": "Trae 계정 관리",
     "empty": {
-      "description": "\"계정 추가\"를 클릭해 Trae 계정 관리를 시작하거나 로컬 Trae 데이터 또는 JSON 파일에서 가져올 수 있습니다."
+      "description": "\"계정 추가\"를 클릭해 Trae 계정 관리를 시작하거나 로컬 Trae 데이터 또는 JSON 파일에서 가져올 수 있습니다.",
+      "descriptionWithPlatform": "\"계정 추가\"를 클릭해 {{platform}} 계정을 관리하거나 로컬 {{platform}} 데이터 또는 JSON 파일에서 가져오세요."
     },
     "addModal": {
-      "title": "Trae 계정 추가"
+      "title": "Trae 계정 추가",
+      "titleWithPlatform": "{{platform}} 계정 추가"
     },
     "oauth": {
-      "desc": "아래 버튼을 눌러 브라우저에서 Trae OAuth 인증을 완료하세요."
+      "desc": "아래 버튼을 눌러 브라우저에서 Trae OAuth 인증을 완료하세요.",
+      "descWithPlatform": "아래 버튼을 클릭하고 브라우저에서 {{platform}} OAuth 인증을 완료하세요."
     },
     "import": {
       "localDesc": "로컬 Trae 설정 디렉터리에서 현재 로그인된 계정, 요금제 정보, 캐시된 할당량 데이터를 가져옵니다.",
-      "jsonTab": "JSON 파일"
+      "jsonTab": "JSON 파일",
+      "localDescWithPlatform": "로컬 {{platform}} 설정 디렉터리에서 현재 로그인된 계정, 플랜 정보, 캐시된 할당량 데이터를 가져옵니다."
     },
     "quota": {
       "usedOfTotal": "사용량 $ {{used}} / $ {{total}}",
@@ -4211,7 +4483,12 @@
       "title": "Trae 계정 안내 (클릭하여 펼치기/접기)",
       "desc": "공식 OAuth 로그인, 로컬 가져오기, JSON 가져오기, 로컬 주입 방식의 계정 전환을 지원합니다. 계정 전환 시 Trae 클라이언트의 실제 디스크 기록 규칙에 따라 다시 저장합니다.",
       "permission": "권한 범위: 로컬 Trae storage.json 의 로그인 관련 필드를 읽고 써서 계정 가져오기, 계정 전환 주입, 요금제 표시에 사용합니다. 모든 데이터는 사용자 기기에서만 처리됩니다.",
-      "network": "네트워크 범위: OAuth 로그인, 토큰 갱신, 요금제 조회는 Trae 공식 API 를 호출합니다. 로컬 계정 파일이나 원본 저장 데이터는 제3자 서비스로 업로드되지 않습니다."
+      "network": "네트워크 범위: OAuth 로그인, 토큰 갱신, 요금제 조회는 Trae 공식 API 를 호출합니다. 로컬 계정 파일이나 원본 저장 데이터는 제3자 서비스로 업로드되지 않습니다.",
+      "titleWithPlatform": "{{platform}} 계정 연결 안내(클릭해 펼치기/접기)",
+      "descWithPlatform": "{{platform}} 공식 OAuth 로그인, 로컬 가져오기, JSON 가져오기, 로컬 주입 기반 계정 전환을 지원합니다. 계정 전환은 {{platform}} 클라이언트의 실제 디스크 저장 규칙에 따라 기록됩니다.",
+      "permissionWithPlatform": "권한 범위: 계정 가져오기, 계정 전환 주입, 플랜 표시를 위해 로컬 {{platform}} storage.json의 로그인 관련 필드를 읽고 씁니다. 모든 데이터는 로컬에서만 처리됩니다.",
+      "networkGlobal": "네트워크 범위: {{platform}} OAuth 로그인, 토큰 갱신, 플랜 조회는 공식 trae.ai / traeapi.us API를 호출합니다. 로컬 계정 파일과 원본 저장 내용은 타사 서비스로 업로드되지 않습니다.",
+      "networkCn": "네트워크 범위: {{platform}} OAuth 로그인, 토큰 갱신, 플랜 조회는 공식 trae.cn / trae.com.cn API를 호출합니다. 로컬 계정 파일과 원본 저장 내용은 타사 서비스로 업로드되지 않습니다."
     }
   },
   "codebuddyCn": {
@@ -4368,6 +4645,62 @@
       "recentDates": "최근: "
     }
   },
+  "zcode": {
+    "search": "ZCode 계정 검색...",
+    "flowNotice": {
+      "title": "ZCode 계정 관리 안내",
+      "desc": "Cockpit은 실제 계정 전환과 인스턴스 연결을 위해 ZCode의 암호화된 로컬 자격 증명을 읽고 다시 씁니다.",
+      "permission": "로컬 범위: ~/.zcode/v2/credentials.json 및 관리형 인스턴스 디렉터리.",
+      "network": "네트워크 범위: OAuth, 사용자 정보, 구독 및 할당량 API. 계정을 Cockpit 서비스에 업로드하지 않습니다."
+    },
+    "empty": "ZCode 계정 없음",
+    "addAccount": "ZCode 계정 추가",
+    "oauth": {
+      "desc": "ZCode를 종료한 뒤 Cockpit 인증 창에서 로그인하세요. 콜백은 Cockpit이 직접 수신합니다.",
+      "title": "ZCode OAuth 인증",
+      "item1": "Z.ai 및 BigModel 공식 로그인 지원.",
+      "item2": "인증 후 계정을 저장하고 요금제와 모델 할당량을 새로 고칩니다.",
+      "item3": "기본 클라이언트 전환과 다중 인스턴스 연결에 사용할 수 있습니다.",
+      "urlPlaceholder": "ZCode OAuth 인증 URL",
+      "waiting": "ZCode OAuth 콜백 대기 중...",
+      "openWindow": "인증 창 열기",
+      "provider": "로그인 서비스",
+      "success": "ZCode OAuth 로그인 성공"
+    },
+    "token": {
+      "desc": "Cockpit에서 내보낸 ZCode 계정 JSON을 붙여 넣으세요."
+    },
+    "apiKey": {
+      "tab": "API 키",
+      "desc": "Z.ai 또는 BigModel 공식 API 키를 추가합니다. 계정 전환과 관리형 인스턴스는 각자의 config.json에 키를 기록합니다.",
+      "placeholder": "API 키 붙여넣기",
+      "add": "API 키 추가",
+      "provider": "API 키 서비스"
+    },
+    "import": {
+      "localDesc": "암호화된 로컬 ZCode 자격 증명 또는 JSON 파일에서 가져옵니다.",
+      "localClient": "로컬 ZCode에서 가져오기"
+    },
+    "usageNormal": "정상",
+    "usageAbnormal": "오류",
+    "usageViewDetail": "상세",
+    "usageDetailTitle": "사용량 상세",
+    "usage": "사용량",
+    "quota": {
+      "models": "모델 할당량",
+      "usedOfTotal": "{{used}} / {{total}}",
+      "updatedAt": "업데이트: {{time}}",
+      "expireAt": "만료: {{time}}"
+    },
+    "quotaQuery": {
+      "failedRefreshCompact": "할당량 조회 실패",
+      "empty": "할당량 데이터 없음",
+      "sectionTitle": "할당량"
+    },
+    "instances": {
+      "unsupported": "ZCode 다중 인스턴스는 macOS, Windows, Linux에서만 지원됩니다."
+    }
+  },
   "zed": {
     "addModal": {
       "title": "Zed 계정 추가"
@@ -4472,6 +4805,7 @@
     "errors": {
       "refreshFailed": "새로고침 실패: {{error}}",
       "switchFailed": "전환 실패: {{error}}",
+      "stopInstanceBeforeSwitch": "계정을 전환하기 전에 인스턴스를 중지하세요",
       "pinFailed": "고정 상태를 업데이트하지 못했습니다: {{error}}",
       "closeFailed": "닫기 실패: {{error}}"
     },
@@ -4734,6 +5068,86 @@
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "grok": {
+    "search": "Grok CLI 계정 검색...",
+    "flowNotice": {
+      "title": "Grok CLI 계정 관리",
+      "desc": "Cockpit은 Grok CLI 공식 자격 증명 형식으로 계정을 관리하여 기본 계정을 실제로 전환하고 격리된 인스턴스에 연결합니다.",
+      "permission": "로컬 범위: 기본 ~/.grok/auth.json을 읽고 Cockpit 로컬 데이터에서 별도의 Grok 계정 및 GROK_HOME 디렉터리를 관리합니다.",
+      "network": "네트워크 범위: OAuth 인증, 자격 증명 갱신, 계정 사용량 조회. 자격 증명을 Cockpit 서비스에 업로드하지 않습니다."
+    },
+    "empty": "Grok CLI 계정이 없습니다",
+    "addAccount": "Grok CLI 계정 추가",
+    "oauth": {
+      "desc": "xAI 인증 페이지를 열고 기기 코드를 입력하세요. 완료되면 계정이 자동으로 저장됩니다.",
+      "title": "Grok 기기 OAuth",
+      "item1": "로컬 콜백 포트를 사용하지 않고 Grok CLI 공식 기기 흐름을 사용합니다.",
+      "item2": "인증 후 별도의 GROK_HOME을 저장하고 자격 증명을 유효하게 유지합니다.",
+      "item3": "기본 CLI를 전환하거나 서로 격리된 여러 인스턴스에서 계정을 사용할 수 있습니다.",
+      "urlPlaceholder": "Grok OAuth 인증 주소",
+      "waiting": "Grok OAuth 인증 대기 중...",
+      "openWindow": "인증 페이지 열기",
+      "success": "Grok OAuth 로그인 성공"
+    },
+    "import": {
+      "pasteTab": "JSON 붙여넣기",
+      "pasteDesc": "Grok CLI 공식 auth.json을 붙여넣으세요. 자격 증명은 로컬 백엔드에서만 처리됩니다. Cockpit 내보내기에는 마스킹된 메타데이터만 포함되며 로그인 복원에 사용할 수 없습니다.",
+      "pastePlaceholder": "Grok 계정 JSON 붙여넣기",
+      "pasteAction": "JSON 가져오기",
+      "localDesc": "기본 ~/.grok/auth.json에서 현재 계정을 가져옵니다. 파일을 선택할 때는 Grok CLI 공식 auth.json을 사용하세요.",
+      "localClient": "로컬 Grok CLI에서 가져오기",
+      "apiKeyTab": "API 키",
+      "apiKeyDesc": "xAI API 키(공식 XAI_API_KEY)를 붙여넣으세요. 실행 시 환경 변수로 주입됩니다. 공식 auth.json도 붙여넣을 수 있습니다.",
+      "apiKeyPlaceholder": "xai-로 시작하는 키",
+      "apiKeyAction": "API Key 추가"
+    },
+    "instances": {
+      "unsupported": "Grok CLI 다중 인스턴스는 macOS, Windows, Linux에서만 지원됩니다.",
+      "launchDialogTitle": "인스턴스 실행",
+      "launchHint": "명령을 복사해 수동으로 실행하거나 터미널에서 바로 실행하세요.",
+      "runInTerminal": "터미널에서 실행",
+      "cliReady": "감지됨",
+      "cliMissingShort": "감지되지 않음",
+      "cliPathInvalid": "설정된 Grok CLI 경로가 올바르지 않습니다: {{path}}",
+      "saveAndRetry": "저장 후 다시 시도",
+      "installCommand": "공식 설치 명령",
+      "installHint": "터미널에서 다음 공식 명령을 실행한 뒤 설치가 완료되면 새로 고침하세요.",
+      "selectWorkingDir": "Grok CLI 작업 디렉터리 선택",
+      "workingDirAccountHint": "작업 디렉터리는 이 계정에 연결되며 다음 실행 시 자동으로 복원됩니다.",
+      "launchCommandPlaceholder": "작업 디렉터리를 선택하거나 확인하면 실행 명령이 생성됩니다"
+    },
+    "switch": {
+      "success": "계정 전환 완료"
+    },
+    "usageNormal": "정상",
+    "usageAbnormal": "이상",
+    "usageViewDetail": "세부 정보",
+    "usageDetailTitle": "사용량 세부 정보",
+    "usage": "사용량",
+    "quotaQuery": {
+      "failedRefreshCompact": "할당량 조회 실패",
+      "empty": "할당량 데이터 없음",
+      "sectionTitle": "할당량"
+    },
+    "quota": {
+      "weekly": "주간 사용량",
+      "onDemand": "종량제 사용량",
+      "balance": "잔액 및 크레딧",
+      "included": "포함 사용량",
+      "promotional": "프로모션 할당량",
+      "frequent": "빈번한 작업",
+      "occasional": "일반 작업",
+      "resetAt": "{{label}} 초기화: {{time}}",
+      "empty": "할당량 없음",
+      "apiKeyUnsupported": "API Key 계정에는 요금제 할당량이 없습니다"
+    },
+    "quotaAlert": {
+      "hint": "현재 계정의 할당량 항목 중 하나라도 임계값 아래로 내려가면 기본 알림을 보내고 앱에 빠른 계정 전환 작업을 표시합니다.",
+      "thresholdDesc": "할당량 항목 중 하나라도 이 비율 아래로 내려가면 경고",
+      "items": "할당량 항목",
+      "unknownItem": "알 수 없는 할당량 항목"
+    }
   },
   "claude": {
     "import": {

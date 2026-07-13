@@ -27,6 +27,7 @@ export interface CodexAccount {
   api_provider_name?: string;
   api_model_catalog?: string[];
   api_wire_api?: CodexProviderWireApi | null;
+  api_supports_websockets?: boolean;
   api_supports_vision?: boolean;
   api_model_vision_support?: Record<string, boolean>;
   api_vision_routing_model?: string | null;
@@ -35,17 +36,26 @@ export interface CodexAccount {
   user_id?: string;
   plan_type?: string;
   subscription_active_until?: string;
+  subscription_query_last_attempt_at?: number;
+  subscription_query_last_success_at?: number;
+  subscription_query_next_retry_at?: number;
+  subscription_query_last_error?: string;
   auth_file_plan_type?: string;
   account_id?: string;
   organization_id?: string;
   account_name?: string;
   account_structure?: string;
   account_note?: string;
+  two_factor_secret?: string;
+  account_password?: string;
+  phone_number?: string;
+  mail_url?: string;
   app_speed?: CodexAppSpeed;
   tokens: CodexTokens;
   token_generation?: number;
   token_updated_at?: number;
   token_source_mode?: string;
+  authorization_status?: string | null;
   requires_reauth?: boolean;
   reauth_reason?: string;
   quota?: CodexQuota;
@@ -53,6 +63,34 @@ export interface CodexAccount {
   tags?: string[];
   created_at: number;
   last_used: number;
+}
+
+export interface CodexAccountNoteUpdate {
+  note?: string;
+  twoFactorSecret?: string;
+  accountPassword?: string;
+  phoneNumber?: string;
+  mailUrl?: string;
+}
+
+export interface CodexBatchDeleteError {
+  accountId: string;
+  error: string;
+}
+
+export type CodexBatchDeleteStatusState =
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed';
+
+export interface CodexBatchDeleteJobStatus {
+  jobId: string;
+  status: CodexBatchDeleteStatusState;
+  total: number;
+  completed: number;
+  failed: number;
+  errors: CodexBatchDeleteError[];
 }
 
 export interface CodexQuotaErrorInfo {
@@ -157,6 +195,21 @@ export interface CodexCodeReviewQuotaMetric {
   resetTime?: number;
 }
 
+export interface CodexAdditionalQuotaWindow {
+  id: string;
+  label: string;
+  percentage: number;
+  resetTime?: number;
+  windowMinutes?: number;
+  limitName: string;
+  limitLabel: string;
+  meteredFeature: string;
+  windowKind: "primary" | "secondary";
+  sourceIndex: number;
+  allowed?: boolean;
+  limitReached?: boolean;
+}
+
 export interface CodexInstanceThreadSyncItem {
   instanceId: string;
   instanceName: string;
@@ -227,6 +280,7 @@ export interface CodexSessionVisibilityRepairInstanceList {
 
 export interface CodexSessionVisibilityRepairRequestOptions {
   mode?: CodexSessionVisibilityRepairMode;
+  dryRun?: boolean;
   targetProvider?: string | null;
   targetInstanceId?: string | null;
   repairInstanceIds?: string[] | null;
@@ -316,6 +370,7 @@ export interface CodexTrashedSessionRecord {
   title: string;
   cwd: string;
   deletedAt?: number | null;
+  sizeBytes: number;
   locationCount: number;
   locations: CodexTrashedSessionLocation[];
 }
@@ -325,6 +380,90 @@ export interface CodexSessionRestoreSummary {
   restoredSessionCount: number;
   restoredInstanceCount: number;
   message: string;
+}
+
+export interface CodexSessionTrashDeleteSummary {
+  requestedSessionCount: number;
+  deletedSessionCount: number;
+  deletedEntryCount: number;
+  freedSizeBytes: number;
+  message: string;
+}
+
+export interface CodexSessionExportSummary {
+  requestedSessionCount: number;
+  exportedSessionCount: number;
+  skippedSessionCount: number;
+  exportPath: string;
+  message: string;
+}
+
+export interface CodexSessionExportPreviewItem {
+  sessionId: string;
+  title: string;
+  cwd: string;
+  updatedAt?: number | null;
+  sizeBytes: number;
+  sourceInstanceId: string;
+  sourceInstanceName: string;
+}
+
+export interface CodexSessionExportPreview {
+  requestedSessionCount: number;
+  exportableSessionCount: number;
+  missingSessionCount: number;
+  totalSizeBytes: number;
+  items: CodexSessionExportPreviewItem[];
+}
+
+export type CodexSessionImportPreviewStatus =
+  | 'ready'
+  | 'duplicate'
+  | 'conflict'
+  | 'invalid';
+
+export interface CodexSessionImportPreviewItem {
+  sessionId: string;
+  title: string;
+  cwd: string;
+  updatedAt?: number | null;
+  sizeBytes: number;
+  status: CodexSessionImportPreviewStatus;
+  reason?: string | null;
+  existingInstanceNames: string[];
+}
+
+export interface CodexSessionImportPreview {
+  packageVersion: number;
+  exportedAt?: string | null;
+  importFilePath: string;
+  targetInstanceId: string;
+  targetInstanceName: string;
+  totalSessionCount: number;
+  importableSessionCount: number;
+  items: CodexSessionImportPreviewItem[];
+}
+
+export interface CodexSessionImportSummary {
+  requestedSessionCount: number;
+  importedSessionCount: number;
+  skippedSessionCount: number;
+  targetInstanceId: string;
+  targetInstanceName: string;
+  message: string;
+}
+
+export type CodexSessionTransferOperation = 'export' | 'import';
+
+export interface CodexSessionTransferProgress {
+  transferId: string;
+  operation: CodexSessionTransferOperation;
+  phase: string;
+  current: number;
+  total: number;
+  percent: number;
+  currentLabel?: string | null;
+  running: boolean;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -512,8 +651,134 @@ export function getCodexCodeReviewQuotaMetric(
   );
 }
 
+function normalizeCodexAdditionalLimitLabel(
+  limitName: string,
+  meteredFeature: string,
+): string {
+  const fallback = limitName || meteredFeature;
+  if (!fallback) return "";
+  return fallback
+    .replace(/^gpt[-\s]*/i, "GPT ")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCodexUnixSeconds(value: unknown): number | undefined {
+  const timestamp = toFiniteNumber(value);
+  if (timestamp === undefined || timestamp <= 0) return undefined;
+  return Math.floor(timestamp > 10_000_000_000 ? timestamp / 1000 : timestamp);
+}
+
+function normalizeAdditionalRateLimitWindow(
+  window: JsonRecord,
+  fallback: "hourly" | "weekly",
+): Pick<CodexQuotaWindow, "label" | "percentage" | "resetTime" | "windowMinutes"> | null {
+  const usedPercent = toFiniteNumber(window.used_percent);
+  if (usedPercent === undefined) return null;
+  const percentage = Math.max(0, Math.min(100, 100 - Math.round(usedPercent)));
+  const limitWindowSeconds = toFiniteNumber(window.limit_window_seconds);
+  const windowMinutes =
+    limitWindowSeconds !== undefined && limitWindowSeconds > 0
+      ? Math.ceil(limitWindowSeconds / 60)
+      : undefined;
+
+  return {
+    label: getCodexQuotaWindowLabel(windowMinutes, fallback),
+    percentage,
+    resetTime: normalizeCodexUnixSeconds(window.reset_at),
+    windowMinutes,
+  };
+}
+
+function isCodexSparkAdditionalLimit(
+  limitName: string,
+  meteredFeature: string,
+  limitLabel: string,
+): boolean {
+  const haystack = [limitName, meteredFeature, limitLabel]
+    .join(" ")
+    .toLowerCase();
+  return (
+    haystack.includes("spark") ||
+    haystack.includes("codex-spark") ||
+    haystack.includes("gpt-5.3-codex-spark")
+  );
+}
+
+export function getCodexAdditionalQuotaWindows(
+  quota: CodexQuota | undefined,
+): CodexAdditionalQuotaWindow[] {
+  const raw = toJsonRecord(quota?.raw_data);
+  const additionalRateLimits = raw?.additional_rate_limits;
+  if (!Array.isArray(additionalRateLimits)) return [];
+
+  return additionalRateLimits.flatMap((entry, sourceIndex) => {
+    const record = toJsonRecord(entry);
+    const rateLimit = toJsonRecord(record?.rate_limit);
+    if (!record || !rateLimit) return [];
+
+    const limitName = toStringValue(record.limit_name) || "";
+    const meteredFeature = toStringValue(record.metered_feature) || "";
+    const limitLabel = normalizeCodexAdditionalLimitLabel(
+      limitName,
+      meteredFeature,
+    );
+    // Official payloads may include Spark-only rate windows that clutter the
+    // main quota card; hide them from the default account presentation.
+    if (isCodexSparkAdditionalLimit(limitName, meteredFeature, limitLabel)) {
+      return [];
+    }
+    const allowed = toBoolValue(rateLimit.allowed);
+    const limitReached = toBoolValue(rateLimit.limit_reached);
+    const result: CodexAdditionalQuotaWindow[] = [];
+
+    ([
+      ["primary_window", "primary", "hourly"] as const,
+      ["secondary_window", "secondary", "weekly"] as const,
+    ]).forEach(([windowKey, windowKind, fallback]) => {
+      const window = toJsonRecord(rateLimit[windowKey]);
+      if (!window) return;
+      const normalized = normalizeAdditionalRateLimitWindow(window, fallback);
+      if (!normalized) return;
+      result.push({
+        id: `additional:${sourceIndex}:${windowKind}`,
+        sourceIndex,
+        windowKind,
+        limitName,
+        limitLabel,
+        meteredFeature,
+        allowed,
+        limitReached,
+        ...normalized,
+      });
+    });
+
+    return result;
+  });
+}
+
 export function isCodexApiKeyAccount(account: CodexAccount): boolean {
   return (account.auth_mode || "").trim().toLowerCase() === "apikey";
+}
+
+export function isCodexPendingOAuthAccount(account?: CodexAccount | null): boolean {
+  if (!account) return false;
+  if ((account.authorization_status || "").trim().toLowerCase() === "pending") {
+    return true;
+  }
+  if (isCodexApiKeyAccount(account)) return false;
+  const hasToken =
+    Boolean((account.tokens?.access_token || "").trim()) ||
+    Boolean((account.tokens?.refresh_token || "").trim()) ||
+    Boolean((account.tokens?.id_token || "").trim());
+  const hasSavedNote =
+    Boolean((account.account_note || "").trim()) ||
+    Boolean((account.two_factor_secret || "").trim()) ||
+    Boolean((account.account_password || "").trim()) ||
+    Boolean((account.phone_number || "").trim()) ||
+    Boolean((account.mail_url || "").trim());
+  return !hasToken && hasSavedNote;
 }
 
 export function isCodexNewApiAccount(account: CodexAccount): boolean {
@@ -653,6 +918,7 @@ export function getCodexPlanBadgePresentation(
 }
 
 export function getCodexPlanFilterKey(account: CodexAccount): string {
+  if (isCodexPendingOAuthAccount(account)) return "PENDING";
   return normalizeCodexPlanKey(account.plan_type).toUpperCase();
 }
 
@@ -696,6 +962,7 @@ const HOUR_IN_MS = 60 * 60 * 1000;
 
 export type CodexSubscriptionExpiryBucket =
   | "missing"
+  | "access_token_only"
   | "expired"
   | "within_24h"
   | "within_7d"
@@ -808,6 +1075,47 @@ export function getCodexSubscriptionPresentation(
     detailText,
     titleText: t("codex.subscription.titleWithDate", { date: detailText }),
     timestampMs,
+  };
+}
+
+function isCodexOpaqueAccessTokenOnlyAccount(account: CodexAccount): boolean {
+  const accessToken = account.tokens?.access_token?.trim() || "";
+  const refreshToken = account.tokens?.refresh_token?.trim() || "";
+  return accessToken.startsWith("at-") && !refreshToken;
+}
+
+function isCodexAccessTokenOnlySubscriptionLimited(account: CodexAccount): boolean {
+  if (!isCodexTeamLikePlan(account.plan_type)) return false;
+  if (!isCodexOpaqueAccessTokenOnlyAccount(account)) return false;
+  if (!account.quota || account.quota_error) return false;
+  const lastError = account.subscription_query_last_error || "";
+  return /no_matching_rule|rejected_by_access_enforcement|access enforcement/i.test(
+    lastError,
+  );
+}
+
+export function getCodexSubscriptionPresentationForAccount(
+  account: CodexAccount,
+  t: Translate,
+): CodexSubscriptionPresentation {
+  const base = getCodexSubscriptionPresentation(account.subscription_active_until, t);
+  if (base.bucket !== "missing") return base;
+
+  if (!isCodexAccessTokenOnlySubscriptionLimited(account)) return base;
+
+  const valueText = t("codex.subscription.accessTokenOnlyUsable", {
+    defaultValue: "Token 可用",
+  });
+  const detailText = t("codex.subscription.accessTokenOnlyUsableDetail", {
+    defaultValue: "订阅信息接口受限，但配额与 Codex 使用正常",
+  });
+  return {
+    bucket: "access_token_only",
+    tone: "active",
+    valueText,
+    detailText,
+    titleText: detailText,
+    timestampMs: null,
   };
 }
 

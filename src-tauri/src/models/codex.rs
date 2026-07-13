@@ -91,6 +91,8 @@ pub struct CodexAccount {
     pub api_model_catalog: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_wire_api: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub api_supports_websockets: bool,
     #[serde(default)]
     pub api_supports_vision: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -99,7 +101,7 @@ pub struct CodexAccount {
     pub api_vision_routing_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bound_oauth_account_id: Option<String>,
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default)]
     pub bound_oauth_use_local_gateway: bool,
     pub user_id: Option<String>,
     pub plan_type: Option<String>,
@@ -115,6 +117,37 @@ pub struct CodexAccount {
     pub account_structure: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_note: Option<String>,
+    #[serde(
+        default,
+        alias = "twoFactorSecret",
+        alias = "accountTwoFactorSecret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub two_factor_secret: Option<String>,
+    #[serde(
+        default,
+        alias = "accountPassword",
+        alias = "password",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub account_password: Option<String>,
+    #[serde(
+        default,
+        alias = "phoneNumber",
+        alias = "accountPhoneNumber",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub phone_number: Option<String>,
+    #[serde(
+        default,
+        alias = "mailUrl",
+        alias = "mailAddress",
+        alias = "mail_address",
+        alias = "mailQueryUrl",
+        alias = "mail_query_url",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub mail_url: Option<String>,
     #[serde(default)]
     pub app_speed: CodexAppSpeed,
     pub tokens: CodexTokens,
@@ -124,6 +157,12 @@ pub struct CodexAccount {
     pub token_updated_at: Option<i64>,
     #[serde(default = "default_token_source_mode")]
     pub token_source_mode: String,
+    #[serde(
+        default,
+        alias = "authorizationStatus",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub authorization_status: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub requires_reauth: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -339,6 +378,7 @@ impl CodexAccount {
             api_provider_name: None,
             api_model_catalog: Vec::new(),
             api_wire_api: None,
+            api_supports_websockets: false,
             api_supports_vision: false,
             api_model_vision_support: HashMap::new(),
             api_vision_routing_model: None,
@@ -353,11 +393,16 @@ impl CodexAccount {
             account_name: None,
             account_structure: None,
             account_note: None,
+            two_factor_secret: None,
+            account_password: None,
+            phone_number: None,
+            mail_url: None,
             app_speed: CodexAppSpeed::Standard,
             tokens,
             token_generation: 0,
             token_updated_at: Some(now),
             token_source_mode: default_token_source_mode(),
+            authorization_status: None,
             requires_reauth: false,
             reauth_reason: None,
             quota: None,
@@ -400,6 +445,7 @@ impl CodexAccount {
         account.api_provider_name = api_provider_name;
         account.api_model_catalog = api_model_catalog;
         account.api_wire_api = None;
+        account.api_supports_websockets = false;
         account.api_supports_vision = false;
         account.api_model_vision_support = HashMap::new();
         account.api_vision_routing_model = None;

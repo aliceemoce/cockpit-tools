@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   CodexAccount,
+  CodexAccountNoteUpdate,
   CodexApiProviderMode,
   CodexAppSpeed,
   CodexProviderWireApi,
@@ -8,6 +9,7 @@ import {
   hasCodexAccountStructure,
   hasCodexAccountName,
   isCodexTeamLikePlan,
+  isCodexPendingOAuthAccount,
 } from '../types/codex';
 import * as codexService from '../services/codexService';
 import { emitAccountsChanged, emitCurrentAccountChanged } from '../utils/accountSyncEvents';
@@ -84,6 +86,14 @@ const mergeCodexAccountIntoList = (
   return next;
 };
 
+type FetchCodexAccountsOptions = {
+  allowEmpty?: boolean;
+};
+
+type FetchCodexCurrentAccountOptions = {
+  allowEmpty?: boolean;
+};
+
 interface CodexAccountState {
   accounts: CodexAccount[];
   currentAccount: CodexAccount | null;
@@ -115,6 +125,7 @@ interface CodexAccountState {
     apiModelVisionSupport?: Record<string, boolean>,
     apiVisionRoutingModel?: string,
     apiWireApi?: CodexProviderWireApi,
+    apiSupportsWebsockets?: boolean,
   ) => Promise<CodexAccount>;
   updateApiKeyBoundOAuthAccount: (
     accountId: string,
@@ -122,7 +133,7 @@ interface CodexAccountState {
     boundOauthUseLocalGateway?: boolean,
   ) => Promise<CodexAccount>;
   updateAccountTags: (accountId: string, tags: string[]) => Promise<CodexAccount>;
-  updateAccountNote: (accountId: string, note: string) => Promise<CodexAccount>;
+  updateAccountNote: (accountId: string, update: string | CodexAccountNoteUpdate) => Promise<CodexAccount>;
   updateAccountAppSpeed: (accountId: string, speed: CodexAppSpeed) => Promise<CodexAccount>;
 }
 
@@ -307,6 +318,10 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
   },
   
   refreshQuota: async (accountId: string) => {
+    const account = get().accounts.find((item) => item.id === accountId);
+    if (account && isCodexPendingOAuthAccount(account)) {
+      throw new Error('CODEX_PENDING_OAUTH_ACCOUNT');
+    }
     try {
       return await codexService.refreshCodexQuota(accountId);
     } finally {
@@ -410,6 +425,7 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     apiModelVisionSupport?: Record<string, boolean>,
     apiVisionRoutingModel?: string,
     apiWireApi?: CodexProviderWireApi,
+    apiSupportsWebsockets?: boolean,
   ) => {
     const account = await codexService.updateCodexApiKeyCredentials(
       accountId,
@@ -423,6 +439,7 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
       apiModelVisionSupport,
       apiVisionRoutingModel,
       apiWireApi,
+      apiSupportsWebsockets,
     );
     await get().fetchAccounts();
     await get().fetchCurrentAccount();
@@ -450,8 +467,8 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     return account;
   },
 
-  updateAccountNote: async (accountId: string, note: string) => {
-    const account = await codexService.updateCodexAccountNote(accountId, note);
+  updateAccountNote: async (accountId: string, update: string | CodexAccountNoteUpdate) => {
+    const account = await codexService.updateCodexAccountNote(accountId, update);
     await get().fetchAccounts();
     await get().fetchCurrentAccount();
     return account;

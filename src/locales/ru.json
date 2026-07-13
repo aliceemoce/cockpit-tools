@@ -126,6 +126,8 @@
         "failed": "Ошибка авторизации",
         "hint": "После авторизации это окно обновится автоматически",
         "openBrowser": "Открыть в браузере",
+        "normalWindow": "Обычное окно",
+        "incognitoWindow": "Приватное окно",
         "success": "Авторизация успешна",
         "meta": "Истекает через: {{expires}}с; интервал опроса: {{interval}}с",
         "preparing": "Подготовка ссылки авторизации...",
@@ -176,7 +178,9 @@
         "resetDone": "Сброшено",
         "hourly": "Квота 5 часов",
         "weekly": "Недельная квота",
-        "resetAt": "Сброс: {{time}}"
+        "resetAt": "Сброс: {{time}}",
+        "expiresAt": "Истекает: {{time}}",
+        "leftPercent": "Осталось {{value}}%"
       },
       "subtitle": "Управляйте аккаунтами GitHub Copilot",
       "time": {
@@ -250,6 +254,9 @@
     "codebuddy": "CodeBuddy​",
     "qoder": "Qoder​",
     "trae": "Trae​",
+    "traeSolo": "TRAE SOLO​",
+    "traeCn": "Trae CN​",
+    "traeSoloCn": "TRAE SOLO CN​",
     "codebuddyCn": "CodeBuddy CN​",
     "zed": "Платформа Zed",
     "expandSidebar": "Развернуть боковую панель",
@@ -758,9 +765,13 @@
       "codebuddyCnPathReset": "Сбросить по умолчанию",
       "codebuddyCnPathSelect": "Выбрать",
       "codebuddyCnSettingsTitle": "Настройки CodeBuddy CN",
+      "zcodeAppPath": "Путь запуска ZCode",
+      "zcodeAppPathDesc": "Оставьте пустым для пути по умолчанию",
       "qoderAppPath": "Путь приложения Qoder",
       "qoderAppPathDesc": "Оставьте пустым для использования пути по умолчанию",
       "qoderAppPathPlaceholder": "Путь по умолчанию",
+      "zcodeAutoRefresh": "Автообновление ZCode",
+      "zcodeAutoRefreshDesc": "Интервал фонового обновления квоты",
       "qoderAutoRefresh": "Автообновление квоты Qoder",
       "qoderAutoRefreshDesc": "Частота автоматического обновления в фоне",
       "qoderPathSelect": "Выбрать",
@@ -788,7 +799,15 @@
       "claudeAutoRefresh": "Автообновление квоты Claude",
       "claudeAutoRefreshDesc": "Автоматически обновляет кэш квоты аккаунтов Claude в фоне.",
       "claudeAppPath": "Цель запуска Claude Desktop",
-      "claudeAppPathDesc": "Стандартный профиль может использовать цель Microsoft Store; нескольким экземплярам нужен реальный Claude.exe."
+      "claudeAppPathDesc": "Стандартный профиль может использовать цель Microsoft Store; нескольким экземплярам нужен реальный Claude.exe.",
+      "antigravityLaunchOnSwitch": "Запускать Antigravity IDE при переключении",
+      "antigravityLaunchOnSwitchDesc": "Если выключено, переключение только записывает данные аккаунта по умолчанию Antigravity IDE и не закрывает, не запускает и не перезапускает приложение.",
+      "tokenKeeper": "Поддержка auth",
+      "tokenKeeperDesc": "Обновляет токены аккаунтов небольшими пакетами только перед истечением авторизации, снижая фоновые запросы при большом числе аккаунтов.",
+      "platformAutoRefresh": "Автообновление квоты {{platform}}",
+      "traeSoloAppPath": "Путь запуска TRAE SOLO",
+      "traeCnAppPath": "Путь запуска Trae CN",
+      "traeSoloCnAppPath": "Путь запуска TRAE SOLO CN"
     },
     "network": {
       "apiTitle": "API антигравитационной кабины",
@@ -933,7 +952,7 @@
       "importModalDesc": "Выберите, что импортировать. Старые резервные копии аккаунтов будут обработаны как импорт только данных аккаунтов.",
       "selectionTitle": "Объём данных",
       "accountsOptionTitle": "Данные аккаунтов",
-      "accountsOptionDesc": "Включает резервные копии аккаунтов платформ и сохраняет совместимость со старым JSON аккаунтов.",
+      "accountsOptionDesc": "Включает восстанавливаемые резервные копии аккаунтов и сохраняет совместимость со старым JSON. Учётные данные Grok CLI исключены; импортируйте официальный auth.json отдельно.",
       "configOptionTitle": "Данные конфигурации",
       "configOptionDesc": "Включает настройки приложения, группы, экземпляры, задачи wakeup и конфигурацию провайдеров моделей.",
       "exportConfirm": "Экспортировать данные",
@@ -1618,6 +1637,7 @@
     "restartRequiredAfterInstall": "Обновление установлено. Перезапустите приложение вручную, чтобы завершить переключение.",
     "stoppingApiService": "Остановка API-сервиса...",
     "stopApiServiceFailed": "Не удалось остановить службу API. Сначала отключите её и повторите попытку.",
+    "stopApiServiceFailedContinue": "Служба API не остановилась корректно. Перезапуск продолжается...",
     "skipThisVersion": "Пропустить эту версию",
     "skipFailed": "Не удалось пропустить это обновление: {{error}}"
   },
@@ -1882,6 +1902,7 @@
       "refreshStatsSuccess": "Статистика API-сервиса обновлена",
       "routingStrategy": {
         "auto": "Авто (рекомендуется)",
+        "singleAccount": "Один аккаунт",
         "quotaHighFirst": "Сначала высокая квота",
         "quotaLowFirst": "Сначала низкая квота",
         "planHighFirst": "Сначала высокий тариф",
@@ -1929,6 +1950,11 @@
       "oauthBinding": {
         "desc": "Необязательно. Можно выбрать только OAuth-аккаунты с refresh_token. Без привязки API-сервис работает по прежней логике API Key; после привязки вход использует OAuth-аккаунт, а Provider — настройки API-сервиса.",
         "currentService": "API-сервис: {{name}}",
+        "quotaReserveToggle": "Сохранить квоту OAuth",
+        "quotaReserveDesc": "API-сервис использует этот OAuth-аккаунт, только пока остатки 5-часовой и недельной квот выше заданных резервов.",
+        "quotaReserveHourlyLabel": "Резерв на 5 часов",
+        "quotaReserveWeeklyLabel": "Недельный резерв",
+        "quotaReserveInvalid": "Введите целое число от 1 до 100.",
         "imageGenerationTooltip": "Если включено, API-сервис удаляет объявление инструмента image_generation в локальном шлюзе перед пересылкой обычных текстовых диалогов; модели изображений не удаляются.",
         "imageGenerationConfirm": {
           "title": "Отключить image_generation",
@@ -1938,6 +1964,9 @@
       "customRoutingEdit": "Изменить настраиваемую маршрутизацию",
       "customRoutingTitle": "Настраиваемая маршрутизация",
       "customRoutingDesc": "Задайте приоритет и вес для каждой учетной записи, чтобы управлять порядком выбора и распределением нагрузки на одном уровне.",
+      "customRoutingBackupTitle": "Резервный аккаунт",
+      "customRoutingBackupDesc": "Используется только тогда, когда все обычные аккаунты недоступны. Новые запросы автоматически возвращаются после восстановления обычного аккаунта.",
+      "customRoutingBackupShort": "Резерв",
       "customRoutingPriorityTitle": "Приоритет",
       "customRoutingPriorityDesc": "Более высокие значения выбираются раньше; учетные записи с низким приоритетом пробуются только при недоступности более высоких.",
       "customRoutingWeightTitle": "Вес",
@@ -2092,7 +2121,8 @@
       "enterprise": "ENTERPRISE​"
     },
     "list": {
-      "showCodeReviewQuota": "Показать квоту Code Review"
+      "showCodeReviewQuota": "Показать квоту Code Review",
+      "showAdditionalQuota": "Квоты по моделям"
     },
     "time": {
       "today": "Сегодня {{time}}",
@@ -2113,6 +2143,7 @@
       "hourlyReset": "Время сброса 5-часовой квоты",
       "subscriptionExpiry": "Срок подписки",
       "custom": "Свой порядок",
+      "customSettingsTooltip": "Настроить свой порядок",
       "customModalTitle": "Свой порядок аккаунтов",
       "customModalDesc": "Перетаскивайте аккаунты или используйте кнопки вверх/вниз, чтобы изменить порядок.",
       "customDragHandle": "Перетащить",
@@ -2221,6 +2252,16 @@
       "accountSearchPlaceholder": "Поиск по email...",
       "accountFilterEmpty": "Подходящих аккаунтов нет",
       "accountFilteredCount": "В текущем фильтре: {{count}} аккаунт(ов)",
+      "fullQuotaAction": "Разбудить аккаунты",
+      "fullQuotaActionTitle": "Открывает тест пробуждения аккаунтов. По умолчанию сортировка по квоте 5ч от большей к меньшей.",
+      "fullQuotaNoAccounts": "В текущем списке нет OAuth-аккаунтов, доступных для пробуждения.",
+      "fullQuotaAccountsLabel": "Аккаунты для пробуждения",
+      "accountSort": {
+        "default": "Порядок по умолчанию",
+        "hourly": "По квоте 5ч",
+        "weekly": "По недельной квоте",
+        "email": "По email"
+      },
       "testTitle": "Проверка пробуждения Codex",
       "testAccountsLabel": "Тестовые аккаунты",
       "testAccountsRequired": "Выберите хотя бы один тестовый аккаунт.",
@@ -2334,10 +2375,14 @@
         "collapse": "Свернуть",
         "repairVisibility": "Исправить видимость",
         "restoreSessions": "Восстановить сессии",
+        "exportSessions": "Экспорт сессий",
+        "importSessions": "Импорт сессий",
         "copySessionId": "Копировать ID сессии",
+        "openLocation": "Открыть папку",
         "selectAllSessions": "Выбрать все сессии",
         "clearSelectedSessions": "Снять выбор",
-        "copyToInstance": "Копировать в экземпляр"
+        "copyToInstance": "Копировать в экземпляр",
+        "trash": "Корзина"
       },
       "confirm": {
         "title": "Переместить в корзину",
@@ -2375,11 +2420,25 @@
       "locationRunning": " (запущено)",
       "untitled": "Сессия без названия",
       "restoreModal": {
-        "title": "Восстановить сессии",
-        "hint": "При восстановлении файл rollout, строка потока SQLite и запись session_index возвращаются вместе в исходный экземпляр.",
+        "title": "Корзина",
+        "hint": "Сессии в корзине можно восстановить в исходный экземпляр или удалить навсегда, чтобы освободить место на диске.",
         "emptyTitle": "Корзина пуста",
         "emptyDesc": "Сессии, перемещённые в корзину, появятся здесь.",
-        "restoreAction": "Восстановить выбранные сессии"
+        "restoreAction": "Восстановить выбранные сессии",
+        "summary": "{{count}} элементов, {{size}}",
+        "selectedSummary": "Выбрано {{count}}, {{size}}",
+        "selectAll": "Выбрать все",
+        "clearSelected": "Снять выбор",
+        "emptyTrash": "Очистить корзину",
+        "itemSize": "Размер {{size}}",
+        "deleteOne": "Удалить навсегда",
+        "deleteSelected": "Удалить выбранные",
+        "pickDeleteOne": "Выберите хотя бы одну сессию для окончательного удаления",
+        "deleteOneConfirm": "Удалить эту сессию навсегда? Действие нельзя отменить. Будет освобождено примерно: {{size}}.",
+        "deleteSelectedConfirm": "Удалить выбранные сессии ({{count}}) навсегда? Действие нельзя отменить. Будет освобождено примерно: {{size}}.",
+        "permanentDeleteTitle": "Окончательное удаление",
+        "permanentDeleteAction": "Удалить навсегда",
+        "emptyTrashConfirm": "Очистить корзину? {{count}} сессий будут удалены навсегда без возможности восстановления. Будет освобождено примерно: {{size}}."
       },
       "targetModal": {
         "title": "Копировать в экземпляр",
@@ -2441,7 +2500,90 @@
         "instanceScopeAll": "Все экземпляры",
         "instanceScopeAllDesc": "Исправляет все экземпляры Codex при общей восстановлении.",
         "progressTitle": "Ход восстановления",
-        "start": "Восстановить"
+        "start": "Восстановить",
+        "previewing": "Создание предпросмотра...",
+        "previewAgain": "Повторить предпросмотр",
+        "preview": "Предпросмотр изменений",
+        "previewFailedWithError": "Не удалось выполнить предпросмотр восстановления сеансов: {{error}}",
+        "confirmRepair": "Подтвердить исправление"
+      },
+      "importModal": {
+        "title": "Импорт сессий",
+        "hint": "Пакет сессий импортирует только файлы rollout и записи session_index. Аккаунты, токены, API-ключи и настройки приложения не включаются; сессии с тем же ID в целевой инстанции пропускаются.",
+        "noTarget": "Нет доступной инстанции Codex для импорта",
+        "noPackage": "Сначала выберите пакет сессий",
+        "pickOne": "Выберите хотя бы одну сессию для импорта",
+        "totalCount": "{{count}} сессий в пакете",
+        "readyCount": "{{count}} можно импортировать",
+        "selectReady": "Выбрать доступные",
+        "previewing": "Предпросмотр пакета сессий...",
+        "existsIn": "Уже есть в: {{names}}",
+        "statusReady": "Готово",
+        "statusDuplicate": "Есть",
+        "statusConflict": "Конфликт",
+        "statusInvalid": "Недействительно",
+        "confirm": "Импортировать выбранные сессии"
+      },
+      "transferModal": {
+        "exportTitle": "Экспорт сеансов",
+        "importTitle": "Импорт сеансов",
+        "minimize": "Свернуть",
+        "reopen": "Ход выполнения",
+        "clear": "Очистить",
+        "runningSummary": "Обработка {{current}} из {{total}}",
+        "completedSummary": "Задача завершена",
+        "failedSummary": "Задача завершилась ошибкой",
+        "current": "{{current}} из {{total}}",
+        "phase": {
+          "exportPrepare": "Подготовка экспорта...",
+          "exportCollect": "Сбор сеансов...",
+          "exportHash": "Проверка файлов сеансов...",
+          "exportWrite": "Запись пакета сеансов...",
+          "importPrepare": "Подготовка импорта...",
+          "importRead": "Чтение пакета сеансов...",
+          "importWrite": "Запись целевого экземпляра...",
+          "importRebuild": "Обновление официального индекса сеансов...",
+          "done": "Задача завершена"
+        }
+      },
+      "exportModal": {
+        "title": "Экспорт сеансов",
+        "hint": "Перед экспортом проверьте список, исходный экземпляр и размер файлов. Пакет содержит только rollout-файлы и записи session_index, без аккаунтов, токенов, API-ключей и настроек.",
+        "previewing": "Предпросмотр сеансов...",
+        "selectedCount": "Выбрано {{count}}",
+        "exportableCount": "Можно экспортировать {{count}}",
+        "missingCount": "Отсутствует {{count}}",
+        "totalSize": "Всего {{size}}",
+        "exportPath": "Путь экспорта",
+        "pathUnset": "Путь не выбран",
+        "choosePath": "Выбрать путь",
+        "missingNotice": "{{count}} сеанс(ов) больше нет в текущем наборе экземпляров, они будут пропущены.",
+        "sourceInstance": "Источник: {{name}}",
+        "emptyTitle": "Нет сеансов для экспорта",
+        "noPreview": "Сначала завершите предпросмотр",
+        "noExportable": "Нет сеансов для экспорта",
+        "pickPath": "Выберите путь экспорта",
+        "confirm": "Экспорт",
+        "selectedExportCount": "Выбрано {{selected}} / доступно {{total}}",
+        "selectedSize": "Размер выбора {{selected}} / всего {{total}}",
+        "removedNotice": "{{count}} удалено из этого списка экспорта",
+        "restoreRemoved": "Восстановить список",
+        "sourceLabel": "Источник",
+        "allSources": "Все источники",
+        "selectionLabel": "Выбор",
+        "filterAll": "Все",
+        "filterSelected": "Выбранные",
+        "filterUnselected": "Не выбраны",
+        "visibleCount": "Показано {{visible}} / {{total}}",
+        "selectVisible": "Выбрать фильтр",
+        "clearVisible": "Снять фильтр",
+        "keepVisibleOnly": "Оставить фильтр",
+        "removeVisible": "Убрать фильтр",
+        "removeUnchecked": "Убрать невыбранные",
+        "selectItem": "Выбрать сеанс для экспорта",
+        "removeItem": "Убрать",
+        "emptyFilteredTitle": "Подходящих сеансов нет",
+        "emptyFilteredDesc": "Измените поиск, источник или состояние выбора."
       }
     },
     "api": {
@@ -2589,7 +2731,8 @@
         "modelCatalog": "Каталог моделей",
         "visionCapability": "Ввод изображений",
         "visionModels": "Модели с vision",
-        "visionRoutingModel": "Модель для изображений"
+        "visionRoutingModel": "Модель для изображений",
+        "supportsWebsockets": "Передача WebSocket"
       },
       "validation": {
         "nameRequired": "Укажите название провайдера.",
@@ -2825,6 +2968,12 @@
         "customMoveUp": "Вверх",
         "customMoveDown": "Вниз",
         "customReset": "Сбросить порядок"
+      },
+      "websockets": {
+        "title": "Разрешить Codex использовать Responses через WebSocket",
+        "help": "Включайте только при явной поддержке Responses через WebSocket поставщиком; тип соединения можно проверить в журналах Codex или прокси-сервиса.",
+        "enabled": "Включено",
+        "disabled": "Отключено"
       }
     },
     "quickSwitch": {
@@ -2865,7 +3014,9 @@
       "filterWithin24h": "24 ч ({{count}})",
       "filterWithin7d": "7 дн. ({{count}})",
       "filterWithin30d": "30 дн. ({{count}})",
-      "filterMissing": "Неизвестно ({{count}})"
+      "filterMissing": "Неизвестно ({{count}})",
+      "accessTokenOnlyUsable": "Токен доступен",
+      "accessTokenOnlyUsableDetail": "Интерфейс подписки ограничен, но квота и использование Codex работают нормально"
     },
     "apiSwitchNotice": {
       "title": "Сеансы Codex скрыты",
@@ -2884,8 +3035,46 @@
     "accountNote": {
       "title": "Заметка аккаунта",
       "label": "Заметка аккаунта",
-      "desc": "Добавьте отдельную заметку для {{account}}.",
-      "placeholder": "Почта, пароль, резервная почта или заметки к выдаче",
+      "desc": "Добавьте пароль, 2FA, URL почты, телефон и другие заметки для {{account}}.",
+      "twoFactorSecretLabel": "Секрет 2FA",
+      "twoFactorSecretShort": "2FA",
+      "twoFactorSecretPlaceholder": "Секрет Base32 или URI otpauth://",
+      "twoFactorSecretInvalid": "Недействительный секрет 2FA. Введите секрет Base32 или URI otpauth://.",
+      "currentOtp": "Текущий код",
+      "otpShort": "Код",
+      "otpRemaining": "{{seconds}} с",
+      "passwordLabel": "Пароль",
+      "passwordShort": "Пароль",
+      "passwordPlaceholder": "Пароль входа или временный пароль",
+      "phoneNumberLabel": "Телефон",
+      "phoneShort": "Телефон",
+      "phoneNumberPlaceholder": "Привязанный номер телефона",
+      "mailUrlLabel": "URL почты",
+      "mailUrlPlaceholder": "Введите URL открываемой страницы почты",
+      "mailPreviewRefresh": "Обновить почту",
+      "mailPreviewOpen": "Открыть в браузере",
+      "mailPreviewLoading": "Чтение почты...",
+      "mailPreviewNoCode": "Непрерывный 6-значный код не найден",
+      "mailPreviewFetchFailed": "Не удалось прочитать почту: {{error}}",
+      "mailPreviewUrlRequired": "Введите URL почты",
+      "mailPreviewUrlInvalid": "Недопустимый URL почты. Укажите полный адрес http:// или https://.",
+      "mailPreviewUnsupportedProtocol": "URL почты поддерживает только http или https.",
+      "mailPreviewHttpFailed": "Запрос URL почты не выполнен: HTTP {{status}}",
+      "mailPreviewCode": "Последний код из письма",
+      "mailPreviewStatusInitial": "Получено в {{time}}",
+      "mailPreviewStatusChanged": "Новый код · {{time}}",
+      "mailPreviewStatusUnchanged": "Без изменений · {{time}}",
+      "mailPreviewTruncated": "Содержимое обрезано",
+      "mailOpenFailed": "Не удалось открыть URL почты: {{error}}",
+      "otherNoteLabel": "Другие заметки",
+      "otherNoteShort": "Заметка",
+      "placeholder": "Заметки к выдаче, резервная почта или данные аккаунта",
+      "exportSensitiveNotice": "Экспорт содержит секреты 2FA, пароли, номера телефонов или URL почты. Сохраняйте его только в надежном месте.",
+      "exportSensitiveIncluded": "Включить чувствительные заметки",
+      "exportSensitiveExcluded": "Исключить чувствительные заметки",
+      "exportSensitiveToggleHint": "Определяет, включает ли экспорт JSON секреты 2FA, пароли, номера телефонов и URL почты.",
+      "show": "Показать",
+      "hide": "Скрыть",
       "emptyTitle": "Добавить заметку аккаунта",
       "short": "Заметка",
       "addShort": "Добавить",
@@ -2980,7 +3169,9 @@
         "pricingUnset": "Не задано",
         "pricingReset": "Сброс",
         "pricingSaved": "Цены сохранены",
-        "pricingInvalid": "Цены должны быть числами больше или равны 0"
+        "pricingInvalid": "Цены должны быть числами больше или равны 0",
+        "pricingReprice": "Пересчитать историю",
+        "pricingRepriced": "Исторические оценки пересчитаны по текущим ценам"
       },
       "keys": {
         "policyTitle": "Политика моделей",
@@ -3093,6 +3284,15 @@
       "renameSuccess": "Переименовано",
       "renameFailed": "Не удалось переименовать"
     },
+    "importApiService": {
+      "toggle": "Добавить в API-сервис",
+      "description": "Добавляет подходящие импортированные аккаунты в пул API-сервиса.",
+      "syncFailed": "Аккаунты импортированы, но добавить их в API-сервис не удалось: {{error}}",
+      "guideTitle": "Аккаунты добавлены в API-сервис",
+      "guideDescription": "В API-сервис добавлено аккаунтов: {{count}}. Нажмите «Запустить API-сервис», чтобы переключиться и использовать их.",
+      "later": "Позже",
+      "startAction": "Запустить API-сервис"
+    },
     "batchImport": {
       "title": "Пакетный импорт Codex",
       "resultSubtitle": "Результат импорта",
@@ -3127,7 +3327,12 @@
       "selectedCount": "Выбрано {{count}}/{{total}}",
       "selectAllAccounts": "Выбрать все",
       "selectReady": "Выбрать исправные",
-      "clearSelection": "Снять выбор"
+      "clearSelection": "Снять выбор",
+      "hiddenTask": "Пакетный импорт Codex",
+      "taskRunning": "Обработка {{current}} / {{total}}",
+      "taskPreview": "Предпросмотр готов: {{total}}",
+      "reopen": "Открыть задачу",
+      "dismissTask": "Сбросить"
     },
     "autoRepairMode": {
       "label": "Логика автоисправления",
@@ -3135,6 +3340,45 @@
       "legacyBefore4eb75d96": "До 4eb75d96",
       "legacy4eb75d96": "Логика 4eb75d96",
       "current": "Текущая логика"
+    },
+    "pendingAuth": {
+      "badge": "Ожидает входа",
+      "emailRequired": "Введите e-mail аккаунта",
+      "saving": "Сохранение аккаунта в ожидании...",
+      "saved": "Аккаунт в ожидании сохранен",
+      "saveFailed": "Не удалось сохранить аккаунт в ожидании: {{error}}",
+      "emailLabel": "Аккаунт в ожидании",
+      "emailPlaceholder": "Введите e-mail аккаунта OpenAI",
+      "saveDraft": "Сохранить карточку",
+      "authorizeAction": "Авторизовать",
+      "cardHint": "Заметки сохранены. Завершите OAuth, чтобы использовать аккаунт."
+    },
+    "batchDelete": {
+      "title": "Массовое удаление Codex",
+      "running": "Удаление",
+      "paused": "Пауза",
+      "failed": "Частичный сбой",
+      "completed": "Удаление завершено",
+      "preparing": "Подготовка задачи удаления...",
+      "retryFailed": "Повторить сбои",
+      "pause": "Пауза",
+      "resume": "Продолжить",
+      "clear": "Очистить",
+      "summary": "Обработано {{completed}} / {{total}}, ошибок {{failed}}",
+      "started": "Запущено удаление аккаунтов Codex: {{count}}",
+      "pollFailed": "Не удалось обновить ход массового удаления: {{error}}",
+      "actionFailed": "Действие массового удаления завершилось ошибкой: {{error}}"
+    },
+    "filters": {
+      "allPlans": "Все планы ({{count}})",
+      "visibleOfTotal": "{{visible}} / {{total}}",
+      "activeBanner": "Фильтр: {{visible}}/{{total}}",
+      "clearAll": "Сбросить",
+      "chipGroup": "Группа",
+      "chipTags": "Теги",
+      "chipSearch": "Поиск",
+      "chipPlan": "План",
+      "chipFolder": "Папка"
     }
   },
   "githubCopilot": {
@@ -3372,6 +3616,14 @@
       "syncWslDesc": "Автоматически перезаписывать конфигурацию .gemini в WSL при переключении аккаунта"
     },
     "geminiRefreshInterval": "Автоматическое обновление квоты",
+    "grok": {
+      "title": "Настройки Grok CLI",
+      "appPath": "Путь к Grok CLI",
+      "cliPath": "Путь к CLI",
+      "cliDetected": "Обнаружено: {{version}} · {{path}}",
+      "cliMissing": "Grok CLI не найден. Укажите свой путь."
+    },
+    "grokRefreshInterval": "Автоматическое обновление квоты",
     "codebuddy": {
       "title": "Настройки CodeBuddy",
       "appPath": "Путь CodeBuddy"
@@ -3398,6 +3650,10 @@
       "title": "Настройки WorkBuddy",
       "appPath": "Путь WorkBuddy"
     },
+    "zcode": {
+      "title": "Настройки ZCode",
+      "appPath": "Путь ZCode"
+    },
     "zed": {
       "title": "Настройки Zed",
       "appPath": "Путь Zed"
@@ -3411,6 +3667,18 @@
     "claude": {
       "appPath": "Путь Claude",
       "appTargetPlaceholder": "Путь Claude.exe или shell:AppsFolder\\..."
+    },
+    "traeSolo": {
+      "appPath": "Путь TRAE SOLO",
+      "title": "Настройки TRAE SOLO"
+    },
+    "traeCn": {
+      "appPath": "Путь Trae CN",
+      "title": "Настройки Trae CN"
+    },
+    "traeSoloCn": {
+      "appPath": "Путь TRAE SOLO CN",
+      "title": "Настройки TRAE SOLO CN"
     }
   },
   "quotaAlert": {
@@ -4175,17 +4443,21 @@
   "trae": {
     "title": "Управление аккаунтами Trae",
     "empty": {
-      "description": "Нажмите «Добавить аккаунт», чтобы начать управлять аккаунтами Trae, или импортируйте их из локальных данных Trae либо из JSON-файла."
+      "description": "Нажмите «Добавить аккаунт», чтобы начать управлять аккаунтами Trae, или импортируйте их из локальных данных Trae либо из JSON-файла.",
+      "descriptionWithPlatform": "Нажмите «Добавить аккаунт», чтобы управлять аккаунтами {{platform}}, либо импортируйте локальные данные {{platform}} или JSON-файл."
     },
     "addModal": {
-      "title": "Добавить аккаунт Trae"
+      "title": "Добавить аккаунт Trae",
+      "titleWithPlatform": "Добавить аккаунт {{platform}}"
     },
     "oauth": {
-      "desc": "Нажмите кнопку ниже и завершите авторизацию Trae OAuth в браузере."
+      "desc": "Нажмите кнопку ниже и завершите авторизацию Trae OAuth в браузере.",
+      "descWithPlatform": "Нажмите кнопку ниже и завершите OAuth-авторизацию {{platform}} в браузере."
     },
     "import": {
       "localDesc": "Импортирует текущий авторизованный аккаунт, информацию о плане и кэшированные данные квоты из локального каталога конфигурации Trae.",
-      "jsonTab": "JSON-файл"
+      "jsonTab": "JSON-файл",
+      "localDescWithPlatform": "Импортирует текущий вошедший аккаунт, сведения о плане и кэшированные данные квоты из локального каталога настроек {{platform}}."
     },
     "quota": {
       "usedOfTotal": "Использовано $ {{used}} из $ {{total}}",
@@ -4211,7 +4483,12 @@
       "title": "Руководство по аккаунту Trae (нажмите, чтобы развернуть или свернуть)",
       "desc": "Поддерживает официальный вход через OAuth, локальный импорт, импорт JSON и переключение аккаунта через локальную инъекцию. При переключении данные записываются по реальным правилам хранения клиента Trae.",
       "permission": "Область разрешений: читает и записывает поля, связанные со входом, в локальном Trae storage.json для импорта аккаунта, инъекции переключения аккаунта и отображения плана. Все данные обрабатываются только локально на вашем устройстве.",
-      "network": "Сетевой диапазон: вход OAuth, обновление токена и запросы плана вызывают официальные API Trae. Локальные файлы аккаунтов и сырое содержимое хранилища не загружаются в сторонние сервисы."
+      "network": "Сетевой диапазон: вход OAuth, обновление токена и запросы плана вызывают официальные API Trae. Локальные файлы аккаунтов и сырое содержимое хранилища не загружаются в сторонние сервисы.",
+      "titleWithPlatform": "Руководство по аккаунтам {{platform}} (нажмите, чтобы раскрыть/свернуть)",
+      "descWithPlatform": "Поддерживаются официальный OAuth {{platform}}, локальный импорт, импорт JSON и локальное переключение аккаунта через запись данных. Переключение выполняет запись по реальным правилам клиента {{platform}}.",
+      "permissionWithPlatform": "Область разрешений: чтение и запись полей входа в локальном storage.json {{platform}} для импорта аккаунта, переключения и отображения плана. Все данные обрабатываются локально.",
+      "networkGlobal": "Сеть: OAuth-вход {{platform}}, обновление токенов и запросы плана обращаются к официальным API trae.ai / traeapi.us. Локальные файлы аккаунтов и сырые данные не загружаются в сторонние сервисы.",
+      "networkCn": "Сеть: OAuth-вход {{platform}}, обновление токенов и запросы плана обращаются к официальным API trae.cn / trae.com.cn. Локальные файлы аккаунтов и сырые данные не загружаются в сторонние сервисы."
     }
   },
   "codebuddyCn": {
@@ -4368,6 +4645,62 @@
       "recentDates": "Недавние: "
     }
   },
+  "zcode": {
+    "search": "Поиск аккаунтов ZCode...",
+    "flowNotice": {
+      "title": "Управление аккаунтами ZCode",
+      "desc": "Cockpit читает и перезаписывает зашифрованные локальные данные ZCode для реального переключения аккаунтов и привязки экземпляров.",
+      "permission": "Локальный доступ: ~/.zcode/v2/credentials.json и каталоги управляемых экземпляров.",
+      "network": "Сетевой доступ: API OAuth, профиля, подписки и квот. Аккаунты не отправляются в сервис Cockpit."
+    },
+    "empty": "Нет аккаунтов ZCode",
+    "addAccount": "Добавить аккаунт ZCode",
+    "oauth": {
+      "desc": "Закройте ZCode и войдите через окно авторизации Cockpit; Cockpit получит обратный вызов напрямую.",
+      "title": "OAuth ZCode",
+      "item1": "Официальный вход через Z.ai и BigModel.",
+      "item2": "Сохраняет аккаунт и обновляет тариф и квоты моделей.",
+      "item3": "Используйте аккаунты для смены клиента и привязки экземпляров.",
+      "urlPlaceholder": "URL OAuth ZCode",
+      "waiting": "Ожидание обратного вызова OAuth ZCode...",
+      "openWindow": "Открыть окно авторизации",
+      "provider": "Сервис входа",
+      "success": "Вход через OAuth ZCode выполнен"
+    },
+    "token": {
+      "desc": "Вставьте JSON аккаунта ZCode, экспортированный из Cockpit."
+    },
+    "apiKey": {
+      "tab": "Ключ API",
+      "desc": "Добавьте официальный ключ API Z.ai или BigModel. При смене аккаунта и для управляемых экземпляров он записывается в их config.json.",
+      "placeholder": "Вставьте ключ API",
+      "add": "Добавить ключ API",
+      "provider": "Сервис ключа API"
+    },
+    "import": {
+      "localDesc": "Импортируйте зашифрованные локальные данные ZCode или файл JSON.",
+      "localClient": "Импорт из локального ZCode"
+    },
+    "usageNormal": "Норма",
+    "usageAbnormal": "Ошибка",
+    "usageViewDetail": "Подробнее",
+    "usageDetailTitle": "Сведения об использовании",
+    "usage": "Использование",
+    "quota": {
+      "models": "Квота моделей",
+      "usedOfTotal": "{{used}} / {{total}}",
+      "updatedAt": "Обновлено: {{time}}",
+      "expireAt": "Истекает: {{time}}"
+    },
+    "quotaQuery": {
+      "failedRefreshCompact": "Не удалось получить квоту",
+      "empty": "Нет данных о квоте",
+      "sectionTitle": "Квота"
+    },
+    "instances": {
+      "unsupported": "Несколько экземпляров ZCode доступны только в macOS, Windows и Linux."
+    }
+  },
   "zed": {
     "addModal": {
       "title": "Добавить аккаунт Zed"
@@ -4472,6 +4805,7 @@
     "errors": {
       "refreshFailed": "Не удалось обновить: {{error}}",
       "switchFailed": "Не удалось переключить: {{error}}",
+      "stopInstanceBeforeSwitch": "Остановите инстанс перед сменой аккаунта",
       "pinFailed": "Не удалось обновить состояние закрепления: {{error}}",
       "closeFailed": "Не удалось закрыть: {{error}}"
     },
@@ -4734,6 +5068,86 @@
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "grok": {
+    "search": "Поиск аккаунтов Grok CLI...",
+    "flowNotice": {
+      "title": "Управление аккаунтами Grok CLI",
+      "desc": "Cockpit управляет аккаунтами в официальном формате учётных данных Grok CLI для фактического переключения аккаунта по умолчанию и привязки изолированных экземпляров.",
+      "permission": "Локальный доступ: чтение стандартного ~/.grok/auth.json и управление отдельными каталогами аккаунтов Grok и GROK_HOME в локальных данных Cockpit.",
+      "network": "Сетевой доступ: авторизация OAuth, обновление учётных данных и запрос использования аккаунта. Учётные данные не отправляются в службы Cockpit."
+    },
+    "empty": "Аккаунтов Grok CLI пока нет",
+    "addAccount": "Добавить аккаунт Grok CLI",
+    "oauth": {
+      "desc": "Откройте страницу авторизации xAI и введите код устройства. После этого аккаунт сохранится автоматически.",
+      "title": "OAuth на устройстве Grok",
+      "item1": "Использует официальный поток устройства Grok CLI, не занимая локальный порт обратного вызова.",
+      "item2": "После авторизации сохраняет отдельный GROK_HOME и поддерживает действительность учётных данных.",
+      "item3": "Аккаунты могут переключать CLI по умолчанию или работать во взаимно изолированных экземплярах.",
+      "urlPlaceholder": "Адрес авторизации OAuth Grok",
+      "waiting": "Ожидание авторизации OAuth Grok...",
+      "openWindow": "Открыть авторизацию",
+      "success": "Вход через OAuth Grok выполнен"
+    },
+    "import": {
+      "pasteTab": "Вставить JSON",
+      "pasteDesc": "Вставьте официальный auth.json из Grok CLI. Учётные данные обрабатываются только локальным сервером. Cockpit экспортирует лишь скрытые метаданные, по которым нельзя восстановить вход.",
+      "pastePlaceholder": "Вставить JSON аккаунта Grok",
+      "pasteAction": "Импортировать JSON",
+      "localDesc": "Импортируйте текущий аккаунт из стандартного ~/.grok/auth.json. При выборе файла используйте официальный auth.json из Grok CLI.",
+      "localClient": "Импортировать из локального Grok CLI",
+      "apiKeyTab": "Ключ API",
+      "apiKeyDesc": "Вставьте xAI API key (официальный XAI_API_KEY). Подставляется при запуске. Можно также вставить официальный auth.json для OAuth.",
+      "apiKeyPlaceholder": "вставьте xai-…",
+      "apiKeyAction": "Добавить API Key"
+    },
+    "instances": {
+      "unsupported": "Несколько экземпляров Grok CLI поддерживаются только в macOS, Windows и Linux.",
+      "launchDialogTitle": "Запустить экземпляр",
+      "launchHint": "Скопируйте команду для ручного запуска или выполните её прямо в терминале.",
+      "runInTerminal": "Запустить в терминале",
+      "cliReady": "Обнаружен",
+      "cliMissingShort": "Не обнаружен",
+      "cliPathInvalid": "Указанный путь к Grok CLI недействителен: {{path}}",
+      "saveAndRetry": "Сохранить и повторить",
+      "installCommand": "Официальная команда установки",
+      "installHint": "Выполните указанную ниже официальную команду в терминале, а после установки нажмите «Обновить».",
+      "selectWorkingDir": "Выберите рабочую папку Grok CLI",
+      "workingDirAccountHint": "Рабочая папка привязана к этому аккаунту и будет восстановлена при следующем запуске.",
+      "launchCommandPlaceholder": "Выберите или подтвердите папку, чтобы сформировать команду запуска"
+    },
+    "switch": {
+      "success": "Аккаунт переключён"
+    },
+    "usageNormal": "В порядке",
+    "usageAbnormal": "Есть отклонения",
+    "usageViewDetail": "Показать сведения",
+    "usageDetailTitle": "Сведения об использовании",
+    "usage": "Использование",
+    "quotaQuery": {
+      "failedRefreshCompact": "Не удалось запросить квоту",
+      "empty": "Нет данных о квоте",
+      "sectionTitle": "Квота"
+    },
+    "quota": {
+      "weekly": "Недельное использование",
+      "onDemand": "Использование по запросу",
+      "balance": "Баланс и кредиты",
+      "included": "Включённое использование",
+      "promotional": "Промоквота",
+      "frequent": "Частые задачи",
+      "occasional": "Обычные задачи",
+      "resetAt": "{{label}} сброс: {{time}}",
+      "empty": "Нет квоты",
+      "apiKeyUnsupported": "У API Key-аккаунтов нет квоты подписки"
+    },
+    "quotaAlert": {
+      "hint": "Если любой элемент квоты текущей учётной записи опустится ниже порога, будет отправлено системное уведомление, а в приложении появится действие быстрого переключения.",
+      "thresholdDesc": "Предупреждать, когда любой элемент квоты опускается ниже этого процента",
+      "items": "Элементы квоты",
+      "unknownItem": "Неизвестный элемент квоты"
+    }
   },
   "claude": {
     "import": {

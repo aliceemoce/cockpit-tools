@@ -20,6 +20,7 @@ const SERVER_STATUS_FILE: &str = "server.json";
 
 /// 用户配置文件名
 const USER_CONFIG_FILE: &str = "config.json";
+const USER_CONFIG_LOCK_FILE: &str = "config.json.lock";
 
 /// 服务状态（写入共享文件供其他客户端读取）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +62,12 @@ pub struct UserConfig {
     /// NO_PROXY 白名单（逗号分隔）
     #[serde(default = "default_global_proxy_no_proxy")]
     pub global_proxy_no_proxy: String,
+    /// 是否启用匿名错误诊断上报
+    #[serde(default = "default_diagnostics_error_reporting_enabled")]
+    pub diagnostics_error_reporting_enabled: bool,
+    /// 是否输出错误诊断上报调试日志
+    #[serde(default = "default_diagnostics_error_reporting_debug")]
+    pub diagnostics_error_reporting_debug: bool,
     /// 界面语言
     #[serde(default = "default_language")]
     pub language: String,
@@ -103,6 +110,9 @@ pub struct UserConfig {
     /// Gemini 自动刷新间隔（分钟），-1 表示禁用
     #[serde(default = "default_gemini_auto_refresh")]
     pub gemini_auto_refresh_minutes: i32,
+    /// Grok CLI 自动刷新间隔（分钟），-1 表示禁用
+    #[serde(default = "default_grok_auto_refresh")]
+    pub grok_auto_refresh_minutes: i32,
     /// Claude 自动刷新间隔（分钟），-1 表示禁用
     #[serde(default = "default_claude_auto_refresh")]
     pub claude_auto_refresh_minutes: i32,
@@ -121,9 +131,18 @@ pub struct UserConfig {
     /// Qoder 自动刷新间隔（分钟），-1 表示禁用
     #[serde(default = "default_qoder_auto_refresh")]
     pub qoder_auto_refresh_minutes: i32,
+    /// ZCode 自动刷新间隔（分钟），-1 表示禁用
+    #[serde(default = "default_zcode_auto_refresh")]
+    pub zcode_auto_refresh_minutes: i32,
     /// Trae 自动刷新间隔（分钟），-1 表示禁用
     #[serde(default = "default_trae_auto_refresh")]
     pub trae_auto_refresh_minutes: i32,
+    #[serde(default = "default_trae_auto_refresh")]
+    pub trae_solo_auto_refresh_minutes: i32,
+    #[serde(default = "default_trae_auto_refresh")]
+    pub trae_cn_auto_refresh_minutes: i32,
+    #[serde(default = "default_trae_auto_refresh")]
+    pub trae_solo_cn_auto_refresh_minutes: i32,
     /// 窗口关闭行为
     #[serde(default = "default_close_behavior")]
     pub close_behavior: CloseWindowBehavior,
@@ -148,6 +167,9 @@ pub struct UserConfig {
     /// 是否启用应用开机自启动
     #[serde(default = "default_app_auto_launch_enabled")]
     pub app_auto_launch_enabled: bool,
+    /// 是否启用后台账号授权保活
+    #[serde(default = "default_token_keeper_enabled")]
+    pub token_keeper_enabled: bool,
     /// 是否在应用启动后触发 Antigravity IDE 唤醒
     #[serde(default = "default_antigravity_startup_wakeup_enabled")]
     pub antigravity_startup_wakeup_enabled: bool,
@@ -226,6 +248,9 @@ pub struct UserConfig {
     /// Codex 启动路径（为空则使用默认路径）
     #[serde(default = "default_codex_app_path")]
     pub codex_app_path: String,
+    /// Grok CLI 路径（为空则自动检测）
+    #[serde(default)]
+    pub grok_cli_path: Option<String>,
     /// Claude 桌面应用启动路径（为空则使用默认路径）
     #[serde(default = "default_claude_app_path")]
     pub claude_app_path: String,
@@ -258,9 +283,27 @@ pub struct UserConfig {
     /// Qoder 启动路径（为空则使用默认路径）
     #[serde(default = "default_qoder_app_path")]
     pub qoder_app_path: String,
+    /// ZCode 启动路径（为空则使用默认路径）
+    #[serde(default = "default_zcode_app_path")]
+    pub zcode_app_path: String,
     /// Trae 启动路径（为空则使用默认路径）
     #[serde(default = "default_trae_app_path")]
     pub trae_app_path: String,
+    #[serde(default = "default_trae_app_path")]
+    pub trae_solo_app_path: String,
+    #[serde(default = "default_trae_app_path")]
+    pub trae_cn_app_path: String,
+    #[serde(default = "default_trae_app_path")]
+    pub trae_solo_cn_app_path: String,
+    /// Trae Windows 应用扫描范围（每行一个目录）
+    #[serde(default = "default_trae_app_scan_roots")]
+    pub trae_app_scan_roots: String,
+    #[serde(default = "default_trae_app_scan_roots")]
+    pub trae_solo_app_scan_roots: String,
+    #[serde(default = "default_trae_app_scan_roots")]
+    pub trae_cn_app_scan_roots: String,
+    #[serde(default = "default_trae_app_scan_roots")]
+    pub trae_solo_cn_app_scan_roots: String,
     /// WorkBuddy 启动路径（为空则使用默认路径）
     #[serde(default = "default_workbuddy_app_path")]
     pub workbuddy_app_path: String,
@@ -285,6 +328,9 @@ pub struct UserConfig {
     /// 切换 Codex 时是否自动启动/重启 Codex App
     #[serde(default = "default_codex_launch_on_switch")]
     pub codex_launch_on_switch: bool,
+    /// 切换 Antigravity IDE 时是否自动启动/重启应用
+    #[serde(default = "default_antigravity_launch_on_switch")]
+    pub antigravity_launch_on_switch: bool,
     /// 切换 Codex 时是否自动重启指定应用
     #[serde(default = "default_codex_restart_specified_app_on_switch")]
     pub codex_restart_specified_app_on_switch: bool,
@@ -390,6 +436,12 @@ pub struct UserConfig {
     /// Gemini 配额预警阈值（百分比）
     #[serde(default = "default_gemini_quota_alert_threshold")]
     pub gemini_quota_alert_threshold: i32,
+    /// 是否启用 Grok CLI 配额预警通知
+    #[serde(default = "default_grok_quota_alert_enabled")]
+    pub grok_quota_alert_enabled: bool,
+    /// Grok CLI 配额预警阈值（剩余百分比）
+    #[serde(default = "default_grok_quota_alert_threshold")]
+    pub grok_quota_alert_threshold: i32,
     /// 是否启用 Claude 配额预警通知
     #[serde(default = "default_claude_quota_alert_enabled")]
     pub claude_quota_alert_enabled: bool,
@@ -420,6 +472,18 @@ pub struct UserConfig {
     /// Trae 配额预警阈值（百分比）
     #[serde(default = "default_trae_quota_alert_threshold")]
     pub trae_quota_alert_threshold: i32,
+    #[serde(default = "default_trae_quota_alert_enabled")]
+    pub trae_solo_quota_alert_enabled: bool,
+    #[serde(default = "default_trae_quota_alert_threshold")]
+    pub trae_solo_quota_alert_threshold: i32,
+    #[serde(default = "default_trae_quota_alert_enabled")]
+    pub trae_cn_quota_alert_enabled: bool,
+    #[serde(default = "default_trae_quota_alert_threshold")]
+    pub trae_cn_quota_alert_threshold: i32,
+    #[serde(default = "default_trae_quota_alert_enabled")]
+    pub trae_solo_cn_quota_alert_enabled: bool,
+    #[serde(default = "default_trae_quota_alert_threshold")]
+    pub trae_solo_cn_quota_alert_threshold: i32,
     /// 是否启用 WorkBuddy 配额预警通知
     #[serde(default = "default_workbuddy_quota_alert_enabled")]
     pub workbuddy_quota_alert_enabled: bool,
@@ -518,6 +582,12 @@ fn default_global_proxy_url() -> String {
 fn default_global_proxy_no_proxy() -> String {
     "127.0.0.1,localhost,::1".to_string()
 }
+fn default_diagnostics_error_reporting_enabled() -> bool {
+    true
+}
+fn default_diagnostics_error_reporting_debug() -> bool {
+    false
+}
 fn default_language() -> String {
     "zh-cn".to_string()
 }
@@ -555,9 +625,12 @@ fn default_kiro_auto_refresh() -> i32 {
     10
 } // 默认 10 分钟
 fn default_cursor_auto_refresh() -> i32 {
-    1440
-} // 默认 24 小时
+    10
+} // 默认 10 分钟
 fn default_gemini_auto_refresh() -> i32 {
+    10
+}
+fn default_grok_auto_refresh() -> i32 {
     10
 }
 fn default_claude_auto_refresh() -> i32 {
@@ -576,6 +649,9 @@ fn default_workbuddy_auto_refresh() -> i32 {
     10
 }
 fn default_qoder_auto_refresh() -> i32 {
+    10
+}
+fn default_zcode_auto_refresh() -> i32 {
     10
 }
 fn default_trae_auto_refresh() -> i32 {
@@ -604,6 +680,9 @@ fn default_floating_card_always_on_top() -> bool {
 }
 fn default_app_auto_launch_enabled() -> bool {
     false
+}
+fn default_token_keeper_enabled() -> bool {
+    true
 }
 fn default_antigravity_startup_wakeup_enabled() -> bool {
     false
@@ -714,7 +793,13 @@ fn default_codebuddy_cn_app_path() -> String {
 fn default_qoder_app_path() -> String {
     String::new()
 }
+fn default_zcode_app_path() -> String {
+    String::new()
+}
 fn default_trae_app_path() -> String {
+    String::new()
+}
+fn default_trae_app_scan_roots() -> String {
     String::new()
 }
 fn default_workbuddy_app_path() -> String {
@@ -739,6 +824,9 @@ fn default_openclaw_auth_overwrite_on_switch() -> bool {
     false
 }
 fn default_codex_launch_on_switch() -> bool {
+    true
+}
+fn default_antigravity_launch_on_switch() -> bool {
     true
 }
 fn default_codex_restart_specified_app_on_switch() -> bool {
@@ -846,6 +934,12 @@ fn default_gemini_quota_alert_enabled() -> bool {
 fn default_gemini_quota_alert_threshold() -> i32 {
     20
 }
+fn default_grok_quota_alert_enabled() -> bool {
+    false
+}
+fn default_grok_quota_alert_threshold() -> i32 {
+    20
+}
 fn default_claude_quota_alert_enabled() -> bool {
     false
 }
@@ -894,6 +988,8 @@ impl Default for UserConfig {
             global_proxy_enabled: default_global_proxy_enabled(),
             global_proxy_url: default_global_proxy_url(),
             global_proxy_no_proxy: default_global_proxy_no_proxy(),
+            diagnostics_error_reporting_enabled: default_diagnostics_error_reporting_enabled(),
+            diagnostics_error_reporting_debug: default_diagnostics_error_reporting_debug(),
             language: default_language(),
             default_terminal: default_default_terminal(),
             theme: default_theme(),
@@ -908,13 +1004,18 @@ impl Default for UserConfig {
             kiro_auto_refresh_minutes: default_kiro_auto_refresh(),
             cursor_auto_refresh_minutes: default_cursor_auto_refresh(),
             gemini_auto_refresh_minutes: default_gemini_auto_refresh(),
+            grok_auto_refresh_minutes: default_grok_auto_refresh(),
             claude_auto_refresh_minutes: default_claude_auto_refresh(),
             gemini_sync_wsl: default_gemini_sync_wsl(),
             codebuddy_auto_refresh_minutes: default_codebuddy_auto_refresh(),
             codebuddy_cn_auto_refresh_minutes: default_codebuddy_cn_auto_refresh(),
             workbuddy_auto_refresh_minutes: default_workbuddy_auto_refresh(),
             qoder_auto_refresh_minutes: default_qoder_auto_refresh(),
+            zcode_auto_refresh_minutes: default_zcode_auto_refresh(),
             trae_auto_refresh_minutes: default_trae_auto_refresh(),
+            trae_solo_auto_refresh_minutes: default_trae_auto_refresh(),
+            trae_cn_auto_refresh_minutes: default_trae_auto_refresh(),
+            trae_solo_cn_auto_refresh_minutes: default_trae_auto_refresh(),
             close_behavior: default_close_behavior(),
             minimize_behavior: default_minimize_behavior(),
             hide_dock_icon: default_hide_dock_icon(),
@@ -923,6 +1024,7 @@ impl Default for UserConfig {
             startup_minimized: default_startup_minimized(),
             floating_card_always_on_top: default_floating_card_always_on_top(),
             app_auto_launch_enabled: default_app_auto_launch_enabled(),
+            token_keeper_enabled: default_token_keeper_enabled(),
             antigravity_startup_wakeup_enabled: default_antigravity_startup_wakeup_enabled(),
             antigravity_startup_wakeup_delay_seconds:
                 default_antigravity_startup_wakeup_delay_seconds(),
@@ -950,6 +1052,7 @@ impl Default for UserConfig {
             opencode_app_path: default_opencode_app_path(),
             antigravity_app_path: default_antigravity_app_path(),
             codex_app_path: default_codex_app_path(),
+            grok_cli_path: None,
             claude_app_path: default_claude_app_path(),
             claude_app_scan_roots: default_claude_app_scan_roots(),
             codex_specified_app_path: default_codex_specified_app_path(),
@@ -961,7 +1064,15 @@ impl Default for UserConfig {
             codebuddy_app_path: default_codebuddy_app_path(),
             codebuddy_cn_app_path: default_codebuddy_cn_app_path(),
             qoder_app_path: default_qoder_app_path(),
+            zcode_app_path: default_zcode_app_path(),
             trae_app_path: default_trae_app_path(),
+            trae_solo_app_path: default_trae_app_path(),
+            trae_cn_app_path: default_trae_app_path(),
+            trae_solo_cn_app_path: default_trae_app_path(),
+            trae_app_scan_roots: default_trae_app_scan_roots(),
+            trae_solo_app_scan_roots: default_trae_app_scan_roots(),
+            trae_cn_app_scan_roots: default_trae_app_scan_roots(),
+            trae_solo_cn_app_scan_roots: default_trae_app_scan_roots(),
             workbuddy_app_path: default_workbuddy_app_path(),
             opencode_sync_on_switch: default_opencode_sync_on_switch(),
             opencode_auth_overwrite_on_switch: default_opencode_auth_overwrite_on_switch(),
@@ -971,6 +1082,7 @@ impl Default for UserConfig {
             ghcp_launch_on_switch: default_ghcp_launch_on_switch(),
             openclaw_auth_overwrite_on_switch: default_openclaw_auth_overwrite_on_switch(),
             codex_launch_on_switch: default_codex_launch_on_switch(),
+            antigravity_launch_on_switch: default_antigravity_launch_on_switch(),
             codex_restart_specified_app_on_switch: default_codex_restart_specified_app_on_switch(),
             codex_local_access_entry_visible: default_codex_local_access_entry_visible(),
             top_right_ad_visible: default_top_right_ad_visible(),
@@ -1008,6 +1120,8 @@ impl Default for UserConfig {
             cursor_quota_alert_threshold: default_cursor_quota_alert_threshold(),
             gemini_quota_alert_enabled: default_gemini_quota_alert_enabled(),
             gemini_quota_alert_threshold: default_gemini_quota_alert_threshold(),
+            grok_quota_alert_enabled: default_grok_quota_alert_enabled(),
+            grok_quota_alert_threshold: default_grok_quota_alert_threshold(),
             claude_quota_alert_enabled: default_claude_quota_alert_enabled(),
             claude_quota_alert_threshold: default_claude_quota_alert_threshold(),
             codebuddy_quota_alert_enabled: default_codebuddy_quota_alert_enabled(),
@@ -1018,6 +1132,12 @@ impl Default for UserConfig {
             qoder_quota_alert_threshold: default_qoder_quota_alert_threshold(),
             trae_quota_alert_enabled: default_trae_quota_alert_enabled(),
             trae_quota_alert_threshold: default_trae_quota_alert_threshold(),
+            trae_solo_quota_alert_enabled: default_trae_quota_alert_enabled(),
+            trae_solo_quota_alert_threshold: default_trae_quota_alert_threshold(),
+            trae_cn_quota_alert_enabled: default_trae_quota_alert_enabled(),
+            trae_cn_quota_alert_threshold: default_trae_quota_alert_threshold(),
+            trae_solo_cn_quota_alert_enabled: default_trae_quota_alert_enabled(),
+            trae_solo_cn_quota_alert_threshold: default_trae_quota_alert_threshold(),
             workbuddy_quota_alert_enabled: default_workbuddy_quota_alert_enabled(),
             workbuddy_quota_alert_threshold: default_workbuddy_quota_alert_threshold(),
         }
@@ -1299,6 +1419,19 @@ pub fn load_user_config() -> Result<UserConfig, String> {
             );
         }
 
+        if !obj.contains_key("zcode_auto_refresh_minutes") {
+            let inherited_refresh = obj
+                .get("qoder_auto_refresh_minutes")
+                .or_else(|| obj.get("gemini_auto_refresh_minutes"))
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or_else(default_zcode_auto_refresh);
+            obj.insert(
+                "zcode_auto_refresh_minutes".to_string(),
+                json!(inherited_refresh),
+            );
+        }
+
         if !obj.contains_key("codebuddy_cn_auto_refresh_minutes") {
             let inherited_refresh = obj
                 .get("codebuddy_auto_refresh_minutes")
@@ -1337,6 +1470,20 @@ pub fn load_user_config() -> Result<UserConfig, String> {
                 "trae_auto_refresh_minutes".to_string(),
                 json!(inherited_refresh),
             );
+        }
+        let inherited_trae_refresh = obj
+            .get("trae_auto_refresh_minutes")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .unwrap_or_else(default_trae_auto_refresh);
+        for key in [
+            "trae_solo_auto_refresh_minutes",
+            "trae_cn_auto_refresh_minutes",
+            "trae_solo_cn_auto_refresh_minutes",
+        ] {
+            if !obj.contains_key(key) {
+                obj.insert(key.to_string(), json!(inherited_trae_refresh));
+            }
         }
 
         if !obj.contains_key("hide_dock_icon") {
@@ -1425,6 +1572,13 @@ pub fn load_user_config() -> Result<UserConfig, String> {
             obj.insert(
                 "top_right_ad_visible".to_string(),
                 json!(default_top_right_ad_visible()),
+            );
+        }
+
+        if !obj.contains_key("token_keeper_enabled") {
+            obj.insert(
+                "token_keeper_enabled".to_string(),
+                json!(default_token_keeper_enabled()),
             );
         }
 
@@ -1566,6 +1720,18 @@ pub fn load_user_config() -> Result<UserConfig, String> {
             obj.insert(
                 "global_proxy_no_proxy".to_string(),
                 json!(default_global_proxy_no_proxy()),
+            );
+        }
+        if !obj.contains_key("diagnostics_error_reporting_enabled") {
+            obj.insert(
+                "diagnostics_error_reporting_enabled".to_string(),
+                json!(default_diagnostics_error_reporting_enabled()),
+            );
+        }
+        if !obj.contains_key("diagnostics_error_reporting_debug") {
+            obj.insert(
+                "diagnostics_error_reporting_debug".to_string(),
+                json!(default_diagnostics_error_reporting_debug()),
             );
         }
 
@@ -1812,6 +1978,33 @@ pub fn load_user_config() -> Result<UserConfig, String> {
                 json!(legacy_threshold),
             );
         }
+        let inherited_trae_quota_enabled = obj
+            .get("trae_quota_alert_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(legacy_enabled);
+        let inherited_trae_quota_threshold = obj
+            .get("trae_quota_alert_threshold")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .unwrap_or(legacy_threshold);
+        for key in [
+            "trae_solo_quota_alert_enabled",
+            "trae_cn_quota_alert_enabled",
+            "trae_solo_cn_quota_alert_enabled",
+        ] {
+            if !obj.contains_key(key) {
+                obj.insert(key.to_string(), json!(inherited_trae_quota_enabled));
+            }
+        }
+        for key in [
+            "trae_solo_quota_alert_threshold",
+            "trae_cn_quota_alert_threshold",
+            "trae_solo_cn_quota_alert_threshold",
+        ] {
+            if !obj.contains_key(key) {
+                obj.insert(key.to_string(), json!(inherited_trae_quota_threshold));
+            }
+        }
         if !obj.contains_key("workbuddy_quota_alert_enabled") {
             obj.insert(
                 "workbuddy_quota_alert_enabled".to_string(),
@@ -1896,17 +2089,103 @@ fn persist_user_config(config: &UserConfig) -> Result<(), String> {
     crate::modules::atomic_write::write_string_atomic(&config_path, &json)
         .map_err(|e| format!("写入配置文件失败: {}", e))?;
 
-    // 更新运行时状态
-    if let Ok(mut state) = get_runtime_state().write() {
-        state.user_config = config.clone();
-    }
+    Ok(())
+}
 
+fn acquire_config_file_lock(path: &Path) -> Result<fs::File, String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("创建配置目录失败: {}", error))?;
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(path)
+        .map_err(|error| format!("打开配置锁文件失败: {}", error))?;
+    file.lock()
+        .map_err(|error| format!("锁定配置文件失败: {}", error))?;
+    Ok(file)
+}
+
+fn load_latest_user_config_with_lock(
+    _cached: &UserConfig,
+) -> Result<(UserConfig, fs::File), String> {
+    let lock_path = get_data_dir()?.join(USER_CONFIG_LOCK_FILE);
+    let guard = acquire_config_file_lock(&lock_path)?;
+    let latest = load_user_config()?;
+    Ok((latest, guard))
+}
+
+fn patch_runtime_state<F, L, G, P, C>(
+    state: &RwLock<RuntimeState>,
+    load_latest: L,
+    persist: P,
+    commit: C,
+    patch: F,
+) -> Result<UserConfig, String>
+where
+    F: FnOnce(&mut UserConfig) -> Result<(), String>,
+    L: FnOnce(&UserConfig) -> Result<(UserConfig, G), String>,
+    P: FnOnce(&UserConfig) -> Result<(), String>,
+    C: FnOnce(&UserConfig),
+{
+    let mut state = state
+        .write()
+        .map_err(|_| "用户配置状态锁已损坏".to_string())?;
+    let (mut next_config, _file_lock_guard) = load_latest(&state.user_config)?;
+    patch(&mut next_config)?;
+
+    // 同时持有运行态写锁与跨进程文件锁，保证重读、落盘、内存提交和副作用顺序一致。
+    persist(&next_config)?;
+    state.user_config = next_config.clone();
+    commit(&next_config);
+
+    Ok(next_config)
+}
+
+fn finish_user_config_update(config: &UserConfig) {
     sync_global_proxy_env(config);
 
     crate::modules::logger::log_info(&format!(
         "[Config] 用户配置已保存: ws_enabled={}, ws_port={}, report_enabled={}, report_port={}",
         config.ws_enabled, config.ws_port, config.report_enabled, config.report_port
     ));
+}
+
+/// 基于最新运行态原子修改并保存用户配置。
+///
+/// patch 在配置写锁内执行。调用方应只修改自己负责的字段，避免用读取到的旧快照覆盖
+/// 其他并发设置更新。
+pub fn patch_user_config<F>(patch: F) -> Result<UserConfig, String>
+where
+    F: FnOnce(&mut UserConfig) -> Result<(), String>,
+{
+    patch_runtime_state(
+        get_runtime_state(),
+        load_latest_user_config_with_lock,
+        persist_user_config,
+        finish_user_config_update,
+        patch,
+    )
+}
+
+/// 保存完整用户配置。
+pub fn save_user_config(config: &UserConfig) -> Result<(), String> {
+    let replacement = config.clone();
+    patch_runtime_state(
+        get_runtime_state(),
+        |cached| {
+            let lock_path = get_data_dir()?.join(USER_CONFIG_LOCK_FILE);
+            let guard = acquire_config_file_lock(&lock_path)?;
+            Ok((cached.clone(), guard))
+        },
+        persist_user_config,
+        finish_user_config_update,
+        move |current| {
+            *current = replacement;
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
@@ -1991,7 +2270,54 @@ pub fn init_server_status(actual_port: u16) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::UserConfig;
+    use super::{acquire_config_file_lock, patch_runtime_state, RuntimeState, UserConfig};
+    use std::fs;
+    use std::path::Path;
+    use std::sync::{Arc, Barrier, RwLock};
+    use std::thread;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("{}_{}_{}", prefix, std::process::id(), unique));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn make_runtime_state() -> RwLock<RuntimeState> {
+        RwLock::new(RuntimeState {
+            actual_port: None,
+            user_config: UserConfig::default(),
+        })
+    }
+
+    fn persist_test_config(path: &Path, config: &UserConfig) -> Result<(), String> {
+        let content = serde_json::to_string_pretty(config).map_err(|error| error.to_string())?;
+        crate::modules::atomic_write::write_string_atomic(path, &content)
+    }
+
+    fn load_test_config(path: &Path) -> UserConfig {
+        let content = fs::read_to_string(path).expect("read persisted config");
+        serde_json::from_str(&content).expect("parse persisted config")
+    }
+
+    fn load_test_config_with_lock(
+        config_path: &Path,
+        lock_path: &Path,
+        cached: &UserConfig,
+    ) -> Result<(UserConfig, fs::File), String> {
+        let guard = acquire_config_file_lock(lock_path)?;
+        let latest = if config_path.exists() {
+            load_test_config(config_path)
+        } else {
+            cached.clone()
+        };
+        Ok((latest, guard))
+    }
 
     #[test]
     fn openclaw_auth_overwrite_default_is_disabled() {
@@ -2027,5 +2353,256 @@ mod tests {
         assert!(cfg.webdav_sync_enabled);
         assert_eq!(cfg.webdav_sync_url, "https://dav.jianguoyun.com/dav/");
         assert_eq!(cfg.webdav_sync_remote_dir, "cockpit-tools");
+    }
+
+    #[test]
+    fn concurrent_patches_merge_without_lost_updates() {
+        let dir = make_temp_dir("config_concurrent_patch");
+        let path = Arc::new(dir.join("config.json"));
+        let state = Arc::new(make_runtime_state());
+        let barrier = Arc::new(Barrier::new(3));
+
+        let language_thread = {
+            let path = Arc::clone(&path);
+            let state = Arc::clone(&state);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                patch_runtime_state(
+                    &state,
+                    |cached| Ok((cached.clone(), ())),
+                    |config| persist_test_config(path.as_path(), config),
+                    |_| {},
+                    |config| {
+                        config.language = "en-us".to_string();
+                        Ok(())
+                    },
+                )
+                .expect("patch language");
+            })
+        };
+        let theme_thread = {
+            let path = Arc::clone(&path);
+            let state = Arc::clone(&state);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                patch_runtime_state(
+                    &state,
+                    |cached| Ok((cached.clone(), ())),
+                    |config| persist_test_config(path.as_path(), config),
+                    |_| {},
+                    |config| {
+                        config.theme = "light".to_string();
+                        Ok(())
+                    },
+                )
+                .expect("patch theme");
+            })
+        };
+
+        barrier.wait();
+        language_thread.join().expect("join language patch");
+        theme_thread.join().expect("join theme patch");
+
+        let memory = state
+            .read()
+            .expect("read runtime state")
+            .user_config
+            .clone();
+        let disk = load_test_config(path.as_path());
+        assert_eq!(memory.language, "en-us");
+        assert_eq!(memory.theme, "light");
+        assert_eq!(disk.language, memory.language);
+        assert_eq!(disk.theme, memory.theme);
+
+        fs::remove_dir_all(dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn separate_runtime_states_merge_through_shared_file_lock() {
+        let dir = make_temp_dir("config_cross_runtime_patch");
+        let path = Arc::new(dir.join("config.json"));
+        let lock_path = Arc::new(dir.join("config.json.lock"));
+        persist_test_config(path.as_path(), &UserConfig::default()).expect("seed config");
+
+        let language_state = Arc::new(make_runtime_state());
+        let theme_state = Arc::new(make_runtime_state());
+        let barrier = Arc::new(Barrier::new(3));
+
+        let language_thread = {
+            let path = Arc::clone(&path);
+            let lock_path = Arc::clone(&lock_path);
+            let state = Arc::clone(&language_state);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                patch_runtime_state(
+                    &state,
+                    |cached| {
+                        load_test_config_with_lock(path.as_path(), lock_path.as_path(), cached)
+                    },
+                    |config| persist_test_config(path.as_path(), config),
+                    |_| {},
+                    |config| {
+                        config.language = "en-us".to_string();
+                        Ok(())
+                    },
+                )
+                .expect("patch language from first runtime");
+            })
+        };
+        let theme_thread = {
+            let path = Arc::clone(&path);
+            let lock_path = Arc::clone(&lock_path);
+            let state = Arc::clone(&theme_state);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                patch_runtime_state(
+                    &state,
+                    |cached| {
+                        load_test_config_with_lock(path.as_path(), lock_path.as_path(), cached)
+                    },
+                    |config| persist_test_config(path.as_path(), config),
+                    |_| {},
+                    |config| {
+                        config.theme = "light".to_string();
+                        Ok(())
+                    },
+                )
+                .expect("patch theme from second runtime");
+            })
+        };
+
+        barrier.wait();
+        language_thread.join().expect("join language runtime");
+        theme_thread.join().expect("join theme runtime");
+
+        let disk = load_test_config(path.as_path());
+        assert_eq!(disk.language, "en-us");
+        assert_eq!(disk.theme, "light");
+
+        fs::remove_dir_all(dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn three_way_patch_merges_account_scope_webdav_and_floating_position() {
+        let dir = make_temp_dir("config_three_way_patch");
+        let path = Arc::new(dir.join("config.json"));
+        let state = Arc::new(make_runtime_state());
+        let barrier = Arc::new(Barrier::new(4));
+
+        let account_scope_thread = {
+            let path = Arc::clone(&path);
+            let state = Arc::clone(&state);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                patch_runtime_state(
+                    &state,
+                    |cached| Ok((cached.clone(), ())),
+                    |config| persist_test_config(path.as_path(), config),
+                    |_| {},
+                    |config| {
+                        config.auto_switch_account_scope_mode = "selected_accounts".to_string();
+                        config.auto_switch_selected_account_ids =
+                            vec!["account-a".to_string(), "account-b".to_string()];
+                        Ok(())
+                    },
+                )
+                .expect("patch account scope");
+            })
+        };
+        let webdav_thread = {
+            let path = Arc::clone(&path);
+            let state = Arc::clone(&state);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                patch_runtime_state(
+                    &state,
+                    |cached| Ok((cached.clone(), ())),
+                    |config| persist_test_config(path.as_path(), config),
+                    |_| {},
+                    |config| {
+                        config.webdav_sync_last_upload_at =
+                            Some("2026-07-12T08:00:00Z".to_string());
+                        Ok(())
+                    },
+                )
+                .expect("patch webdav timestamp");
+            })
+        };
+        let floating_position_thread = {
+            let path = Arc::clone(&path);
+            let state = Arc::clone(&state);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                patch_runtime_state(
+                    &state,
+                    |cached| Ok((cached.clone(), ())),
+                    |config| persist_test_config(path.as_path(), config),
+                    |_| {},
+                    |config| {
+                        config.floating_card_position_x = Some(320);
+                        config.floating_card_position_y = Some(180);
+                        Ok(())
+                    },
+                )
+                .expect("patch floating position");
+            })
+        };
+
+        barrier.wait();
+        account_scope_thread
+            .join()
+            .expect("join account scope patch");
+        webdav_thread.join().expect("join webdav patch");
+        floating_position_thread
+            .join()
+            .expect("join floating position patch");
+
+        let memory = state
+            .read()
+            .expect("read runtime state")
+            .user_config
+            .clone();
+        let disk = load_test_config(path.as_path());
+        assert_eq!(memory.auto_switch_account_scope_mode, "selected_accounts");
+        assert_eq!(
+            memory.auto_switch_selected_account_ids,
+            vec!["account-a".to_string(), "account-b".to_string()]
+        );
+        assert_eq!(
+            memory.webdav_sync_last_upload_at.as_deref(),
+            Some("2026-07-12T08:00:00Z")
+        );
+        assert_eq!(memory.floating_card_position_x, Some(320));
+        assert_eq!(memory.floating_card_position_y, Some(180));
+        assert_eq!(
+            disk.auto_switch_account_scope_mode,
+            memory.auto_switch_account_scope_mode
+        );
+        assert_eq!(
+            disk.auto_switch_selected_account_ids,
+            memory.auto_switch_selected_account_ids
+        );
+        assert_eq!(
+            disk.webdav_sync_last_upload_at,
+            memory.webdav_sync_last_upload_at
+        );
+        assert_eq!(
+            disk.floating_card_position_x,
+            memory.floating_card_position_x
+        );
+        assert_eq!(
+            disk.floating_card_position_y,
+            memory.floating_card_position_y
+        );
+        assert_eq!(disk.ws_port, super::DEFAULT_WS_PORT);
+
+        fs::remove_dir_all(dir).expect("remove temp dir");
     }
 }

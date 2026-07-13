@@ -1,18 +1,20 @@
 import { ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, Clock3, FolderOpen, Github, Layers, Server } from 'lucide-react';
+import { Clock3, FolderOpen, Github, Layers, Server } from 'lucide-react';
 import { CodexIcon } from '../icons/CodexIcon';
 import { ClaudeIcon } from '../icons/ClaudeIcon';
 import { WindsurfIcon } from '../icons/WindsurfIcon';
 import { KiroIcon } from '../icons/KiroIcon';
 import { CursorIcon } from '../icons/CursorIcon';
 import { GeminiIcon } from '../icons/GeminiIcon';
+import { GrokIcon } from '../icons/GrokIcon';
 import { CodebuddyIcon } from '../icons/CodebuddyIcon';
 import { QoderIcon } from '../icons/QoderIcon';
+import { TraeCnIcon, TraeIcon, TraeSoloCnIcon, TraeSoloIcon } from '../icons/TraeIcon';
 import { WorkbuddyIcon } from '../icons/WorkbuddyIcon';
 import { ZedIcon } from '../icons/ZedIcon';
+import { ZcodeIcon } from '../icons/ZcodeIcon';
 import { ManualHelpIconButton } from '../ManualHelpIconButton';
-import { TopCenterPromoBanner } from '../TopCenterPromoBanner';
 import { PlatformId } from '../../types/platform';
 import {
   findGroupByPlatform,
@@ -33,10 +35,15 @@ export type PlatformOverviewHeaderId =
   | 'kiro'
   | 'cursor'
   | 'gemini'
+  | 'grok'
   | 'codebuddy'
   | 'codebuddy_cn'
   | 'qoder'
+  | 'zcode'
   | 'trae'
+  | 'trae_solo'
+  | 'trae_cn'
+  | 'trae_solo_cn'
   | 'workbuddy';
 
 interface PlatformOverviewTabsHeaderProps {
@@ -90,6 +97,10 @@ const CONFIGS: Record<PlatformOverviewHeaderId, PlatformOverviewConfig> = {
     platformLabel: 'Gemini Cli',
     overviewIcon: <GeminiIcon className="tab-icon" />,
   },
+  grok: {
+    platformLabel: 'Grok CLI',
+    overviewIcon: <GrokIcon className="tab-icon" />,
+  },
   codebuddy: {
     platformLabel: 'CodeBuddy',
     overviewIcon: <CodebuddyIcon className="tab-icon" />,
@@ -102,9 +113,25 @@ const CONFIGS: Record<PlatformOverviewHeaderId, PlatformOverviewConfig> = {
     platformLabel: 'Qoder',
     overviewIcon: <QoderIcon className="tab-icon" />,
   },
+  zcode: {
+    platformLabel: 'ZCode',
+    overviewIcon: <ZcodeIcon className="tab-icon" />,
+  },
   trae: {
     platformLabel: 'Trae',
-    overviewIcon: <Bot className="tab-icon" />,
+    overviewIcon: <TraeIcon className="tab-icon" />,
+  },
+  trae_solo: {
+    platformLabel: 'TRAE SOLO',
+    overviewIcon: <TraeSoloIcon className="tab-icon" />,
+  },
+  trae_cn: {
+    platformLabel: 'Trae CN',
+    overviewIcon: <TraeCnIcon className="tab-icon" />,
+  },
+  trae_solo_cn: {
+    platformLabel: 'TRAE SOLO CN',
+    overviewIcon: <TraeSoloCnIcon className="tab-icon" />,
   },
   workbuddy: {
     platformLabel: 'WorkBuddy',
@@ -194,7 +221,7 @@ export function PlatformOverviewTabsHeader({
     },
     instances: {
       key: 'instances',
-      label: t('instances.title', '多开实例'),
+      label: t('instances.title', '应用多开'),
       icon: <Layers className="tab-icon" />,
     },
     sessions: {
@@ -219,7 +246,6 @@ export function PlatformOverviewTabsHeader({
           </span>
           <ManualHelpIconButton className="platform-header-help" />
         </div>
-        <TopCenterPromoBanner />
         <div className="page-top-strip-right-placeholder" aria-hidden="true" />
       </div>
       <div className="page-tabs-row page-tabs-center page-tabs-row-with-leading">

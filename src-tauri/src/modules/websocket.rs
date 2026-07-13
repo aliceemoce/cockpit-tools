@@ -1059,13 +1059,6 @@ fn handle_set_language(language: &str, source: Option<&str>) -> Result<String, S
         return Ok(format!("语言已是 {}", normalized));
     }
 
-    let new_config = UserConfig {
-        language: normalized.clone(),
-        ..current
-    };
-
-    config::save_user_config(&new_config)?;
-
     broadcast_language_changed(&normalized, source.unwrap_or("ws"));
 
     Ok(format!("语言已更新为 {}", normalized))

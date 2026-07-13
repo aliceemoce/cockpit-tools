@@ -163,7 +163,7 @@ pub fn get_default_instances_root_dir() -> Result<PathBuf, String> {
     }
 
     #[allow(unreachable_code)]
-    Err("Claude 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+    Err("Claude 应用多开仅支持 macOS、Windows 和 Linux".to_string())
 }
 
 pub fn get_instance_defaults() -> Result<InstanceDefaults, String> {
@@ -1340,7 +1340,7 @@ pub fn detect_and_save_claude_launch_path(force: bool) -> Option<String> {
     #[cfg(not(target_os = "windows"))]
     {
         if !force {
-            if let Some(custom) = normalize_custom_path(&current.claude_app_path) {
+            if normalize_custom_path(&current.claude_app_path).is_some() {
                 return Some(current.claude_app_path);
             }
         }
@@ -1348,9 +1348,13 @@ pub fn detect_and_save_claude_launch_path(force: bool) -> Option<String> {
         let detected = detect_claude_exec_path()?;
         let normalized = normalize_claude_path_for_config(&detected);
         if current.claude_app_path != normalized {
-            let mut next = current.clone();
-            next.claude_app_path = normalized.clone();
-            if let Err(err) = modules::config::save_user_config(&next) {
+            let path = normalized.clone();
+            if let Err(err) = modules::config::patch_user_config(move |config| {
+                if force || normalize_custom_path(&config.claude_app_path).is_none() {
+                    config.claude_app_path = path;
+                }
+                Ok(())
+            }) {
                 modules::logger::log_warn(&format!("保存 Claude 启动路径失败（已忽略）: {}", err));
             }
         }
@@ -1882,7 +1886,7 @@ pub fn start_claude_with_args_with_new_window(
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         let _ = (target, extra_args, use_new_window);
-        Err("Claude 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("Claude 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -1908,7 +1912,7 @@ pub fn start_claude_default_with_args_with_new_window(
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         let _ = (extra_args, use_new_window);
-        Err("Claude 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("Claude 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 

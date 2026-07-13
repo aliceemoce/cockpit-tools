@@ -27,7 +27,27 @@ const REASONING_EFFORT_HIGH: &str = "high";
 const REASONING_EFFORT_XHIGH: &str = "xhigh";
 const CODEX_WAKEUP_TEST_CANCELLED_MESSAGE: &str = "Codex 唤醒测试已取消";
 const CODEX_WAKEUP_CANCEL_POLL_MS: u64 = 120;
+const GPT_5_6_MODEL_PRESETS_MIGRATION_ID: &str = "add-gpt-5-6-model-presets";
 const GPT_5_5_MODEL_PRESET_MIGRATION_ID: &str = "add-gpt-5-5-model-preset";
+const PRUNE_LEGACY_MODEL_PRESETS_MIGRATION_ID: &str =
+    "prune-legacy-codex-model-presets-before-gpt-5-4";
+const LEGACY_CODEX_MODEL_PRESET_IDS: &[&str] = &[
+    "preset-gpt-5-3-codex",
+    "preset-gpt-5-2-codex",
+    "preset-gpt-5-2",
+    "preset-gpt-5-1-codex-max",
+    "preset-gpt-5-1-codex-mini",
+];
+const LEGACY_CODEX_MODEL_PRESET_MODELS: &[&str] = &[
+    "gpt-5-codex",
+    "gpt-5-codex-mini",
+    "gpt-5.3-codex",
+    "gpt-5.3-codex-spark",
+    "gpt-5.2",
+    "gpt-5.2-codex",
+    "gpt-5.1-codex-max",
+    "gpt-5.1-codex-mini",
+];
 
 static TASKS_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 static HISTORY_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
@@ -344,7 +364,11 @@ impl Default for CodexWakeupState {
             enabled: false,
             tasks: Vec::new(),
             model_presets: default_model_presets(),
-            model_preset_migrations: vec![GPT_5_5_MODEL_PRESET_MIGRATION_ID.to_string()],
+            model_preset_migrations: vec![
+                GPT_5_6_MODEL_PRESETS_MIGRATION_ID.to_string(),
+                GPT_5_5_MODEL_PRESET_MIGRATION_ID.to_string(),
+                PRUNE_LEGACY_MODEL_PRESETS_MIGRATION_ID.to_string(),
+            ],
         }
     }
 }
@@ -466,22 +490,12 @@ fn default_reasoning_efforts_for_model(model: &str) -> Vec<String> {
 
 fn default_model_presets() -> Vec<CodexWakeupModelPreset> {
     let items = [
+        ("preset-gpt-5-6-sol", "GPT-5.6 Sol", "gpt-5.6-sol"),
+        ("preset-gpt-5-6-terra", "GPT-5.6 Terra", "gpt-5.6-terra"),
+        ("preset-gpt-5-6-luna", "GPT-5.6 Luna", "gpt-5.6-luna"),
         ("preset-gpt-5-5", "GPT-5.5", "gpt-5.5"),
         ("preset-gpt-5-4", "GPT-5.4", "gpt-5.4"),
         ("preset-gpt-5-4-mini", "GPT-5.4-Mini", "gpt-5.4-mini"),
-        ("preset-gpt-5-3-codex", "GPT-5.3-Codex", "gpt-5.3-codex"),
-        ("preset-gpt-5-2-codex", "GPT-5.2-Codex", "gpt-5.2-codex"),
-        ("preset-gpt-5-2", "GPT-5.2", "gpt-5.2"),
-        (
-            "preset-gpt-5-1-codex-max",
-            "GPT-5.1-Codex-Max",
-            "gpt-5.1-codex-max",
-        ),
-        (
-            "preset-gpt-5-1-codex-mini",
-            "GPT-5.1-Codex-Mini",
-            "gpt-5.1-codex-mini",
-        ),
     ];
 
     items
@@ -508,6 +522,43 @@ fn default_model_presets() -> Vec<CodexWakeupModelPreset> {
             }
         })
         .collect()
+}
+
+fn gpt_5_6_model_presets() -> Vec<CodexWakeupModelPreset> {
+    default_model_presets()
+        .into_iter()
+        .filter(|preset| preset.model.starts_with("gpt-5.6-"))
+        .collect()
+}
+
+fn ensure_gpt_5_6_model_presets(state: &mut CodexWakeupState) -> bool {
+    if state
+        .model_preset_migrations
+        .iter()
+        .any(|item| item == GPT_5_6_MODEL_PRESETS_MIGRATION_ID)
+    {
+        return false;
+    }
+
+    state
+        .model_preset_migrations
+        .push(GPT_5_6_MODEL_PRESETS_MIGRATION_ID.to_string());
+
+    let existing_models = state
+        .model_presets
+        .iter()
+        .map(|preset| preset.model.trim().to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    let additions = gpt_5_6_model_presets()
+        .into_iter()
+        .filter(|preset| !existing_models.contains(&preset.model.to_ascii_lowercase()))
+        .collect::<Vec<_>>();
+    if additions.is_empty() {
+        return true;
+    }
+
+    state.model_presets.splice(0..0, additions);
+    true
 }
 
 fn gpt_5_5_model_preset() -> CodexWakeupModelPreset {
@@ -556,6 +607,45 @@ fn ensure_gpt_5_5_model_preset(state: &mut CodexWakeupState) -> bool {
 
     state.model_presets.insert(0, gpt_5_5_model_preset());
     true
+}
+
+fn is_legacy_codex_model_preset(preset: &CodexWakeupModelPreset) -> bool {
+    let id = preset.id.trim();
+    let model = preset.model.trim();
+    LEGACY_CODEX_MODEL_PRESET_IDS
+        .iter()
+        .any(|item| id.eq_ignore_ascii_case(item))
+        || LEGACY_CODEX_MODEL_PRESET_MODELS
+            .iter()
+            .any(|item| model.eq_ignore_ascii_case(item))
+}
+
+fn prune_legacy_model_presets(state: &mut CodexWakeupState) -> bool {
+    if state
+        .model_preset_migrations
+        .iter()
+        .any(|item| item == PRUNE_LEGACY_MODEL_PRESETS_MIGRATION_ID)
+    {
+        return false;
+    }
+
+    state
+        .model_preset_migrations
+        .push(PRUNE_LEGACY_MODEL_PRESETS_MIGRATION_ID.to_string());
+    state
+        .model_presets
+        .retain(|preset| !is_legacy_codex_model_preset(preset));
+    true
+}
+
+fn apply_model_preset_migrations(state: &mut CodexWakeupState) -> bool {
+    let mut changed = false;
+    changed |= prune_legacy_model_presets(state);
+    changed |= ensure_gpt_5_6_model_presets(state);
+    changed |= ensure_gpt_5_5_model_preset(state);
+    state.model_preset_migrations.sort();
+    state.model_preset_migrations.dedup();
+    changed
 }
 
 fn data_dir() -> Result<PathBuf, String> {
@@ -810,6 +900,56 @@ fn append_home_cli_dirs(dirs: &mut Vec<PathBuf>) {
         home.join("bin"),
     ] {
         push_unique_dir(dirs, dir);
+    }
+    append_version_manager_cli_dirs(dirs, &home);
+}
+
+/// Discover CLI bins managed by nvm / fnm / asdf, which GUI apps often miss
+/// because they inherit a minimal PATH without login-shell hooks.
+fn append_version_manager_cli_dirs(dirs: &mut Vec<PathBuf>, home: &Path) {
+    if let Some(nvm_bin) = std::env::var_os("NVM_BIN") {
+        push_unique_dir(dirs, PathBuf::from(nvm_bin));
+    }
+    if let Some(nvm_dir) = std::env::var_os("NVM_DIR") {
+        append_node_version_bin_dirs(dirs, PathBuf::from(nvm_dir).join("versions/node"));
+    } else {
+        append_node_version_bin_dirs(dirs, home.join(".nvm/versions/node"));
+    }
+
+    if let Some(fnm_multishell) = std::env::var_os("FNM_MULTISHELL_PATH") {
+        push_unique_dir(dirs, PathBuf::from(fnm_multishell));
+    }
+    if let Some(fnm_dir) = std::env::var_os("FNM_DIR") {
+        append_node_version_bin_dirs(dirs, PathBuf::from(fnm_dir).join("node-versions"));
+    } else {
+        append_node_version_bin_dirs(dirs, home.join(".local/share/fnm/node-versions"));
+        append_node_version_bin_dirs(dirs, home.join(".fnm/node-versions"));
+    }
+
+    let asdf_data = std::env::var_os("ASDF_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".asdf"));
+    append_node_version_bin_dirs(dirs, asdf_data.join("installs/nodejs"));
+    push_unique_dir(dirs, asdf_data.join("shims"));
+}
+
+fn append_node_version_bin_dirs(dirs: &mut Vec<PathBuf>, versions_root: PathBuf) {
+    let Ok(entries) = std::fs::read_dir(&versions_root) else {
+        return;
+    };
+    let mut version_dirs: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect();
+    // Prefer newer versions when multiple nvm installs exist.
+    version_dirs.sort();
+    version_dirs.reverse();
+    for version_dir in version_dirs {
+        // nvm: ~/.nvm/versions/node/v20.x.y/bin
+        push_unique_dir(dirs, version_dir.join("bin"));
+        // fnm: ~/.fnm/node-versions/v20.x.y/installation/bin
+        push_unique_dir(dirs, version_dir.join("installation/bin"));
     }
 }
 
@@ -1618,7 +1758,7 @@ fn load_state_inner() -> Result<CodexWakeupState, String> {
         .collect();
     state.model_preset_migrations.sort();
     state.model_preset_migrations.dedup();
-    let migration_changed = ensure_gpt_5_5_model_preset(&mut state);
+    let migration_changed = apply_model_preset_migrations(&mut state);
     refresh_next_run_at(&mut state);
     if migration_changed {
         let _lock = TASKS_LOCK.lock().map_err(|_| "获取 Codex 唤醒任务锁失败")?;
@@ -1675,7 +1815,7 @@ pub fn save_state(next_state: &CodexWakeupState) -> Result<CodexWakeupState, Str
     };
     state.model_preset_migrations.sort();
     state.model_preset_migrations.dedup();
-    ensure_gpt_5_5_model_preset(&mut state);
+    apply_model_preset_migrations(&mut state);
 
     refresh_next_run_at(&mut state);
 
@@ -2438,4 +2578,148 @@ pub fn get_task(task_id: &str) -> Result<Option<CodexWakeupTask>, String> {
         .tasks
         .into_iter()
         .find(|item| item.id == task_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        append_version_manager_cli_dirs, apply_model_preset_migrations, default_model_presets,
+        CodexWakeupModelPreset, CodexWakeupState, GPT_5_5_MODEL_PRESET_MIGRATION_ID,
+        GPT_5_6_MODEL_PRESETS_MIGRATION_ID, PRUNE_LEGACY_MODEL_PRESETS_MIGRATION_ID,
+        REASONING_EFFORT_MEDIUM,
+    };
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn model_preset(id: &str, name: &str, model: &str) -> CodexWakeupModelPreset {
+        CodexWakeupModelPreset {
+            id: id.to_string(),
+            name: name.to_string(),
+            model: model.to_string(),
+            allowed_reasoning_efforts: vec![REASONING_EFFORT_MEDIUM.to_string()],
+            default_reasoning_effort: REASONING_EFFORT_MEDIUM.to_string(),
+        }
+    }
+
+    #[test]
+    fn default_model_presets_include_gpt_5_6_models() {
+        let models: Vec<String> = default_model_presets()
+            .into_iter()
+            .map(|preset| preset.model)
+            .collect();
+
+        assert_eq!(
+            models,
+            vec![
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+                "gpt-5.6-luna",
+                "gpt-5.5",
+                "gpt-5.4",
+                "gpt-5.4-mini"
+            ]
+        );
+    }
+
+    #[test]
+    fn model_preset_migration_prunes_legacy_codex_defaults() {
+        let mut state = CodexWakeupState {
+            enabled: false,
+            tasks: Vec::new(),
+            model_presets: vec![
+                model_preset("preset-gpt-5-5", "GPT-5.5", "gpt-5.5"),
+                model_preset("preset-gpt-5-codex", "GPT-5 Codex", "gpt-5-codex"),
+                model_preset("preset-gpt-5-3-codex", "GPT-5.3-Codex", "gpt-5.3-codex"),
+                model_preset("custom-gpt-5-4", "Custom GPT-5.4", "gpt-5.4"),
+            ],
+            model_preset_migrations: Vec::new(),
+        };
+
+        assert!(apply_model_preset_migrations(&mut state));
+        let models: Vec<String> = state
+            .model_presets
+            .iter()
+            .map(|preset| preset.model.clone())
+            .collect();
+
+        assert_eq!(
+            models,
+            vec![
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+                "gpt-5.6-luna",
+                "gpt-5.5",
+                "gpt-5.4"
+            ]
+        );
+        assert!(state
+            .model_preset_migrations
+            .iter()
+            .any(|item| item == PRUNE_LEGACY_MODEL_PRESETS_MIGRATION_ID));
+        assert!(state
+            .model_preset_migrations
+            .iter()
+            .any(|item| item == GPT_5_6_MODEL_PRESETS_MIGRATION_ID));
+    }
+
+    #[test]
+    fn model_preset_migration_keeps_existing_5_6_and_custom_presets() {
+        let mut state = CodexWakeupState {
+            enabled: false,
+            tasks: Vec::new(),
+            model_presets: vec![
+                model_preset("custom-sol", "Custom Sol", "gpt-5.6-sol"),
+                model_preset("custom-model", "Custom Model", "custom-model"),
+            ],
+            model_preset_migrations: vec![
+                GPT_5_5_MODEL_PRESET_MIGRATION_ID.to_string(),
+                PRUNE_LEGACY_MODEL_PRESETS_MIGRATION_ID.to_string(),
+            ],
+        };
+
+        assert!(apply_model_preset_migrations(&mut state));
+        let models = state
+            .model_presets
+            .iter()
+            .map(|preset| preset.model.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            models,
+            vec![
+                "gpt-5.6-terra",
+                "gpt-5.6-luna",
+                "gpt-5.6-sol",
+                "custom-model"
+            ]
+        );
+        assert!(!apply_model_preset_migrations(&mut state));
+    }
+
+    #[test]
+    fn version_manager_cli_dirs_include_nvm_node_bins() {
+        let root = std::env::temp_dir().join(format!(
+            "codex-wakeup-nvm-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let nvm_bin = root.join(".nvm/versions/node/v20.19.2/bin");
+        fs::create_dir_all(&nvm_bin).expect("create nvm bin");
+        fs::write(nvm_bin.join("codex"), "#!/bin/sh\n").expect("write codex");
+        fs::write(nvm_bin.join("node"), "#!/bin/sh\n").expect("write node");
+
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        append_version_manager_cli_dirs(&mut dirs, &root);
+
+        assert!(
+            dirs.iter().any(|dir| dir == &nvm_bin),
+            "expected nvm bin dir in search paths: {:?}",
+            dirs
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
 }

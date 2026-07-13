@@ -181,7 +181,7 @@
 }
 
 .cards-split-row.single-platform-row {
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr 1fr;
 }
 
 .main-card {
@@ -205,6 +205,13 @@
   border: none;
   box-shadow: none;
   background: transparent;
+}
+
+@media (max-width: 900px) {
+  .cards-split-row,
+  .cards-split-row.single-platform-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .main-card-header {

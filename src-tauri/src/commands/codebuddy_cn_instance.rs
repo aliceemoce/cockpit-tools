@@ -335,6 +335,8 @@ pub async fn codebuddy_cn_start_instance(
             modules::process::close_pid(pid, 20)?;
             let _ = modules::codebuddy_cn_instance::update_default_pid(None)?;
         }
+        modules::process::close_codebuddy_cn_instances(&[default_dir_str.clone()], 20)?;
+        let _ = modules::codebuddy_cn_instance::update_default_pid(None)?;
 
         inject_bound_account_for_instance_start(
             &default_dir_str,
@@ -377,6 +379,8 @@ pub async fn codebuddy_cn_start_instance(
         modules::process::close_pid(pid, 20)?;
         let _ = modules::codebuddy_cn_instance::update_instance_pid(&instance.id, None)?;
     }
+    modules::process::close_codebuddy_cn_instances(&[instance.user_data_dir.clone()], 20)?;
+    let _ = modules::codebuddy_cn_instance::update_instance_pid(&instance.id, None)?;
 
     inject_bound_account_for_instance_start(
         &instance.user_data_dir,
@@ -409,6 +413,7 @@ pub async fn codebuddy_cn_stop_instance(
         if let Some(pid) = resolve_running_pid(default_settings.last_pid, None) {
             modules::process::close_pid(pid, 20)?;
         }
+        modules::process::close_codebuddy_cn_instances(&[default_dir_str.clone()], 20)?;
         let _ = modules::codebuddy_cn_instance::update_default_pid(None)?;
         return Ok(InstanceProfileView {
             id: DEFAULT_INSTANCE_ID.to_string(),
@@ -437,6 +442,7 @@ pub async fn codebuddy_cn_stop_instance(
     if let Some(pid) = resolve_running_pid(instance.last_pid, Some(&instance.user_data_dir)) {
         modules::process::close_pid(pid, 20)?;
     }
+    modules::process::close_codebuddy_cn_instances(&[instance.user_data_dir.clone()], 20)?;
     let updated = modules::codebuddy_cn_instance::update_instance_pid(&instance.id, None)?;
     let initialized = is_profile_initialized(&updated.user_data_dir);
     Ok(InstanceProfileView::from_profile(
@@ -477,18 +483,17 @@ pub async fn codebuddy_cn_open_instance_window(instance_id: String) -> Result<()
 #[tauri::command]
 pub async fn codebuddy_cn_close_all_instances() -> Result<(), String> {
     let store = modules::codebuddy_cn_instance::load_instance_store()?;
-    let default_settings = modules::codebuddy_cn_instance::load_default_settings()?;
-
-    if let Some(pid) = resolve_running_pid(default_settings.last_pid, None) {
-        let _ = modules::process::close_pid(pid, 20);
-    }
-
+    let default_dir = modules::codebuddy_cn_instance::get_default_codebuddy_cn_user_data_dir()?;
+    let mut target_dirs: Vec<String> = Vec::new();
+    target_dirs.push(default_dir.to_string_lossy().to_string());
     for instance in &store.instances {
-        if let Some(pid) = resolve_running_pid(instance.last_pid, Some(&instance.user_data_dir)) {
-            let _ = modules::process::close_pid(pid, 20);
+        let dir = instance.user_data_dir.trim();
+        if !dir.is_empty() {
+            target_dirs.push(dir.to_string());
         }
     }
 
+    modules::process::close_codebuddy_cn_instances(&target_dirs, 20)?;
     let _ = modules::codebuddy_cn_instance::clear_all_pids();
     Ok(())
 }

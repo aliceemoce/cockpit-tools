@@ -1,5 +1,6 @@
 use crate::modules::logger;
 use serde::{Deserialize, Serialize};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -9,6 +10,12 @@ const LEGACY_PREVIOUS_DEFAULT_CHECK_INTERVAL_HOURS: u64 = 6;
 const PENDING_UPDATE_NOTES_FILE: &str = "pending_update_notes.json";
 const CHANGELOG_MARKDOWN_EN: &str = include_str!("../../../CHANGELOG.md");
 const CHANGELOG_MARKDOWN_ZH: &str = include_str!("../../../CHANGELOG.zh-CN.md");
+
+static UPDATE_SETTINGS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn update_settings_lock() -> &'static Mutex<()> {
+    UPDATE_SETTINGS_LOCK.get_or_init(|| Mutex::new(()))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettings {
@@ -393,14 +400,21 @@ fn load_update_settings_unlocked() -> Result<UpdateSettings, String> {
     }
 
     if should_persist {
-        let _ = save_update_settings(&settings);
+        let _ = save_update_settings_unlocked(&settings);
     }
 
     Ok(settings)
 }
 
+pub fn load_update_settings() -> Result<UpdateSettings, String> {
+    let _guard = update_settings_lock()
+        .lock()
+        .map_err(|_| "Update settings lock poisoned".to_string())?;
+    load_update_settings_unlocked()
+}
+
 /// Save update settings to config file
-pub fn save_update_settings(settings: &UpdateSettings) -> Result<(), String> {
+fn save_update_settings_unlocked(settings: &UpdateSettings) -> Result<(), String> {
     let data_dir = ensure_data_dir()?;
 
     let settings_path = data_dir.join("update_settings.json");
@@ -491,63 +505,6 @@ pub fn check_version_jump() -> Result<Option<VersionJumpInfo>, String> {
     // Update the stored version
     settings.last_run_version = current.clone();
     save_update_settings_unlocked(&settings)?;
-
-    logger::log_info(&format!("检测到版本跳跃: {} -> {}", previous, current));
-
-    Ok(Some(VersionJumpInfo {
-        previous_version: previous,
-        current_version: current,
-        release_notes,
-        release_notes_zh,
-    }))
-}
-
-/// Check if a version jump occurred (app was updated since last run)
-/// Returns Some(VersionJumpInfo) if the current version is higher than the last recorded version
-pub fn check_version_jump() -> Result<Option<VersionJumpInfo>, String> {
-    let mut settings = load_update_settings()?;
-    let current = CURRENT_VERSION.to_string();
-
-    // First run or same version – just record and return
-    if settings.last_run_version.is_empty() || settings.last_run_version == current {
-        if settings.last_run_version != current {
-            settings.last_run_version = current;
-            save_update_settings(&settings)?;
-        }
-        return Ok(None);
-    }
-
-    let previous = settings.last_run_version.clone();
-
-    // Only trigger if current > previous (upgrade, not downgrade)
-    if !compare_versions(&current, &previous) {
-        settings.last_run_version = current;
-        save_update_settings(&settings)?;
-        return Ok(None);
-    }
-
-    let mut release_notes = String::new();
-    let mut release_notes_zh = String::new();
-    match load_pending_update_notes() {
-        Ok(Some(pending)) => {
-            if pending.version == current {
-                release_notes = pending.release_notes;
-                release_notes_zh = pending.release_notes_zh;
-                remove_pending_update_notes_file();
-            } else if compare_versions(&current, &pending.version) {
-                // 当前版本已经超过缓存版本，缓存内容过期，直接清理。
-                remove_pending_update_notes_file();
-            }
-        }
-        Ok(None) => {}
-        Err(err) => {
-            logger::log_error(&format!("读取待安装更新说明失败: {}", err));
-        }
-    }
-
-    // Update the stored version
-    settings.last_run_version = current.clone();
-    save_update_settings(&settings)?;
 
     logger::log_info(&format!("检测到版本跳跃: {} -> {}", previous, current));
 

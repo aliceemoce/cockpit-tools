@@ -22,33 +22,8 @@ fn roaming_app_data_dir() -> Result<PathBuf, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn local_programs_dir() -> Option<PathBuf> {
-    std::env::var("LOCALAPPDATA")
-        .ok()
-        .map(|value| PathBuf::from(value).join("Programs"))
-}
-
-#[cfg(target_os = "windows")]
-fn windows_app_root_exists(root_name: &str, exe_names: &[&str]) -> bool {
-    let Some(programs_dir) = local_programs_dir() else {
-        return false;
-    };
-    let root = programs_dir.join(root_name);
-    exe_names
-        .iter()
-        .any(|exe_name| root.join(exe_name).exists())
-}
-
-#[cfg(target_os = "windows")]
 fn windows_user_data_candidates(roaming_dir: &std::path::Path) -> Vec<PathBuf> {
-    let antigravity_dir = roaming_dir.join("Antigravity");
-    let antigravity_ide_dir = roaming_dir.join("Antigravity IDE");
-
-    if windows_app_root_exists("Antigravity", &["Antigravity.exe", "antigravity.exe"]) {
-        return vec![antigravity_dir, antigravity_ide_dir];
-    }
-
-    vec![antigravity_ide_dir, antigravity_dir]
+    vec![roaming_dir.join("Antigravity IDE")]
 }
 
 pub fn default_user_data_dir() -> Result<PathBuf, String> {

@@ -1,5 +1,6 @@
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 const REASONING_ENCRYPTED_CONTENT_INCLUDE: &str = "reasoning.encrypted_content";
 const CODEX_AUTO_REVIEW_MODEL_ID: &str = "codex-auto-review";
@@ -59,7 +60,35 @@ pub fn build_codex_client_models_response(model_ids: &[String]) -> Value {
     json!({ "models": models })
 }
 
+pub(crate) fn managed_codex_model_ids() -> Vec<String> {
+    codex_client_model_catalog()
+        .get("model_overrides")
+        .and_then(Value::as_array)
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|model| model.get("slug").and_then(Value::as_str))
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn normalize_responses_body_for_codex(body: &mut Value) -> bool {
+    normalize_responses_body_for_codex_with_lite(body, false)
+}
+
+pub fn normalize_responses_body_for_codex_with_lite(
+    body: &mut Value,
+    force_responses_lite: bool,
+) -> bool {
+    let responses_lite = force_responses_lite
+        || body
+            .get("model")
+            .and_then(Value::as_str)
+            .is_some_and(codex_model_uses_responses_lite);
     let Some(obj) = body.as_object_mut() else {
         return false;
     };
@@ -68,7 +97,7 @@ pub fn normalize_responses_body_for_codex(body: &mut Value) -> bool {
     changed |= ensure_string_field(obj, "instructions", "");
     changed |= ensure_bool_field(obj, "stream", true);
     changed |= ensure_bool_field(obj, "store", false);
-    changed |= ensure_bool_field(obj, "parallel_tool_calls", true);
+    changed |= ensure_bool_field(obj, "parallel_tool_calls", !responses_lite);
     changed |= ensure_reasoning_include(obj);
     changed |= normalize_responses_input(obj);
     changed |= normalize_codex_builtin_tools(obj);
@@ -77,8 +106,25 @@ pub fn normalize_responses_body_for_codex(body: &mut Value) -> bool {
     changed
 }
 
+fn codex_model_uses_responses_lite(model_id: &str) -> bool {
+    codex_client_model_catalog()
+        .get("model_overrides")
+        .and_then(Value::as_array)
+        .is_some_and(|models| {
+            models.iter().any(|model| {
+                model
+                    .get("slug")
+                    .and_then(Value::as_str)
+                    .is_some_and(|slug| slug.eq_ignore_ascii_case(model_id.trim()))
+                    && model
+                        .get("use_responses_lite")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            })
+        })
+}
+
 fn build_codex_client_model(model_id: &str, index: usize) -> Value {
-    let display_name = display_name_for_model(model_id);
     let visibility = if matches!(
         model_id,
         CODEX_AUTO_REVIEW_MODEL_ID
@@ -92,50 +138,98 @@ fn build_codex_client_model(model_id: &str, index: usize) -> Value {
         "list"
     };
 
-    let mut model = codex_client_model_template();
+    let (mut model, is_catalog_model) = codex_client_model_template(model_id);
     let object = model
         .as_object_mut()
         .expect("Codex client model template should be a JSON object");
     object.insert("slug".to_string(), Value::String(model_id.to_string()));
-    object.insert(
-        "display_name".to_string(),
-        Value::String(display_name.clone()),
-    );
-    object.insert("description".to_string(), Value::String(display_name));
-    object.insert("context_window".to_string(), json!(DEFAULT_CONTEXT_WINDOW));
-    object.insert(
-        "max_context_window".to_string(),
-        json!(DEFAULT_MAX_CONTEXT_WINDOW),
-    );
-    object.insert(
-        "visibility".to_string(),
-        Value::String(visibility.to_string()),
-    );
+    if !is_catalog_model {
+        let display_name = display_name_for_model(model_id);
+        object.insert(
+            "display_name".to_string(),
+            Value::String(display_name.clone()),
+        );
+        object.insert("description".to_string(), Value::String(display_name));
+        object.insert("context_window".to_string(), json!(DEFAULT_CONTEXT_WINDOW));
+        object.insert(
+            "max_context_window".to_string(),
+            json!(DEFAULT_MAX_CONTEXT_WINDOW),
+        );
+        object.insert("priority".to_string(), json!(1000 + index));
+        object.insert(
+            "additional_speed_tiers".to_string(),
+            Value::Array(Vec::new()),
+        );
+        object.insert("service_tiers".to_string(), Value::Array(Vec::new()));
+    }
+    if visibility == "hide" || !object.contains_key("visibility") {
+        object.insert(
+            "visibility".to_string(),
+            Value::String(visibility.to_string()),
+        );
+    }
     object.insert("supported_in_api".to_string(), Value::Bool(true));
-    object.insert("priority".to_string(), json!(1000 + index));
-    object.insert(
-        "additional_speed_tiers".to_string(),
-        Value::Array(Vec::new()),
-    );
-    object.insert("service_tiers".to_string(), Value::Array(Vec::new()));
     object.insert("availability_nux".to_string(), Value::Null);
     object.insert("upgrade".to_string(), Value::Null);
     model
 }
 
-fn codex_client_model_template() -> Value {
-    let payload: Value = serde_json::from_str(CODEX_CLIENT_MODEL_TEMPLATES_JSON)
-        .expect("Codex client model templates JSON should be valid");
-    payload
+fn codex_client_model_catalog() -> &'static Value {
+    static CATALOG: OnceLock<Value> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        serde_json::from_str(CODEX_CLIENT_MODEL_TEMPLATES_JSON)
+            .expect("Codex client model templates JSON should be valid")
+    })
+}
+
+fn codex_client_model_template(model_id: &str) -> (Value, bool) {
+    let payload = codex_client_model_catalog();
+    let models = payload
         .get("models")
         .and_then(Value::as_array)
-        .and_then(|models| {
-            models.iter().find(|model| {
-                model.get("slug").and_then(Value::as_str) == Some(CODEX_MODEL_CATALOG_TEMPLATE_SLUG)
-            })
+        .expect("Codex client model templates should include models");
+    if let Some(model) = models.iter().find(|model| {
+        model
+            .get("slug")
+            .and_then(Value::as_str)
+            .is_some_and(|slug| slug.eq_ignore_ascii_case(model_id))
+    }) {
+        return (model.clone(), true);
+    }
+
+    let default_model = models
+        .iter()
+        .find(|model| {
+            model.get("slug").and_then(Value::as_str) == Some(CODEX_MODEL_CATALOG_TEMPLATE_SLUG)
         })
         .cloned()
-        .expect("Codex client model templates should include gpt-5.5")
+        .expect("Codex client model templates should include gpt-5.5");
+    let Some(model_override) = payload
+        .get("model_overrides")
+        .and_then(Value::as_array)
+        .and_then(|overrides| {
+            overrides.iter().find(|model| {
+                model
+                    .get("slug")
+                    .and_then(Value::as_str)
+                    .is_some_and(|slug| slug.eq_ignore_ascii_case(model_id))
+            })
+        })
+    else {
+        return (default_model, false);
+    };
+
+    let mut model = default_model;
+    let target = model
+        .as_object_mut()
+        .expect("Codex client model template should be a JSON object");
+    for (key, value) in model_override
+        .as_object()
+        .expect("Codex client model override should be a JSON object")
+    {
+        target.insert(key.clone(), value.clone());
+    }
+    (model, true)
 }
 
 fn display_name_for_model(model_id: &str) -> String {
@@ -235,7 +329,9 @@ fn normalize_responses_input_item(item: &mut Value) -> bool {
         return false;
     };
 
-    let mut changed = false;
+    // Provider adapters use this extension to reconstruct namespaced tool calls,
+    // but the official Codex Responses endpoint rejects it on replayed input items.
+    let mut changed = obj.remove("namespace").is_some();
     let role = obj
         .get("role")
         .and_then(Value::as_str)
@@ -452,6 +548,36 @@ mod tests {
     }
 
     #[test]
+    fn disables_parallel_tool_calls_for_responses_lite_models() {
+        let mut body = json!({
+            "model": "gpt-5.6-luna",
+            "input": "pong",
+            "parallel_tool_calls": true,
+        });
+
+        normalize_responses_body_for_codex(&mut body);
+        assert_eq!(
+            body.get("parallel_tool_calls").and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn responses_lite_header_forces_parallel_tool_calls_off() {
+        let mut body = json!({
+            "model": "custom-model",
+            "input": "pong",
+            "parallel_tool_calls": true,
+        });
+
+        normalize_responses_body_for_codex_with_lite(&mut body, true);
+        assert_eq!(
+            body.get("parallel_tool_calls").and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
     fn normalizes_system_role_and_builtin_tool_aliases() {
         let mut body = json!({
             "model": "gpt-5.4",
@@ -476,6 +602,39 @@ mod tests {
         assert_eq!(
             body.pointer("/tools/0/type").and_then(Value::as_str),
             Some("web_search")
+        );
+    }
+
+    #[test]
+    fn removes_provider_namespace_from_replayed_input_items() {
+        let mut body = json!({
+            "model": "gpt-5.4",
+            "input": [{
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "lookup",
+                "namespace": "mcp__example",
+                "arguments": "{}"
+            }],
+            "tools": [{
+                "type": "namespace",
+                "name": "mcp__example"
+            }]
+        });
+
+        assert!(normalize_responses_body_for_codex(&mut body));
+        assert!(body.pointer("/input/0/namespace").is_none());
+        assert_eq!(
+            body.pointer("/input/0/name").and_then(Value::as_str),
+            Some("lookup")
+        );
+        assert_eq!(
+            body.pointer("/input/0/call_id").and_then(Value::as_str),
+            Some("call_1")
+        );
+        assert_eq!(
+            body.pointer("/tools/0/type").and_then(Value::as_str),
+            Some("namespace")
         );
     }
 
@@ -511,5 +670,101 @@ mod tests {
             .pointer("/models/0/input_modalities")
             .and_then(Value::as_array)
             .is_some());
+    }
+
+    #[test]
+    fn codex_5_6_models_preserve_official_reasoning_and_speed_capabilities() {
+        assert_eq!(
+            managed_codex_model_ids(),
+            vec!["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+        );
+        let response = build_codex_client_models_response(&managed_codex_model_ids());
+        let models = response
+            .get("models")
+            .and_then(Value::as_array)
+            .expect("models should be an array");
+
+        for (slug, default_effort, supports_ultra) in [
+            ("gpt-5.6-sol", "low", true),
+            ("gpt-5.6-terra", "medium", true),
+            ("gpt-5.6-luna", "medium", false),
+        ] {
+            let model = models
+                .iter()
+                .find(|model| model.get("slug").and_then(Value::as_str) == Some(slug))
+                .expect("5.6 model should exist");
+            let efforts = model
+                .get("supported_reasoning_levels")
+                .and_then(Value::as_array)
+                .expect("reasoning levels should exist")
+                .iter()
+                .filter_map(|level| level.get("effort").and_then(Value::as_str))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                model.get("default_reasoning_level").and_then(Value::as_str),
+                Some(default_effort)
+            );
+            assert!(efforts.contains(&"max"));
+            assert_eq!(efforts.contains(&"ultra"), supports_ultra);
+            assert_eq!(
+                model
+                    .pointer("/additional_speed_tiers/0")
+                    .and_then(Value::as_str),
+                Some("fast")
+            );
+            assert_eq!(
+                model.pointer("/service_tiers/0/id").and_then(Value::as_str),
+                Some("priority")
+            );
+            assert_eq!(
+                model.get("context_window").and_then(Value::as_i64),
+                Some(372_000)
+            );
+        }
+    }
+
+    #[test]
+    fn codex_default_model_priorities_follow_official_order() {
+        let model_ids = [
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+        ]
+        .map(str::to_string);
+        let response = build_codex_client_models_response(&model_ids);
+        let priorities = response
+            .get("models")
+            .and_then(Value::as_array)
+            .expect("models should be an array")
+            .iter()
+            .map(|model| model.get("priority").and_then(Value::as_i64))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            priorities,
+            vec![Some(1), Some(2), Some(3), Some(7), Some(16), Some(23)]
+        );
+    }
+
+    #[test]
+    fn unknown_codex_models_keep_conservative_catalog_fallback() {
+        let response = build_codex_client_models_response(&["custom-model".to_string()]);
+        assert_eq!(
+            response
+                .pointer("/models/0/additional_speed_tiers")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(0)
+        );
+        assert_eq!(
+            response
+                .pointer("/models/0/service_tiers")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(0)
+        );
     }
 }

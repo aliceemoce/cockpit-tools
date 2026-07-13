@@ -3,8 +3,12 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { initI18n } from "./i18n";
 import { AppRuntimeGuard } from "./components/AppRuntimeGuard";
-
-void initI18n();
+import {
+  captureError,
+  initErrorReporter,
+  markFrontendReady,
+  recordFrontendStage,
+} from "./utils/errorReporter";
 
 initErrorReporter();
 recordFrontendStage("script_loaded");

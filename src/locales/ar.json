@@ -126,6 +126,8 @@
         "failed": "فشل التفويض",
         "hint": "بعد إكمال التفويض سيتم تحديث هذه النافذة تلقائيًا",
         "openBrowser": "فتح في المتصفح",
+        "normalWindow": "نافذة عادية",
+        "incognitoWindow": "نافذة خاصة",
         "success": "تم التفويض بنجاح",
         "meta": "تنتهي الصلاحية خلال: {{expires}}s؛ فاصل الاستطلاع: {{interval}}s",
         "preparing": "جارٍ تجهيز معلومات التفويض...",
@@ -176,7 +178,9 @@
         "resetDone": "تمت إعادة الضبط",
         "hourly": "الاقتراحات المضمنة",
         "weekly": "رسائل الدردشة",
-        "resetAt": "إعادة الضبط: {{time}}"
+        "resetAt": "إعادة الضبط: {{time}}",
+        "expiresAt": "ينتهي في: {{time}}",
+        "leftPercent": "متبقي {{value}}٪"
       },
       "subtitle": "مراقبة حالة الحصة لجميع الحسابات في الوقت الفعلي.",
       "time": {
@@ -261,6 +265,7 @@
     "errors": {
       "refreshFailed": "فشل التحديث: {{error}}",
       "switchFailed": "فشل التبديل: {{error}}",
+      "stopInstanceBeforeSwitch": "أوقف المثيل قبل تبديل الحساب",
       "pinFailed": "فشل تحديث حالة التثبيت: {{error}}",
       "closeFailed": "فشل الإغلاق: {{error}}"
     },
@@ -296,6 +301,9 @@
     "codebuddy": "CodeBuddy​",
     "qoder": "Qoder​",
     "trae": "Trae​",
+    "traeSolo": "TRAE SOLO​",
+    "traeCn": "Trae CN​",
+    "traeSoloCn": "TRAE SOLO CN​",
     "codebuddyCn": "CodeBuddy CN​",
     "zed": "منصة Zed",
     "expandSidebar": "توسيع الشريط الجانبي",
@@ -804,9 +812,13 @@
       "codebuddyCnPathReset": "إعادة تعيين إلى الافتراضي",
       "codebuddyCnPathSelect": "اختر",
       "codebuddyCnSettingsTitle": "إعدادات CodeBuddy CN",
+      "zcodeAppPath": "مسار تشغيل ZCode",
+      "zcodeAppPathDesc": "اتركه فارغًا لاستخدام المسار الافتراضي",
       "qoderAppPath": "مسار تطبيق Qoder",
       "qoderAppPathDesc": "يُستخدم المسار الافتراضي إذا تُرك فارغًا",
       "qoderAppPathPlaceholder": "المسار الافتراضي",
+      "zcodeAutoRefresh": "تحديث ZCode تلقائيًا",
+      "zcodeAutoRefreshDesc": "فاصل تحديث الحصة في الخلفية",
       "qoderAutoRefresh": "تحديث تلقائي لحصة Qoder",
       "qoderAutoRefreshDesc": "تكرار التحديث التلقائي في الخلفية",
       "qoderPathSelect": "اختر",
@@ -834,7 +846,15 @@
       "claudeAutoRefresh": "تحديث حصة Claude تلقائيًا",
       "claudeAutoRefreshDesc": "يحدّث ذاكرة الحصة المؤقتة لحسابات Claude تلقائيًا في الخلفية.",
       "claudeAppPath": "هدف تشغيل Claude Desktop",
-      "claudeAppPathDesc": "يمكن للملف الافتراضي استخدام هدف Microsoft Store؛ أما الملفات متعددة المثيلات فتحتاج Claude.exe الحقيقي."
+      "claudeAppPathDesc": "يمكن للملف الافتراضي استخدام هدف Microsoft Store؛ أما الملفات متعددة المثيلات فتحتاج Claude.exe الحقيقي.",
+      "antigravityLaunchOnSwitch": "تشغيل Antigravity IDE عند التبديل",
+      "antigravityLaunchOnSwitchDesc": "عند الإيقاف، يكتب التبديل بيانات الحساب الافتراضي في Antigravity IDE فقط، ولا يغلق التطبيق أو يشغله أو يعيد تشغيله.",
+      "tokenKeeper": "إبقاء التفويض",
+      "tokenKeeperDesc": "يحدّث رموز Token للحسابات على دفعات صغيرة فقط عند اقتراب انتهاء التفويض، مما يقلل طلبات الخلفية عند كثرة الحسابات.",
+      "platformAutoRefresh": "تحديث حصة {{platform}} تلقائيًا",
+      "traeSoloAppPath": "مسار تشغيل TRAE SOLO",
+      "traeCnAppPath": "مسار تشغيل Trae CN",
+      "traeSoloCnAppPath": "مسار تشغيل TRAE SOLO CN"
     },
     "network": {
       "apiTitle": "واجهة برمجة تطبيقات قمرة القيادة المضادة للجاذبية",
@@ -979,7 +999,7 @@
       "importModalDesc": "اختر ما تريد استيراده. ستُعامل نسخ الحسابات الاحتياطية القديمة كاستيراد للحسابات فقط.",
       "selectionTitle": "نطاق البيانات",
       "accountsOptionTitle": "بيانات الحسابات",
-      "accountsOptionDesc": "تتضمن نسخًا احتياطية لحسابات المنصات وتحافظ على توافق JSON القديم للحسابات.",
+      "accountsOptionDesc": "تتضمن نسخًا احتياطية قابلة للاستعادة لحسابات المنصات وتحافظ على توافق JSON القديم للحسابات. لا تتضمن بيانات اعتماد Grok CLI؛ استورد ملف auth.json الرسمي بشكل منفصل.",
       "configOptionTitle": "بيانات الإعدادات",
       "configOptionDesc": "تتضمن إعدادات التطبيق والمجموعات والمثيلات ومهام الإيقاظ وإعدادات مزوّدي النماذج.",
       "exportConfirm": "تصدير البيانات",
@@ -1664,6 +1684,7 @@
     "restartRequiredAfterInstall": "تم تثبيت التحديث. أعد تشغيل التطبيق يدويًا لإكمال التبديل.",
     "stoppingApiService": "جارٍ إيقاف خدمة API...",
     "stopApiServiceFailed": "تعذّر إيقاف خدمة API. عطّلها أولًا ثم أعد المحاولة.",
+    "stopApiServiceFailedContinue": "لم تتوقف خدمة API بشكل صحيح. ستتم متابعة إعادة التشغيل...",
     "skipThisVersion": "تخطي هذا الإصدار",
     "skipFailed": "تعذر تخطي هذا التحديث: {{error}}"
   },
@@ -1928,6 +1949,7 @@
       "refreshStatsSuccess": "تم تحديث إحصاءات خدمة API",
       "routingStrategy": {
         "auto": "تلقائي (موصى به)",
+        "singleAccount": "حساب واحد",
         "quotaHighFirst": "الأعلى حصة أولاً",
         "quotaLowFirst": "الأقل حصة أولاً",
         "planHighFirst": "الأعلى باقة أولاً",
@@ -1975,6 +1997,11 @@
       "oauthBinding": {
         "desc": "اختياري. يمكن اختيار حسابات OAuth التي تحتوي على refresh_token فقط. بدون ربط، تعمل خدمة API بالمسار السابق لمفتاح API؛ وبعد الربط تستخدم حالة تسجيل الدخول حساب OAuth ويستخدم Provider إعدادات خدمة API الحالية.",
         "currentService": "خدمة API: {{name}}",
+        "quotaReserveToggle": "الاحتفاظ بحصة OAuth",
+        "quotaReserveDesc": "تستخدم خدمة API حساب OAuth هذا فقط عندما تكون الحصتان المتبقيتان لخمس ساعات وللأسبوع أعلى من قيم الاحتفاظ.",
+        "quotaReserveHourlyLabel": "احتفاظ 5 ساعات",
+        "quotaReserveWeeklyLabel": "احتفاظ أسبوعي",
+        "quotaReserveInvalid": "أدخل عددًا صحيحًا من 1 إلى 100.",
         "imageGenerationTooltip": "عند التفعيل، تزيل خدمة API تعريف أداة image_generation داخل البوابة المحلية قبل تمرير محادثات النص؛ لا تُزال نماذج الصور.",
         "imageGenerationConfirm": {
           "title": "تعطيل image_generation",
@@ -1984,6 +2011,9 @@
       "customRoutingEdit": "تعديل التوجيه المخصص",
       "customRoutingTitle": "التوجيه المخصص",
       "customRoutingDesc": "عيّن الأولوية والوزن لكل حساب للتحكم في ترتيب اختيار الحسابات وتوزيع الحمل داخل الأولوية نفسها.",
+      "customRoutingBackupTitle": "حساب احتياطي",
+      "customRoutingBackupDesc": "يُستخدم فقط عند عدم توفر جميع الحسابات العادية؛ وتعود الطلبات الجديدة تلقائيًا عند استعادة حساب عادي.",
+      "customRoutingBackupShort": "احتياطي",
       "customRoutingPriorityTitle": "الأولوية",
       "customRoutingPriorityDesc": "تُختار القيم الأعلى أولاً؛ ولا تُجرّب الحسابات الأقل أولوية إلا عند عدم توفر الأعلى أولوية.",
       "customRoutingWeightTitle": "الوزن",
@@ -2138,7 +2168,8 @@
       "enterprise": "ENTERPRISE​"
     },
     "list": {
-      "showCodeReviewQuota": "إظهار حصة Code Review"
+      "showCodeReviewQuota": "إظهار حصة Code Review",
+      "showAdditionalQuota": "حصص خاصة بالنماذج"
     },
     "time": {
       "today": "اليوم {{time}}",
@@ -2159,6 +2190,7 @@
       "hourlyReset": "وقت إعادة الضبط لمدة 5 ساعات",
       "subscriptionExpiry": "انتهاء الاشتراك",
       "custom": "ترتيب مخصص",
+      "customSettingsTooltip": "إعداد الترتيب المخصص",
       "customModalTitle": "ترتيب الحسابات",
       "customModalDesc": "اسحب الحسابات أو استخدم أزرار أعلى/أسفل لتعديل ترتيب العرض.",
       "customDragHandle": "اسحب للترتيب",
@@ -2267,6 +2299,16 @@
       "accountSearchPlaceholder": "ابحث بالبريد الإلكتروني...",
       "accountFilterEmpty": "لا توجد حسابات مطابقة",
       "accountFilteredCount": "{{count}} حساباً ضمن التصفية الحالية",
+      "fullQuotaAction": "إيقاظ الحسابات",
+      "fullQuotaActionTitle": "افتح اختبار إيقاظ الحسابات. تُرتّب الحسابات افتراضياً حسب حصة 5 ساعات من الأعلى إلى الأدنى.",
+      "fullQuotaNoAccounts": "لا تحتوي القائمة الحالية على حساب OAuth متاح للإيقاظ.",
+      "fullQuotaAccountsLabel": "الحسابات المراد إيقاظها",
+      "accountSort": {
+        "default": "الترتيب الافتراضي",
+        "hourly": "حسب حصة 5 ساعات",
+        "weekly": "حسب الحصة الأسبوعية",
+        "email": "حسب البريد الإلكتروني"
+      },
       "testTitle": "اختبار إيقاظ Codex",
       "testAccountsLabel": "حسابات الاختبار",
       "testAccountsRequired": "يرجى اختيار حساب اختبار واحد على الأقل.",
@@ -2380,10 +2422,14 @@
         "collapse": "طي",
         "repairVisibility": "إصلاح الظهور",
         "restoreSessions": "استعادة الجلسات",
+        "exportSessions": "تصدير الجلسات",
+        "importSessions": "استيراد الجلسات",
         "copySessionId": "نسخ معرّف الجلسة",
+        "openLocation": "فتح الموقع",
         "selectAllSessions": "تحديد كل الجلسات",
         "clearSelectedSessions": "إلغاء تحديد الكل",
-        "copyToInstance": "نسخ إلى المثيل"
+        "copyToInstance": "نسخ إلى المثيل",
+        "trash": "المهملات"
       },
       "confirm": {
         "title": "نقل إلى المهملات",
@@ -2421,11 +2467,25 @@
       "locationRunning": " (قيد التشغيل)",
       "untitled": "جلسة بدون عنوان",
       "restoreModal": {
-        "title": "استعادة الجلسات",
-        "hint": "عند الاستعادة ستعود ملف rollout وسطر الخيط في SQLite ومدخل session_index معًا إلى المثيل الأصلي.",
+        "title": "المهملات",
+        "hint": "يمكن استعادة الجلسات من المهملات إلى المثيل الأصلي أو حذفها نهائيا لتحرير مساحة القرص.",
         "emptyTitle": "سلة المهملات فارغة",
         "emptyDesc": "ستظهر هنا الجلسات المنقولة إلى سلة المهملات.",
-        "restoreAction": "استعادة الجلسات المحددة"
+        "restoreAction": "استعادة الجلسات المحددة",
+        "summary": "{{count}} عنصر، {{size}}",
+        "selectedSummary": "{{count}} محددة، {{size}}",
+        "selectAll": "تحديد الكل",
+        "clearSelected": "إلغاء التحديد",
+        "emptyTrash": "إفراغ المهملات",
+        "itemSize": "الحجم {{size}}",
+        "deleteOne": "حذف نهائي",
+        "deleteSelected": "حذف المحدد",
+        "pickDeleteOne": "اختر جلسة واحدة على الأقل للحذف النهائي",
+        "deleteOneConfirm": "هل تريد حذف هذه الجلسة نهائيا؟ لا يمكن التراجع. المساحة المتوقعة: {{size}}.",
+        "deleteSelectedConfirm": "هل تريد حذف {{count}} جلسات محددة نهائيا؟ لا يمكن التراجع. المساحة المتوقعة: {{size}}.",
+        "permanentDeleteTitle": "حذف نهائي",
+        "permanentDeleteAction": "حذف نهائي",
+        "emptyTrashConfirm": "هل تريد إفراغ المهملات؟ سيتم حذف {{count}} جلسات نهائيا ولا يمكن استعادتها. المساحة المتوقعة: {{size}}."
       },
       "targetModal": {
         "title": "نسخ إلى المثيل",
@@ -2487,7 +2547,90 @@
         "instanceScopeAll": "كل المثيلات",
         "instanceScopeAllDesc": "إصلاح كل مثيلات Codex عند استعادة عدة مثيلات.",
         "progressTitle": "تقدم الإصلاح",
-        "start": "إصلاح"
+        "start": "إصلاح",
+        "previewing": "جارٍ استعراض التغييرات...",
+        "previewAgain": "استعراض مرة أخرى",
+        "preview": "استعراض التغييرات",
+        "previewFailedWithError": "فشل استعراض إصلاح الجلسات: {{error}}",
+        "confirmRepair": "تأكيد الإصلاح"
+      },
+      "importModal": {
+        "title": "استيراد الجلسات",
+        "hint": "تستورد حزمة الجلسات ملفات rollout ومدخلات session_index فقط، ولا تتضمن الحسابات أو Token أو API Key أو إعدادات التطبيق؛ يتم تخطي الجلسات التي لها نفس ID في المثيل الهدف.",
+        "noTarget": "لا يوجد مثيل Codex متاح للاستيراد",
+        "noPackage": "اختر حزمة جلسات أولا",
+        "pickOne": "حدد جلسة قابلة للاستيراد واحدة على الأقل",
+        "totalCount": "{{count}} جلسة في الحزمة",
+        "readyCount": "{{count}} قابلة للاستيراد",
+        "selectReady": "تحديد القابلة للاستيراد",
+        "previewing": "جارٍ معاينة حزمة الجلسات...",
+        "existsIn": "موجودة في: {{names}}",
+        "statusReady": "جاهزة",
+        "statusDuplicate": "موجودة",
+        "statusConflict": "تعارض",
+        "statusInvalid": "غير صالحة",
+        "confirm": "استيراد الجلسات المحددة"
+      },
+      "transferModal": {
+        "exportTitle": "تصدير الجلسات",
+        "importTitle": "استيراد الجلسات",
+        "minimize": "تصغير",
+        "reopen": "عرض التقدم",
+        "clear": "مسح",
+        "runningSummary": "تتم معالجة {{current}} من {{total}}",
+        "completedSummary": "اكتملت المهمة",
+        "failedSummary": "فشلت المهمة",
+        "current": "{{current}} من {{total}}",
+        "phase": {
+          "exportPrepare": "جارٍ تحضير التصدير...",
+          "exportCollect": "جارٍ جمع الجلسات...",
+          "exportHash": "جارٍ فحص ملفات الجلسة...",
+          "exportWrite": "جارٍ كتابة حزمة الجلسات...",
+          "importPrepare": "جارٍ تحضير الاستيراد...",
+          "importRead": "جارٍ قراءة حزمة الجلسات...",
+          "importWrite": "جارٍ الكتابة إلى المثيل الهدف...",
+          "importRebuild": "جارٍ تحديث فهرس الجلسات الرسمي...",
+          "done": "اكتملت المهمة"
+        }
+      },
+      "exportModal": {
+        "title": "تصدير الجلسات",
+        "hint": "راجع قائمة الجلسات والمثيل المصدر وحجم الملف قبل التصدير. تحتوي الحزمة على ملفات rollout وإدخالات session_index فقط، ولا تحتوي على حسابات أو رموز أو مفاتيح API أو إعدادات التطبيق.",
+        "previewing": "جارٍ معاينة الجلسات...",
+        "selectedCount": "تم تحديد {{count}}",
+        "exportableCount": "{{count}} قابلة للتصدير",
+        "missingCount": "{{count}} مفقودة",
+        "totalSize": "الإجمالي {{size}}",
+        "exportPath": "مسار التصدير",
+        "pathUnset": "لم يتم اختيار مسار",
+        "choosePath": "اختيار المسار",
+        "missingNotice": "{{count}} جلسة لم تعد موجودة في مجموعة المثيلات الحالية وسيتم تخطيها.",
+        "sourceInstance": "المصدر: {{name}}",
+        "emptyTitle": "لا توجد جلسات للتصدير",
+        "noPreview": "أكمل المعاينة أولاً",
+        "noExportable": "لا توجد جلسات قابلة للتصدير",
+        "pickPath": "اختر مسار التصدير",
+        "confirm": "تصدير",
+        "selectedExportCount": "المحدد {{selected}} / قابل للتصدير {{total}}",
+        "selectedSize": "حجم المحدد {{selected}} / الإجمالي {{total}}",
+        "removedNotice": "تمت إزالة {{count}} من قائمة التصدير هذه",
+        "restoreRemoved": "استعادة القائمة",
+        "sourceLabel": "المصدر",
+        "allSources": "كل المصادر",
+        "selectionLabel": "التحديد",
+        "filterAll": "الكل",
+        "filterSelected": "محدد",
+        "filterUnselected": "غير محدد",
+        "visibleCount": "المعروض {{visible}} / {{total}}",
+        "selectVisible": "تحديد المصفى",
+        "clearVisible": "إلغاء المصفى",
+        "keepVisibleOnly": "إبقاء المصفى",
+        "removeVisible": "إزالة المصفى",
+        "removeUnchecked": "إزالة غير المحدد",
+        "selectItem": "تحديد جلسة للتصدير",
+        "removeItem": "إزالة",
+        "emptyFilteredTitle": "لا توجد جلسات مطابقة",
+        "emptyFilteredDesc": "عدّل البحث أو المصدر أو حالة التحديد ثم حاول مرة أخرى."
       }
     },
     "api": {
@@ -2635,7 +2778,8 @@
         "modelCatalog": "كتالوج النماذج",
         "visionCapability": "إدخال الصور",
         "visionModels": "نماذج الصور",
-        "visionRoutingModel": "نموذج توجيه الصور"
+        "visionRoutingModel": "نموذج توجيه الصور",
+        "supportsWebsockets": "نقل WebSocket"
       },
       "validation": {
         "nameRequired": "اسم المزوّد مطلوب.",
@@ -2871,6 +3015,12 @@
         "customMoveUp": "نقل للأعلى",
         "customMoveDown": "نقل للأسفل",
         "customReset": "إعادة ضبط الترتيب"
+      },
+      "websockets": {
+        "title": "السماح لـ Codex باستخدام Responses عبر WebSocket",
+        "help": "فعّل هذا الخيار فقط عندما يدعم المزوّد Responses عبر WebSocket صراحةً؛ ويمكن تأكيد طريقة الاتصال من سجلات Codex أو خدمة الوكيل.",
+        "enabled": "مفعّل",
+        "disabled": "معطّل"
       }
     },
     "quickSwitch": {
@@ -2911,7 +3061,9 @@
       "filterWithin24h": "24س ({{count}})",
       "filterWithin7d": "7أيام ({{count}})",
       "filterWithin30d": "30يوم ({{count}})",
-      "filterMissing": "غير معروف ({{count}})"
+      "filterMissing": "غير معروف ({{count}})",
+      "accessTokenOnlyUsable": "الرمز قابل للاستخدام",
+      "accessTokenOnlyUsableDetail": "واجهة الاشتراك محدودة، لكن الحصة واستخدام Codex يعملان بشكل طبيعي"
     },
     "apiSwitchNotice": {
       "title": "جلسات Codex مخفية",
@@ -2930,8 +3082,46 @@
     "accountNote": {
       "title": "ملاحظة الحساب",
       "label": "ملاحظة الحساب",
-      "desc": "أضف ملاحظة حساب مستقلة لـ {{account}}.",
-      "placeholder": "البريد، كلمة المرور، بريد الاسترداد أو ملاحظات التسليم",
+      "desc": "أضف كلمة مرور و2FA ورابط البريد والهاتف وملاحظات أخرى لـ {{account}}.",
+      "twoFactorSecretLabel": "سر 2FA",
+      "twoFactorSecretShort": "2FA",
+      "twoFactorSecretPlaceholder": "سر Base32 أو رابط otpauth://",
+      "twoFactorSecretInvalid": "سر 2FA غير صالح. أدخل سر Base32 أو رابط otpauth://.",
+      "currentOtp": "الرمز الحالي",
+      "otpShort": "الرمز",
+      "otpRemaining": "{{seconds}} ث",
+      "passwordLabel": "كلمة المرور",
+      "passwordShort": "كلمة المرور",
+      "passwordPlaceholder": "كلمة مرور تسجيل الدخول أو كلمة مؤقتة",
+      "phoneNumberLabel": "الهاتف",
+      "phoneShort": "هاتف",
+      "phoneNumberPlaceholder": "رقم الهاتف المرتبط",
+      "mailUrlLabel": "رابط البريد",
+      "mailUrlPlaceholder": "أدخل رابط صفحة بريد يمكن فتحها",
+      "mailPreviewRefresh": "تحديث البريد",
+      "mailPreviewOpen": "فتح في المتصفح",
+      "mailPreviewLoading": "جارٍ قراءة البريد...",
+      "mailPreviewNoCode": "لم يتم العثور على رمز متصل من 6 أرقام",
+      "mailPreviewFetchFailed": "فشل قراءة البريد: {{error}}",
+      "mailPreviewUrlRequired": "أدخل رابط البريد",
+      "mailPreviewUrlInvalid": "رابط البريد غير صالح. أدخل عنوان http:// أو https:// كاملًا.",
+      "mailPreviewUnsupportedProtocol": "يدعم رابط البريد بروتوكول http أو https فقط.",
+      "mailPreviewHttpFailed": "فشل طلب رابط البريد: HTTP {{status}}",
+      "mailPreviewCode": "أحدث رمز بريد",
+      "mailPreviewStatusInitial": "تم الجلب في {{time}}",
+      "mailPreviewStatusChanged": "رمز جديد · {{time}}",
+      "mailPreviewStatusUnchanged": "بلا تغيير · {{time}}",
+      "mailPreviewTruncated": "تم اقتطاع المحتوى",
+      "mailOpenFailed": "فشل فتح رابط البريد: {{error}}",
+      "otherNoteLabel": "ملاحظات أخرى",
+      "otherNoteShort": "ملاحظة",
+      "placeholder": "ملاحظات التسليم أو بريد الاسترداد أو تفاصيل الحساب",
+      "exportSensitiveNotice": "يتضمن التصدير أسرار 2FA أو كلمات مرور أو أرقام هاتف أو روابط بريد. احفظه في مكان موثوق فقط.",
+      "exportSensitiveIncluded": "تضمين الملاحظات الحساسة",
+      "exportSensitiveExcluded": "استبعاد الملاحظات الحساسة",
+      "exportSensitiveToggleHint": "حدد ما إذا كان JSON المصدر يتضمن أسرار 2FA وكلمات المرور وأرقام الهاتف وروابط البريد.",
+      "show": "إظهار",
+      "hide": "إخفاء",
       "emptyTitle": "إضافة ملاحظة حساب",
       "short": "ملاحظة",
       "addShort": "أضف ملاحظة",
@@ -3026,7 +3216,9 @@
         "pricingUnset": "غير معين",
         "pricingReset": "إعادة ضبط",
         "pricingSaved": "تم حفظ التسعير",
-        "pricingInvalid": "يجب أن تكون الأسعار أرقامًا أكبر من أو تساوي 0"
+        "pricingInvalid": "يجب أن تكون الأسعار أرقامًا أكبر من أو تساوي 0",
+        "pricingReprice": "إعادة تقييم السجل",
+        "pricingRepriced": "أعيد تقييم السجل بالأسعار الحالية"
       },
       "keys": {
         "policyTitle": "سياسة النماذج",
@@ -3139,6 +3331,15 @@
       "renameSuccess": "تمت إعادة التسمية",
       "renameFailed": "فشلت إعادة التسمية"
     },
+    "importApiService": {
+      "toggle": "إضافة إلى خدمة API",
+      "description": "إضافة الحسابات المستوردة المؤهلة إلى مجموعة حسابات خدمة API.",
+      "syncFailed": "تم استيراد الحسابات، لكن تعذرت إضافتها إلى خدمة API: {{error}}",
+      "guideTitle": "تمت إضافة الحسابات إلى خدمة API",
+      "guideDescription": "تمت إضافة {{count}} من الحسابات إلى خدمة API. اختر «تشغيل خدمة API» للتبديل إليها واستخدامها.",
+      "later": "لاحقًا",
+      "startAction": "تشغيل خدمة API"
+    },
     "batchImport": {
       "title": "استيراد Codex دفعة واحدة",
       "resultSubtitle": "نتيجة الاستيراد",
@@ -3173,7 +3374,12 @@
       "selectedCount": "المحدد {{count}}/{{total}}",
       "selectAllAccounts": "اختيار كل الحسابات",
       "selectReady": "اختيار الحسابات السليمة",
-      "clearSelection": "إلغاء الاختيار"
+      "clearSelection": "إلغاء الاختيار",
+      "hiddenTask": "مهمة استيراد Codex دفعة واحدة",
+      "taskRunning": "جارٍ معالجة {{current}} / {{total}}",
+      "taskPreview": "{{total}} عنصر معاينة جاهز",
+      "reopen": "عرض المهمة",
+      "dismissTask": "تجاهل"
     },
     "autoRepairMode": {
       "label": "منطق الإصلاح التلقائي",
@@ -3181,6 +3387,45 @@
       "legacyBefore4eb75d96": "قبل 4eb75d96",
       "legacy4eb75d96": "منطق 4eb75d96",
       "current": "المنطق الحالي"
+    },
+    "pendingAuth": {
+      "badge": "بانتظار التفويض",
+      "emailRequired": "أدخل بريد الحساب",
+      "saving": "جارٍ حفظ الحساب المعلّق...",
+      "saved": "تم حفظ الحساب المعلّق",
+      "saveFailed": "فشل حفظ الحساب المعلّق: {{error}}",
+      "emailLabel": "حساب معلّق",
+      "emailPlaceholder": "أدخل بريد حساب OpenAI",
+      "saveDraft": "حفظ بطاقة معلّقة",
+      "authorizeAction": "تفويض",
+      "cardHint": "تم حفظ الملاحظات. أكمل OAuth لاستخدام الحساب."
+    },
+    "batchDelete": {
+      "title": "حذف Codex دفعة واحدة",
+      "running": "جارٍ الحذف",
+      "paused": "متوقف مؤقتًا",
+      "failed": "فشل جزئي",
+      "completed": "اكتمل الحذف",
+      "preparing": "جارٍ تجهيز مهمة الحذف...",
+      "retryFailed": "إعادة الفاشلة",
+      "pause": "إيقاف مؤقت",
+      "resume": "متابعة",
+      "clear": "مسح",
+      "summary": "تمت معالجة {{completed}} / {{total}}، فشل {{failed}}",
+      "started": "بدأ حذف {{count}} حساب Codex",
+      "pollFailed": "فشل تحديث تقدم الحذف الدفعي: {{error}}",
+      "actionFailed": "فشل إجراء الحذف الدفعي: {{error}}"
+    },
+    "filters": {
+      "allPlans": "كل الخطط ({{count}})",
+      "visibleOfTotal": "{{visible}} / {{total}}",
+      "activeBanner": "الفلاتر: {{visible}}/{{total}}",
+      "clearAll": "مسح الفلاتر",
+      "chipGroup": "مجموعة",
+      "chipTags": "وسوم",
+      "chipSearch": "بحث",
+      "chipPlan": "خطة",
+      "chipFolder": "مجلد"
     }
   },
   "githubCopilot": {
@@ -3418,6 +3663,14 @@
       "syncWslDesc": "استبدال إعدادات ‎.gemini‎ داخل WSL تلقائيًا عند تبديل الحساب"
     },
     "geminiRefreshInterval": "تحديث الحصة تلقائيًا",
+    "grok": {
+      "title": "إعدادات Grok CLI",
+      "appPath": "مسار Grok CLI",
+      "cliPath": "مسار CLI",
+      "cliDetected": "تم الاكتشاف: {{version}} · {{path}}",
+      "cliMissing": "لم يتم العثور على Grok CLI. أدخل مسارًا مخصصًا."
+    },
+    "grokRefreshInterval": "تحديث الحصة تلقائيًا",
     "codebuddy": {
       "title": "إعدادات CodeBuddy",
       "appPath": "مسار CodeBuddy"
@@ -3444,6 +3697,10 @@
       "title": "إعدادات WorkBuddy",
       "appPath": "مسار WorkBuddy"
     },
+    "zcode": {
+      "title": "إعدادات ZCode",
+      "appPath": "مسار ZCode"
+    },
     "zed": {
       "title": "إعدادات Zed",
       "appPath": "مسار Zed"
@@ -3457,6 +3714,18 @@
     "claude": {
       "appPath": "مسار Claude",
       "appTargetPlaceholder": "مسار Claude.exe أو shell:AppsFolder\\..."
+    },
+    "traeSolo": {
+      "appPath": "مسار TRAE SOLO",
+      "title": "إعدادات TRAE SOLO"
+    },
+    "traeCn": {
+      "appPath": "مسار Trae CN",
+      "title": "إعدادات Trae CN"
+    },
+    "traeSoloCn": {
+      "appPath": "مسار TRAE SOLO CN",
+      "title": "إعدادات TRAE SOLO CN"
     }
   },
   "quotaAlert": {
@@ -4221,17 +4490,21 @@
   "trae": {
     "title": "إدارة حسابات Trae",
     "empty": {
-      "description": "انقر على \"إضافة حساب\" لبدء إدارة حسابات Trae، أو استيرادها من بيانات Trae المحلية أو من ملف JSON."
+      "description": "انقر على \"إضافة حساب\" لبدء إدارة حسابات Trae، أو استيرادها من بيانات Trae المحلية أو من ملف JSON.",
+      "descriptionWithPlatform": "انقر على \"إضافة حساب\" لإدارة حسابات {{platform}}، أو استورد بيانات {{platform}} المحلية أو ملف JSON."
     },
     "addModal": {
-      "title": "إضافة حساب Trae"
+      "title": "إضافة حساب Trae",
+      "titleWithPlatform": "إضافة حساب {{platform}}"
     },
     "oauth": {
-      "desc": "انقر الزر أدناه وأكمل تفويض Trae OAuth في المتصفح."
+      "desc": "انقر الزر أدناه وأكمل تفويض Trae OAuth في المتصفح.",
+      "descWithPlatform": "انقر على الزر أدناه وأكمل تفويض OAuth الخاص بـ {{platform}} في المتصفح."
     },
     "import": {
       "localDesc": "استورد الحساب المسجل حاليا ومعلومات الخطة وبيانات الحصة المخزنة مؤقتا من دليل إعدادات Trae المحلي.",
-      "jsonTab": "ملف JSON"
+      "jsonTab": "ملف JSON",
+      "localDescWithPlatform": "استيراد الحساب المسجل حاليًا ومعلومات الخطة وبيانات الحصة المخزنة مؤقتًا من مجلد إعدادات {{platform}} المحلي."
     },
     "quota": {
       "usedOfTotal": "المستخدم $ {{used}} من $ {{total}}",
@@ -4257,7 +4530,12 @@
       "title": "دليل حساب Trae (انقر للتوسيع أو الطي)",
       "desc": "يدعم تسجيل الدخول الرسمي عبر OAuth والاستيراد المحلي واستيراد JSON وتبديل الحساب عبر الحقن المحلي. تتم إعادة الكتابة وفقا لقواعد التخزين الفعلية لعميل Trae.",
       "permission": "نطاق الصلاحيات: قراءة وكتابة الحقول المرتبطة بتسجيل الدخول في ملف storage.json المحلي الخاص بـ Trae لاستخدامها في استيراد الحساب وحقن تبديل الحساب وعرض الخطة. تتم معالجة جميع البيانات محليا على جهازك.",
-      "network": "نطاق الشبكة: تسجيل الدخول عبر OAuth وتحديث الرمز المميز واستعلامات الخطة تستدعي واجهات Trae الرسمية. لا يتم رفع ملفات الحساب المحلية أو محتوى التخزين الخام إلى خدمات خارجية."
+      "network": "نطاق الشبكة: تسجيل الدخول عبر OAuth وتحديث الرمز المميز واستعلامات الخطة تستدعي واجهات Trae الرسمية. لا يتم رفع ملفات الحساب المحلية أو محتوى التخزين الخام إلى خدمات خارجية.",
+      "titleWithPlatform": "دليل حسابات {{platform}} (انقر للتوسيع/الطي)",
+      "descWithPlatform": "يدعم OAuth الرسمي لـ {{platform}} والاستيراد المحلي واستيراد JSON وتبديل الحسابات عبر الحقن المحلي. تتم الكتابة عند التبديل وفق قواعد التخزين الفعلية لعميل {{platform}}.",
+      "permissionWithPlatform": "نطاق الأذونات: قراءة وكتابة حقول تسجيل الدخول في ملف storage.json المحلي الخاص بـ {{platform}} لاستيراد الحساب وحقن تبديل الحساب وعرض الخطة. تتم معالجة كل البيانات محليًا فقط.",
+      "networkGlobal": "نطاق الشبكة: تسجيل دخول OAuth وتحديث الرمز واستعلامات الخطة في {{platform}} تستدعي واجهات trae.ai / traeapi.us الرسمية. لا يتم رفع ملفات الحساب المحلية أو محتوى التخزين الخام إلى خدمات طرف ثالث.",
+      "networkCn": "نطاق الشبكة: تسجيل دخول OAuth وتحديث الرمز واستعلامات الخطة في {{platform}} تستدعي واجهات trae.cn / trae.com.cn الرسمية. لا يتم رفع ملفات الحساب المحلية أو محتوى التخزين الخام إلى خدمات طرف ثالث."
     }
   },
   "codebuddyCn": {
@@ -4412,6 +4690,62 @@
       "streakRewardCountdown": "يتبقى {{days}} يومًا للحصول على المكافأة الإضافية",
       "streakRewardToday": "المكافأة الإضافية متاحة اليوم!",
       "recentDates": "الأيام الأخيرة: "
+    }
+  },
+  "zcode": {
+    "search": "البحث في حسابات ZCode...",
+    "flowNotice": {
+      "title": "دليل إدارة حسابات ZCode",
+      "desc": "يقرأ Cockpit بيانات اعتماد ZCode المحلية المشفرة ويعيد كتابتها للتبديل الفعلي بين الحسابات وربط النسخ.",
+      "permission": "النطاق المحلي: ~/.zcode/v2/credentials.json وأدلة النسخ المُدارة.",
+      "network": "نطاق الشبكة: واجهات OAuth والمستخدم والاشتراك والحصة. لا تُرفع الحسابات إلى خدمة Cockpit."
+    },
+    "empty": "لا توجد حسابات ZCode",
+    "addAccount": "إضافة حساب ZCode",
+    "oauth": {
+      "desc": "أغلق ZCode، ثم أكمل تسجيل الدخول في نافذة التفويض داخل Cockpit؛ وسيتلقى Cockpit رد الاتصال مباشرةً.",
+      "title": "OAuth لـ ZCode",
+      "item1": "تسجيل الدخول الرسمي عبر Z.ai وBigModel.",
+      "item2": "يحفظ الحساب ويحدّث الخطة وحصص النماذج.",
+      "item3": "استخدم الحسابات لتبديل العميل وربط عدة نسخ.",
+      "urlPlaceholder": "رابط OAuth لـ ZCode",
+      "waiting": "بانتظار رد OAuth من ZCode...",
+      "openWindow": "فتح نافذة التفويض",
+      "provider": "خدمة تسجيل الدخول",
+      "success": "تم تسجيل الدخول إلى ZCode عبر OAuth"
+    },
+    "token": {
+      "desc": "الصق ملف JSON لحساب ZCode مُصدّرًا من Cockpit."
+    },
+    "apiKey": {
+      "tab": "مفتاح API",
+      "desc": "أضف مفتاح API رسميًا من Z.ai أو BigModel. عند تبديل الحساب أو تشغيل مثيلات متعددة، يُكتب المفتاح في config.json الخاص بكل مثيل.",
+      "placeholder": "الصق مفتاح API",
+      "add": "إضافة مفتاح API",
+      "provider": "خدمة مفتاح API"
+    },
+    "import": {
+      "localDesc": "استورد بيانات اعتماد ZCode المحلية المشفرة أو ملف JSON.",
+      "localClient": "استيراد من ZCode المحلي"
+    },
+    "usageNormal": "طبيعي",
+    "usageAbnormal": "خطأ",
+    "usageViewDetail": "التفاصيل",
+    "usageDetailTitle": "تفاصيل الاستخدام",
+    "usage": "الاستخدام",
+    "quota": {
+      "models": "حصة النماذج",
+      "usedOfTotal": "{{used}} / {{total}}",
+      "updatedAt": "آخر تحديث: {{time}}",
+      "expireAt": "تنتهي: {{time}}"
+    },
+    "quotaQuery": {
+      "failedRefreshCompact": "فشل استعلام الحصة",
+      "empty": "لا توجد بيانات حصة",
+      "sectionTitle": "الحصة"
+    },
+    "instances": {
+      "unsupported": "تعدد نسخ ZCode متاح فقط على macOS وWindows وLinux."
     }
   },
   "zed": {
@@ -4734,6 +5068,86 @@
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "grok": {
+    "search": "البحث في حسابات Grok CLI...",
+    "flowNotice": {
+      "title": "إدارة حسابات Grok CLI",
+      "desc": "يدير Cockpit الحسابات بتنسيق بيانات الاعتماد الرسمي لـ Grok CLI لتبديل الحساب الافتراضي فعليًا وربط النسخ المعزولة.",
+      "permission": "النطاق المحلي: قراءة ملف ~/.grok/auth.json الافتراضي وإدارة أدلة منفصلة لحسابات Grok وGROK_HOME ضمن بيانات Cockpit المحلية.",
+      "network": "نطاق الشبكة: تفويض OAuth وتجديد بيانات الاعتماد والاستعلام عن استخدام الحساب. لا تُرفع بيانات الاعتماد إلى خدمات Cockpit."
+    },
+    "empty": "لا توجد حسابات Grok CLI بعد",
+    "addAccount": "إضافة حساب Grok CLI",
+    "oauth": {
+      "desc": "افتح صفحة تفويض xAI وأدخل رمز الجهاز. سيُحفظ الحساب تلقائيًا بعد ذلك.",
+      "title": "OAuth لجهاز Grok",
+      "item1": "يستخدم مسار الجهاز الرسمي لـ Grok CLI دون شغل منفذ رد اتصال محلي.",
+      "item2": "يحفظ GROK_HOME منفصلًا بعد التفويض ويحافظ على صلاحية بيانات الاعتماد.",
+      "item3": "يمكن للحسابات تبديل CLI الافتراضي أو العمل في نسخ معزولة عن بعضها.",
+      "urlPlaceholder": "عنوان تفويض OAuth لـ Grok",
+      "waiting": "في انتظار تفويض OAuth لـ Grok...",
+      "openWindow": "فتح صفحة التفويض",
+      "success": "تم تسجيل الدخول عبر OAuth لـ Grok"
+    },
+    "import": {
+      "pasteTab": "لصق JSON",
+      "pasteDesc": "ألصق ملف auth.json الرسمي من Grok CLI. تُعالج بيانات الاعتماد في الخلفية المحلية فقط. يصدّر Cockpit بيانات وصفية محجوبة لا يمكن استخدامها لاستعادة تسجيل الدخول.",
+      "pastePlaceholder": "لصق JSON لحساب Grok",
+      "pasteAction": "استيراد JSON",
+      "localDesc": "استورد الحساب الحالي من ~/.grok/auth.json الافتراضي. عند اختيار ملف، استخدم ملف auth.json الرسمي من Grok CLI.",
+      "localClient": "الاستيراد من Grok CLI المحلي",
+      "apiKeyTab": "مفتاح API",
+      "apiKeyDesc": "الصق مفتاح xAI API (XAI_API_KEY الرسمي). يُحقن عند التشغيل. يمكن أيضًا لصق auth.json الرسمي لـ OAuth.",
+      "apiKeyPlaceholder": "الصق xai-…",
+      "apiKeyAction": "إضافة API Key"
+    },
+    "instances": {
+      "unsupported": "تتوافر نسخ Grok CLI المتعددة على macOS وWindows وLinux فقط.",
+      "launchDialogTitle": "تشغيل النسخة",
+      "launchHint": "انسخ الأمر لتشغيله يدويًا أو نفّذه مباشرة في الطرفية.",
+      "runInTerminal": "تشغيل في الطرفية",
+      "cliReady": "تم الاكتشاف",
+      "cliMissingShort": "غير مكتشف",
+      "cliPathInvalid": "مسار Grok CLI المحدد غير صالح: {{path}}",
+      "saveAndRetry": "حفظ وإعادة المحاولة",
+      "installCommand": "أمر التثبيت الرسمي",
+      "installHint": "شغّل الأمر الرسمي التالي في الطرفية، ثم انقر على التحديث بعد اكتمال التثبيت.",
+      "selectWorkingDir": "اختر مجلد عمل Grok CLI",
+      "workingDirAccountHint": "يرتبط مجلد العمل بهذا الحساب ويُستعاد عند التشغيل التالي.",
+      "launchCommandPlaceholder": "اختر مجلدًا أو أكّده لإنشاء أمر التشغيل"
+    },
+    "switch": {
+      "success": "تم تبديل الحساب"
+    },
+    "usageNormal": "سليم",
+    "usageAbnormal": "غير طبيعي",
+    "usageViewDetail": "عرض التفاصيل",
+    "usageDetailTitle": "تفاصيل الاستخدام",
+    "usage": "الاستخدام",
+    "quotaQuery": {
+      "failedRefreshCompact": "فشل الاستعلام عن الحصة",
+      "empty": "لا توجد بيانات حصة",
+      "sectionTitle": "الحصة"
+    },
+    "quota": {
+      "weekly": "الاستخدام الأسبوعي",
+      "onDemand": "الاستخدام عند الطلب",
+      "balance": "الرصيد والنقاط",
+      "included": "الاستخدام المضمّن",
+      "promotional": "الحصة الترويجية",
+      "frequent": "مهام متكررة",
+      "occasional": "مهام عرضية",
+      "resetAt": "{{label}} إعادة التعيين: {{time}}",
+      "empty": "لا حصة",
+      "apiKeyUnsupported": "لا حصة باقة لحسابات API Key"
+    },
+    "quotaAlert": {
+      "hint": "عندما ينخفض أي بند حصة للحساب الحالي عن الحد، أرسل إشعارًا أصليًا واعرض إجراء تبديل سريع داخل التطبيق.",
+      "thresholdDesc": "تشغيل تنبيه عندما ينخفض أي بند حصة عن هذه النسبة المئوية",
+      "items": "بنود الحصة",
+      "unknownItem": "بند حصة غير معروف"
+    }
   },
   "claude": {
     "import": {
