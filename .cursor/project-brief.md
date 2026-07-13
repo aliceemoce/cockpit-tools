@@ -29,5 +29,5 @@
 ## 待收尾
 - [x] release 构建 + 覆盖安装 + UI 非网络错误
 - [x] Release 资产 SHA 对齐；删误导 setup
-- [ ] 规则/设计档案 commit+push 到 `-full`
-- [ ] 系统浏览器 + UIA 复核 PR/release/分支页
+- [x] 规则/设计档案/AGENTS/HR commit+push 到 `-full`（`13c0add0`）
+- [x] 系统浏览器 + UIA 复核 PR #5 / release / `-full` 分支页
