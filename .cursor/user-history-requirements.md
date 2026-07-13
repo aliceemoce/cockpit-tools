@@ -540,3 +540,10 @@
   3. **禁止**用户未要求时做「清理历史符号」类无关任务。
   4. 交付须：隔离分支、对照 PR、本机构建+UIA、push、release 上传 exe、系统浏览器+UIA 网页复核、回写规则/设计档案；NSIS 未齐须如实声明。
   5. 当前锚点：SHA `1A0EC65E…`、分支 `sync-upstream-v1.3.0-20260714-full` @ `102904ee`、PR #5、Release tag `sync-upstream-v1.3.0-20260714`。
+### HR-20260714-002
+- **原文摘要**：质疑未打开验证、OAuth拦住却说做完、NSIS为何没打出来。
+- **类型**：问责 / 验收
+- **要求**：
+  1. 「打开验证」须当场打开 Cockpit/网页并用 UIA 留证，不得口头宣称。
+  2. 流程项被拦住 = 任务未完成，须换路径做完（本次：upstream-v1.3.0-base）。
+  3. NSIS 失败须查根因并修通（本次：`_agent_only` autobin → WiX/bundle；已出 1.3.0 setup）。
