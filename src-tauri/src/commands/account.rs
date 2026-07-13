@@ -196,12 +196,60 @@ pub async fn reorder_accounts(account_ids: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn get_current_account() -> Result<Option<models::Account>, String> {
+pub async fn get_current_account(
+    runtime_target: Option<String>,
+) -> Result<Option<models::Account>, String> {
+    let runtime_target = normalize_antigravity_runtime_target(runtime_target.as_deref());
+    let bound_account_id = match runtime_target {
+        AntigravityRuntimeTarget::Legacy => {
+            modules::antigravity_legacy_instance::load_default_settings()
+                .ok()
+                .and_then(|settings| settings.bind_account_id)
+        }
+        AntigravityRuntimeTarget::Ide => modules::instance::load_default_settings()
+            .ok()
+            .and_then(|settings| settings.bind_account_id),
+    };
+
+    if let Some(account_id) = bound_account_id.as_deref() {
+        match modules::load_account(account_id) {
+            Ok(mut account) => {
+                let _ = modules::quota_cache::apply_cached_quota(&mut account, "authorized");
+                return Ok(Some(account));
+            }
+            Err(error) => modules::logger::log_warn(&format!(
+                "[Antigravity] 当前账号绑定已失效，将回退全局当前账号: target={:?}, account_id={}, error={}",
+                runtime_target, account_id, error
+            )),
+        }
+    }
+
     modules::get_current_account()
 }
 
 #[tauri::command]
-pub async fn set_current_account(app: tauri::AppHandle, account_id: String) -> Result<(), String> {
+pub async fn set_current_account(
+    app: tauri::AppHandle,
+    account_id: String,
+    runtime_target: Option<String>,
+) -> Result<(), String> {
+    let runtime_target = normalize_antigravity_runtime_target(runtime_target.as_deref());
+    match runtime_target {
+        AntigravityRuntimeTarget::Legacy => {
+            let _ = modules::antigravity_legacy_instance::update_default_settings(
+                Some(Some(account_id.clone())),
+                None,
+                Some(false),
+            )?;
+        }
+        AntigravityRuntimeTarget::Ide => {
+            let _ = modules::instance::update_default_settings(
+                Some(Some(account_id.clone())),
+                None,
+                Some(false),
+            )?;
+        }
+    }
     modules::set_current_account_id(&account_id)?;
     let _ = crate::modules::tray::update_tray_menu(&app);
     Ok(())

@@ -5,6 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt as _;
 use url::Url;
@@ -2346,7 +2347,133 @@ pub fn get_general_config(app: tauri::AppHandle) -> Result<GeneralConfig, String
     Ok(result)
 }
 
-/// 保存通用设置配置
+/// 按字段保存通用设置配置。
+#[tauri::command]
+pub fn patch_general_config(
+    app: tauri::AppHandle,
+    updates: JsonMap<String, JsonValue>,
+) -> Result<(), String> {
+    let _save_guard = lock_general_config_transaction()?;
+
+    if updates.is_empty() {
+        return Ok(());
+    }
+
+    // 在修改系统自启动状态前完成字段和类型校验，避免无效请求留下外部副作用。
+    let mut preview = config::get_user_config();
+    apply_general_config_updates(&mut preview, &updates)?;
+
+    let requested_auto_launch = updates
+        .get("app_auto_launch_enabled")
+        .map(|value| {
+            value
+                .as_bool()
+                .ok_or_else(|| "配置字段 app_auto_launch_enabled 必须为布尔值".to_string())
+        })
+        .transpose()?;
+    let previous_auto_launch = requested_auto_launch
+        .map(|_| get_app_auto_launch_enabled(&app))
+        .transpose()?;
+    let auto_launch_os_changed = requested_auto_launch
+        .zip(previous_auto_launch)
+        .map(|(requested, previous)| requested != previous)
+        .unwrap_or(false);
+    if auto_launch_os_changed {
+        apply_app_auto_launch_enabled(
+            &app,
+            requested_auto_launch.expect("requested auto launch should exist"),
+        )?;
+    }
+
+    let mut language_changed = false;
+    let mut token_keeper_enabled_changed = false;
+    let mut floating_always_on_top_changed = false;
+    #[cfg(target_os = "macos")]
+    let mut hide_dock_icon_changed = false;
+    #[cfg(target_os = "macos")]
+    let mut tray_icon_style_changed = false;
+
+    let patch_result = config::patch_user_config(|current| {
+        let previous_language = current.language.clone();
+        let previous_token_keeper_enabled = current.token_keeper_enabled;
+        let previous_floating_always_on_top = current.floating_card_always_on_top;
+        #[cfg(target_os = "macos")]
+        let previous_hide_dock_icon = current.hide_dock_icon;
+        #[cfg(target_os = "macos")]
+        let previous_tray_icon_style = current.tray_icon_style;
+
+        apply_general_config_updates(current, &updates)?;
+
+        language_changed = previous_language != current.language;
+        token_keeper_enabled_changed =
+            previous_token_keeper_enabled != current.token_keeper_enabled;
+        floating_always_on_top_changed =
+            previous_floating_always_on_top != current.floating_card_always_on_top;
+        #[cfg(target_os = "macos")]
+        {
+            hide_dock_icon_changed = previous_hide_dock_icon != current.hide_dock_icon;
+            tray_icon_style_changed = previous_tray_icon_style != current.tray_icon_style;
+        }
+        Ok(())
+    });
+
+    let new_config = match patch_result {
+        Ok(config) => config,
+        Err(error) => {
+            if auto_launch_os_changed {
+                if let Some(previous) = previous_auto_launch {
+                    if let Err(rollback_error) = apply_app_auto_launch_enabled(&app, previous) {
+                        modules::logger::log_error(&format!(
+                            "[SystemConfig] 配置保存失败后回滚应用自启动状态失败: {}",
+                            rollback_error
+                        ));
+                    }
+                }
+            }
+            return Err(error);
+        }
+    };
+
+    if token_keeper_enabled_changed {
+        modules::provider_token_keeper::notify_config_changed(
+            app.clone(),
+            new_config.token_keeper_enabled,
+        );
+    }
+
+    if floating_always_on_top_changed {
+        if let Err(err) = modules::floating_card_window::apply_floating_card_always_on_top(&app) {
+            modules::logger::log_warn(&format!(
+                "[FloatingCard] 保存通用设置后应用置顶状态失败: {}",
+                err
+            ));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    if hide_dock_icon_changed {
+        crate::apply_macos_activation_policy(&app);
+    }
+
+    #[cfg(target_os = "macos")]
+    if tray_icon_style_changed {
+        if let Err(err) = modules::tray::apply_tray_icon_style(&app) {
+            modules::logger::log_warn(&format!("[Tray] 保存通用设置后应用图标样式失败: {}", err));
+        }
+    }
+
+    if language_changed {
+        websocket::broadcast_language_changed(&new_config.language, "desktop");
+        modules::sync_settings::write_sync_setting("language", &new_config.language);
+        if let Err(err) = modules::tray::update_tray_menu(&app) {
+            modules::logger::log_warn(&format!("[Tray] 语言变更后刷新托盘失败: {}", err));
+        }
+    }
+
+    Ok(())
+}
+
+/// 保存完整通用设置配置（兼容旧前端调用）。
 #[tauri::command]
 pub fn save_general_config(
     app: tauri::AppHandle,
@@ -2502,7 +2629,6 @@ pub fn save_general_config(
         .unwrap_or_else(|| current.workbuddy_app_path.clone());
     // 标准化语言代码为小写，确保与插件端格式一致
     let normalized_language = language.to_lowercase();
-    let language_changed = current.language != normalized_language;
     let language_for_broadcast = normalized_language.clone();
 
     // 解析关闭行为
@@ -2791,7 +2917,6 @@ pub fn save_general_config(
     }
 
     if language_changed {
-        // 广播语言变更（如果有客户端连接，会通过 WebSocket 发送）
         websocket::broadcast_language_changed(&language_for_broadcast, "desktop");
 
         // 同时写入共享文件（供插件端离线时启动读取）
@@ -2976,7 +3101,6 @@ pub fn handle_window_close(
 
     // 如果需要记住选择，更新配置
     if remember {
-        let current = config::get_user_config();
         let close_behavior = match action.as_str() {
             "minimize" => CloseWindowBehavior::Minimize,
             "quit" => CloseWindowBehavior::Quit,
@@ -3211,4 +3335,294 @@ pub async fn delete_corrupted_file(path: String) -> Result<(), String> {
     ));
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn show_floating_card_window(app: tauri::AppHandle) -> Result<(), String> {
+    modules::floating_card_window::show_floating_card_window(&app, true)
+}
+
+#[tauri::command]
+pub fn show_instance_floating_card_window(
+    app: tauri::AppHandle,
+    context: modules::floating_card_window::FloatingCardInstanceContext,
+) -> Result<(), String> {
+    modules::floating_card_window::show_instance_floating_card_window(&app, context, true)
+}
+
+#[tauri::command]
+pub fn get_floating_card_context(
+    window_label: String,
+) -> Result<Option<modules::floating_card_window::FloatingCardInstanceContext>, String> {
+    modules::floating_card_window::get_floating_card_context(&window_label)
+}
+
+#[tauri::command]
+pub fn hide_floating_card_window(app: tauri::AppHandle) -> Result<(), String> {
+    modules::floating_card_window::hide_floating_card_window(&app, false)
+}
+
+#[tauri::command]
+pub fn hide_current_floating_card_window(window: tauri::Window) -> Result<(), String> {
+    window.hide().map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub fn set_floating_card_always_on_top(
+    app: tauri::AppHandle,
+    always_on_top: bool,
+) -> Result<(), String> {
+    config::patch_user_config(|current| {
+        current.floating_card_always_on_top = always_on_top;
+        Ok(())
+    })?;
+    modules::floating_card_window::apply_floating_card_always_on_top(&app)
+}
+
+#[tauri::command]
+pub fn set_current_floating_card_window_always_on_top(
+    window: tauri::Window,
+    always_on_top: bool,
+) -> Result<(), String> {
+    window
+        .set_always_on_top(always_on_top)
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub fn set_floating_card_confirm_on_close(confirm_on_close: bool) -> Result<(), String> {
+    config::patch_user_config(|current| {
+        current.floating_card_confirm_on_close = confirm_on_close;
+        Ok(())
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_floating_card_position(x: i32, y: i32) -> Result<(), String> {
+    config::patch_user_config(|current| {
+        current.floating_card_position_x = Some(x);
+        current.floating_card_position_y = Some(y);
+        Ok(())
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn show_main_window_and_navigate(app: tauri::AppHandle, page: String) -> Result<(), String> {
+    modules::floating_card_window::show_main_window_and_navigate(&app, &page)
+}
+
+#[tauri::command]
+pub fn external_import_take_pending(
+) -> Option<modules::external_import::ExternalProviderImportPayload> {
+    modules::external_import::take_pending_external_import()
+}
+
+#[tauri::command]
+pub async fn external_import_fetch_import_url(import_url: String) -> Result<String, String> {
+    const MAX_IMPORT_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
+
+    let import_url = import_url.trim();
+    if import_url.is_empty() {
+        return Err("导入包地址为空".to_string());
+    }
+
+    let parsed = Url::parse(import_url).map_err(|err| format!("导入包地址无效: {}", err))?;
+    if !matches!(parsed.scheme(), "https" | "http") {
+        return Err("导入包地址仅支持 http/https".to_string());
+    }
+
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|err| format!("创建网络客户端失败: {}", err))?
+        .get(parsed)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|err| format!("拉取导入包失败: {}", err))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("拉取导入包失败: HTTP {}", status.as_u16()));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| format!("读取导入包失败: {}", err))?;
+    if bytes.len() > MAX_IMPORT_BUNDLE_BYTES {
+        return Err("导入包过大".to_string());
+    }
+
+    String::from_utf8(bytes.to_vec()).map_err(|_| "导入包不是有效 UTF-8 文本".to_string())
+}
+
+/// 打开指定文件夹（如不存在则创建）
+#[tauri::command]
+pub async fn open_folder(path: String) -> Result<(), String> {
+    let folder_path = std::path::Path::new(&path);
+
+    // 如果目录不存在则创建
+    if !folder_path.exists() {
+        std::fs::create_dir_all(folder_path).map_err(|e| format!("创建文件夹失败: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// 删除损坏的文件（会先备份）
+#[tauri::command]
+pub async fn delete_corrupted_file(path: String) -> Result<(), String> {
+    let file_path = std::path::Path::new(&path);
+
+    if !file_path.exists() {
+        // 文件不存在，直接返回成功
+        return Ok(());
+    }
+
+    // 创建备份文件名
+    let timestamp = chrono::Utc::now().timestamp();
+    let backup_name = format!("{}.corrupted.{}", path, timestamp);
+
+    // 备份文件
+    std::fs::rename(&path, &backup_name).map_err(|e| format!("备份损坏文件失败: {}", e))?;
+
+    modules::logger::log_info(&format!(
+        "已备份并删除损坏文件: {} -> {}",
+        path, backup_name
+    ));
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        apply_codex_quota_alert_thresholds, apply_general_config_updates,
+        lock_general_config_transaction, UserConfig,
+    };
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn general_config_transaction_lock_serializes_side_effecting_writes() {
+        let first_guard = lock_general_config_transaction().expect("acquire first transaction");
+        let (attempt_tx, attempt_rx) = mpsc::channel();
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+
+        let worker = thread::spawn(move || {
+            attempt_tx.send(()).expect("signal lock attempt");
+            let _guard = lock_general_config_transaction().expect("acquire second transaction");
+            acquired_tx.send(()).expect("signal lock acquisition");
+        });
+
+        attempt_rx.recv().expect("wait for lock attempt");
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        drop(first_guard);
+        acquired_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second transaction should continue after unlock");
+        worker.join().expect("join transaction worker");
+    }
+
+    #[test]
+    fn general_config_patch_only_changes_submitted_fields() {
+        let mut config = UserConfig {
+            theme: "dark".to_string(),
+            auto_refresh_minutes: 10,
+            ..UserConfig::default()
+        };
+        let updates = serde_json::json!({ "theme": "light" })
+            .as_object()
+            .expect("patch should be an object")
+            .clone();
+
+        apply_general_config_updates(&mut config, &updates).expect("patch should succeed");
+
+        assert_eq!(config.theme, "light");
+        assert_eq!(config.auto_refresh_minutes, 10);
+    }
+
+    #[test]
+    fn general_config_patch_rejects_non_general_fields() {
+        let mut config = UserConfig::default();
+        let updates = serde_json::json!({ "webdav_sync_password": "secret" })
+            .as_object()
+            .expect("patch should be an object")
+            .clone();
+
+        let error = apply_general_config_updates(&mut config, &updates)
+            .expect_err("unsupported field should fail");
+
+        assert!(error.contains("webdav_sync_password"));
+    }
+
+    #[test]
+    fn unrelated_general_save_preserves_distinct_codex_quota_thresholds() {
+        let mut config = UserConfig {
+            codex_quota_alert_threshold: 20,
+            codex_quota_alert_primary_threshold: 10,
+            codex_quota_alert_secondary_threshold: 30,
+            ..UserConfig::default()
+        };
+
+        apply_codex_quota_alert_thresholds(&mut config, Some(20), None, None);
+
+        assert_eq!(config.codex_quota_alert_primary_threshold, 10);
+        assert_eq!(config.codex_quota_alert_secondary_threshold, 30);
+    }
+
+    #[test]
+    fn changed_legacy_codex_quota_threshold_updates_both_windows() {
+        let mut config = UserConfig {
+            codex_quota_alert_threshold: 20,
+            codex_quota_alert_primary_threshold: 10,
+            codex_quota_alert_secondary_threshold: 30,
+            ..UserConfig::default()
+        };
+
+        apply_codex_quota_alert_thresholds(&mut config, Some(40), None, None);
+
+        assert_eq!(config.codex_quota_alert_threshold, 40);
+        assert_eq!(config.codex_quota_alert_primary_threshold, 40);
+        assert_eq!(config.codex_quota_alert_secondary_threshold, 40);
+    }
+
+    #[test]
+    fn explicit_codex_quota_window_thresholds_take_precedence() {
+        let mut config = UserConfig::default();
+
+        apply_codex_quota_alert_thresholds(&mut config, Some(40), Some(15), Some(25));
+
+        assert_eq!(config.codex_quota_alert_threshold, 40);
+        assert_eq!(config.codex_quota_alert_primary_threshold, 15);
+        assert_eq!(config.codex_quota_alert_secondary_threshold, 25);
+    }
 }

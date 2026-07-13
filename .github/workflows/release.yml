@@ -1,4 +1,5 @@
 name: Release
+
 on:
   push:
     tags:
@@ -6,47 +7,180 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  prepare-release:
+    name: Prepare staged release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # macOS Apple Silicon
-          - platform: "macos-latest"
-            args: "--target aarch64-apple-darwin"
-          # macOS Intel
-          - platform: "macos-latest"
-            args: "--target x86_64-apple-darwin"
-          # macOS Universal (同时支持 Intel 和 Apple Silicon)
-          - platform: "macos-latest"
-            args: "--target universal-apple-darwin"
-          # Linux x86_64
-          - platform: "ubuntu-22.04"
-            args: ""
-          # Linux ARM64
-          - platform: "ubuntu-24.04-arm"
-            args: ""
-          # Windows x86_64
-          - platform: "windows-latest"
-            args: ""
-
-    runs-on: ${{ matrix.platform }}
-
+    outputs:
+      version: ${{ steps.app_version.outputs.VERSION }}
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Linux)
-        if: startsWith(matrix.platform, 'ubuntu')
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read app version
+        id: app_version
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf pkg-config libsoup-3.0-dev javascriptcoregtk-4.1 libjavascriptcoregtk-4.1-dev
-          sudo apt-get install -y libnm-dev xdg-utils
+          set -euo pipefail
+          VERSION="$(node -e "console.log(require(require('path').join(process.env.GITHUB_WORKSPACE, 'package.json')).version)")"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag matches version
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_TAG="v${{ steps.app_version.outputs.VERSION }}"
+          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
+            echo "Tag (${GITHUB_REF_NAME}) does not match package.json version (${EXPECTED_TAG})."
+            exit 1
+          fi
+
+      - name: Build bilingual release notes from changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.app_version.outputs.VERSION }}"
+
+          extract_section() {
+            local file="$1"
+            local version="$2"
+
+            awk -v version="$version" '
+              BEGIN {
+                capture = 0
+                found = 0
+              }
+
+              /^## / {
+                if (capture) {
+                  exit
+                }
+                if ($0 ~ ("^## \\[" version "\\][[:space:]]*-.*$") || $0 ~ ("^## \\[v" version "\\][[:space:]]*-.*$")) {
+                  capture = 1
+                  found = 1
+                }
+              }
+
+              capture {
+                if ($0 ~ /^---[[:space:]]*$/) {
+                  exit
+                }
+                print
+              }
+
+              END {
+                if (!found) {
+                  exit 2
+                }
+              }
+            ' "$file"
+          }
+
+          if ! zh_section="$(extract_section CHANGELOG.zh-CN.md "$VERSION")"; then
+            echo "Missing changelog section for version $VERSION in CHANGELOG.zh-CN.md"
+            exit 1
+          fi
+
+          if ! en_section="$(extract_section CHANGELOG.md "$VERSION")"; then
+            echo "Missing changelog section for version $VERSION in CHANGELOG.md"
+            exit 1
+          fi
+
+          {
+            echo "## 更新日志（中文）"
+            echo
+            printf '%s\n' "$zh_section"
+            echo
+            echo "## Changelog (English)"
+            echo
+            printf '%s\n' "$en_section"
+          } > release-notes.md
+
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > published-at.txt
+
+      - name: Preserve previous legacy latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREVIOUS_TAG="$(
+            gh release list \
+              --limit 100 \
+              --json tagName,isDraft,isPrerelease \
+              --jq "[.[] | select(.isDraft == false and .isPrerelease == false and .tagName != \"${GITHUB_REF_NAME}\")][0].tagName // \"\""
+          )"
+          if [ -z "${PREVIOUS_TAG}" ]; then
+            echo "No previous published release was found; refusing to stage without a legacy updater manifest."
+            exit 1
+          fi
+
+          mkdir -p previous-release
+          gh release download "${PREVIOUS_TAG}" \
+            --pattern "latest.json" \
+            --dir previous-release \
+            --clobber
+          test -s previous-release/latest.json
+          cp previous-release/latest.json legacy-latest.json
+          echo "Preserved legacy latest.json from ${PREVIOUS_TAG}"
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.app_version.outputs.VERSION }}"
+          TITLE="Cockpit Tools v${{ steps.app_version.outputs.VERSION }}"
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            gh release edit "${TAG}" \
+              --title "${TITLE}" \
+              --notes-file release-notes.md
+          else
+            gh release create "${TAG}" \
+              --draft \
+              --title "${TITLE}" \
+              --notes-file release-notes.md
+          fi
+
+      - name: Upload release metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            release-notes.md
+            published-at.txt
+            legacy-latest.json
+
+  build-windows:
+    name: Build Windows
+    needs: prepare-release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.prepare-release.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Rust setup
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Go setup
+        uses: actions/setup-go@v5
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 

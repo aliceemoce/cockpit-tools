@@ -10,6 +10,7 @@ interface TagEditModalProps {
   initialTags: string[];
   initialNotes?: string;
   availableTags?: string[];
+  resetKey?: string | null;
   onClose: () => void;
   onSave: (tags: string[], notes?: string) => void | Promise<void>;
 }

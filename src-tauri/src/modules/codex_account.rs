@@ -2195,8 +2195,8 @@ pub fn delete_account_file(account_id: &str) -> Result<(), String> {
 
 /// 列出所有账号
 pub fn list_accounts() -> Vec<CodexAccount> {
-    let index = load_account_index();
-    index
+    let mut index = load_account_index();
+    let accounts: Vec<CodexAccount> = index
         .accounts
         .iter()
         .filter_map(

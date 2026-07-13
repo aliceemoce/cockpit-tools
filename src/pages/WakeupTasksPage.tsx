@@ -661,7 +661,9 @@ const getTriggerMode = (task: WakeupTask): TriggerMode => {
 
 export function WakeupTasksPage({ onNavigate }: WakeupPageProps) {
   const { t, i18n } = useTranslation();
-  const { accounts, currentAccount, fetchAccounts, fetchCurrentAccount } = useAccountStore();
+  const antigravityRuntimeTarget = useAntigravityRuntimeTarget();
+  const { accounts, currentAccountsByTarget, fetchAccounts, fetchCurrentAccount } = useAccountStore();
+  const currentAccount = currentAccountsByTarget[antigravityRuntimeTarget] ?? null;
   const locale = i18n.language || 'zh-CN';
   const [tasks, setTasks] = useState<WakeupTask[]>(() => loadTasks(t('wakeup.defaultTaskName')));
   const [wakeupEnabled, setWakeupEnabled] = useState(() => {
@@ -1015,8 +1017,55 @@ export function WakeupTasksPage({ onNavigate }: WakeupPageProps) {
 
   useEffect(() => {
     fetchAccounts();
-    fetchCurrentAccount();
-  }, [fetchAccounts, fetchCurrentAccount]);
+    fetchCurrentAccount(antigravityRuntimeTarget);
+  }, [antigravityRuntimeTarget, fetchAccounts, fetchCurrentAccount]);
+
+  useEffect(() => {
+    const syncMode = () => {
+      setOfficialLsVersionMode(loadWakeupOfficialLsVersionMode());
+    };
+    const handleModeChanged = (event: Event) => {
+      const detail = (event as CustomEvent<WakeupOfficialLsVersionMode>).detail;
+      if (detail === 'lt_1_21_6' || detail === 'gte_1_21_6') {
+        setOfficialLsVersionMode(detail);
+        return;
+      }
+      syncMode();
+    };
+
+    window.addEventListener(
+      WAKEUP_OFFICIAL_LS_VERSION_CHANGED_EVENT,
+      handleModeChanged as EventListener,
+    );
+    window.addEventListener('focus', syncMode);
+    return () => {
+      window.removeEventListener(
+        WAKEUP_OFFICIAL_LS_VERSION_CHANGED_EVENT,
+        handleModeChanged as EventListener,
+      );
+      window.removeEventListener('focus', syncMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showModal && !showTestModal) return;
+    let active = true;
+    const loadAccountGroups = async () => {
+      try {
+        const groups = await getAccountGroups();
+        if (!active) return;
+        setAccountGroups(groups || []);
+      } catch (error) {
+        console.error('加载账号分组失败:', error);
+        if (!active) return;
+        setAccountGroups([]);
+      }
+    };
+    void loadAccountGroups();
+    return () => {
+      active = false;
+    };
+  }, [showModal, showTestModal]);
 
   useEffect(() => {
     const syncMode = () => {
@@ -1955,9 +2004,7 @@ export function WakeupTasksPage({ onNavigate }: WakeupPageProps) {
         const oldValue = config.auto_refresh_minutes;
         
         // 更新配置
-        await invoke('save_general_config', {
-          language: config.language,
-          theme: config.theme,
+        await invoke('save_refresh_interval_config', {
           autoRefreshMinutes: minMinutes,
           codexAutoRefreshMinutes: config.codex_auto_refresh_minutes ?? 10,
           closeBehavior: config.close_behavior || 'ask',

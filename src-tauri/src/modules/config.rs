@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
 /// 默认 WebSocket 端口
@@ -1881,7 +1881,7 @@ pub fn load_user_config() -> Result<UserConfig, String> {
 }
 
 /// 保存用户配置
-pub fn save_user_config(config: &UserConfig) -> Result<(), String> {
+fn persist_user_config(config: &UserConfig) -> Result<(), String> {
     let config_path = get_user_config_path()?;
     let data_dir = get_data_dir()?;
 
@@ -1917,6 +1917,19 @@ pub fn get_user_config() -> UserConfig {
         .read()
         .map(|state| state.user_config.clone())
         .unwrap_or_default()
+}
+
+/// 更新 Grok CLI 路径；空白值恢复为自动检测。
+pub fn set_grok_cli_path(path: Option<String>) -> Result<(), String> {
+    let normalized = path.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        (!trimmed.is_empty()).then_some(trimmed)
+    });
+    patch_user_config(move |config| {
+        config.grok_cli_path = normalized;
+        Ok(())
+    })?;
+    Ok(())
 }
 
 /// 获取用户配置的首选端口

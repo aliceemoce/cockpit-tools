@@ -118,18 +118,44 @@ let allowNextEmptyAccountList = false;
 let allowNextEmptyCurrentAccount = false;
 const DEBOUNCE_MS = 500;
 
+type CurrentAccountsByTarget = Record<AntigravityRuntimeTarget, Account | null>;
+
+function buildEmptyCurrentAccountsByTarget(): CurrentAccountsByTarget {
+    return {
+        antigravity: null,
+        antigravity_ide: null,
+    };
+}
+
+function resolveRuntimeTarget(runtimeTarget?: AntigravityRuntimeTarget): AntigravityRuntimeTarget {
+    return normalizeAntigravityRuntimeTarget(runtimeTarget ?? DEFAULT_ANTIGRAVITY_RUNTIME_TARGET);
+}
+
+function updateCurrentAccountsByTarget(
+    current: CurrentAccountsByTarget | undefined,
+    runtimeTarget: AntigravityRuntimeTarget,
+    account: Account | null,
+): CurrentAccountsByTarget {
+    return {
+        ...buildEmptyCurrentAccountsByTarget(),
+        ...(current ?? {}),
+        [runtimeTarget]: account,
+    };
+}
+
 interface AccountState {
     accounts: Account[];
     currentAccount: Account | null;
+    currentAccountsByTarget: CurrentAccountsByTarget;
     loading: boolean;
     error: string | null;
     fetchAccounts: () => Promise<void>;
-    fetchCurrentAccount: () => Promise<void>;
+    fetchCurrentAccount: (runtimeTarget?: AntigravityRuntimeTarget) => Promise<void>;
     addAccount: (email: string, refreshToken: string) => Promise<Account>;
     deleteAccount: (accountId: string) => Promise<void>;
     deleteAccounts: (accountIds: string[]) => Promise<void>;
-    setCurrentAccount: (accountId: string) => Promise<void>;
-    refreshQuota: (accountId: string) => Promise<void>;
+    setCurrentAccount: (accountId: string, runtimeTarget?: AntigravityRuntimeTarget) => Promise<void>;
+    refreshQuota: (accountId: string, runtimeTarget?: AntigravityRuntimeTarget) => Promise<void>;
     refreshAllQuotas: () => Promise<RefreshStats>;
     startOAuthLogin: () => Promise<Account>;
     reorderAccounts: (accountIds: string[]) => Promise<void>;
