@@ -1,14 +1,16 @@
 # Cursor fork 范围说明（对照「你的版本」）
 
-## 当前最新安装/运行构建（2026-06-23）
+## 当前最新安装/运行构建（2026-07-14）
 
 | 项 | 值 |
 |----|-----|
 | 路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
-| SHA-256 | `71E052FBDEA0049B2EE029C1FB0CAC93C5CF9CCA15F8C71E1C06972276635867` |
-| 版本 | `0.26.5` |
-| 形态 | NSIS 安装构建 |
-| 状态 | **当前正在运行** |
+| SHA-256 | `09BA38D3A9C044375EEF89E3F31B9A44F358B745F6E58E8BDDF1AB80590813E4` |
+| 版本 | `1.3.0` |
+| 形态 | tauri debug 构建（release OOM；签名私钥缺失） |
+| 源码分支 | `sync-upstream-v1.3.0-20260714` @ `b0582bab` |
+| Upstream | 正式 tag `v1.3.0` @ `da0deca4` |
+| 状态 | **当前已部署并可 UIA 验收仪表盘** |
 
 > 说明：后文 `nirvana-token` 桌面包仍保留为**历史桌面验收基线**；若用户说“最新构建”或“当前运行”，默认以上述 `%LocalAppData%` 安装构建为准。
 
@@ -68,7 +70,19 @@
 
 ---
 
-## 主仓库 `jlcodes99/cockpit-tools` v0.26.5（对照用，2026-06-22 合并后）
+## 主仓库 `jlcodes99/cockpit-tools` v1.3.0（对照用，2026-07-14 合并后）
+
+| 项 | 值 |
+|----|-----|
+| 上游 | 正式 tag **`v1.3.0`** @ `da0deca4` |
+| 集成分支 | `sync-upstream-v1.3.0-20260714` @ `b0582bab` |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/4 |
+| Release | https://github.com/aliceemoce/cockpit-tools/releases/tag/sync-upstream-v1.3.0-20260714 |
+
+- 合并策略：fork 已有路径保留 fork；未接线上游 Grok/Zcode UI stub 已剔除以保证可构建
+- 仍保留 fork：无忧切号 / nirvana_raw / 强制轮换 / NVIDIA provider / 多开 pick / 邮箱去重
+
+## 主仓库 `jlcodes99/cockpit-tools` v0.26.5（历史对照，2026-06-22）
 
 | 项 | 值 |
 |----|-----|
@@ -89,7 +103,7 @@
 
 ## Agent 操作约束
 
-- 说**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `71E052FB…`）。
+- 说**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `09BA38D3…`，v1.3.0）。
 - 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
 - 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
 - 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。

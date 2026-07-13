@@ -18,16 +18,18 @@ alwaysApply: true
 
 ---
 
-## 2. 当前已核实特征（2026-06-23，已核对本机最新运行构建）
+## 2. 当前已核实特征（2026-07-14，upstream v1.3.0 同步后）
 
 ### 能用
 
 | 项 | 证据 |
 |----|------|
-| **当前最新安装/运行构建** `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` | SHA **`71E052FB…`**，v0.26.5，NSIS 安装构建 2026-06-23；已核对为当前正在运行的二进制 |
+| **当前最新安装/运行构建** `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` | SHA **`09BA38D3A9C044375EEF89E3F31B9A44F358B745F6E58E8BDDF1AB80590813E4`**，ProductVersion **1.3.0**，`tauri build --debug` 2026-07-14；UIA 仪表盘可见 |
+| **同步分支** | `sync-upstream-v1.3.0-20260714` @ **`b0582bab`**（merge upstream v1.3.0 `da0deca4` into `fork-20260705`） |
+| **个人仓对照/发布** | PR [#4](https://github.com/aliceemoce/cockpit-tools/pull/4)；Release [`sync-upstream-v1.3.0-20260714`](https://github.com/aliceemoce/cockpit-tools/releases/tag/sync-upstream-v1.3.0-20260714) |
 | **历史 Cursor 验收包** `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` | SHA **`F5256511…`**，2026-06-15；**合并前** Cursor 链对照 |
-| **合并后源码** | `integrate-upstream-v0.26.5-20260622` @ **`92cc6da0`**（含 upstream `d5ad5cea` + fork 切号/NVIDIA/Windsurf bootstrap） |
-| **合并后调试构建** | `target/debug/cockpit-tools.exe` SHA **`50E61F27…`**，v0.26.5，`cargo build` + `npm run build` 通过 |
+| **上一正式集成源码（历史）** | `integrate-upstream-v0.26.5-20260622` @ **`92cc6da0`**（upstream `d5ad5cea` / v0.26.5） |
+| **合并后调试构建** | `target/debug/cockpit-tools.exe`（同安装 SHA 系列，v1.3.0） |
 | 默认实例切号 | `close_cursor(仅默认 profile)`，**不全杀**其它 Cursor（源码仍在） |
 | 多开 + 默认 **可同时存在** | 默认 `close_cursor`；多开 `close_cursor_profile_strict` |
 | 配额 transient | 网络/超时失败 **不写盘**（`is_cursor_transient_quota_error`） |
@@ -53,11 +55,11 @@ alwaysApply: true
 - 无命令行闪屏
 - 多开 profile 隔离 + **每次 Play/多开强制轮换**（`pick_cursor_rotation_account`，HR-20260626-005）
 - transient 失败不写盘；auth 类失败可写 `quota_query_last_error`
-- **合并后**以 `integrate-upstream-v0.26.5-20260622` 为开发主线；release exe 待 GUI 点验后更新 SHA
+- **合并后**以 `sync-upstream-v1.3.0-20260714` 为开发主线（upstream 正式 **v1.3.0**）
 - **邮箱去重**（`accounts_are_duplicates` / 导入只认邮箱，`e9d5182f` 口径；HR-20260626-004 恢复）
-- 提到**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`71E052FB…`**
+- 提到**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`09BA38D3…`**（v1.3.0）
 - 提到**历史桌面验收包 / nirvana-token 基线**时，默认指 `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` SHA **`F5256511…`**
-- 线上对照：base = **`upstream/main` @ `d5ad5cea`**，head = **`integrate-upstream-v0.26.5-20260622`**
+- 线上对照：upstream tag **`v1.3.0` @ `da0deca4`**，head = **`sync-upstream-v1.3.0-20260714`**；本仓 PR #4 base=`fork-20260705`
 
 ### 不需要
 

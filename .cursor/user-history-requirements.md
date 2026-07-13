@@ -530,3 +530,14 @@
   1. 32 个桌面导入邮箱须上传至 `aliceemoce/cockpit-credentials` / `cursor-import-backups/`（脚本 `scripts/upload_cursor_import_backups.py`）
   2. 今日 Cockpit 自动备份核对：`scripts/audit_cockpit_backups_today.py`（本地 `cursor_local_import_backups` + 凭证仓 git log）
 
+## 2026-07-14
+
+### HR-20260714-001
+- **原文**: 在这个仓库中执行一次 Cockpit 主仓同步巡检与交付流程……（正式发布版本更新触发；合并/PR/构建/UIA/release/网页复核/规则回写）
+- **类型**: upstream 同步巡检交付（F-007/F-008）
+- **要求**:
+  1. 只按正式 release/tag/版本号判断；无新版本则立即停止、不改档案
+  2. 有新版本：从最新可用 fork 分支隔离合并，保留 fork，不带回 release 外内容
+  3. 合并前确认个人仓代码+exe 可追溯；合并后 push、对照 PR、上传 exe、系统浏览器+UIA 网页复核
+  4. 回写最新构建/开发主线到规则与设计档案
+
