@@ -4,11 +4,13 @@ import type {
   CodexLocalAccessChatResult,
   CodexLocalAccessCustomRoutingRule,
   CodexLocalAccessAccountModelRule,
+  CodexLocalAccessAppendAccountsResult,
   CodexLocalAccessClientBaseUrlHost,
   CodexLocalAccessGatewayMode,
   CodexLocalAccessImageGenerationMode,
   CodexLocalAccessModelAlias,
   CodexLocalAccessModelPricing,
+  CodexLocalAccessOAuthQuotaReserve,
   CodexLocalAccessPortCleanupResult,
   CodexLocalAccessRequestLogQuery,
   CodexLocalAccessRoutingStrategy,
@@ -34,6 +36,12 @@ export async function saveCodexLocalAccessAccounts(
   });
 }
 
+export async function appendCodexLocalAccessAccounts(
+  accountIds: string[],
+): Promise<CodexLocalAccessAppendAccountsResult> {
+  return await invoke("codex_local_access_append_accounts", { accountIds });
+}
+
 export async function removeCodexLocalAccessAccount(
   accountId: string,
 ): Promise<CodexLocalAccessState> {
@@ -47,10 +55,12 @@ export async function rotateCodexLocalAccessApiKey(): Promise<CodexLocalAccessSt
 export async function updateCodexLocalAccessBoundOAuthAccount(
   boundOauthAccountId: string | null,
   boundOauthUseLocalGateway = false,
+  boundOauthQuotaReserve: CodexLocalAccessOAuthQuotaReserve | null = null,
 ): Promise<CodexLocalAccessState> {
   return await invoke("codex_local_access_update_bound_oauth_account", {
     boundOauthAccountId,
     boundOauthUseLocalGateway,
+    boundOauthQuotaReserve,
   });
 }
 
@@ -127,6 +137,10 @@ export async function updateCodexLocalAccessModelPricings(
   return await invoke("codex_local_access_update_model_pricings", {
     modelPricings,
   });
+}
+
+export async function repriceCodexLocalAccessRequestLogs(): Promise<CodexLocalAccessState> {
+  return await invoke("codex_local_access_reprice_request_logs");
 }
 
 export async function updateCodexLocalAccessRoutingOptions(payload: {

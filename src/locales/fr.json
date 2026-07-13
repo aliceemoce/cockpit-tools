@@ -6,12 +6,14 @@
     "saving": "Enregistrement...",
     "delete": "Supprimer",
     "refresh": "Actualiser",
+    "reauthorize": "Réautoriser",
     "loading": "Chargement...",
     "success": "Succès",
     "failed": "Échec",
     "enabled": "Activé",
     "disabled": "Désactivé",
     "close": "Fermer",
+    "back": "Retour",
     "open": "Ouvrir",
     "copy": "Copier",
     "copied": "Copié",
@@ -124,6 +126,8 @@
         "failed": "Autorisation échouée",
         "hint": "Une fois l'autorisation terminée, cette fenêtre se mettra à jour automatiquement",
         "openBrowser": "Ouvrir dans le navigateur",
+        "normalWindow": "Fenêtre normale",
+        "incognitoWindow": "Fenêtre privée",
         "success": "Autorisation réussie",
         "meta": "Expire dans : {{expires}}s ; intervalle d'interrogation : {{interval}}s",
         "preparing": "Préparation du lien d'autorisation...",
@@ -174,7 +178,9 @@
         "resetDone": "Réinitialisé",
         "hourly": "Quota de 5 heures",
         "weekly": "Quota hebdomadaire",
-        "resetAt": "Réinitialisation: {{time}}"
+        "resetAt": "Réinitialisation: {{time}}",
+        "expiresAt": "Expire le : {{time}}",
+        "leftPercent": "{{value}} % restants"
       },
       "subtitle": "Gérez vos comptes GitHub Copilot",
       "time": {
@@ -248,6 +254,9 @@
     "codebuddy": "CodeBuddy​",
     "qoder": "Qoder​",
     "trae": "Trae​",
+    "traeSolo": "TRAE SOLO​",
+    "traeCn": "Trae CN​",
+    "traeSoloCn": "TRAE SOLO CN​",
     "codebuddyCn": "CodeBuddy CN​",
     "zed": "Plateforme Zed",
     "expandSidebar": "Développer la barre latérale",
@@ -756,9 +765,13 @@
       "codebuddyCnPathReset": "Réinitialiser par défaut",
       "codebuddyCnPathSelect": "Sélectionner",
       "codebuddyCnSettingsTitle": "Paramètres CodeBuddy CN",
+      "zcodeAppPath": "Chemin de lancement ZCode",
+      "zcodeAppPathDesc": "Laissez vide pour utiliser le chemin par défaut",
       "qoderAppPath": "Chemin de l'application Qoder",
       "qoderAppPathDesc": "Laisser vide pour utiliser le chemin par défaut",
       "qoderAppPathPlaceholder": "Chemin par défaut",
+      "zcodeAutoRefresh": "Actualisation auto de ZCode",
+      "zcodeAutoRefreshDesc": "Intervalle d'actualisation du quota en arrière-plan",
       "qoderAutoRefresh": "Actualisation automatique du quota Qoder",
       "qoderAutoRefreshDesc": "Fréquence de l'actualisation automatique en arrière-plan",
       "qoderPathSelect": "Sélectionner",
@@ -786,7 +799,15 @@
       "claudeAutoRefresh": "Actualisation auto du quota Claude",
       "claudeAutoRefreshDesc": "Actualise automatiquement en arrière-plan le cache de quota des comptes Claude.",
       "claudeAppPath": "Cible de lancement Claude Desktop",
-      "claudeAppPathDesc": "Le profil par défaut peut utiliser une cible Microsoft Store ; les instances multiples nécessitent le vrai Claude.exe."
+      "claudeAppPathDesc": "Le profil par défaut peut utiliser une cible Microsoft Store ; les instances multiples nécessitent le vrai Claude.exe.",
+      "antigravityLaunchOnSwitch": "Lancer Antigravity IDE au changement",
+      "antigravityLaunchOnSwitchDesc": "Si désactivé, le changement écrit seulement les données du compte par défaut Antigravity IDE et ne ferme, lance ni redémarre l’application.",
+      "tokenKeeper": "Maintien auth",
+      "tokenKeeperDesc": "Actualise les jetons des comptes par petits lots uniquement quand l’autorisation arrive à expiration, afin de réduire les requêtes en arrière-plan.",
+      "platformAutoRefresh": "Actualisation automatique du quota {{platform}}",
+      "traeSoloAppPath": "Chemin de lancement TRAE SOLO",
+      "traeCnAppPath": "Chemin de lancement Trae CN",
+      "traeSoloCnAppPath": "Chemin de lancement TRAE SOLO CN"
     },
     "network": {
       "apiTitle": "API du cockpit antigravité",
@@ -931,7 +952,7 @@
       "importModalDesc": "Choisissez ce que vous souhaitez importer. Les anciennes sauvegardes de comptes sont traitées comme un import comptes uniquement.",
       "selectionTitle": "Périmètre des données",
       "accountsOptionTitle": "Données des comptes",
-      "accountsOptionDesc": "Inclut les sauvegardes des comptes de chaque plateforme et conserve la compatibilité avec l'ancien JSON des comptes.",
+      "accountsOptionDesc": "Inclut les sauvegardes restaurables des comptes et conserve la compatibilité avec l'ancien JSON. Les identifiants Grok CLI sont exclus ; importez séparément le fichier auth.json officiel.",
       "configOptionTitle": "Données de configuration",
       "configOptionDesc": "Inclut les réglages de l'application, les groupes, les instances, les tâches de réveil et la configuration des fournisseurs de modèles.",
       "exportConfirm": "Exporter les données",
@@ -1616,6 +1637,7 @@
     "restartRequiredAfterInstall": "La mise à jour est installée. Redémarrez l'application manuellement pour terminer le basculement.",
     "stoppingApiService": "Arrêt du service API...",
     "stopApiServiceFailed": "Impossible d’arrêter le service API. Désactivez-le d’abord, puis réessayez.",
+    "stopApiServiceFailedContinue": "Le service API ne s’est pas arrêté correctement. Redémarrage quand même...",
     "skipThisVersion": "Ignorer cette version",
     "skipFailed": "Impossible d'ignorer cette mise à jour : {{error}}"
   },
@@ -1880,6 +1902,7 @@
       "refreshStatsSuccess": "Les statistiques du service API ont été actualisées",
       "routingStrategy": {
         "auto": "Auto (recommandé)",
+        "singleAccount": "Compte unique",
         "quotaHighFirst": "Quota élevé d'abord",
         "quotaLowFirst": "Quota faible d'abord",
         "planHighFirst": "Forfait élevé d'abord",
@@ -1927,6 +1950,11 @@
       "oauthBinding": {
         "desc": "Facultatif. Seuls les comptes OAuth avec refresh_token peuvent être sélectionnés. Sans liaison, le service API conserve le flux API Key existant ; une fois lié, la session utilise le compte OAuth et le Provider utilise la configuration du service API.",
         "currentService": "Service API : {{name}}",
+        "quotaReserveToggle": "Réserver le quota OAuth",
+        "quotaReserveDesc": "Le service API utilise ce compte OAuth uniquement tant que les quotas restants sur 5 heures et sur la semaine sont supérieurs aux valeurs réservées.",
+        "quotaReserveHourlyLabel": "Réserve 5 h",
+        "quotaReserveWeeklyLabel": "Réserve semaine",
+        "quotaReserveInvalid": "Saisissez un entier compris entre 1 et 100.",
         "imageGenerationTooltip": "Une fois activé, le service API retire la déclaration d’outil image_generation dans la passerelle locale avant de transférer les conversations texte ; les modèles d’image ne sont pas supprimés.",
         "imageGenerationConfirm": {
           "title": "Désactiver image_generation",
@@ -1936,6 +1964,9 @@
       "customRoutingEdit": "Modifier le routage personnalisé",
       "customRoutingTitle": "Routage personnalisé",
       "customRoutingDesc": "Définissez la priorité et le poids de chaque compte pour contrôler l’ordre de sélection et la répartition à priorité égale.",
+      "customRoutingBackupTitle": "Compte de secours",
+      "customRoutingBackupDesc": "Utilisé uniquement lorsque tous les comptes standard sont indisponibles. Les nouvelles requêtes reviennent automatiquement dès qu’un compte standard est rétabli.",
+      "customRoutingBackupShort": "Secours",
       "customRoutingPriorityTitle": "Priorité",
       "customRoutingPriorityDesc": "Les valeurs les plus élevées sont choisies en premier ; les priorités plus basses ne sont tentées que si les autres sont indisponibles.",
       "customRoutingWeightTitle": "Poids",
@@ -2049,6 +2080,7 @@
     "quota": {
       "hourly": "Quota de 5 heures",
       "weekly": "Quota hebdomadaire",
+      "additional": "Quota supplémentaire",
       "reset": "Réinitialiser",
       "weeklyBlocksHourly": "Le quota hebdomadaire est à 0 ; le quota de 5 heures est donc indisponible",
       "resetCredits": "Réinits {{count}}",
@@ -2089,7 +2121,8 @@
       "enterprise": "ENTERPRISE​"
     },
     "list": {
-      "showCodeReviewQuota": "Afficher le quota Code Review"
+      "showCodeReviewQuota": "Afficher le quota Code Review",
+      "showAdditionalQuota": "Quotas spécifiques aux modèles"
     },
     "time": {
       "today": "Aujourd'hui {{time}}",
@@ -2110,6 +2143,7 @@
       "hourlyReset": "Heure de réinitialisation sur 5 heures",
       "subscriptionExpiry": "Expiration abonnement",
       "custom": "Ordre personnalisé",
+      "customSettingsTooltip": "Configurer l’ordre personnalisé",
       "customModalTitle": "Ordre des comptes",
       "customModalDesc": "Faites glisser les comptes ou utilisez les boutons haut/bas pour ajuster l’ordre.",
       "customDragHandle": "Faire glisser",
@@ -2218,6 +2252,16 @@
       "accountSearchPlaceholder": "Rechercher par e-mail...",
       "accountFilterEmpty": "Aucun compte correspondant",
       "accountFilteredCount": "{{count}} compte(s) dans le filtre actuel",
+      "fullQuotaAction": "Réveiller comptes",
+      "fullQuotaActionTitle": "Ouvre le test de réveil des comptes. Les comptes sont triés par quota 5h décroissant par défaut.",
+      "fullQuotaNoAccounts": "La liste actuelle ne contient aucun compte OAuth disponible pour le réveil.",
+      "fullQuotaAccountsLabel": "Comptes à réveiller",
+      "accountSort": {
+        "default": "Ordre par défaut",
+        "hourly": "Par quota 5h",
+        "weekly": "Par quota hebdo",
+        "email": "Par e-mail"
+      },
       "testTitle": "Tester le réveil Codex",
       "testAccountsLabel": "Comptes de test",
       "testAccountsRequired": "Veuillez sélectionner au moins un compte de test.",
@@ -2331,10 +2375,14 @@
         "collapse": "Réduire",
         "repairVisibility": "Réparer la visibilité",
         "restoreSessions": "Restaurer les sessions",
+        "exportSessions": "Exporter les sessions",
+        "importSessions": "Importer des sessions",
         "copySessionId": "Copier l'ID de session",
+        "openLocation": "Ouvrir l’emplacement",
         "selectAllSessions": "Tout sélectionner",
         "clearSelectedSessions": "Désélectionner",
-        "copyToInstance": "Copier vers instance"
+        "copyToInstance": "Copier vers instance",
+        "trash": "Corbeille"
       },
       "confirm": {
         "title": "Déplacer vers la corbeille",
@@ -2372,11 +2420,25 @@
       "locationRunning": " (en cours d’exécution)",
       "untitled": "Session sans titre",
       "restoreModal": {
-        "title": "Restaurer les sessions",
-        "hint": "La restauration remet ensemble le fichier rollout, la ligne de thread SQLite et l'entrée session_index dans l'instance d'origine.",
+        "title": "Corbeille",
+        "hint": "Les sessions dans la corbeille peuvent être restaurées dans leur instance d’origine ou supprimées définitivement pour libérer de l’espace disque.",
         "emptyTitle": "La corbeille est vide",
         "emptyDesc": "Les sessions déplacées dans la corbeille apparaîtront ici.",
-        "restoreAction": "Restaurer les sessions sélectionnées"
+        "restoreAction": "Restaurer les sessions sélectionnées",
+        "summary": "{{count}} éléments, {{size}}",
+        "selectedSummary": "{{count}} sélectionnés, {{size}}",
+        "selectAll": "Tout sélectionner",
+        "clearSelected": "Désélectionner",
+        "emptyTrash": "Vider la corbeille",
+        "itemSize": "Taille {{size}}",
+        "deleteOne": "Supprimer définitivement",
+        "deleteSelected": "Supprimer la sélection",
+        "pickDeleteOne": "Sélectionnez au moins une session à supprimer définitivement",
+        "deleteOneConfirm": "Supprimer définitivement cette session ? Cette action est irréversible. Espace estimé libéré : {{size}}.",
+        "deleteSelectedConfirm": "Supprimer définitivement les {{count}} sessions sélectionnées ? Cette action est irréversible. Espace estimé libéré : {{size}}.",
+        "permanentDeleteTitle": "Suppression définitive",
+        "permanentDeleteAction": "Supprimer définitivement",
+        "emptyTrashConfirm": "Vider la corbeille ? {{count}} sessions seront supprimées définitivement et ne pourront pas être restaurées. Espace estimé libéré : {{size}}."
       },
       "targetModal": {
         "title": "Copier vers instance",
@@ -2438,7 +2500,90 @@
         "instanceScopeAll": "Toutes les instances",
         "instanceScopeAllDesc": "Répare toutes les instances Codex lors d’une restauration groupée.",
         "progressTitle": "Progression",
-        "start": "Démarrer"
+        "start": "Démarrer",
+        "previewing": "Prévisualisation...",
+        "previewAgain": "Prévisualiser à nouveau",
+        "preview": "Prévisualiser les changements",
+        "previewFailedWithError": "Échec de la prévisualisation de la réparation des sessions : {{error}}",
+        "confirmRepair": "Confirmer la réparation"
+      },
+      "importModal": {
+        "title": "Importer des sessions",
+        "hint": "Les paquets de sessions importent uniquement les fichiers rollout et les entrées session_index. Les comptes, tokens, clés API et paramètres de l’application ne sont pas inclus ; les sessions avec le même ID déjà présentes dans l’instance cible sont ignorées.",
+        "noTarget": "Aucune instance Codex disponible pour l’import",
+        "noPackage": "Sélectionnez d’abord un paquet de sessions",
+        "pickOne": "Sélectionnez au moins une session importable",
+        "totalCount": "{{count}} session(s) dans le paquet",
+        "readyCount": "{{count}} importable(s)",
+        "selectReady": "Sélectionner les importables",
+        "previewing": "Prévisualisation du paquet de sessions...",
+        "existsIn": "Déjà dans : {{names}}",
+        "statusReady": "Prête",
+        "statusDuplicate": "Existe",
+        "statusConflict": "Conflit",
+        "statusInvalid": "Invalide",
+        "confirm": "Importer les sessions sélectionnées"
+      },
+      "transferModal": {
+        "exportTitle": "Exporter les sessions",
+        "importTitle": "Importer les sessions",
+        "minimize": "Réduire",
+        "reopen": "Voir progression",
+        "clear": "Effacer",
+        "runningSummary": "Traitement {{current}} sur {{total}}",
+        "completedSummary": "Tâche terminée",
+        "failedSummary": "Tâche échouée",
+        "current": "{{current}} sur {{total}}",
+        "phase": {
+          "exportPrepare": "Préparation de l’export...",
+          "exportCollect": "Collecte des sessions...",
+          "exportHash": "Vérification des fichiers de session...",
+          "exportWrite": "Écriture du paquet de sessions...",
+          "importPrepare": "Préparation de l’import...",
+          "importRead": "Lecture du paquet de sessions...",
+          "importWrite": "Écriture dans l’instance cible...",
+          "importRebuild": "Actualisation de l’index officiel des sessions...",
+          "done": "Tâche terminée"
+        }
+      },
+      "exportModal": {
+        "title": "Exporter les sessions",
+        "hint": "Vérifiez la liste, l’instance source et la taille avant export. Les paquets contiennent seulement les fichiers rollout et les entrées session_index, pas les comptes, jetons, clés API ni réglages.",
+        "previewing": "Aperçu des sessions...",
+        "selectedCount": "{{count}} sélectionnées",
+        "exportableCount": "{{count}} exportables",
+        "missingCount": "{{count}} manquantes",
+        "totalSize": "Taille totale {{size}}",
+        "exportPath": "Chemin export",
+        "pathUnset": "Aucun chemin choisi",
+        "choosePath": "Choisir",
+        "missingNotice": "{{count}} session(s) ne sont plus dans les instances actuelles et seront ignorées.",
+        "sourceInstance": "Source : {{name}}",
+        "emptyTitle": "Aucune session exportable",
+        "noPreview": "Terminez d’abord l’aperçu",
+        "noExportable": "Aucune session exportable",
+        "pickPath": "Choisissez un chemin",
+        "confirm": "Exporter",
+        "selectedExportCount": "Sélectionnées {{selected}} / exportables {{total}}",
+        "selectedSize": "Taille choisie {{selected}} / total {{total}}",
+        "removedNotice": "{{count}} retirées de cette liste d’export",
+        "restoreRemoved": "Restaurer la liste",
+        "sourceLabel": "Source",
+        "allSources": "Toutes les sources",
+        "selectionLabel": "Sélection",
+        "filterAll": "Tout",
+        "filterSelected": "Choisies",
+        "filterUnselected": "Non choisies",
+        "visibleCount": "Affichées {{visible}} / {{total}}",
+        "selectVisible": "Choisir filtrées",
+        "clearVisible": "Vider filtrées",
+        "keepVisibleOnly": "Garder filtrées",
+        "removeVisible": "Retirer filtrées",
+        "removeUnchecked": "Retirer non choisies",
+        "selectItem": "Choisir la session à exporter",
+        "removeItem": "Retirer",
+        "emptyFilteredTitle": "Aucune session trouvée",
+        "emptyFilteredDesc": "Ajustez la recherche, la source ou la sélection puis réessayez."
       }
     },
     "api": {
@@ -2586,7 +2731,8 @@
         "modelCatalog": "Catalogue de modèles",
         "visionCapability": "Entrée image",
         "visionModels": "Modèles vision",
-        "visionRoutingModel": "Modèle image"
+        "visionRoutingModel": "Modèle image",
+        "supportsWebsockets": "Transport WebSocket"
       },
       "validation": {
         "nameRequired": "Le nom du fournisseur est obligatoire.",
@@ -2822,6 +2968,12 @@
         "customMoveUp": "Monter",
         "customMoveDown": "Descendre",
         "customReset": "Réinitialiser l’ordre"
+      },
+      "websockets": {
+        "title": "Autoriser Codex à utiliser Responses via WebSocket",
+        "help": "Activez cette option uniquement si le fournisseur prend explicitement en charge Responses via WebSocket ; vérifiez le transport dans les journaux de Codex ou du service proxy.",
+        "enabled": "Activé",
+        "disabled": "Désactivé"
       }
     },
     "quickSwitch": {
@@ -2862,7 +3014,9 @@
       "filterWithin24h": "24 h ({{count}})",
       "filterWithin7d": "7 j ({{count}})",
       "filterWithin30d": "30 j ({{count}})",
-      "filterMissing": "Inconnus ({{count}})"
+      "filterMissing": "Inconnus ({{count}})",
+      "accessTokenOnlyUsable": "Token utilisable",
+      "accessTokenOnlyUsableDetail": "L'interface d'abonnement est limitée, mais le quota et l'utilisation de Codex fonctionnent normalement"
     },
     "apiSwitchNotice": {
       "title": "Sessions Codex masquées",
@@ -2881,8 +3035,46 @@
     "accountNote": {
       "title": "Note de compte",
       "label": "Note de compte",
-      "desc": "Ajoutez une note de compte distincte pour {{account}}.",
-      "placeholder": "E-mail, mot de passe, e-mail de récupération ou notes de livraison",
+      "desc": "Ajoutez mot de passe, 2FA, URL mail, téléphone et autres notes pour {{account}}.",
+      "twoFactorSecretLabel": "Secret 2FA",
+      "twoFactorSecretShort": "2FA",
+      "twoFactorSecretPlaceholder": "Secret Base32 ou URI otpauth://",
+      "twoFactorSecretInvalid": "Secret 2FA invalide. Saisissez un secret Base32 ou une URI otpauth://.",
+      "currentOtp": "Code actuel",
+      "otpShort": "Code OTP",
+      "otpRemaining": "{{seconds}} s",
+      "passwordLabel": "Mot de passe",
+      "passwordShort": "Mot de passe",
+      "passwordPlaceholder": "Mot de passe de connexion ou temporaire",
+      "phoneNumberLabel": "Téléphone",
+      "phoneShort": "Tél.",
+      "phoneNumberPlaceholder": "Numéro de téléphone lié",
+      "mailUrlLabel": "URL mail",
+      "mailUrlPlaceholder": "Saisissez l’URL d’une page de consultation mail",
+      "mailPreviewRefresh": "Actualiser mail",
+      "mailPreviewOpen": "Ouvrir navigateur",
+      "mailPreviewLoading": "Lecture du mail...",
+      "mailPreviewNoCode": "Aucun code continu à 6 chiffres trouvé",
+      "mailPreviewFetchFailed": "Échec de lecture du mail : {{error}}",
+      "mailPreviewUrlRequired": "Saisissez l’URL mail",
+      "mailPreviewUrlInvalid": "URL mail invalide. Saisissez une adresse http:// ou https:// complète.",
+      "mailPreviewUnsupportedProtocol": "L’URL mail prend seulement en charge http ou https.",
+      "mailPreviewHttpFailed": "La requête de l’URL mail a échoué : HTTP {{status}}",
+      "mailPreviewCode": "Dernier code e-mail",
+      "mailPreviewStatusInitial": "Récupéré à {{time}}",
+      "mailPreviewStatusChanged": "Nouveau code · {{time}}",
+      "mailPreviewStatusUnchanged": "Inchangé · {{time}}",
+      "mailPreviewTruncated": "Contenu tronqué",
+      "mailOpenFailed": "Échec d’ouverture de l’URL mail : {{error}}",
+      "otherNoteLabel": "Autres notes",
+      "otherNoteShort": "Note",
+      "placeholder": "Notes de livraison, e-mail de récupération ou détails du compte",
+      "exportSensitiveNotice": "L’export contient des secrets 2FA, mots de passe, numéros de téléphone ou URL mail. Enregistrez-le uniquement dans un emplacement fiable.",
+      "exportSensitiveIncluded": "Inclure les notes sensibles",
+      "exportSensitiveExcluded": "Exclure les notes sensibles",
+      "exportSensitiveToggleHint": "Contrôle si le JSON exporté contient les secrets 2FA, mots de passe, numéros de téléphone et URL mail.",
+      "show": "Afficher",
+      "hide": "Masquer",
       "emptyTitle": "Ajouter une note de compte",
       "short": "Note​",
       "addShort": "Ajouter",
@@ -2977,7 +3169,9 @@
         "pricingUnset": "Non défini",
         "pricingReset": "Réinit.",
         "pricingSaved": "Tarifs enregistrés",
-        "pricingInvalid": "Les tarifs doivent être des nombres supérieurs ou égaux à 0"
+        "pricingInvalid": "Les tarifs doivent être des nombres supérieurs ou égaux à 0",
+        "pricingReprice": "Recalculer historique",
+        "pricingRepriced": "Les estimations historiques ont été recalculées avec les prix actuels"
       },
       "keys": {
         "policyTitle": "Politique de modèles",
@@ -3090,6 +3284,15 @@
       "renameSuccess": "Renommé",
       "renameFailed": "Échec du renommage"
     },
+    "importApiService": {
+      "toggle": "Ajouter au service API",
+      "description": "Ajoute les comptes importés admissibles au pool du service API.",
+      "syncFailed": "Les comptes ont été importés, mais leur ajout au service API a échoué : {{error}}",
+      "guideTitle": "Comptes ajoutés au service API",
+      "guideDescription": "{{count}} compte(s) ont été ajoutés au service API. Cliquez sur « Démarrer le service API » pour basculer et les utiliser.",
+      "later": "Plus tard",
+      "startAction": "Démarrer le service API"
+    },
     "batchImport": {
       "title": "Import groupé Codex",
       "resultSubtitle": "Résultat de l’import",
@@ -3124,7 +3327,12 @@
       "selectedCount": "Sélection {{count}}/{{total}}",
       "selectAllAccounts": "Tout sélectionner",
       "selectReady": "Sélectionner valides",
-      "clearSelection": "Effacer sélection"
+      "clearSelection": "Effacer sélection",
+      "hiddenTask": "Import Codex par lot",
+      "taskRunning": "Traitement {{current}} / {{total}}",
+      "taskPreview": "{{total}} aperçu(s) prêt(s)",
+      "reopen": "Voir la tâche",
+      "dismissTask": "Ignorer"
     },
     "autoRepairMode": {
       "label": "Logique auto",
@@ -3132,6 +3340,45 @@
       "legacyBefore4eb75d96": "Avant 4eb75d96",
       "legacy4eb75d96": "Logique 4eb75d96",
       "current": "Logique actuelle"
+    },
+    "pendingAuth": {
+      "badge": "Autorisation requise",
+      "emailRequired": "Saisissez l’e-mail du compte",
+      "saving": "Enregistrement du compte en attente...",
+      "saved": "Compte en attente enregistré",
+      "saveFailed": "Échec de l’enregistrement du compte en attente : {{error}}",
+      "emailLabel": "Compte en attente",
+      "emailPlaceholder": "Saisissez l’e-mail du compte OpenAI",
+      "saveDraft": "Enregistrer la fiche en attente",
+      "authorizeAction": "Autoriser",
+      "cardHint": "Notes enregistrées. Terminez OAuth pour utiliser ce compte."
+    },
+    "batchDelete": {
+      "title": "Suppression Codex par lot",
+      "running": "Suppression",
+      "paused": "En pause",
+      "failed": "Échec partiel",
+      "completed": "Suppression terminée",
+      "preparing": "Préparation de la suppression...",
+      "retryFailed": "Réessayer les échecs",
+      "pause": "Suspendre",
+      "resume": "Reprendre",
+      "clear": "Effacer",
+      "summary": "{{completed}} / {{total}} traités, {{failed}} échec(s)",
+      "started": "Suppression de {{count}} compte(s) Codex démarrée",
+      "pollFailed": "Impossible d’actualiser la progression de suppression: {{error}}",
+      "actionFailed": "Action de suppression par lot échouée: {{error}}"
+    },
+    "filters": {
+      "allPlans": "Tous plans ({{count}})",
+      "visibleOfTotal": "{{visible}} / {{total}}",
+      "activeBanner": "Filtres : {{visible}}/{{total}} comptes",
+      "clearAll": "Effacer",
+      "chipGroup": "Groupe",
+      "chipTags": "Étiquettes",
+      "chipSearch": "Recherche",
+      "chipPlan": "Offre",
+      "chipFolder": "Dossier"
     }
   },
   "githubCopilot": {
@@ -3369,6 +3616,14 @@
       "syncWslDesc": "Remplacer automatiquement la configuration .gemini dans WSL lors du changement de compte"
     },
     "geminiRefreshInterval": "Actualisation auto du quota",
+    "grok": {
+      "title": "Paramètres de Grok CLI",
+      "appPath": "Chemin de Grok CLI",
+      "cliPath": "Chemin de la CLI",
+      "cliDetected": "Détecté : {{version}} · {{path}}",
+      "cliMissing": "Grok CLI introuvable. Indiquez un chemin."
+    },
+    "grokRefreshInterval": "Actualisation auto du quota",
     "codebuddy": {
       "title": "Parametres CodeBuddy",
       "appPath": "Chemin CodeBuddy"
@@ -3395,6 +3650,10 @@
       "title": "Parametres WorkBuddy",
       "appPath": "Chemin WorkBuddy"
     },
+    "zcode": {
+      "title": "Paramètres ZCode",
+      "appPath": "Chemin ZCode"
+    },
     "zed": {
       "title": "Paramètres Zed",
       "appPath": "Chemin Zed"
@@ -3408,6 +3667,18 @@
     "claude": {
       "appPath": "Chemin Claude",
       "appTargetPlaceholder": "Chemin Claude.exe ou shell:AppsFolder\\..."
+    },
+    "traeSolo": {
+      "appPath": "Chemin TRAE SOLO",
+      "title": "Paramètres TRAE SOLO"
+    },
+    "traeCn": {
+      "appPath": "Chemin Trae CN",
+      "title": "Paramètres Trae CN"
+    },
+    "traeSoloCn": {
+      "appPath": "Chemin TRAE SOLO CN",
+      "title": "Paramètres TRAE SOLO CN"
     }
   },
   "quotaAlert": {
@@ -4172,17 +4443,21 @@
   "trae": {
     "title": "Gestion des comptes Trae",
     "empty": {
-      "description": "Cliquez sur \"Ajouter un compte\" pour commencer a gerer vos comptes Trae, ou importez-les depuis les donnees locales de Trae ou un fichier JSON."
+      "description": "Cliquez sur \"Ajouter un compte\" pour commencer a gerer vos comptes Trae, ou importez-les depuis les donnees locales de Trae ou un fichier JSON.",
+      "descriptionWithPlatform": "Cliquez sur « Ajouter un compte » pour gérer vos comptes {{platform}}, ou importez des données locales {{platform}} ou un fichier JSON."
     },
     "addModal": {
-      "title": "Ajouter un compte Trae"
+      "title": "Ajouter un compte Trae",
+      "titleWithPlatform": "Ajouter un compte {{platform}}"
     },
     "oauth": {
-      "desc": "Cliquez sur le bouton ci-dessous et terminez l'autorisation OAuth de Trae dans votre navigateur."
+      "desc": "Cliquez sur le bouton ci-dessous et terminez l'autorisation OAuth de Trae dans votre navigateur.",
+      "descWithPlatform": "Cliquez sur le bouton ci-dessous et terminez l’autorisation OAuth {{platform}} dans le navigateur."
     },
     "import": {
       "localDesc": "Importe le compte actuellement connecte, les informations de forfait et les donnees de quota en cache depuis le dossier de configuration local de Trae.",
-      "jsonTab": "Fichier JSON"
+      "jsonTab": "Fichier JSON",
+      "localDescWithPlatform": "Importe le compte connecté, les informations d’abonnement et le cache de quota depuis le dossier de configuration local {{platform}}."
     },
     "quota": {
       "usedOfTotal": "Utilise $ {{used}} sur $ {{total}}",
@@ -4208,7 +4483,12 @@
       "title": "Guide du compte Trae (cliquez pour developper/reduire)",
       "desc": "Prend en charge la connexion OAuth officielle, l'import local, l'import JSON et le changement de compte par injection locale. Lors du changement, les donnees sont reecrites selon les regles reelles de stockage du client Trae.",
       "permission": "Portee des autorisations : lit et ecrit les champs lies a la connexion dans le storage.json local de Trae pour l'import de compte, l'injection de changement de compte et l'affichage du forfait. Toutes les donnees sont traitees localement sur votre machine.",
-      "network": "Portee reseau : la connexion OAuth, l'actualisation du jeton et les requetes de forfait appellent les API officielles de Trae. Les fichiers de compte locaux et le contenu brut du stockage ne sont pas televerses vers des services tiers."
+      "network": "Portee reseau : la connexion OAuth, l'actualisation du jeton et les requetes de forfait appellent les API officielles de Trae. Les fichiers de compte locaux et le contenu brut du stockage ne sont pas televerses vers des services tiers.",
+      "titleWithPlatform": "Guide des comptes {{platform}} (cliquer pour développer/réduire)",
+      "descWithPlatform": "Prend en charge l’OAuth officiel {{platform}}, l’import local, l’import JSON et le changement de compte par injection locale. Le changement écrit selon les règles réelles du client {{platform}}.",
+      "permissionWithPlatform": "Portée des autorisations : lit et écrit les champs de connexion dans le storage.json local de {{platform}} pour l’import de compte, l’injection de changement de compte et l’affichage de l’abonnement. Toutes les données sont traitées localement.",
+      "networkGlobal": "Portée réseau : la connexion OAuth, le rafraîchissement du jeton et les requêtes d’abonnement {{platform}} appellent les APIs officielles trae.ai / traeapi.us. Les fichiers de compte locaux et le contenu brut ne sont pas téléversés vers des services tiers.",
+      "networkCn": "Portée réseau : la connexion OAuth, le rafraîchissement du jeton et les requêtes d’abonnement {{platform}} appellent les APIs officielles trae.cn / trae.com.cn. Les fichiers de compte locaux et le contenu brut ne sont pas téléversés vers des services tiers."
     }
   },
   "codebuddyCn": {
@@ -4365,6 +4645,62 @@
       "recentDates": "Récent : "
     }
   },
+  "zcode": {
+    "search": "Rechercher des comptes ZCode...",
+    "flowNotice": {
+      "title": "Guide des comptes ZCode",
+      "desc": "Cockpit lit et réécrit les identifiants locaux chiffrés de ZCode pour changer réellement de compte et lier les instances.",
+      "permission": "Périmètre local : ~/.zcode/v2/credentials.json et répertoires des instances gérées.",
+      "network": "Périmètre réseau : API OAuth, utilisateur, abonnement et quota. Aucun compte n'est envoyé à un service Cockpit."
+    },
+    "empty": "Aucun compte ZCode",
+    "addAccount": "Ajouter un compte ZCode",
+    "oauth": {
+      "desc": "Fermez ZCode, puis connectez-vous dans la fenêtre d’autorisation de Cockpit ; Cockpit recevra directement le rappel.",
+      "title": "OAuth ZCode",
+      "item1": "Connexion officielle Z.ai et BigModel.",
+      "item2": "Enregistre le compte et actualise l'offre et les quotas de modèles.",
+      "item3": "Utilisez les comptes pour changer de client et lier plusieurs instances.",
+      "urlPlaceholder": "URL OAuth ZCode",
+      "waiting": "En attente du rappel OAuth ZCode...",
+      "openWindow": "Ouvrir la fenêtre d’autorisation",
+      "provider": "Service de connexion",
+      "success": "Connexion OAuth ZCode réussie"
+    },
+    "token": {
+      "desc": "Collez le JSON d'un compte ZCode exporté par Cockpit."
+    },
+    "apiKey": {
+      "tab": "Clé API",
+      "desc": "Ajoutez une clé API officielle Z.ai ou BigModel. Le changement de compte et les instances gérées l'écrivent dans leur propre config.json.",
+      "placeholder": "Collez la clé API",
+      "add": "Ajouter la clé API",
+      "provider": "Service de clé API"
+    },
+    "import": {
+      "localDesc": "Importez les identifiants locaux chiffrés de ZCode ou un fichier JSON.",
+      "localClient": "Importer depuis ZCode local"
+    },
+    "usageNormal": "Correct",
+    "usageAbnormal": "Erreur",
+    "usageViewDetail": "Détails",
+    "usageDetailTitle": "Détails d'utilisation",
+    "usage": "Utilisation",
+    "quota": {
+      "models": "Quota de modèles",
+      "usedOfTotal": "{{used}} / {{total}}",
+      "updatedAt": "Mis à jour : {{time}}",
+      "expireAt": "Expire : {{time}}"
+    },
+    "quotaQuery": {
+      "failedRefreshCompact": "Échec de la requête de quota",
+      "empty": "Aucune donnée de quota",
+      "sectionTitle": "Crédits"
+    },
+    "instances": {
+      "unsupported": "Le mode multi-instance de ZCode est disponible uniquement sur macOS, Windows et Linux."
+    }
+  },
   "zed": {
     "addModal": {
       "title": "Ajouter un compte Zed"
@@ -4469,6 +4805,7 @@
     "errors": {
       "refreshFailed": "Échec de l’actualisation : {{error}}",
       "switchFailed": "Échec du basculement : {{error}}",
+      "stopInstanceBeforeSwitch": "Arrêtez l’instance avant de changer de compte",
       "pinFailed": "Impossible de mettre à jour l’état d’épinglage : {{error}}",
       "closeFailed": "Échec de la fermeture : {{error}}"
     },
@@ -4731,6 +5068,86 @@
     },
     "copyKey": "Copy Key​",
     "clearKey": "Clear input​"
+  },
+  "grok": {
+    "search": "Rechercher des comptes Grok CLI...",
+    "flowNotice": {
+      "title": "Gestion des comptes Grok CLI",
+      "desc": "Cockpit gère les comptes au format officiel des identifiants Grok CLI afin de changer réellement le compte par défaut et de lier des instances isolées.",
+      "permission": "Périmètre local : lit le fichier ~/.grok/auth.json par défaut et gère des dossiers distincts pour les comptes Grok et GROK_HOME dans les données locales de Cockpit.",
+      "network": "Périmètre réseau : autorisation OAuth, renouvellement des identifiants et consultation de l'utilisation. Les identifiants ne sont pas envoyés aux services Cockpit."
+    },
+    "empty": "Aucun compte Grok CLI",
+    "addAccount": "Ajouter un compte Grok CLI",
+    "oauth": {
+      "desc": "Ouvrez la page d'autorisation xAI et saisissez le code de l'appareil. Le compte sera ensuite enregistré automatiquement.",
+      "title": "OAuth sur appareil Grok",
+      "item1": "Utilise le flux d'appareil officiel de Grok CLI sans occuper de port de rappel local.",
+      "item2": "Enregistre un GROK_HOME distinct après autorisation et maintient la validité des identifiants.",
+      "item3": "Les comptes peuvent changer la CLI par défaut ou s'exécuter dans des instances isolées.",
+      "urlPlaceholder": "Adresse d'autorisation OAuth de Grok",
+      "waiting": "En attente de l'autorisation OAuth de Grok...",
+      "openWindow": "Ouvrir l'autorisation",
+      "success": "Connexion OAuth de Grok réussie"
+    },
+    "import": {
+      "pasteTab": "Coller du JSON",
+      "pasteDesc": "Collez le fichier auth.json officiel de Grok CLI. Les identifiants sont traités uniquement par le backend local. Cockpit n'exporte que des métadonnées masquées, inutilisables pour restaurer une connexion.",
+      "pastePlaceholder": "Coller le JSON du compte Grok",
+      "pasteAction": "Importer le JSON",
+      "localDesc": "Importez le compte actuel depuis ~/.grok/auth.json. Pour choisir un fichier, utilisez le fichier auth.json officiel de Grok CLI.",
+      "localClient": "Importer depuis Grok CLI local",
+      "apiKeyTab": "Clé API",
+      "apiKeyDesc": "Collez une clé API xAI (XAI_API_KEY officiel). Injectée au lancement. auth.json officiel aussi accepté pour OAuth.",
+      "apiKeyPlaceholder": "coller xai-…",
+      "apiKeyAction": "Ajouter la clé"
+    },
+    "instances": {
+      "unsupported": "Les instances multiples de Grok CLI sont disponibles uniquement sous macOS, Windows et Linux.",
+      "launchDialogTitle": "Lancer l'instance",
+      "launchHint": "Copiez la commande pour l'exécuter manuellement ou lancez-la directement dans un terminal.",
+      "runInTerminal": "Lancer dans le terminal",
+      "cliReady": "Détecté",
+      "cliMissingShort": "Non détecté",
+      "cliPathInvalid": "Le chemin Grok CLI configuré n’est pas valide : {{path}}",
+      "saveAndRetry": "Enregistrer et réessayer",
+      "installCommand": "Commande d’installation officielle",
+      "installHint": "Exécutez la commande officielle ci-dessous dans le terminal, puis actualisez après l’installation.",
+      "selectWorkingDir": "Choisir le répertoire de travail Grok CLI",
+      "workingDirAccountHint": "Le répertoire de travail est lié à ce compte et sera restauré au prochain lancement.",
+      "launchCommandPlaceholder": "Choisissez ou confirmez un répertoire pour générer la commande de lancement"
+    },
+    "switch": {
+      "success": "Compte changé"
+    },
+    "usageNormal": "Opérationnel",
+    "usageAbnormal": "Anormal",
+    "usageViewDetail": "Voir les détails",
+    "usageDetailTitle": "Détails d'utilisation",
+    "usage": "Utilisation",
+    "quotaQuery": {
+      "failedRefreshCompact": "Échec de la consultation",
+      "empty": "Aucune donnée de quota",
+      "sectionTitle": "Crédits"
+    },
+    "quota": {
+      "weekly": "Utilisation hebdomadaire",
+      "onDemand": "Utilisation à la demande",
+      "balance": "Solde et crédits",
+      "included": "Utilisation incluse",
+      "promotional": "Crédits promotionnels",
+      "frequent": "Tâches fréquentes",
+      "occasional": "Tâches occasionnelles",
+      "resetAt": "{{label}} réinitialisé : {{time}}",
+      "empty": "Aucun quota",
+      "apiKeyUnsupported": "Pas de quota d’abonnement pour les comptes clé API"
+    },
+    "quotaAlert": {
+      "hint": "Lorsqu’un élément de quota du compte actuel passe sous le seuil, une notification native est envoyée et une action de changement rapide s’affiche dans l’application.",
+      "thresholdDesc": "Déclencher une alerte lorsqu’un élément de quota passe sous ce pourcentage",
+      "items": "Éléments de quota",
+      "unknownItem": "Élément de quota inconnu"
+    }
   },
   "claude": {
     "import": {

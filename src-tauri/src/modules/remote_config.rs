@@ -15,6 +15,8 @@ const CACHE_TTL_MS: i64 = 3_600_000;
 const DEFAULT_REFRESH_INTERVAL_MS: i64 = 3_600_000;
 const BUILTIN_HIDDEN_PLATFORM_IDS: &[&str] = &[];
 const NEVER_REMOTE_HIDE_PLATFORM_IDS: &[&str] = &["claude_manager"];
+const UPDATE_PROMPT_MODE_NORMAL: &str = "normal";
+const UPDATE_PROMPT_MODE_POPUP: &str = "popup";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +52,19 @@ pub struct RemotePlatformRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoteUpdatePromptPolicy {
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub target_os: Vec<String>,
+    #[serde(default = "default_target_versions")]
+    pub target_versions: String,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteConfigPayload {
     #[serde(default)]
     pub version: String,
@@ -61,6 +76,8 @@ pub struct RemoteConfigPayload {
     pub platforms: BTreeMap<String, RemotePlatformOverride>,
     #[serde(default)]
     pub rules: Vec<RemotePlatformRule>,
+    #[serde(default)]
+    pub update_prompt: Option<RemoteUpdatePromptPolicy>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +104,7 @@ pub struct RemoteConfigState {
     pub hidden_platform_ids: Vec<String>,
     pub applied_rules: Vec<RemoteConfigAppliedRule>,
     pub refresh_interval_ms: i64,
+    pub update_prompt_mode: String,
 }
 
 fn default_target_versions() -> String {
@@ -100,6 +118,7 @@ fn empty_payload() -> RemoteConfigPayload {
         hidden_platform_ids: Vec::new(),
         platforms: BTreeMap::new(),
         rules: Vec::new(),
+        update_prompt: None,
     }
 }
 
@@ -334,7 +353,11 @@ fn normalize_platform_id(value: &str) -> Option<String> {
         "codebuddy" => Some("codebuddy".to_string()),
         "codebuddy-cn" => Some("codebuddy_cn".to_string()),
         "qoder" => Some("qoder".to_string()),
+        "zcode" => Some("zcode".to_string()),
         "trae" => Some("trae".to_string()),
+        "trae-solo" => Some("trae_solo".to_string()),
+        "trae-cn" => Some("trae_cn".to_string()),
+        "trae-solo-cn" => Some("trae_solo_cn".to_string()),
         "workbuddy" => Some("workbuddy".to_string()),
         _ => None,
     }
@@ -362,6 +385,27 @@ fn should_apply_platform_override(
     is_not_expired(item.expires_at.as_deref())
         && match_version(current_version, &item.target_versions)
         && (item.hidden || is_os_match(current_os, &item.hidden_on))
+}
+
+fn effective_update_prompt_mode(
+    policy: Option<&RemoteUpdatePromptPolicy>,
+    current_os: &str,
+    current_version: &str,
+) -> &'static str {
+    let Some(policy) = policy else {
+        return UPDATE_PROMPT_MODE_NORMAL;
+    };
+    if !policy
+        .mode
+        .trim()
+        .eq_ignore_ascii_case(UPDATE_PROMPT_MODE_POPUP)
+        || !is_not_expired(policy.expires_at.as_deref())
+        || !match_version(current_version, &policy.target_versions)
+        || !is_os_match(current_os, &policy.target_os)
+    {
+        return UPDATE_PROMPT_MODE_NORMAL;
+    }
+    UPDATE_PROMPT_MODE_POPUP
 }
 
 fn build_state(payload: RemoteConfigPayload, updated_at: i64) -> RemoteConfigState {
@@ -445,6 +489,9 @@ fn build_state(payload: RemoteConfigPayload, updated_at: i64) -> RemoteConfigSta
         .refresh_interval_ms
         .filter(|value| *value >= 60_000)
         .unwrap_or(DEFAULT_REFRESH_INTERVAL_MS);
+    let update_prompt_mode =
+        effective_update_prompt_mode(payload.update_prompt.as_ref(), &current_os, current_version)
+            .to_string();
 
     RemoteConfigState {
         version: payload.version,
@@ -453,6 +500,7 @@ fn build_state(payload: RemoteConfigPayload, updated_at: i64) -> RemoteConfigSta
         hidden_platform_ids: hidden.into_iter().collect(),
         applied_rules,
         refresh_interval_ms,
+        update_prompt_mode,
     }
 }
 
@@ -505,4 +553,59 @@ pub async fn get_remote_config_state() -> Result<RemoteConfigState, String> {
 pub async fn force_refresh_remote_config_state() -> Result<RemoteConfigState, String> {
     let (payload, updated_at) = load_remote_config_raw(true).await?;
     Ok(build_state(payload, updated_at))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn popup_policy() -> RemoteUpdatePromptPolicy {
+        RemoteUpdatePromptPolicy {
+            mode: UPDATE_PROMPT_MODE_POPUP.to_string(),
+            target_os: vec!["windows".to_string(), "macos".to_string()],
+            target_versions: ">=1.1.4".to_string(),
+            expires_at: None,
+        }
+    }
+
+    #[test]
+    fn legacy_remote_config_defaults_to_normal_update_prompt() {
+        let payload: RemoteConfigPayload =
+            serde_json::from_str(r#"{"version":"legacy","refreshIntervalMs":3600000,"rules":[]}"#)
+                .expect("legacy remote config should deserialize");
+
+        assert!(payload.update_prompt.is_none());
+        assert_eq!(
+            effective_update_prompt_mode(None, "windows", "1.1.4"),
+            UPDATE_PROMPT_MODE_NORMAL
+        );
+    }
+
+    #[test]
+    fn popup_update_prompt_applies_to_matching_version_and_os() {
+        let policy = popup_policy();
+
+        assert_eq!(
+            effective_update_prompt_mode(Some(&policy), "windows", "1.1.4"),
+            UPDATE_PROMPT_MODE_POPUP
+        );
+        assert_eq!(
+            effective_update_prompt_mode(Some(&policy), "macos", "1.2.0"),
+            UPDATE_PROMPT_MODE_POPUP
+        );
+    }
+
+    #[test]
+    fn popup_update_prompt_falls_back_to_normal_when_not_targeted() {
+        let policy = popup_policy();
+
+        assert_eq!(
+            effective_update_prompt_mode(Some(&policy), "linux", "1.1.4"),
+            UPDATE_PROMPT_MODE_NORMAL
+        );
+        assert_eq!(
+            effective_update_prompt_mode(Some(&policy), "windows", "1.1.3"),
+            UPDATE_PROMPT_MODE_NORMAL
+        );
+    }
 }

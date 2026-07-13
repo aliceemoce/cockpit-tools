@@ -15,6 +15,7 @@ const EMPTY_STATE: RemoteConfigState = {
   hiddenPlatformIds: [],
   appliedRules: [],
   refreshIntervalMs: DEFAULT_REFRESH_INTERVAL_MS,
+  updatePromptMode: 'normal',
 };
 
 interface RemoteConfigStoreState {

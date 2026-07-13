@@ -330,3 +330,13 @@
 - **触碰功能**: F-005 GUI 验收、沟通结论。
 - **用户要求**: 不发明「按什么标准说已修好」的分拆话术；已修好=已修好，没修好=没修好，撒谎=撒谎。
 - **规则**: `.cursor/rules/honest-fix-status-only.mdc`（`alwaysApply`）；同步修订 `post-build-ui-must-verify.mdc`、`chinese-response-style.mdc`；Codex 镜像 `.codex/rules/honest-fix-status-only.md`；历史 **HR-20260626-002**。
+
+### 2026-07-14（upstream v1.3.0 完整合入 + release 基线）
+
+- **触碰功能**: F-007、F-008、F-011、特征注册表最新构建锚点。
+- **用户目标是否变化**: 否；纠正第一轮交付：①须**完整**合入 upstream 正式版前端/接线（不得为过 tsc 删 Grok/Zcode 等）；②**禁止**把 debug 覆盖安装标成最新基线；③用户**未要求**清理历史符号任务。
+- **本次目的**: 从 `fork-20260705` 合入 tag `v1.3.0`（`da0deca4`）；`src/` 取上游保证平台接线；保留 Cursor fork 模块；`npm run tauri build` **release** 覆盖安装。
+- **实现手段**: 分支 `sync-upstream-v1.3.0-20260714-full` @ `102904ee`；实验 agent bin 隔离出 `[[bin]]`；Release tag 上传 `cockpit-tools.exe`（SHA `1A0EC65E…`）；删除误导性 NSIS 资产；对照 PR #5；撤销 debug `09BA38D3…`。
+- **涉及文件/模块**: 上游 `src/` + fork `cursor_*` / `provider_token_keeper` 嫁接；`AGENTS.md`、特征注册表、`CURSOR-FORK-SCOPE.md`、本档案、`project-brief`。
+- **验证方式**: 安装 exe SHA=`1A0EC65E…` ProductVersion=1.3.0；UIA 证实 WebView 非网络错误且上游壳可见；系统浏览器+UIA 复核分支/PR/release。
+- **风险或注意事项**: WiX/NSIS 本轮未齐，交付如实写「仅 release exe」；原分支名 `sync-upstream-v1.3.0-20260714` 与远程 `-full` 跟踪需注意；PR #4 旧 tip 不作基线。

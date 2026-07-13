@@ -1,7 +1,7 @@
-pub mod commands;
+mod commands;
 pub mod error;
 mod models;
-pub mod modules;
+mod modules;
 mod utils;
 
 use modules::config::CloseWindowBehavior;
@@ -21,6 +21,50 @@ static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 /// 获取全局 AppHandle
 pub fn get_app_handle() -> Option<&'static tauri::AppHandle> {
     APP_HANDLE.get()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_hide_startup_minimized_window;
+    use crate::modules::config::UserConfig;
+
+    #[test]
+    fn startup_minimized_does_not_hide_when_disabled() {
+        let mut config = UserConfig::default();
+        config.startup_minimized = false;
+        config.hide_dock_icon = true;
+
+        assert!(!should_hide_startup_minimized_window(&config, true));
+    }
+
+    #[test]
+    fn startup_minimized_hides_on_macos_when_dock_icon_is_hidden() {
+        let mut config = UserConfig::default();
+        config.startup_minimized = true;
+        config.hide_dock_icon = true;
+
+        assert!(should_hide_startup_minimized_window(&config, true));
+    }
+
+    #[test]
+    fn startup_minimized_does_not_hide_when_dock_icon_is_available() {
+        let mut config = UserConfig::default();
+        config.startup_minimized = true;
+        config.hide_dock_icon = false;
+
+        assert!(!should_hide_startup_minimized_window(&config, true));
+    }
+
+    #[test]
+    fn startup_minimized_does_not_wait_before_hiding_window() {
+        let source = include_str!("lib.rs");
+        let delayed_startup_hide = concat!(
+            "std::thread::sleep",
+            "(std::time::Duration::from_millis(300))"
+        );
+
+        assert!(!source.contains(delayed_startup_hide));
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -70,19 +114,33 @@ fn raise_process_file_descriptor_limit() {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn raise_process_file_descriptor_limit() {}
 
+fn should_hide_startup_minimized_window(
+    config: &modules::config::UserConfig,
+    is_macos: bool,
+) -> bool {
+    config.startup_minimized && is_macos && config.hide_dock_icon
+}
+
 fn apply_startup_minimized(app: &tauri::AppHandle) {
     let config = modules::config::get_user_config();
     if !config.startup_minimized {
         return;
     }
 
+    let should_hide = should_hide_startup_minimized_window(&config, cfg!(target_os = "macos"));
     let Some(window) = app.get_webview_window("main") else {
         logger::log_warn("[Window] 启动后自动最小化失败: main window not found");
         return;
     };
 
-    match window.minimize() {
-        Ok(()) => logger::log_info("[Window] 启动后已自动最小化主窗口"),
+    let (result, action_label) = if should_hide {
+        (window.hide(), "隐藏")
+    } else {
+        (window.minimize(), "最小化")
+    };
+
+    match result {
+        Ok(()) => logger::log_info(&format!("[Window] 启动后已自动{}主窗口", action_label)),
         Err(err) => logger::log_warn(&format!("[Window] 启动后自动最小化失败: {}", err)),
     }
 }
@@ -115,9 +173,40 @@ fn apply_macos_activation_policy(app: &tauri::AppHandle) {
     info!("[Window] 已应用 macOS Dock 图标策略: {}", policy_label);
 }
 
+fn handle_zcode_oauth_deep_links(args: &[String]) -> bool {
+    let callbacks: Vec<String> = args
+        .iter()
+        .filter(|value| value.trim().to_ascii_lowercase().starts_with("zcode://"))
+        .cloned()
+        .collect();
+    if callbacks.is_empty() {
+        return false;
+    }
+    for callback in callbacks {
+        tauri::async_runtime::spawn(async move {
+            modules::zcode_oauth::handle_deep_link(&callback).await;
+        });
+    }
+    true
+}
+
+fn summarize_deep_link_args(args: &[String]) -> Vec<String> {
+    args.iter()
+        .map(|value| {
+            if value.trim().to_ascii_lowercase().starts_with("zcode://") {
+                "zcode://<oauth-callback>".to_string()
+            } else {
+                value.clone()
+            }
+        })
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init_logger();
+    modules::diagnostics::install_panic_hook();
+    modules::diagnostics::start_frontend_ready_watchdog();
     raise_process_file_descriptor_limit();
     // 启动时先加载一次配置，确保进程级代理环境与用户设置同步。
     let _ = modules::config::get_user_config();
@@ -141,11 +230,13 @@ pub fn run() {
                 "[SingleInstance] 收到唤起请求: arg_count={}",
                 args.len()
             ));
-            let handled = modules::external_import::handle_external_import_args(
-                app,
-                &args,
-                "single-instance",
-            );
+            let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+            let handled = zcode_oauth_handled
+                || modules::external_import::handle_external_import_args(
+                    app,
+                    &args,
+                    "single-instance",
+                );
             logger::log_info(&format!(
                 "[SingleInstance] 外部导入处理结果: handled={}",
                 handled
@@ -182,6 +273,21 @@ pub fn run() {
                 modules::webkit_cache_maintenance::checkpoint_webkit_localstorage();
             });
 
+            // 当前主线不再使用 platform-packages；启动时回收旧版本遗留的孤儿 adapter。
+            std::thread::spawn(|| {
+                match modules::process::close_orphaned_legacy_platform_adapter_processes(5) {
+                    Ok(0) => {}
+                    Ok(count) => logger::log_info(&format!(
+                        "[LegacyAdapterCleanup] 已清理旧平台 adapter 进程: count={}",
+                        count
+                    )),
+                    Err(err) => logger::log_warn(&format!(
+                        "[LegacyAdapterCleanup] 清理旧平台 adapter 进程失败: {}",
+                        err
+                    )),
+                }
+            });
+
             // 初始化 Updater 插件
             #[cfg(desktop)]
             {
@@ -207,11 +313,10 @@ pub fn run() {
                         "[SyncSettings] 启动时合并语言设置: {} -> {}",
                         current_config.language, merged_language
                     );
-                    let new_config = modules::config::UserConfig {
-                        language: merged_language,
-                        ..current_config
-                    };
-                    if let Err(e) = modules::config::save_user_config(&new_config) {
+                    if let Err(e) = modules::config::patch_user_config(|config| {
+                        config.language = merged_language;
+                        Ok(())
+                    }) {
                         logger::log_error(&format!("[SyncSettings] 保存合并后的配置失败: {}", e));
                     }
                 }
@@ -267,13 +372,15 @@ pub fn run() {
                     logger::log_info(&format!(
                         "[DeepLink] 收到 on_open_url 事件: url_count={}, urls={:?}",
                         args.len(),
-                        args
+                        summarize_deep_link_args(&args)
                     ));
-                    let handled = modules::external_import::handle_external_import_args(
-                        &app_handle,
-                        &args,
-                        "deep-link-open-url",
-                    );
+                    let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                    let handled = zcode_oauth_handled
+                        || modules::external_import::handle_external_import_args(
+                            &app_handle,
+                            &args,
+                            "deep-link-open-url",
+                        );
                     logger::log_info(&format!(
                         "[DeepLink] on_open_url 外部导入处理结果: handled={}",
                         handled
@@ -287,13 +394,15 @@ pub fn run() {
                     logger::log_info(&format!(
                         "[DeepLink] 启动时 get_current 命中: url_count={}, urls={:?}",
                         args.len(),
-                        args
+                        summarize_deep_link_args(&args)
                     ));
-                    let handled = modules::external_import::handle_external_import_args(
-                        &app.handle(),
-                        &args,
-                        "deep-link-current",
-                    );
+                    let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                    let handled = zcode_oauth_handled
+                        || modules::external_import::handle_external_import_args(
+                            &app.handle(),
+                            &args,
+                            "deep-link-current",
+                        );
                     logger::log_info(&format!(
                         "[DeepLink] get_current 外部导入处理结果: handled={}",
                         handled
@@ -340,10 +449,6 @@ pub fn run() {
                 logger::log_warn(&format!("[FloatingCard] 启动时显示悬浮卡片失败: {}", err));
             }
 
-            if let Err(err) = modules::floating_card_window::show_main_window(&app.handle()) {
-                logger::log_warn(&format!("[Window] 启动时显示主窗口失败: {}", err));
-            }
-
             let startup_args: Vec<String> = std::env::args().collect();
             logger::log_info(&format!("[Startup] 启动参数数量: {}", startup_args.len()));
             let startup_external_import_handled =
@@ -371,15 +476,8 @@ pub fn run() {
                 match config.close_behavior {
                     CloseWindowBehavior::Minimize => {
                         api.prevent_close();
-                        #[cfg(not(target_os = "macos"))]
-                        if let Err(err) = window.set_skip_taskbar(true) {
-                            logger::log_warn(&format!("[Window] 设置 skip_taskbar 失败: {}", err));
-                        }
-                        if let Err(err) = window.hide() {
-                            logger::log_warn(&format!("[Window] 最小化到托盘 hide 失败: {}", err));
-                        } else {
-                            info!("[Window] 窗口已最小化到托盘");
-                        }
+                        let _ = window.hide();
+                        info!("[Window] 窗口已最小化到托盘");
                     }
                     CloseWindowBehavior::Quit => {
                         info!("[Window] 用户选择退出应用");
@@ -497,16 +595,24 @@ pub fn run() {
             commands::system::delete_webdav_backup_file,
             commands::system::get_network_config,
             commands::system::save_network_config,
+            commands::system::get_diagnostics_config,
+            commands::system::save_diagnostics_config,
+            commands::system::diagnostics_frontend_stage,
+            commands::system::diagnostics_frontend_ready,
+            commands::system::diagnostics_capture_event,
             commands::system::get_general_config,
             commands::system::get_available_terminals,
-            commands::system::save_general_config,
+            commands::system::patch_general_config,
+            commands::system::save_refresh_interval_config,
             commands::system::save_tray_platform_layout,
             commands::system::set_app_path,
             commands::system::set_claude_app_scan_roots,
+            commands::system::set_trae_app_scan_roots,
             commands::system::set_codex_launch_on_switch,
             commands::system::set_codex_local_access_entry_visible,
             commands::system::detect_app_path,
             commands::system::scan_claude_desktop_launch_targets,
+            commands::system::scan_app_launch_targets,
             commands::system::get_antigravity_installed_version_info,
             commands::system::set_wakeup_override,
             commands::system::handle_window_close,
@@ -549,7 +655,7 @@ pub fn run() {
             commands::update::should_check_updates,
             commands::update::update_last_check_time,
             commands::update::get_update_settings,
-            commands::update::save_update_settings,
+            commands::update::patch_update_settings,
             commands::update::save_pending_update_notes,
             commands::update::check_version_jump,
             commands::update::get_release_history,
@@ -562,6 +668,7 @@ pub fn run() {
             commands::announcement::announcement_mark_all_as_read,
             commands::announcement::announcement_force_refresh,
             commands::announcement::announcement_get_top_right_ad,
+            commands::announcement::announcement_force_refresh_top_right_ad,
             commands::announcement::announcement_get_sponsor_module,
             commands::announcement::announcement_force_refresh_sponsor_module,
             commands::remote_config::remote_config_get_state,
@@ -591,6 +698,12 @@ pub fn run() {
             commands::codex::switch_codex_account,
             commands::codex::delete_codex_account,
             commands::codex::delete_codex_accounts,
+            commands::codex::start_codex_batch_delete,
+            commands::codex::get_codex_batch_delete,
+            commands::codex::resume_codex_batch_delete,
+            commands::codex::pause_codex_batch_delete,
+            commands::codex::retry_failed_codex_batch_delete,
+            commands::codex::clear_codex_batch_delete,
             commands::codex::import_codex_from_local,
             commands::codex::import_codex_from_json,
             commands::codex::export_codex_accounts,
@@ -607,6 +720,7 @@ pub fn run() {
             commands::codex::refresh_all_codex_quotas,
             commands::codex::refresh_current_codex_quota,
             commands::codex::codex_oauth_login_start,
+            commands::codex::codex_oauth_open_incognito_window,
             commands::codex::codex_oauth_login_completed,
             commands::codex::codex_oauth_submit_callback_url,
             commands::codex::codex_oauth_login_cancel,
@@ -619,6 +733,8 @@ pub fn run() {
             commands::codex::close_codex_oauth_port,
             commands::codex::update_codex_account_tags,
             commands::codex::update_codex_account_note,
+            commands::codex::create_pending_codex_oauth_account,
+            commands::codex::fetch_codex_account_note_mail_url,
             commands::codex::codex_wakeup_get_cli_status,
             commands::codex::codex_wakeup_update_runtime_config,
             commands::codex::codex_wakeup_get_overview,
@@ -641,6 +757,7 @@ pub fn run() {
             commands::codex::codex_query_model_provider_usage,
             commands::codex::codex_local_access_get_state,
             commands::codex::codex_local_access_save_accounts,
+            commands::codex::codex_local_access_append_accounts,
             commands::codex::codex_local_access_remove_account,
             commands::codex::codex_local_access_rotate_api_key,
             commands::codex::codex_local_access_update_bound_oauth_account,
@@ -654,6 +771,7 @@ pub fn run() {
             commands::codex::codex_local_access_update_account_model_rules,
             commands::codex::codex_local_access_update_model_rules,
             commands::codex::codex_local_access_update_model_pricings,
+            commands::codex::codex_local_access_reprice_request_logs,
             commands::codex::codex_local_access_update_routing_options,
             commands::codex::codex_local_access_update_timeouts,
             commands::codex::codex_local_access_update_timeout_presets,
@@ -854,6 +972,35 @@ pub fn run() {
             commands::zed::zed_stop_default_session,
             commands::zed::zed_restart_default_session,
             commands::zed::zed_focus_default_session,
+            // ZCode Commands
+            commands::zcode::list_zcode_accounts,
+            commands::zcode::delete_zcode_account,
+            commands::zcode::delete_zcode_accounts,
+            commands::zcode::import_zcode_from_json,
+            commands::zcode::import_zcode_from_local,
+            commands::zcode::import_zcode_api_key,
+            commands::zcode::export_zcode_accounts,
+            commands::zcode::zcode_oauth_login_start,
+            commands::zcode::zcode_oauth_login_complete,
+            commands::zcode::zcode_oauth_submit_callback_url,
+            commands::zcode::zcode_oauth_open_window,
+            commands::zcode::zcode_oauth_login_cancel,
+            commands::zcode::refresh_zcode_account,
+            commands::zcode::refresh_all_zcode_accounts,
+            commands::zcode::inject_zcode_account,
+            commands::zcode::update_zcode_account_tags,
+            commands::zcode::get_zcode_current_account_id,
+            commands::zcode::get_zcode_accounts_index_path,
+            // ZCode Instance Commands
+            commands::zcode_instance::zcode_get_instance_defaults,
+            commands::zcode_instance::zcode_list_instances,
+            commands::zcode_instance::zcode_create_instance,
+            commands::zcode_instance::zcode_update_instance,
+            commands::zcode_instance::zcode_delete_instance,
+            commands::zcode_instance::zcode_start_instance,
+            commands::zcode_instance::zcode_stop_instance,
+            commands::zcode_instance::zcode_open_instance_window,
+            commands::zcode_instance::zcode_close_all_instances,
             // Qoder Instance Commands
             commands::qoder_instance::qoder_get_instance_defaults,
             commands::qoder_instance::qoder_list_instances,
@@ -877,6 +1024,7 @@ pub fn run() {
             commands::trae::export_trae_accounts,
             commands::trae::refresh_trae_token,
             commands::trae::refresh_all_trae_tokens,
+            commands::trae::refresh_trae_tokens_for_platform,
             commands::trae::add_trae_account_with_token,
             commands::trae::update_trae_account_tags,
             commands::trae::get_trae_accounts_index_path,
@@ -924,6 +1072,40 @@ pub fn run() {
             commands::gemini::update_gemini_account_tags,
             commands::gemini::get_gemini_accounts_index_path,
             commands::gemini::inject_gemini_account,
+            // Grok Commands
+            commands::grok::grok_get_cli_status,
+            commands::grok::grok_execute_cli_install_command,
+            commands::grok::grok_update_cli_runtime_config,
+            commands::grok::list_grok_accounts,
+            commands::grok::delete_grok_account,
+            commands::grok::delete_grok_accounts,
+            commands::grok::import_grok_from_json,
+            commands::grok::add_grok_account_with_api_key,
+            commands::grok::import_grok_from_local,
+            commands::grok::export_grok_accounts,
+            commands::grok::grok_oauth_login_start,
+            commands::grok::grok_oauth_login_complete,
+            commands::grok::grok_oauth_login_cancel,
+            commands::grok::refresh_grok_account,
+            commands::grok::force_refresh_grok_account,
+            commands::grok::refresh_all_grok_accounts,
+            commands::grok::switch_grok_account,
+            commands::grok::update_grok_account_tags,
+            commands::grok::update_grok_account_working_dir,
+            commands::grok::get_grok_current_account_id,
+            commands::grok::get_grok_accounts_index_path,
+            // Grok Instance Commands
+            commands::grok_instance::grok_get_instance_defaults,
+            commands::grok_instance::grok_list_instances,
+            commands::grok_instance::grok_create_instance,
+            commands::grok_instance::grok_update_instance,
+            commands::grok_instance::grok_delete_instance,
+            commands::grok_instance::grok_start_instance,
+            commands::grok_instance::grok_stop_instance,
+            commands::grok_instance::grok_close_all_instances,
+            commands::grok_instance::grok_open_instance_window,
+            commands::grok_instance::grok_get_instance_launch_command,
+            commands::grok_instance::grok_execute_instance_launch_command,
             // Gemini Instance Commands
             commands::gemini_instance::gemini_get_instance_defaults,
             commands::gemini_instance::gemini_list_instances,
@@ -982,6 +1164,13 @@ pub fn run() {
             commands::codex_instance::codex_move_sessions_to_trash_across_instances,
             commands::codex_instance::codex_list_trashed_sessions_across_instances,
             commands::codex_instance::codex_restore_sessions_from_trash_across_instances,
+            commands::codex_instance::codex_delete_trashed_sessions_across_instances,
+            commands::codex_instance::codex_empty_session_trash_across_instances,
+            commands::codex_instance::codex_preview_session_export,
+            commands::codex_instance::codex_export_sessions,
+            commands::codex_instance::codex_preview_session_import,
+            commands::codex_instance::codex_import_sessions,
+            commands::codex_instance::codex_open_session_location,
             commands::codex_instance::codex_create_instance,
             commands::codex_instance::codex_update_instance,
             commands::codex_instance::codex_delete_instance,
@@ -1017,7 +1206,7 @@ pub fn run() {
     app.run(|app_handle, event| {
         match &event {
             RunEvent::ExitRequested { .. } | RunEvent::Exit => {
-                tauri::async_runtime::block_on(async {
+                tauri::async_runtime::spawn(async {
                     modules::codex_local_access::shutdown_local_access_gateway_for_app_exit().await;
                 });
             }
@@ -1037,13 +1226,15 @@ pub fn run() {
                     logger::log_info(&format!(
                         "[RunEvent] 收到 Opened 事件: url_count={}, urls={:?}",
                         args.len(),
-                        args
+                        summarize_deep_link_args(&args)
                     ));
-                    let handled = modules::external_import::handle_external_import_args(
-                        app_handle,
-                        &args,
-                        "run-event-opened",
-                    );
+                    let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                    let handled = zcode_oauth_handled
+                        || modules::external_import::handle_external_import_args(
+                            app_handle,
+                            &args,
+                            "run-event-opened",
+                        );
                     logger::log_info(&format!(
                         "[RunEvent] Opened 外部导入处理结果: handled={}",
                         handled

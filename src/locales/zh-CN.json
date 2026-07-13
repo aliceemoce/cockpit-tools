@@ -6,12 +6,14 @@
     "saving": "保存中...",
     "delete": "删除",
     "refresh": "刷新",
+    "reauthorize": "重新授权",
     "loading": "加载中...",
     "success": "成功",
     "failed": "失败",
     "enabled": "已启用",
     "disabled": "已禁用",
     "close": "关闭",
+    "back": "返回",
     "open": "打开",
     "copy": "复制",
     "copied": "已复制",
@@ -121,7 +123,7 @@
           "inline": "内嵌建议"
         },
         "subtitle": "多实例独立配置，多账号并行运行。",
-        "title": "多开实例"
+        "title": "应用多开"
       },
       "noMatch": {
         "desc": "请尝试调整搜索或筛选条件",
@@ -131,6 +133,8 @@
         "failed": "授权失败",
         "hint": "完成授权后，此窗口将自动更新",
         "openBrowser": "在浏览器中打开",
+        "normalWindow": "普通窗口",
+        "incognitoWindow": "无痕窗口",
         "success": "授权成功",
         "meta": "授权有效期：{{expires}}s；轮询间隔：{{interval}}s",
         "preparing": "正在准备授权信息...",
@@ -177,13 +181,13 @@
       },
       "quota": {
         "noData": "暂无配额数据",
-        "pendingQuery": "待查询配额",
-        "pendingQueryBadge": "配额未查询",
         "queryFailed": "配额查询失败",
         "resetDone": "已重置",
         "hourly": "Inline Suggestions",
         "weekly": "Chat messages",
-        "resetAt": "重置：{{time}}"
+        "resetAt": "重置：{{time}}",
+        "expiresAt": "到期时间：{{time}}",
+        "leftPercent": "剩余 {{value}}%"
       },
       "subtitle": "实时监控所有账号的配额状态。",
       "time": {
@@ -206,7 +210,7 @@
         "planEndsInHours": "{{hours}} 小时后重置"
       },
       "flowNotice": {
-        "alternative": "多开实例隔离：使用独立受管 profile；每个实例登录一次，后续按实例快速切换账号环境。"
+        "alternative": "应用多开隔离：使用独立受管 profile；每个实例登录一次，后续按实例快速切换账号环境。"
       },
       "injecting": "注入中...",
       "usage": {
@@ -262,6 +266,7 @@
     "errors": {
       "refreshFailed": "刷新失败：{{error}}",
       "switchFailed": "切换失败：{{error}}",
+      "stopInstanceBeforeSwitch": "请先停止实例再切换账号",
       "pinFailed": "置顶设置失败：{{error}}",
       "closeFailed": "关闭失败：{{error}}"
     },
@@ -294,7 +299,7 @@
     "sponsors": "赞助商",
     "sponsorAppreciation": "赞赏",
     "apiRelay": "中转站",
-    "instances": "多开实例",
+    "instances": "应用多开",
     "manual": "使用手册",
     "quickUpdate": {
       "update": "更新",
@@ -303,6 +308,9 @@
     },
     "qoder": "Qoder",
     "trae": "Trae",
+    "traeSolo": "TRAE SOLO",
+    "traeCn": "Trae CN",
+    "traeSoloCn": "TRAE SOLO CN",
     "codebuddyCn": "CodeBuddy CN",
     "switchClassicLayoutEntry": "切换到经典布局",
     "switchClassicLayoutTitle": "切换至经典侧边栏布局",
@@ -521,7 +529,7 @@
     "showSensitive": "显示邮箱"
   },
   "instances": {
-    "title": "多开实例",
+    "title": "应用多开",
     "subtitle": "多实例独立配置，多账号并行运行。",
     "defaultName": "默认实例",
     "search": "搜索实例",
@@ -839,7 +847,7 @@
       "importModalDesc": "选择要导入的数据类型。旧版账号备份会自动按“仅账号数据”处理。",
       "selectionTitle": "数据范围",
       "accountsOptionTitle": "账号数据",
-      "accountsOptionDesc": "包含各平台账号备份，并继续兼容旧版账号 JSON。",
+      "accountsOptionDesc": "包含可恢复的平台账号备份，并继续兼容旧版账号 JSON。Grok CLI 凭据不在其中，需单独导入官方 auth.json。",
       "configOptionTitle": "配置数据",
       "configOptionDesc": "包含应用设置、分组、实例、唤醒任务与模型 Provider 配置。",
       "exportConfirm": "导出数据",
@@ -1099,8 +1107,12 @@
       "zedPathSelect": "选择",
       "zedPathReset": "重置默认",
       "traeAutoRefresh": "Trae 自动刷新配额",
+      "platformAutoRefresh": "{{platform}} 自动刷新配额",
       "traeAutoRefreshDesc": "后台自动更新频率",
       "traeAppPath": "Trae 启动路径",
+      "traeSoloAppPath": "TRAE SOLO 启动路径",
+      "traeCnAppPath": "Trae CN 启动路径",
+      "traeSoloCnAppPath": "TRAE SOLO CN 启动路径",
       "traeAppPathDesc": "留空则使用默认路径",
       "traeAppPathPlaceholder": "默认路径",
       "traePathSelect": "选择",
@@ -1125,9 +1137,13 @@
       "codebuddyCnPathReset": "重置默认",
       "codebuddyCnPathSelect": "选择",
       "codebuddyCnSettingsTitle": "CodeBuddy CN 设置",
+      "zcodeAppPath": "ZCode 启动路径",
+      "zcodeAppPathDesc": "留空则使用默认路径",
       "qoderAppPath": "Qoder 启动路径",
       "qoderAppPathDesc": "留空则使用默认路径",
       "qoderAppPathPlaceholder": "默认路径",
+      "zcodeAutoRefresh": "ZCode 自动刷新",
+      "zcodeAutoRefreshDesc": "后台配额刷新间隔",
       "qoderAutoRefresh": "Qoder 自动刷新配额",
       "qoderAutoRefreshDesc": "后台自动更新频率",
       "qoderPathSelect": "选择",
@@ -1144,7 +1160,11 @@
       "claudeAutoRefresh": "Claude 自动刷新配额",
       "claudeAutoRefreshDesc": "后台自动更新 Claude 账号配额缓存",
       "claudeAppPath": "Claude Desktop 启动目标",
-      "claudeAppPathDesc": "默认实例可使用 Microsoft Store 应用目标；多开实例请选择真实 Claude.exe。"
+      "claudeAppPathDesc": "默认实例可使用 Microsoft Store 应用目标；应用多开请选择真实 Claude.exe。",
+      "antigravityLaunchOnSwitch": "切换时启动 Antigravity",
+      "antigravityLaunchOnSwitchDesc": "关闭后切号只写入 Antigravity 默认账号数据，不会关闭、启动或重启应用。",
+      "tokenKeeper": "后台授权保活",
+      "tokenKeeperDesc": "仅在授权快过期时分批刷新账号 Token，降低大量账号场景下的后台请求压力。"
     },
     "network": {
       "apiTitle": "反重力驾驶舱 API",
@@ -1226,12 +1246,12 @@
       "desc": "未找到 {{app}} 应用程序路径，请立即设置后继续启动。",
       "codexLaunchHint": "关闭后仅执行切号与登录覆盖，不再尝试启动 Codex App，也不会再次要求设置启动路径。",
       "action": "立即设置",
-      "claudeMultiInstanceRequiresExe": "Claude 多开实例需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。",
+      "claudeMultiInstanceRequiresExe": "Claude 应用多开需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。",
       "scanApps": "扫描应用",
       "scanRoots": "扫描范围",
       "scanRootsPlaceholder": "可选，选择一个目录或盘符；留空时按盘符扫描 WindowsApps 并补充开始菜单应用。",
       "windowsApp": "微软商店",
-      "defaultOnly": "仅适用于默认桌面端；多开实例请选择真实 Claude.exe。",
+      "defaultOnly": "仅适用于默认桌面端；应用多开请选择真实 Claude.exe。",
       "claudeScanEmpty": "未扫描到 Claude Desktop，请手动选择 Claude.exe 或调整扫描范围。",
       "claudeTargetPlaceholder": "Claude.exe 路径或 shell:AppsFolder\\..."
     }
@@ -1817,7 +1837,8 @@
     "installFailed": "系统安装失败，请稍后重试或手动下载安装。",
     "restartRequiredAfterInstall": "更新已安装，请手动重启应用完成切换。",
     "stoppingApiService": "正在关闭 API 服务...",
-    "stopApiServiceFailed": "无法关闭 API 服务，请先停用后重试。"
+    "stopApiServiceFailed": "无法关闭 API 服务，请先停用后重试。",
+    "stopApiServiceFailedContinue": "API 服务未正常关闭，将继续重启..."
   },
   "closeDialog": {
     "title": "关闭窗口",
@@ -1847,10 +1868,10 @@
     "subtitle": "实时监控所有Codex账号的模型配额状态。",
     "instances": {
       "subtitle": "多实例独立配置，多账号并行运行。",
-      "comingSoon": "多开实例功能即将上线",
+      "comingSoon": "应用多开功能即将上线",
       "comingSoonDesc": "支持以不同账号同时运行多个 Codex.app 实例，敬请期待。",
       "unsupported": {
-        "desc": "Codex 多开实例仅支持 macOS 和 Windows。",
+        "desc": "Codex 应用多开仅支持 macOS 和 Windows。",
         "title": "暂不支持当前系统"
       },
       "quota": {
@@ -1970,13 +1991,63 @@
     "accountNote": {
       "title": "账号备注",
       "label": "账号备注",
-      "desc": "给 {{account}} 填写单独展示的账号备注。",
-      "placeholder": "例如邮箱、密码、辅助邮箱或其他交付备注",
+      "desc": "给 {{account}} 填写密码、2FA、邮件地址、手机号和其他备注。",
+      "twoFactorSecretLabel": "2FA 秘钥",
+      "twoFactorSecretShort": "2FA",
+      "twoFactorSecretPlaceholder": "Base32 secret 或 otpauth:// 链接",
+      "twoFactorSecretInvalid": "2FA 秘钥格式无效，请输入 Base32 secret 或 otpauth:// 链接",
+      "currentOtp": "当前验证码",
+      "otpShort": "验证码",
+      "otpRemaining": "{{seconds}}秒",
+      "passwordLabel": "账号密码",
+      "passwordShort": "密码",
+      "passwordPlaceholder": "登录密码或临时密码",
+      "phoneNumberLabel": "手机号",
+      "phoneShort": "手机",
+      "phoneNumberPlaceholder": "绑定手机号",
+      "mailUrlLabel": "邮件地址",
+      "mailUrlPlaceholder": "填写可打开的邮件查询网页地址",
+      "mailPreviewRefresh": "刷新邮件",
+      "mailPreviewOpen": "浏览器查看",
+      "mailPreviewLoading": "读取邮件中...",
+      "mailPreviewNoCode": "未匹配到连续 6 位验证码",
+      "mailPreviewFetchFailed": "读取邮件失败：{{error}}",
+      "mailPreviewUrlRequired": "请输入邮件地址",
+      "mailPreviewUrlInvalid": "邮件地址格式无效，请输入完整的 http:// 或 https:// 地址",
+      "mailPreviewUnsupportedProtocol": "邮件地址仅支持 http 或 https 协议",
+      "mailPreviewHttpFailed": "邮件地址请求失败：HTTP {{status}}",
+      "mailPreviewCode": "最近一条邮箱验证码",
+      "mailPreviewStatusInitial": "获取于 {{time}}",
+      "mailPreviewStatusChanged": "新验证码 · {{time}}",
+      "mailPreviewStatusUnchanged": "未变化 · {{time}}",
+      "mailPreviewTruncated": "内容已截断",
+      "mailOpenFailed": "打开邮件地址失败：{{error}}",
+      "otherNoteLabel": "其他备注",
+      "otherNoteShort": "备注",
+      "placeholder": "其他交付备注、辅助邮箱或账号说明",
+      "exportSensitiveNotice": "导出内容包含 2FA 秘钥、密码、手机号或邮件地址，请只保存到可信位置。",
+      "exportSensitiveIncluded": "包含敏感备注",
+      "exportSensitiveExcluded": "已排除敏感备注",
+      "exportSensitiveToggleHint": "控制导出 JSON 是否包含 2FA 秘钥、密码、手机号和邮件地址。",
+      "show": "显示",
+      "hide": "隐藏",
       "emptyTitle": "填写账号备注",
       "short": "账号备注",
       "addShort": "加备注",
       "saved": "账号备注已保存",
       "saveFailed": "保存账号备注失败：{{error}}"
+    },
+    "pendingAuth": {
+      "badge": "待授权",
+      "emailRequired": "请输入账号邮箱",
+      "saving": "正在保存待授权账号...",
+      "saved": "待授权账号已保存",
+      "saveFailed": "保存待授权账号失败：{{error}}",
+      "emailLabel": "待授权账号",
+      "emailPlaceholder": "输入 OpenAI 账号邮箱",
+      "saveDraft": "保存待授权卡片",
+      "authorizeAction": "授权添加",
+      "cardHint": "备注已保存，完成 OAuth 后即可使用"
     },
     "localAccess": {
       "title": "API 服务",
@@ -2150,6 +2221,7 @@
       "memberTitle": "集合成员",
       "routingStrategy": {
         "auto": "自动（推荐）",
+        "singleAccount": "固定首个账号",
         "quotaHighFirst": "优先高配额",
         "quotaLowFirst": "优先低配额",
         "planHighFirst": "优先高订阅",
@@ -2201,6 +2273,11 @@
       "oauthBinding": {
         "desc": "可选绑定。只要 OAuth 账号带 refresh_token 即可选择；未绑定时 API 服务按原 API Key 逻辑运行；绑定后登录态使用 OAuth 账号，Provider 使用当前 API 服务配置。",
         "currentService": "API 服务：{{name}}",
+        "quotaReserveToggle": "保留 OAuth 额度",
+        "quotaReserveDesc": "API 服务仅在 5 小时和周剩余额度均高于保留值时使用该 OAuth 账号。",
+        "quotaReserveHourlyLabel": "5 小时保留",
+        "quotaReserveWeeklyLabel": "周保留",
+        "quotaReserveInvalid": "请输入 1 到 100 的整数",
         "imageGenerationTooltip": "开启后，API 服务会在本地网关转发普通文本对话前移除 image_generation 工具声明；不会删除生图模型。",
         "imageGenerationConfirm": {
           "title": "禁用 image_generation 能力",
@@ -2209,7 +2286,10 @@
       },
       "customRoutingEdit": "编辑自定义调度",
       "customRoutingTitle": "自定义调度",
-      "customRoutingDesc": "按账号设置优先级和权重，用于控制 API 服务选择账号的顺序和同级负载分配。",
+      "customRoutingDesc": "设置账号的优先级、权重和备用角色，控制账号选择顺序与负载分配。",
+      "customRoutingBackupTitle": "备用账号",
+      "customRoutingBackupDesc": "仅在所有普通账号不可用时使用；普通账号恢复后，新请求会自动切回。",
+      "customRoutingBackupShort": "备用",
       "customRoutingPriorityTitle": "优先级",
       "customRoutingPriorityDesc": "数值越高越先被选中；高优先级账号不可用时，才会继续尝试低优先级账号。",
       "customRoutingWeightTitle": "权重",
@@ -2429,7 +2509,8 @@
         "newApiKey": "新增 API Key",
         "visionCapability": "图片输入能力",
         "visionModels": "支持图片的模型",
-        "visionRoutingModel": "图片请求默认模型"
+        "visionRoutingModel": "图片请求默认模型",
+        "supportsWebsockets": "WebSocket 传输"
       },
       "validation": {
         "nameRequired": "供应商名称不能为空",
@@ -2587,7 +2668,7 @@
         "default": "默认实例",
         "running": "运行中",
         "targetHint": "目标：{{instance}}",
-        "uninitializedHint": "目标实例尚未初始化，请先到多开实例页启动一次。",
+        "uninitializedHint": "目标实例尚未初始化，请先到应用多开页启动一次。",
         "shortLabel": "实例",
         "saveFailed": "保存实例绑定失败：{{error}}"
       },
@@ -2661,6 +2742,12 @@
         "customMoveUp": "上移",
         "customMoveDown": "下移",
         "customReset": "重置自定义顺序"
+      },
+      "websockets": {
+        "title": "允许 Codex 使用 Responses WebSocket",
+        "help": "仅在供应商明确支持 Responses WebSocket 时开启；连接方式可通过 Codex 或代理服务日志确认。",
+        "enabled": "已启用",
+        "disabled": "已停用"
       }
     },
     "quickSwitch": {
@@ -2692,6 +2779,7 @@
     "quota": {
       "hourly": "5小时配额",
       "weekly": "周配额",
+      "additional": "额外额度",
       "weeklyBlocksHourly": "周额度为 0，5小时额度已不可用",
       "reset": "重置",
       "resetCredits": "重置 {{count}}",
@@ -2740,7 +2828,8 @@
       "enterprise": "ENTERPRISE"
     },
     "list": {
-      "showCodeReviewQuota": "显示 Code Review 配额"
+      "showCodeReviewQuota": "显示 Code Review 配额",
+      "showAdditionalQuota": "显示模型专属配额"
     },
     "time": {
       "today": "今天 {{time}}",
@@ -2765,7 +2854,9 @@
       "filterWithin24h": "24小时内 ({{count}})",
       "filterWithin7d": "7天内 ({{count}})",
       "filterWithin30d": "30天内 ({{count}})",
-      "filterMissing": "未获得 ({{count}})"
+      "filterMissing": "未获得 ({{count}})",
+      "accessTokenOnlyUsable": "Token 可用",
+      "accessTokenOnlyUsableDetail": "订阅信息接口受限，但配额与 Codex 使用正常"
     },
     "view": {
       "compact": "紧凑视图"
@@ -2781,6 +2872,7 @@
       "hourlyReset": "按5小时配额重置时间",
       "subscriptionExpiry": "按订阅有效期",
       "custom": "自定义顺序",
+      "customSettingsTooltip": "配置自定义顺序",
       "customModalTitle": "自定义账号排序",
       "customModalDesc": "拖动账号或使用上下按钮调整展示顺序。",
       "customDragHandle": "拖拽排序",
@@ -2899,6 +2991,16 @@
       "accountSearchPlaceholder": "搜索邮箱...",
       "accountFilterEmpty": "没有匹配的账号",
       "accountFilteredCount": "当前筛选 {{count}} 个账号",
+      "fullQuotaAction": "唤醒账号",
+      "fullQuotaActionTitle": "打开账号唤醒测试，账号默认按 5h 额度从高到低排序。",
+      "fullQuotaNoAccounts": "当前列表没有可唤醒的 OAuth 账号。",
+      "fullQuotaAccountsLabel": "选择要唤醒的账号",
+      "accountSort": {
+        "default": "默认顺序",
+        "hourly": "按5h额度",
+        "weekly": "按周额度",
+        "email": "按邮箱"
+      },
       "testTitle": "测试 Codex 唤醒",
       "testAccountsLabel": "测试账号",
       "testAccountsRequired": "请至少选择一个测试账号",
@@ -2990,11 +3092,15 @@
         "copyToInstance": "复制到实例",
         "repairVisibility": "修复可见性",
         "restoreSessions": "恢复会话",
+        "exportSessions": "导出会话",
+        "importSessions": "导入会话",
         "copySessionId": "复制会话 ID",
+        "openLocation": "打开位置",
         "selectAllSessions": "全选全部会话",
         "clearSelectedSessions": "取消全选",
         "expand": "展开",
-        "collapse": "收起"
+        "collapse": "收起",
+        "trash": "废纸篓"
       },
       "confirm": {
         "title": "移到废纸篓",
@@ -3032,11 +3138,25 @@
       "locationRunning": "（运行中）",
       "untitled": "未命名会话",
       "restoreModal": {
-        "title": "恢复会话",
-        "hint": "恢复会把 rollout 文件、session_index 条目和会话文件时间放回原实例，并触发官方 Codex 重建会话索引。",
+        "title": "废纸篓",
+        "hint": "废纸篓中的会话可以恢复到原实例，也可以永久删除以释放磁盘空间。",
         "emptyTitle": "废纸篓里还没有会话",
         "emptyDesc": "已移到废纸篓的会话会显示在这里。",
-        "restoreAction": "恢复选中会话"
+        "restoreAction": "恢复选中会话",
+        "summary": "共 {{count}} 条，{{size}}",
+        "selectedSummary": "已选 {{count}} 条，{{size}}",
+        "selectAll": "全选",
+        "clearSelected": "取消选择",
+        "emptyTrash": "清空废纸篓",
+        "itemSize": "大小 {{size}}",
+        "deleteOne": "永久删除",
+        "deleteSelected": "永久删除选中",
+        "pickDeleteOne": "请至少选择一条要永久删除的会话",
+        "deleteOneConfirm": "确定要永久删除这个会话吗？删除后无法恢复，预计释放 {{size}}。",
+        "deleteSelectedConfirm": "确定要永久删除选中的 {{count}} 条会话吗？删除后无法恢复，预计释放 {{size}}。",
+        "permanentDeleteTitle": "永久删除",
+        "permanentDeleteAction": "永久删除",
+        "emptyTrashConfirm": "确定要清空废纸篓吗？其中 {{count}} 条会话将被永久删除且无法恢复，预计释放 {{size}}。"
       },
       "targetModal": {
         "title": "复制到实例",
@@ -3046,6 +3166,23 @@
         "selectedCount": "已选择 {{count}} 条会话",
         "existingCount": "目标已存在 {{count}} 条",
         "confirm": "复制会话"
+      },
+      "importModal": {
+        "title": "导入会话",
+        "hint": "会话包只导入 rollout 文件和 session_index 条目，不包含账号、Token、API Key 或应用配置；目标实例已有同 ID 会话时会跳过。",
+        "noTarget": "未发现可导入的 Codex 实例",
+        "noPackage": "请先选择会话包",
+        "pickOne": "请至少选择一条可导入会话",
+        "totalCount": "会话包 {{count}} 条",
+        "readyCount": "可导入 {{count}} 条",
+        "selectReady": "选择可导入",
+        "previewing": "正在预览会话包...",
+        "existsIn": "已存在于：{{names}}",
+        "statusReady": "可导入",
+        "statusDuplicate": "已存在",
+        "statusConflict": "冲突",
+        "statusInvalid": "无效",
+        "confirm": "导入选中会话"
       },
       "repairModal": {
         "running": "正在修复...",
@@ -3096,9 +3233,75 @@
         "instanceScopeTarget": "仅目标实例",
         "instanceScopeTargetDesc": "只修复上方选中的实例，通常更快。",
         "instanceScopeAll": "全部实例",
-        "instanceScopeAllDesc": "修复所有 Codex 实例，适合多开实例一起恢复。",
+        "instanceScopeAllDesc": "修复所有 Codex 实例，适合应用多开一起恢复。",
         "progressTitle": "修复进度",
-        "start": "开始修复"
+        "start": "开始修复",
+        "previewing": "正在预览...",
+        "previewAgain": "重新预览",
+        "preview": "预览变更",
+        "previewFailedWithError": "预览会话修复失败：{{error}}",
+        "confirmRepair": "确认修复"
+      },
+      "transferModal": {
+        "exportTitle": "导出会话",
+        "importTitle": "导入会话",
+        "minimize": "最小化",
+        "reopen": "查看进度",
+        "clear": "清除",
+        "runningSummary": "正在处理 {{current}}/{{total}}",
+        "completedSummary": "任务已完成",
+        "failedSummary": "任务失败",
+        "current": "{{current}} / {{total}}",
+        "phase": {
+          "exportPrepare": "正在准备导出...",
+          "exportCollect": "正在收集会话...",
+          "exportHash": "正在校验会话文件...",
+          "exportWrite": "正在写入会话包...",
+          "importPrepare": "正在准备导入...",
+          "importRead": "正在读取会话包...",
+          "importWrite": "正在写入目标实例...",
+          "importRebuild": "正在刷新官方会话索引...",
+          "done": "任务已完成"
+        }
+      },
+      "exportModal": {
+        "title": "导出会话",
+        "hint": "导出前可先确认会话列表、来源实例和文件大小；会话包只包含 rollout 文件和 session_index 条目，不包含账号、Token、API Key 或应用配置。",
+        "previewing": "正在预览会话...",
+        "selectedCount": "已选择 {{count}} 条",
+        "exportableCount": "可导出 {{count}} 条",
+        "missingCount": "缺失 {{count}} 条",
+        "totalSize": "总大小 {{size}}",
+        "exportPath": "导出位置",
+        "pathUnset": "尚未选择导出位置",
+        "choosePath": "选择位置",
+        "missingNotice": "{{count}} 条会话已不在当前实例集合中，导出时会跳过。",
+        "sourceInstance": "来源：{{name}}",
+        "emptyTitle": "没有可导出的会话",
+        "noPreview": "请先完成导出预览",
+        "noExportable": "没有可导出的会话",
+        "pickPath": "请选择导出位置",
+        "confirm": "确认导出",
+        "selectedExportCount": "已选 {{selected}} / 可导出 {{total}}",
+        "selectedSize": "已选大小 {{selected}} / 总计 {{total}}",
+        "removedNotice": "已从本次导出列表移出 {{count}} 条",
+        "restoreRemoved": "恢复列表",
+        "sourceLabel": "来源",
+        "allSources": "全部来源",
+        "selectionLabel": "选择",
+        "filterAll": "全部",
+        "filterSelected": "已选",
+        "filterUnselected": "未选",
+        "visibleCount": "当前显示 {{visible}} / {{total}}",
+        "selectVisible": "选中筛选",
+        "clearVisible": "取消筛选",
+        "keepVisibleOnly": "仅保留筛选",
+        "removeVisible": "移出筛选",
+        "removeUnchecked": "移出未选",
+        "selectItem": "选择导出会话",
+        "removeItem": "移出",
+        "emptyFilteredTitle": "当前筛选无会话",
+        "emptyFilteredDesc": "调整搜索、来源或选择状态后再试。"
       }
     },
     "groups": {
@@ -3189,7 +3392,9 @@
         "pricingUnset": "未设置",
         "pricingReset": "重置",
         "pricingSaved": "价格设置已保存",
-        "pricingInvalid": "价格必须是大于或等于 0 的数字"
+        "pricingInvalid": "价格必须是大于或等于 0 的数字",
+        "pricingReprice": "重算历史估值",
+        "pricingRepriced": "历史估值已按当前价格重算"
       },
       "keys": {
         "policyTitle": "模型策略",
@@ -3290,6 +3495,15 @@
       "renameSuccess": "已重命名",
       "renameFailed": "重命名失败"
     },
+    "importApiService": {
+      "toggle": "同步加入 API 服务",
+      "description": "导入成功后，将符合条件的账号加入 API 服务账号池。",
+      "syncFailed": "账号已导入，但加入 API 服务失败：{{error}}",
+      "guideTitle": "账号已加入 API 服务",
+      "guideDescription": "已将 {{count}} 个账号加入 API 服务。点击“启动 API 服务”即可切换并使用。",
+      "later": "稍后",
+      "startAction": "启动 API 服务"
+    },
     "batchImport": {
       "title": "Codex 批量导入",
       "resultSubtitle": "导入结果",
@@ -3324,7 +3538,12 @@
       "selectedCount": "已选 {{count}}/{{total}}",
       "selectAllAccounts": "选择全部账号",
       "selectReady": "选择正常账号",
-      "clearSelection": "取消选择"
+      "clearSelection": "取消选择",
+      "hiddenTask": "Codex 批量导入任务",
+      "taskRunning": "正在处理 {{current}} / {{total}}",
+      "taskPreview": "已生成 {{total}} 条预览",
+      "reopen": "查看任务",
+      "dismissTask": "丢弃"
     },
     "autoRepairMode": {
       "label": "自动修复逻辑",
@@ -3332,6 +3551,33 @@
       "legacyBefore4eb75d96": "4eb75d96 前逻辑",
       "legacy4eb75d96": "4eb75d96 逻辑",
       "current": "当前逻辑"
+    },
+    "batchDelete": {
+      "title": "Codex 批量删除",
+      "running": "删除中",
+      "paused": "已暂停",
+      "failed": "部分失败",
+      "completed": "删除完成",
+      "preparing": "正在准备删除任务...",
+      "retryFailed": "重试失败项",
+      "pause": "暂停",
+      "resume": "继续",
+      "clear": "清理",
+      "summary": "已处理 {{completed}} / {{total}}，失败 {{failed}}",
+      "started": "已开始删除 {{count}} 个 Codex 账号",
+      "pollFailed": "刷新批量删除进度失败：{{error}}",
+      "actionFailed": "批量删除操作失败：{{error}}"
+    },
+    "filters": {
+      "allPlans": "全部套餐 ({{count}})",
+      "visibleOfTotal": "显示 {{visible}} / 共 {{total}}",
+      "activeBanner": "当前筛选仅显示 {{visible}}/{{total}} 个账号",
+      "clearAll": "清除筛选",
+      "chipGroup": "分组",
+      "chipTags": "标签",
+      "chipSearch": "搜索",
+      "chipPlan": "套餐",
+      "chipFolder": "分组目录"
     }
   },
   "codebuddy": {
@@ -3438,7 +3684,7 @@
     "title": "GitHub Copilot 账号管理",
     "instances": {
       "unsupported": {
-        "desc": "GitHub Copilot 多开实例仅支持 macOS。"
+        "desc": "GitHub Copilot 应用多开仅支持 macOS。"
       }
     },
     "empty": {
@@ -3678,6 +3924,14 @@
       "syncWslDesc": "切换账号时自动覆盖 WSL 下的 .gemini 配置"
     },
     "geminiRefreshInterval": "配额自动刷新",
+    "grok": {
+      "title": "Grok CLI 设置",
+      "appPath": "Grok CLI 路径",
+      "cliPath": "CLI 路径",
+      "cliDetected": "已检测 {{version}} · {{path}}",
+      "cliMissing": "未检测到 Grok CLI，可填写自定义路径"
+    },
+    "grokRefreshInterval": "配额自动刷新",
     "error": {
       "loadFailed": "加载配置失败：{{error}}",
       "saveFailed": "保存配置失败：{{error}}",
@@ -3688,6 +3942,10 @@
     "qoder": {
       "title": "Qoder 设置",
       "appPath": "Qoder 路径"
+    },
+    "zcode": {
+      "title": "ZCode 设置",
+      "appPath": "ZCode 路径"
     },
     "zed": {
       "title": "Zed 设置",
@@ -3708,6 +3966,18 @@
     "claude": {
       "appPath": "Claude 路径",
       "appTargetPlaceholder": "Claude.exe 路径或 shell:AppsFolder\\..."
+    },
+    "traeSolo": {
+      "title": "TRAE SOLO 设置",
+      "appPath": "TRAE SOLO 路径"
+    },
+    "traeCn": {
+      "title": "Trae CN 设置",
+      "appPath": "Trae CN 路径"
+    },
+    "traeSoloCn": {
+      "title": "TRAE SOLO CN 设置",
+      "appPath": "TRAE SOLO CN 路径"
     }
   },
   "quotaAlert": {
@@ -3737,7 +4007,7 @@
     "title": "Windsurf 账号管理",
     "instances": {
       "unsupported": {
-        "desc": "Windsurf 多开实例仅支持 macOS。"
+        "desc": "Windsurf 应用多开仅支持 macOS。"
       }
     },
     "empty": {
@@ -3876,7 +4146,7 @@
     "title": "Kiro 账号管理",
     "instances": {
       "unsupported": {
-        "descPlatform": "Kiro 多开实例仅支持 macOS、Windows 和 Linux。"
+        "descPlatform": "Kiro 应用多开仅支持 macOS、Windows 和 Linux。"
       }
     },
     "empty": {
@@ -3906,7 +4176,7 @@
     "title": "Cursor 账号管理",
     "instances": {
       "unsupported": {
-        "descPlatform": "Cursor 多开实例仅支持 macOS、Windows 和 Linux。"
+        "descPlatform": "Cursor 应用多开仅支持 macOS、Windows 和 Linux。"
       }
     },
     "empty": {
@@ -3976,8 +4246,8 @@
     },
     "title": "Gemini Cli 账号管理",
     "instances": {
-      "unsupported": "Gemini Cli 暂不支持多开实例管理。",
-      "unsupportedDescPlatform": "Gemini Cli 多开实例仅支持 macOS、Windows 和 Linux。",
+      "unsupported": "Gemini Cli 暂不支持应用多开管理。",
+      "unsupportedDescPlatform": "Gemini Cli 应用多开仅支持 macOS、Windows 和 Linux。",
       "launchDialogTitle": "启动实例",
       "launchHint": "可复制命令手动执行，或点击下方按钮直接在终端执行。",
       "runInTerminal": "终端执行",
@@ -4100,7 +4370,7 @@
       "goCodex": "前往 Codex",
       "goDashboard": "前往仪表盘",
       "goGitHubCopilot": "前往 GitHub Copilot",
-      "goInstances": "前往多开实例",
+      "goInstances": "前往应用多开",
       "goKiro": "前往 Kiro",
       "goSettings": "前往设置",
       "goVerification": "前往唤醒验证",
@@ -4217,7 +4487,7 @@
         "2": "绑定账号后，通过“启动/定位窗口/停止”管理生命周期。"
       },
       "summary": "用于账号隔离和并行运行。每个实例有独立目录、独立状态，可避免互相污染。",
-      "title": "多开实例（重点）"
+      "title": "应用多开（重点）"
     },
     "navTitle": "功能使用手册",
     "providers": {
@@ -4243,7 +4513,7 @@
         "1": "确认账号列表中能看到计划/配额和重置时间。",
         "2": "执行“切换/注入”并在客户端验证生效。"
       },
-      "summary": "四个平台页结构一致：账号总览 + 多开实例，支持 OAuth、Token/JSON 导入与切换。",
+      "summary": "四个平台页结构一致：账号总览 + 应用多开，支持 OAuth、Token/JSON 导入与切换。",
       "title": "Codex / GitHub Copilot / Windsurf / Kiro 平台"
     },
     "quickStart": {
@@ -4260,13 +4530,13 @@
       "outcomes": {
         "0": "先在仪表盘看全局状态，再进入具体平台页操作。",
         "1": "先完成一个平台的完整闭环，再扩展到其他平台。",
-        "2": "理解“账号管理”和“多开实例”是两条不同工作流。"
+        "2": "理解“账号管理”和“应用多开”是两条不同工作流。"
       },
       "steps": {
         "0": "打开“仪表盘”，确认你需要管理的平台已经可见。",
         "1": "进入目标平台页（如 Codex / GitHub Copilot），先添加 1 个账号。",
         "2": "使用“切换/注入”按钮验证切号生效。",
-        "3": "再进入“多开实例”创建 1 个实例，验证隔离和并行运行。"
+        "3": "再进入“应用多开”创建 1 个实例，验证隔离和并行运行。"
       },
       "summary": "按“看状态 -> 加账号 -> 切账号 -> 开多实例”的顺序完成首轮上手，避免迷路。",
       "title": "快速开始（5 分钟）"
@@ -4331,7 +4601,7 @@
     "title": "Qoder 账号管理",
     "flowNotice": {
       "title": "Qoder 账号接入说明（点击展开/收起）",
-      "desc": "当前支持官方 CLI device login 授权、本地导入、JSON 导入、切号注入、多开实例绑定与配额概览。浏览器授权无需保持 Qoder 运行；切号注入按 Qoder 客户端真实落盘规则写回。",
+      "desc": "当前支持官方 CLI device login 授权、本地导入、JSON 导入、切号注入、应用多开绑定与配额概览。浏览器授权无需保持 Qoder 运行；切号注入按 Qoder 客户端真实落盘规则写回。",
       "permission": "权限范围：读取 Qoder 本地认证存储、用户信息与机器标识缓存（如 machine_token.json、cache/id），用于官方授权登录、本地导入、账号切换与会话注入；所有数据仅在本机处理。",
       "network": "网络范围：OAuth 授权登录会在浏览器中打开 Qoder 官方 device login 页面，并轮询 Qoder 官方 OpenAPI 完成授权；配额查询通过 Qoder API 获取用量数据。不上传本地密钥、凭证或原始存储内容。"
     },
@@ -4350,11 +4620,11 @@
     },
     "comingSoon": {
       "title": "Qoder 账号接入准备中",
-      "desc": "当前版本已支持 Qoder 多开实例、平台管理与菜单栏入口，账号登录与配额面板将在后续版本开放。"
+      "desc": "当前版本已支持 Qoder 应用多开、平台管理与菜单栏入口，账号登录与配额面板将在后续版本开放。"
     },
     "instances": {
       "unsupported": {
-        "descPlatform": "Qoder 多开实例仅支持 macOS、Windows 和 Linux。"
+        "descPlatform": "Qoder 应用多开仅支持 macOS、Windows 和 Linux。"
       }
     },
     "addModal": {
@@ -4367,6 +4637,62 @@
     },
     "empty": {
       "desc": "点击“添加账号”，可使用授权登录、本机导入或 JSON 导入。"
+    }
+  },
+  "zcode": {
+    "search": "搜索 ZCode 账号...",
+    "flowNotice": {
+      "title": "ZCode 账号管理说明",
+      "desc": "Cockpit 按 ZCode 官方格式管理 OAuth 凭据与 API Key，用于真实切号与实例绑定。",
+      "permission": "本地范围：~/.zcode/v2/credentials.json、config.json、setting.json 与受管实例目录。",
+      "network": "网络范围：OAuth、用户信息、订阅与配额接口；不会将账号上传到 Cockpit 服务。"
+    },
+    "empty": "暂无 ZCode 账号",
+    "addAccount": "添加 ZCode 账号",
+    "oauth": {
+      "desc": "关闭 ZCode 后，在 Cockpit 授权窗口完成登录；回调将由 Cockpit 直接接收。",
+      "title": "ZCode 授权登录",
+      "item1": "支持 Z.ai 与 BigModel 官方登录。",
+      "item2": "授权后自动保存账号并刷新套餐与模型额度。",
+      "item3": "账号可用于默认客户端切号和多开实例绑定。",
+      "urlPlaceholder": "ZCode OAuth 授权地址",
+      "waiting": "等待 ZCode OAuth 回调...",
+      "openWindow": "打开授权窗口",
+      "provider": "登录服务",
+      "success": "ZCode OAuth 登录成功"
+    },
+    "token": {
+      "desc": "粘贴由 Cockpit 导出的 ZCode 账号 JSON。"
+    },
+    "apiKey": {
+      "tab": "API 密钥",
+      "desc": "添加 ZCode 官方支持的 Z.ai 或 BigModel API Key。切号和多开实例会写入各自的 config.json。",
+      "placeholder": "粘贴 API Key",
+      "add": "添加 API Key",
+      "provider": "API Key 服务"
+    },
+    "import": {
+      "localDesc": "从本机 ZCode 加密凭据或 JSON 文件导入账号。",
+      "localClient": "从本机 ZCode 导入"
+    },
+    "usageNormal": "正常",
+    "usageAbnormal": "异常",
+    "usageViewDetail": "查看详情",
+    "usageDetailTitle": "用量状态详情",
+    "usage": "用量状态",
+    "quota": {
+      "models": "模型额度",
+      "usedOfTotal": "{{used}} / {{total}}",
+      "updatedAt": "更新：{{time}}",
+      "expireAt": "到期：{{time}}"
+    },
+    "quotaQuery": {
+      "failedRefreshCompact": "配额查询失败",
+      "empty": "暂无配额数据",
+      "sectionTitle": "配额"
+    },
+    "instances": {
+      "unsupported": "ZCode 多开仅支持 macOS、Windows 和 Linux。"
     }
   },
   "zed": {
@@ -4444,17 +4770,21 @@
   "trae": {
     "title": "Trae 账号管理",
     "empty": {
-      "description": "点击“添加账号”开始管理您的 Trae 账号，也可以从本机 Trae 数据或 JSON 文件导入。"
+      "description": "点击“添加账号”开始管理您的 Trae 账号，也可以从本机 Trae 数据或 JSON 文件导入。",
+      "descriptionWithPlatform": "点击“添加账号”开始管理您的 {{platform}} 账号，也可以从本机 {{platform}} 数据或 JSON 文件导入。"
     },
     "addModal": {
-      "title": "添加 Trae 账号"
+      "title": "添加 Trae 账号",
+      "titleWithPlatform": "添加 {{platform}} 账号"
     },
     "oauth": {
-      "desc": "点击下方按钮，在浏览器中完成 Trae OAuth 授权登录。"
+      "desc": "点击下方按钮，在浏览器中完成 Trae OAuth 授权登录。",
+      "descWithPlatform": "点击下方按钮，在浏览器中完成 {{platform}} OAuth 授权登录。"
     },
     "import": {
       "localDesc": "支持从本机 Trae 配置目录读取当前登录账号、套餐信息和配额缓存数据。",
-      "jsonTab": "JSON 文件"
+      "jsonTab": "JSON 文件",
+      "localDescWithPlatform": "支持从本机 {{platform}} 配置目录读取当前登录账号、套餐信息和配额缓存数据。"
     },
     "quota": {
       "usedOfTotal": "${{used}} / ${{total}}",
@@ -4480,7 +4810,12 @@
       "title": "Trae 账号接入说明（点击展开/收起）",
       "desc": "支持官方 OAuth 授权、本机导入、JSON 导入与本地注入切号；切号过程按 Trae 客户端真实落盘规则写回。",
       "permission": "权限范围：读取并写入本机 Trae 配置目录中的 storage.json 登录相关字段，用于账号导入、切号注入与套餐信息展示；所有数据仅在本机处理。",
-      "network": "网络范围：OAuth 登录、令牌刷新和套餐查询会请求 Trae 官方接口；不会向第三方服务上传本地账号文件或原始存储内容。"
+      "network": "网络范围：OAuth 登录、令牌刷新和套餐查询会请求 Trae 官方接口；不会向第三方服务上传本地账号文件或原始存储内容。",
+      "titleWithPlatform": "{{platform}} 账号接入说明（点击展开/收起）",
+      "descWithPlatform": "支持 {{platform}} 官方 OAuth 授权、本机导入、JSON 导入与本地注入切号；切号过程按 {{platform}} 客户端真实落盘规则写回。",
+      "permissionWithPlatform": "权限范围：读取并写入本机 {{platform}} 配置目录中的 storage.json 登录相关字段，用于账号导入、切号注入与套餐信息展示；所有数据仅在本机处理。",
+      "networkGlobal": "网络范围：{{platform}} OAuth 登录、令牌刷新和套餐查询会请求 trae.ai / traeapi.us 官方接口；不会向第三方服务上传本地账号文件或原始存储内容。",
+      "networkCn": "网络范围：{{platform}} OAuth 登录、令牌刷新和套餐查询会请求 trae.cn / trae.com.cn 官方接口；不会向第三方服务上传本地账号文件或原始存储内容。"
     }
   },
   "codebuddyCn": {
@@ -4502,7 +4837,7 @@
     },
     "instances": {
       "unsupported": {
-        "descPlatform": "CodeBuddy CN 多开实例仅支持 macOS、Windows 和 Linux。"
+        "descPlatform": "CodeBuddy CN 应用多开仅支持 macOS、Windows 和 Linux。"
       }
     },
     "syncFailed": "同步失败: {{error}}",
@@ -4633,7 +4968,7 @@
     "oauthSuccessCloseLaterStatus": "✅ 账号添加完成，已保持当前页面打开。",
     "instances": {
       "unsupported": {
-        "descPlatform": "WorkBuddy 多开实例仅支持 macOS、Windows 和 Linux。"
+        "descPlatform": "WorkBuddy 应用多开仅支持 macOS、Windows 和 Linux。"
       }
     }
   },
@@ -4734,6 +5069,86 @@
     "btnImportTitle": "导入本地的 JSON 文件",
     "btnExportTitle": "导出已保存为 JSON"
   },
+  "grok": {
+    "search": "搜索 Grok CLI 账号...",
+    "flowNotice": {
+      "title": "Grok CLI 账号管理说明",
+      "desc": "Cockpit 按 Grok CLI 官方凭据格式管理账号，用于默认客户端真实切号和独立实例绑定。",
+      "permission": "本地范围：读取默认 ~/.grok/auth.json，并管理 Cockpit 本地数据中的独立 Grok 账号与 GROK_HOME 目录。",
+      "network": "网络范围：OAuth 授权、凭据刷新及账号用量查询；不会上传凭据到 Cockpit 服务。"
+    },
+    "empty": "暂无 Grok CLI 账号",
+    "addAccount": "添加 Grok CLI 账号",
+    "oauth": {
+      "desc": "打开 xAI 授权页并输入设备验证码，完成后账号会自动保存。",
+      "title": "Grok 设备 OAuth",
+      "item1": "使用 Grok CLI 官方 device flow，不占用本地回调端口。",
+      "item2": "授权成功后保存独立 GROK_HOME，并维护凭据有效状态。",
+      "item3": "账号可用于默认 CLI 切号和相互隔离的多开实例。",
+      "urlPlaceholder": "Grok OAuth 授权地址",
+      "waiting": "等待 Grok OAuth 授权...",
+      "openWindow": "打开授权页",
+      "success": "Grok OAuth 登录成功"
+    },
+    "import": {
+      "pasteTab": "粘贴 JSON",
+      "pasteDesc": "粘贴 Grok CLI 官方 auth.json；凭据仅在本机后端处理。Cockpit 导出仅含脱敏元数据，不能用于恢复登录。",
+      "pastePlaceholder": "粘贴 Grok 账号 JSON",
+      "pasteAction": "导入 JSON",
+      "localDesc": "从默认 ~/.grok/auth.json 导入当前账号；选择文件时应使用 Grok CLI 官方 auth.json。",
+      "localClient": "从本机 Grok CLI 导入",
+      "apiKeyTab": "API 密钥",
+      "apiKeyDesc": "粘贴 xAI API Key（官方 XAI_API_KEY）。启动时注入环境变量；也可粘贴官方 auth.json 按 OAuth 导入。",
+      "apiKeyPlaceholder": "粘贴 xai- 开头的密钥",
+      "apiKeyAction": "添加 API Key"
+    },
+    "instances": {
+      "unsupported": "Grok CLI 多开仅支持 macOS、Windows 和 Linux。",
+      "launchDialogTitle": "启动实例",
+      "launchHint": "可复制命令手动执行，或点击下方按钮直接在终端执行。",
+      "runInTerminal": "终端执行",
+      "cliReady": "已检测",
+      "cliMissingShort": "未检测",
+      "cliPathInvalid": "配置的 Grok CLI 路径无效：{{path}}",
+      "saveAndRetry": "保存并重试",
+      "installCommand": "官方安装命令",
+      "installHint": "可在终端运行以下官方命令，安装完成后点击刷新。",
+      "selectWorkingDir": "选择 Grok CLI 工作目录",
+      "workingDirAccountHint": "工作目录与当前账号绑定，下次切号启动会自动回填。",
+      "launchCommandPlaceholder": "选择或确认工作目录后生成启动命令"
+    },
+    "switch": {
+      "success": "切号成功"
+    },
+    "usageNormal": "正常",
+    "usageAbnormal": "异常",
+    "usageViewDetail": "查看详情",
+    "usageDetailTitle": "用量状态详情",
+    "usage": "用量状态",
+    "quotaQuery": {
+      "failedRefreshCompact": "配额查询失败",
+      "empty": "暂无可用配额数据",
+      "sectionTitle": "配额查询"
+    },
+    "quota": {
+      "weekly": "每周用量",
+      "onDemand": "按量用量",
+      "balance": "余额与积分",
+      "included": "套餐用量",
+      "promotional": "活动额度",
+      "frequent": "高频任务",
+      "occasional": "普通任务",
+      "resetAt": "{{label}} 重置：{{time}}",
+      "empty": "暂无额度",
+      "apiKeyUnsupported": "API Key 账号无套餐配额"
+    },
+    "quotaAlert": {
+      "hint": "当当前账号任意配额项低于阈值时，发送原生通知并在页面提示快捷切号。",
+      "thresholdDesc": "任意配额项低于此百分比时触发预警",
+      "items": "触发配额项",
+      "unknownItem": "未知配额项"
+    }
+  },
   "claude": {
     "import": {
       "localSuccess": "已导入本机 Claude 登录态：{{count}} 个",
@@ -4778,7 +5193,7 @@
       "success": "切号成功"
     },
     "instances": {
-      "unsupportedDescPlatform": "Claude 多开实例仅支持 macOS、Windows 和 Linux。",
+      "unsupportedDescPlatform": "Claude 应用多开仅支持 macOS、Windows 和 Linux。",
       "launchDialogTitle": "启动实例",
       "launchCommand": "启动命令",
       "executeInTerminal": "在终端运行",

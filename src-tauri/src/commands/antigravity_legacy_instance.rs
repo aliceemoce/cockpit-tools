@@ -21,6 +21,34 @@ fn resolve_default_account_id(settings: &DefaultInstanceSettings) -> Option<Stri
 }
 
 fn resolve_local_account_id() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        use modules::antigravity_legacy_instance::{resolve_auth_mode, AntigravityDesktopAuthMode};
+        match resolve_auth_mode() {
+            AntigravityDesktopAuthMode::SystemCredential => {
+                if let Ok(Some(system_credential)) =
+                    modules::antigravity_credential::read_antigravity_system_credential()
+                {
+                    if let Ok(accounts) = modules::list_accounts() {
+                        for account in accounts {
+                            if account.token.refresh_token == system_credential.refresh_token {
+                                return Some(account.id);
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            AntigravityDesktopAuthMode::LegacyStateDb => resolve_local_account_id_from_db(),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        resolve_local_account_id_from_db()
+    }
+}
+
+fn resolve_local_account_id_from_db() -> Option<String> {
     let default_dir = modules::antigravity_legacy_instance::get_default_user_data_dir().ok()?;
     let db_path = default_dir
         .join("User")
@@ -235,6 +263,12 @@ pub async fn antigravity_legacy_start_instance(
             modules::process::close_pid(pid, 20)?;
             let _ = modules::antigravity_legacy_instance::update_default_pid(None)?;
         }
+        modules::process::close_antigravity_legacy_instances(
+            &[default_dir_str.clone()],
+            &default_dir_str,
+            20,
+        )?;
+        let _ = modules::antigravity_legacy_instance::update_default_pid(None)?;
         if let Some(ref account_id) = default_bind_account_id {
             let _ = modules::prepare_account_for_injection(account_id).await?;
             modules::antigravity_legacy_instance::inject_account_to_profile(
@@ -277,6 +311,14 @@ pub async fn antigravity_legacy_start_instance(
         modules::process::close_pid(pid, 20)?;
         let _ = modules::antigravity_legacy_instance::update_instance_pid(&instance.id, None)?;
     }
+    let default_dir = modules::antigravity_legacy_instance::get_default_user_data_dir()?;
+    let default_dir_str = default_dir.to_string_lossy().to_string();
+    modules::process::close_antigravity_legacy_instances(
+        &[instance.user_data_dir.clone()],
+        &default_dir_str,
+        20,
+    )?;
+    let _ = modules::antigravity_legacy_instance::update_instance_pid(&instance.id, None)?;
 
     if let Some(ref account_id) = instance.bind_account_id {
         let _ = modules::prepare_account_for_injection(account_id).await?;
@@ -311,6 +353,11 @@ pub async fn antigravity_legacy_stop_instance(
         {
             modules::process::close_pid(pid, 20)?;
         }
+        modules::process::close_antigravity_legacy_instances(
+            &[default_dir_str.clone()],
+            &default_dir_str,
+            20,
+        )?;
         let _ = modules::antigravity_legacy_instance::update_default_pid(None)?;
         let default_bind_account_id = resolve_default_account_id(&default_settings);
         return Ok(InstanceProfileView {
@@ -343,6 +390,13 @@ pub async fn antigravity_legacy_stop_instance(
     ) {
         modules::process::close_pid(pid, 20)?;
     }
+    let default_dir = modules::antigravity_legacy_instance::get_default_user_data_dir()?;
+    let default_dir_str = default_dir.to_string_lossy().to_string();
+    modules::process::close_antigravity_legacy_instances(
+        &[instance.user_data_dir.clone()],
+        &default_dir_str,
+        20,
+    )?;
     let updated = modules::antigravity_legacy_instance::update_instance_pid(&instance.id, None)?;
     let initialized = is_profile_initialized(&updated.user_data_dir);
     Ok(InstanceProfileView::from_profile(

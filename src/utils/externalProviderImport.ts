@@ -69,10 +69,15 @@ const IMPORT_TARGET_PAGES: ReadonlySet<Page> = new Set<Page>([
   'kiro',
   'cursor',
   'gemini',
+  'grok',
   'codebuddy',
   'codebuddy-cn',
   'qoder',
+  'zcode',
   'trae',
+  'trae-solo',
+  'trae-cn',
+  'trae-solo-cn',
   'workbuddy',
   'zed',
 ]);
@@ -91,11 +96,19 @@ const PROVIDER_ALIAS_MAP: Record<string, PlatformId> = {
   kiro: 'kiro',
   cursor: 'cursor',
   gemini: 'gemini',
+  grok: 'grok',
   codebuddy: 'codebuddy',
   codebuddy_cn: 'codebuddy_cn',
   codebuddycn: 'codebuddy_cn',
   qoder: 'qoder',
+  zcode: 'zcode',
   trae: 'trae',
+  trae_solo: 'trae_solo',
+  traesolo: 'trae_solo',
+  trae_cn: 'trae_cn',
+  traecn: 'trae_cn',
+  trae_solo_cn: 'trae_solo_cn',
+  traesolocn: 'trae_solo_cn',
   workbuddy: 'workbuddy',
 };
 
@@ -136,11 +149,6 @@ function resolvePage(providerId: PlatformId, rawPage: unknown): Page {
     return candidate as Page;
   }
   return PLATFORM_PAGE_MAP[providerId];
-}
-
-/** Deep link 占位 token：只切页面，不打开「添加账号」弹框。 */
-export function isNavigationOnlyExternalImportToken(rawToken: string): boolean {
-  return rawToken.trim().toLowerCase() === 'nav';
 }
 
 export function normalizeAntigravityExternalImportToken(rawToken: string): string {

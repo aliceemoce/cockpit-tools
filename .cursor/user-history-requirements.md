@@ -530,3 +530,13 @@
   1. 32 个桌面导入邮箱须上传至 `aliceemoce/cockpit-credentials` / `cursor-import-backups/`（脚本 `scripts/upload_cursor_import_backups.py`）
   2. 今日 Cockpit 自动备份核对：`scripts/audit_cockpit_backups_today.py`（本地 `cursor_local_import_backups` + 凭证仓 git log）
 
+
+### HR-20260714-001
+- **原文摘要**：继续完成 upstream v1.3.0 同步交付；纠正第一轮不合格项。
+- **类型**：纠正 / 验收 / 同步交付硬约束
+- **要求**：
+  1. **完整合入** upstream 正式版前端与接线（含 Grok/Zcode 等平台 UI）；禁止为过 `tsc` 删上游 UI 却标 ProductVersion=已同步。
+  2. 覆盖安装与「最新构建」基线必须是 **release**（`npm run tauri build`）；**禁止**把 debug 覆盖安装写成最新基线（撤销 `09BA38D3…`）。
+  3. **禁止**用户未要求时做「清理历史符号」类无关任务。
+  4. 交付须：隔离分支、对照 PR、本机构建+UIA、push、release 上传 exe、系统浏览器+UIA 网页复核、回写规则/设计档案；NSIS 未齐须如实声明。
+  5. 当前锚点：SHA `1A0EC65E…`、分支 `sync-upstream-v1.3.0-20260714-full` @ `102904ee`、PR #5、Release tag `sync-upstream-v1.3.0-20260714`。

@@ -172,26 +172,35 @@
 
 /* Main Content */
 .main-wrapper {
-  flex: 1 1 0;
+  position: relative;
+  flex: 1;
   margin-inline-start: 120px; /* 增加起始侧留白，主要避开 Sidebar */
   padding: 40px 32px 32px 0;
   padding-inline-start: 0;
   padding-inline-end: 32px;
-  min-height: 0;
-  min-width: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  height: 100vh;
+  overflow-y: overlay;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-/* 防止 flex 子项被压扁导致无法出现滚动条 */
-.main-wrapper > * {
-  flex-shrink: 0;
+.app-global-promo-layer {
+  position: absolute;
+  top: 70px;
+  left: 0;
+  right: 32px;
+  height: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.app-global-promo-layer .global-promo-center {
+  top: 0;
 }
 
 .main-content {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 20px;
