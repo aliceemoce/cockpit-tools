@@ -6,10 +6,26 @@ import { AppRuntimeGuard } from "./components/AppRuntimeGuard";
 
 void initI18n();
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+initErrorReporter();
+recordFrontendStage("script_loaded");
+void initI18n();
+
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  const error = new Error("Root element not found");
+  captureError(error, { source: "frontend_boot", phase: "root_lookup" });
+  throw error;
+}
+
+recordFrontendStage("react_mount_start");
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <AppRuntimeGuard>
       <App />
     </AppRuntimeGuard>
   </React.StrictMode>,
 );
+
+window.requestAnimationFrame(() => {
+  markFrontendReady("react_mounted");
+});

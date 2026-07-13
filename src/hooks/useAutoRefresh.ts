@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useAccountStore } from '../stores/useAccountStore';
 import { useCodexAccountStore } from '../stores/useCodexAccountStore';
 import { useClaudeAccountStore } from '../stores/useClaudeAccountStore';
@@ -756,6 +757,13 @@ export function useAutoRefresh() {
     };
 
     window.addEventListener('config-updated', handleConfigUpdate);
+    void listen(CURRENT_ACCOUNT_CHANGED_EVENT, handleConfigUpdate).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlistenCurrentAccount = unlisten;
+      }
+    });
 
     return () => {
       destroyedRef.current = true;
