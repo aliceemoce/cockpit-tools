@@ -330,3 +330,12 @@
 - **触碰功能**: F-005 GUI 验收、沟通结论。
 - **用户要求**: 不发明「按什么标准说已修好」的分拆话术；已修好=已修好，没修好=没修好，撒谎=撒谎。
 - **规则**: `.cursor/rules/honest-fix-status-only.mdc`（`alwaysApply`）；同步修订 `post-build-ui-must-verify.mdc`、`chinese-response-style.mdc`；Codex 镜像 `.codex/rules/honest-fix-status-only.md`；历史 **HR-20260626-002**。
+
+### 2026-07-14（v1.3.0 真合并 redo）
+
+- **触碰功能**: F-007、F-008、F-011。
+- **用户目标是否变化**: 否；纠正为必须同时真用 fork tip 与线上 tip，角标是露馅不是单修项。
+- **本次目的**: 作废拼装 `1A0EC65E…`/`96ea7855`；从 `918980e9` 真合并 `da0deca4`。
+- **实现手段**: 分支 `sync-upstream-v1.3.0-20260714-redo` @ `418b7bb2`；Cursor 页/模块=fork blob；Grok/Zcode=上游 blob；release exe SHA `D6C85620…`；NSIS 已出；PR #6；Release tag 同名。
+- **验证方式**: PrintWindow 目检 Cockpit Cursor 页；浏览器窗口标题含 redo Release/分支；源码 hash 对照。
+- **风险**: 用户确认前不标「能用/已修好」。

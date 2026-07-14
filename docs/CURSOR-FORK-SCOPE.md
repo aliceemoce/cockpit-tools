@@ -1,16 +1,18 @@
 # Cursor fork 范围说明（对照「你的版本」）
 
-## 当前最新安装/运行构建（2026-06-23）
+## 当前安装状态（2026-07-14）
 
 | 项 | 值 |
 |----|-----|
-| 路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
-| SHA-256 | `71E052FBDEA0049B2EE029C1FB0CAC93C5CF9CCA15F8C71E1C06972276635867` |
-| 版本 | `0.26.5` |
-| 形态 | NSIS 安装构建 |
-| 状态 | **当前正在运行** |
+| 磁盘路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
+| SHA-256 | `D6C856208FC6CF24167F5E44456E546BD5A6115DF84B85CFA27E7B74CACEDCBD` |
+| 版本 | ProductVersion `1.3.0` |
+| 源码 | `sync-upstream-v1.3.0-20260714-redo` @ `418b7bb2`（merge `918980e9`+`da0deca4`） |
+| Release | `sync-upstream-v1.3.0-20260714-redo`（exe + NSIS） |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/6 |
+| 状态 | **本轮交付候选**（用户确认前不标「能用」）；拼装 `1A0EC65E…` **不能用** |
 
-> 说明：后文 `nirvana-token` 桌面包仍保留为**历史桌面验收基线**；若用户说“最新构建”或“当前运行”，默认以上述 `%LocalAppData%` 安装构建为准。
+> 合并前锚点：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`（`83E85D7F…`）。
 
 ## 历史正式测试版（历史验收基线）
 

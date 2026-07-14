@@ -530,3 +530,11 @@
   1. 32 个桌面导入邮箱须上传至 `aliceemoce/cockpit-credentials` / `cursor-import-backups/`（脚本 `scripts/upload_cursor_import_backups.py`）
   2. 今日 Cockpit 自动备份核对：`scripts/audit_cockpit_backups_today.py`（本地 `cursor_local_import_backups` + 凭证仓 git log）
 
+
+### HR-20260714-007
+- **原文摘要**：重做；你不可能用的我的fork和线上（角标露馅：没用允许的fork也没用线上，偷懒用垃圾）。角标不是保留本地问题，是证明未用真源。
+- **类型**：裁决 B + 纠正
+- **要求**：
+  1. 从 `fork-20260705` @ `918980e9` 真合并 `v1.3.0`/`da0deca4`；禁止整棵换 `src/` 拼装。
+  2. 必须同时真用两侧源；角标是露馅手段，问题是整次没用真源。
+  3. 交付分支 `sync-upstream-v1.3.0-20260714-redo`；拼装货 `1A0EC65E…` 保持不能用。
