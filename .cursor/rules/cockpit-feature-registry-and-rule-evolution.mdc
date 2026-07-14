@@ -18,12 +18,13 @@ alwaysApply: true
 
 ---
 
-## 2. 当前已核实特征（2026-07-14，v1.3.0 真合并 redo）
+## 2. 当前已核实特征（2026-07-15，v1.3.0 真合并 redo — 已升能用）
 
 ### 能用
 
 | 项 | 证据 |
 |----|------|
+| **当前最新安装/运行构建** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`DEA43F62…`**，ProductVersion 1.3.0；分支 `sync-upstream-v1.3.0-20260714-redo`；merge `27c3ee93` parents=`918980e9`+`da0deca4`；UIA hwnd 锁 `Cockpit Tools` + PrintWindow：Cursor `ALL (1872)`、`FREE`/`当前`、无红 UNKNOWN、非网络错误；Release digest=本地 SHA；PR #6 |
 | **合并前可用源码锚点** | `origin/fork-20260705` @ **`918980e9`** |
 | **合并前 exe 资产** | Draft release `fork-20260705-baseline`（exe SHA **`83E85D7F…`**） |
 | **历史 Cursor 验收包** | `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` SHA **`F5256511…`** |
@@ -31,8 +32,6 @@ alwaysApply: true
 | 多开 + 默认 **可同时存在** | 默认 `close_cursor`；多开 `close_cursor_profile_strict` |
 | 配额 transient | 网络/超时失败 **不写盘** |
 | 满额换号 + Kh 裸 JWT | `pick_full_quota_account`、`nirvana_kh_auth_tokens` |
-
-> **本轮交付候选（用户确认前不标「能用」）**：安装盘 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`DEA43F62…`**，分支 `sync-upstream-v1.3.0-20260714-redo` @ **`778d9ec6`**，真合并 parents=`918980e9`+`da0deca4`；BitBlt/PrintWindow 已见 `Cockpit Tools` Cursor 页（无红 UNKNOWN、非网络错误）；Release 资产 digest 与本地 SHA 一致；PR #6。
 
 ### 不能用
 

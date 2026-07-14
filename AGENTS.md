@@ -8,11 +8,11 @@
 
 本 fork 相对 upstream 的**验收基线与能用/不能用特征**以 [`.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc`](.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc) 为准。
 
-- **本轮真合并交付候选**：安装 exe SHA `DEA43F62…`（ProductVersion 1.3.0）；分支 `sync-upstream-v1.3.0-20260714-redo` @ `778d9ec6`；parents=`918980e9`+`da0deca4`；**用户确认前不标「已修好/能用」**
+- **当前最新构建（能用）**：安装 exe SHA `DEA43F62…`（ProductVersion 1.3.0）；分支 `sync-upstream-v1.3.0-20260714-redo`；parents=`918980e9`+`da0deca4`
 - **拼装拒收物**：SHA `1A0EC65E…` / tag `sync-upstream-v1.3.0-20260714` — **不能用**
 - **合并前锚点**：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`
 - **历史桌面验收包**：`Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）
-- **硬禁**：整棵换 `src/` 冒充同步；debug 当基线；第三套拼装 UI
+- **硬禁**：整棵换 `src/` 冒充同步；debug 当基线；第三套拼装 UI；把「等用户确认」当未完成借口
 
 ## 仓库结构
 
@@ -48,4 +48,4 @@
 5. upstream 同步只响应正式 release/tag；须同时真用允许的 fork tip 与线上 tip
 6. 先读并增量维护 `docs/FORK-DESIGN-ARCHIVE.md`
 7. 历史要求见 `.cursor/user-history-requirements.md`
-8. 对用户结论仅 **已修好** / **没修好**（用户确认前本轮不写已修好）
+8. 对用户结论仅 **已修好** / **没修好**（验收由 Agent 用磁盘/UIA 证据自决；禁止把「等用户确认」当完成门槛）
