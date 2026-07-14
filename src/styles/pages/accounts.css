@@ -311,6 +311,17 @@
   border: 1px solid var(--plan-unknown-border);
 }
 
+/* Cursor：未查配额角标（禁止红 UNKNOWN） */
+.tier-badge.pending-query,
+.instance-plan-badge.pending-query,
+.cursor-plan-badge.pending-query {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* Inline Folder Cards (inside accounts-grid) */
 .folder-inline-card {
   cursor: pointer;
