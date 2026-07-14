@@ -581,3 +581,8 @@
   1. 从 `918980e9` 真合并 `da0deca4`；禁整棵换 `src/`；新分支 redo。
   2. release 覆盖安装；UIA 目检 Cursor 页像 fork、无拼装 UNKNOWN。
   3. push + PR + Release；文档/注册表候选 SHA 在用户确认前不标能用。
+
+### HR-20260715-004
+- **原文摘要**：再次 Implement the plan — 合格重做 upstream v1.3.0 同步
+- **类型**：目标确认
+- **要求**：按已附 plan 全部待办做到完成标准；勿改 plan 文件；不重造待办。
