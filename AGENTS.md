@@ -8,7 +8,7 @@
 
 本 fork 相对 upstream 的**验收基线与能用/不能用特征**以 [`.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc`](.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc) 为准。
 
-- **本轮真合并交付候选**：安装 exe SHA `DEA43F62…`（ProductVersion 1.3.0）；分支 `sync-upstream-v1.3.0-20260714-redo` @ `418b7bb2`；parents=`918980e9`+`da0deca4`；**用户确认前不标「已修好/能用」**
+- **本轮真合并交付候选**：安装 exe SHA `DEA43F62…`（ProductVersion 1.3.0）；分支 `sync-upstream-v1.3.0-20260714-redo` @ `45221c1c`；parents=`918980e9`+`da0deca4`；**用户确认前不标「已修好/能用」**
 - **拼装拒收物**：SHA `1A0EC65E…` / tag `sync-upstream-v1.3.0-20260714` — **不能用**
 - **合并前锚点**：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`
 - **历史桌面验收包**：`Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）

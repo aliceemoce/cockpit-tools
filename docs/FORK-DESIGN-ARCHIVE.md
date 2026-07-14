@@ -336,16 +336,15 @@
 - **触碰功能**: F-007、F-008、F-011。
 - **用户目标是否变化**: 否；纠正为必须同时真用 fork tip 与线上 tip，角标是露馅不是单修项。
 - **本次目的**: 作废拼装 `1A0EC65E…`/`96ea7855`；从 `918980e9` 真合并 `da0deca4`。
-- **实现手段**: 分支 `sync-upstream-v1.3.0-20260714-redo` @ `418b7bb2`；Cursor 页/模块=fork blob；Grok/Zcode=上游 blob；release exe SHA `D6C85620…`；NSIS 已出；PR #6；Release tag 同名。
-- **验证方式**: PrintWindow 目检 Cockpit Cursor 页；浏览器窗口标题含 redo Release/分支；源码 hash 对照。
+- **实现手段**: 分支 `sync-upstream-v1.3.0-20260714-redo`；merge commit `27c3ee93`（parents `918980e9`+`da0deca4`）；Cursor 页/模块=fork blob（~1379 行）；Grok/Zcode=上游 blob；禁整棵换 `src/`。
+- **验证方式**: 源码 hash 对照；无「Take upstream frontend」类提交。
 - **风险**: 用户确认前不标「能用/已修好」。
 
 ### 2026-07-15（UNKNOWN 角标封死 + 真合并 exe 再部署）
 
 - **触碰功能**: F-007、F-008、F-011、Cursor 角标口径。
 - **用户目标是否变化**: 否。
-- **本次目的**: 封死红 UNKNOWN（Dashboard/presentation 大小写漏洞）；补 [[bin]]+winreg；完整 tauri release 覆盖安装。
-- **实现手段**: 
-esolveCursorPlanUiBadge；安装 SHA DEA43F62…；分支 sync-upstream-v1.3.0-20260714-redo。
-- **验证方式**: BitBlt 目检 Cockpit Tools Cursor 页：FREE、无 UNKNOWN、非 localhost 网络错误。
+- **本次目的**: 封死红 UNKNOWN（Dashboard/presentation 大小写漏洞）；补 `[[bin]]`+winreg；完整 tauri release 覆盖安装。
+- **实现手段**: `resolveCursorPlanUiBadge`；安装/Release exe SHA `DEA43F62…`；分支 tip `45221c1c`；PR #6；Release tag 同名（exe+NSIS）。
+- **验证方式**: BitBlt 目检 Cockpit Tools Cursor 页：FREE、无 UNKNOWN、非 localhost 网络错误；Release digest=本地 SHA。
 - **风险**: 用户确认前仍不标「能用」。
