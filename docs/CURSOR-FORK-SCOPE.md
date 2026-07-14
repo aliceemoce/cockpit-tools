@@ -7,7 +7,7 @@
 | 磁盘路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
 | SHA-256 | `DEA43F6204A5BD8ADF3DFCF4D2FE3CA7027120796B17B751EA311F8195CC352B` |
 | 版本 | ProductVersion `1.3.0` |
-| 源码 | `sync-upstream-v1.3.0-20260714-redo` @ `45221c1c`（merge `918980e9`+`da0deca4`） |
+| 源码 | `sync-upstream-v1.3.0-20260714-redo` @ `778d9ec6`（merge `918980e9`+`da0deca4`） |
 | Release | `sync-upstream-v1.3.0-20260714-redo`（exe + NSIS） |
 | 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/6 |
 | 状态 | **本轮交付候选**（用户确认前不标「能用」）；拼装 `1A0EC65E…` **不能用** |

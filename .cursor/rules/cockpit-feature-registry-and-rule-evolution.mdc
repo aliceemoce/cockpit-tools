@@ -32,7 +32,7 @@ alwaysApply: true
 | 配额 transient | 网络/超时失败 **不写盘** |
 | 满额换号 + Kh 裸 JWT | `pick_full_quota_account`、`nirvana_kh_auth_tokens` |
 
-> **本轮交付候选（用户确认前不标「能用」）**：安装盘 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`DEA43F62…`**，分支 `sync-upstream-v1.3.0-20260714-redo` @ **`6b7d47d3`**，真合并 parents=`918980e9`+`da0deca4`；BitBlt/PrintWindow 已见 `Cockpit Tools` Cursor 页（无红 UNKNOWN、非网络错误）；Release 资产 digest 与本地 SHA 一致；PR #6。
+> **本轮交付候选（用户确认前不标「能用」）**：安装盘 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`DEA43F62…`**，分支 `sync-upstream-v1.3.0-20260714-redo` @ **`778d9ec6`**，真合并 parents=`918980e9`+`da0deca4`；BitBlt/PrintWindow 已见 `Cockpit Tools` Cursor 页（无红 UNKNOWN、非网络错误）；Release 资产 digest 与本地 SHA 一致；PR #6。
 
 ### 不能用
 

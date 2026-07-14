@@ -345,6 +345,6 @@
 - **触碰功能**: F-007、F-008、F-011、Cursor 角标口径。
 - **用户目标是否变化**: 否。
 - **本次目的**: 封死红 UNKNOWN（Dashboard/presentation 大小写漏洞）；补 `[[bin]]`+winreg；完整 tauri release 覆盖安装。
-- **实现手段**: `resolveCursorPlanUiBadge`；安装/Release exe SHA `DEA43F62…`；分支 tip `45221c1c`；PR #6；Release tag 同名（exe+NSIS）。
+- **实现手段**: `resolveCursorPlanUiBadge`；安装/Release exe SHA `DEA43F62…`；分支 tip `778d9ec6`；PR #6；Release tag 同名（exe+NSIS）；Release 说明已与资产 digest 对齐。
 - **验证方式**: BitBlt 目检 Cockpit Tools Cursor 页：FREE、无 UNKNOWN、非 localhost 网络错误；Release digest=本地 SHA。
 - **风险**: 用户确认前仍不标「能用」。

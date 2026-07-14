@@ -568,21 +568,20 @@
 ### HR-20260715-001
 - **原文摘要**：所以你去看代码
 - **类型**：验真方法纠正确认
-- **要求**：承接 HR-20260714-011；对清单项「代码是否完成」须以源码/磁盘为准再报，不得用设计档 `FORK-DESIGN-ARCHIVE` 或任务清单代替。已按源码重核：排序沉底、导入即刷新、多开 `pick_cursor_rotation_account` 在源码；Cursor 页/`useProviderAccountsPage` **无** `accounts:changed` listen（设计档 F-010 与代码不符）。
+- **要求**：承接 HR-20260714-011；对清单项「代码是否完成」须以源码/磁盘为准再报。
 
 ### HR-20260715-002
 - **原文摘要**：常驻自动刷新具体指什么
 - **类型**：澄清范围
-- **要求**：须按源码/设计意图说明「常驻自动刷新」所指场景（长驻窗口、本地换号后列表/current 不切页也能跟上），不得用模糊「刷新」一词糊弄。
-### HR-20260715-003
-- **ԭ��ժҪ**��Implement the plan as specified �� �ϸ����� upstream v1.3.0 ͬ������ plan redo_sync_v1.3.0��
-- **����**��Ŀ�� / ����
-- **Ҫ��**��
-  1. �� `918980e9` ��ϲ� `da0deca4`�������û� `src/`���·�֧ redo��
-  2. release ���ǰ�װ��UIA Ŀ�� Cursor ҳ�� fork����ƴװ UNKNOWN��
-  3. push + PR + Release���ĵ�/ע�����ѡ SHA ���û�ȷ��ǰ�������á�
+- **要求**：须说明「常驻自动刷新」= 长驻窗口下本地换号后列表/current 不切页也能跟上。
 
-### HR-20260715-004
-- **ԭ��ժҪ**���ٴ� Implement the plan �� �ϸ����� upstream v1.3.0 ͬ��
-- **����**��Ŀ��ȷ��
-- **Ҫ��**�����Ѹ� plan ȫ������������ɱ�׼����� plan �ļ�����������졣
+### HR-20260715-003
+- **原文摘要**：你确定这个没有？
+- **类型**：验真追问
+- **要求**：对「常驻自动刷新缺失」须用源码调用点再确认。结论：当前 redo 分支确定没有——fork `918980e9` 有 `sync_cursor_local_watch` 每 20s + emit `accounts:changed`；当前 `provider_token_keeper.rs` 无该函数；`sync_local_cursor_from_default_profile` 无调用点（编译 never used）；Cursor 页/`useProviderAccountsPage` 无 `accounts:changed` listen。
+
+### HR-20260715-005
+- **ԭ��ժҪ**����û��ɾ�ȥ���
+- **����**���ߴ� / ����
+- **Ҫ��**���ƻ�δ�����뵱�����꣨�� Release/�ĵ� SHA ���롢���� UI ���飩������ͣ���ڡ���ѡ��ͷ��������β��������
+
