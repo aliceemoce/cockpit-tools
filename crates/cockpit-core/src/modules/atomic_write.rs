@@ -92,50 +92,9 @@ fn write_string_atomic_internal(
 
     let temp_path = build_temp_file_path(parent, path, "atomic");
     fs::write(&temp_path, content).map_err(|e| format_io_error("写入临时文件", &temp_path, &e))?;
-
-    let mut was_readonly = false;
-    if path.exists() {
-        if let Ok(metadata) = fs::metadata(path) {
-            let permissions = metadata.permissions();
-            if permissions.readonly() {
-                was_readonly = true;
-                let mut new_permissions = permissions.clone();
-                new_permissions.set_readonly(false);
-                if let Err(e) = fs::set_permissions(path, new_permissions) {
-                    crate::modules::logger::log_warn(&format!(
-                        "尝试清除文件只读属性失败: path={}, error={}",
-                        path.display(),
-                        e
-                    ));
-                }
-            }
-        }
-    }
-
     if let Err(err) = fs::rename(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
-        if was_readonly {
-            if let Ok(metadata) = fs::metadata(path) {
-                let mut permissions = metadata.permissions();
-                permissions.set_readonly(true);
-                let _ = fs::set_permissions(path, permissions);
-            }
-        }
         return Err(format_io_error("替换文件", path, &err));
-    }
-
-    if was_readonly {
-        if let Ok(metadata) = fs::metadata(path) {
-            let mut permissions = metadata.permissions();
-            permissions.set_readonly(true);
-            if let Err(e) = fs::set_permissions(path, permissions) {
-                crate::modules::logger::log_warn(&format!(
-                    "尝试恢复文件只读属性失败: path={}, error={}",
-                    path.display(),
-                    e
-                ));
-            }
-        }
     }
 
     Ok(())

@@ -758,10 +758,25 @@ fn average_quota_percentage(metrics: &[(String, i32)]) -> f64 {
 }
 
 pub(crate) fn resolve_current_account_id(accounts: &[GitHubCopilotAccount]) -> Option<String> {
+    if let Ok(settings) = crate::modules::github_copilot_instance::load_default_settings() {
+        if let Some(bind_id) = settings.bind_account_id {
+            let trimmed = bind_id.trim();
+            if !trimmed.is_empty() && accounts.iter().any(|account| account.id == trimmed) {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
     crate::modules::provider_current_state::resolve_existing_current_account_id(
         "github_copilot",
         accounts.iter().map(|account| account.id.as_str()),
     )
+    .or_else(|| {
+        accounts
+            .iter()
+            .max_by_key(|account| account.last_used)
+            .map(|account| account.id.clone())
+    })
 }
 
 fn display_email(account: &GitHubCopilotAccount) -> String {

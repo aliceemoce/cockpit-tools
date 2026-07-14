@@ -937,6 +937,12 @@ fn write_local_selected_auth_type_to_path(
         .map_err(|e| format!("写入本地 Gemini settings.json 失败: {}", e))
 }
 
+pub fn get_local_active_email() -> Option<String> {
+    read_local_google_accounts()
+        .ok()
+        .and_then(|data| normalize_non_empty(data.active.as_deref()))
+}
+
 pub fn import_from_local() -> Result<Option<GeminiAccount>, String> {
     let local_creds = match read_local_oauth_creds()? {
         Some(creds) => creds,
@@ -1193,7 +1199,10 @@ async fn post_code_assist_json(
     payload: &Value,
     action_name: &str,
 ) -> Result<Value, String> {
-    let client = crate::utils::http::create_client(20);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
     let resp = client
         .post(endpoint)
@@ -1229,7 +1238,10 @@ async fn post_code_assist_json(
 }
 
 async fn refresh_access_token(refresh_token: &str) -> Result<GoogleTokenRefreshResponse, String> {
-    let client = crate::utils::http::create_client(20);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
     let response = client
         .post(GOOGLE_TOKEN_ENDPOINT)
@@ -1273,7 +1285,10 @@ async fn refresh_access_token(refresh_token: &str) -> Result<GoogleTokenRefreshR
 }
 
 async fn fetch_google_userinfo(access_token: &str) -> Option<GoogleUserInfoResponse> {
-    let client = crate::utils::http::create_client(15);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .ok()?;
     let response = client
         .get(GOOGLE_USERINFO_ENDPOINT)
         .header(AUTHORIZATION, format!("Bearer {}", access_token))
@@ -1741,13 +1756,29 @@ pub(crate) fn extract_account_model_remaining(account: &GeminiAccount) -> Vec<(S
 }
 
 pub(crate) fn resolve_current_account(accounts: &[GeminiAccount]) -> Option<GeminiAccount> {
-    let current_id = crate::modules::provider_current_state::resolve_existing_current_account_id(
-        "gemini",
-        accounts.iter().map(|account| account.id.as_str()),
-    )?;
+    if let Some(active_email) = get_local_active_email() {
+        if let Some(found) = accounts
+            .iter()
+            .find(|account| account.email.eq_ignore_ascii_case(&active_email))
+        {
+            return Some(found.clone());
+        }
+    }
+
+    if let Some(current_id) =
+        crate::modules::provider_current_state::resolve_existing_current_account_id(
+            "gemini",
+            accounts.iter().map(|account| account.id.as_str()),
+        )
+    {
+        if let Some(found) = accounts.iter().find(|account| account.id == current_id) {
+            return Some(found.clone());
+        }
+    }
+
     accounts
         .iter()
-        .find(|account| account.id == current_id)
+        .max_by_key(|account| account.last_used.max(account.created_at))
         .cloned()
 }
 

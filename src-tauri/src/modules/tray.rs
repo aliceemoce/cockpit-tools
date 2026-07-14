@@ -169,15 +169,20 @@ pub(crate) enum PlatformId {
     Kiro,
     Cursor,
     Gemini,
+    Grok,
     Codebuddy,
     CodebuddyCn,
     Qoder,
+    Zcode,
     Trae,
+    TraeSolo,
+    TraeCn,
+    TraeSoloCn,
     Workbuddy,
 }
 
 impl PlatformId {
-    pub(crate) fn default_order() -> [Self; 14] {
+    pub(crate) fn default_order() -> [Self; 19] {
         [
             Self::Claude,
             Self::Codex,
@@ -188,10 +193,15 @@ impl PlatformId {
             Self::Kiro,
             Self::Cursor,
             Self::Gemini,
+            Self::Grok,
             Self::Codebuddy,
             Self::CodebuddyCn,
             Self::Qoder,
+            Self::Zcode,
             Self::Trae,
+            Self::TraeSolo,
+            Self::TraeCn,
+            Self::TraeSoloCn,
             Self::Workbuddy,
         ]
     }
@@ -207,10 +217,15 @@ impl PlatformId {
             crate::modules::tray_layout::PLATFORM_KIRO => Some(Self::Kiro),
             crate::modules::tray_layout::PLATFORM_CURSOR => Some(Self::Cursor),
             crate::modules::tray_layout::PLATFORM_GEMINI => Some(Self::Gemini),
+            crate::modules::tray_layout::PLATFORM_GROK => Some(Self::Grok),
             crate::modules::tray_layout::PLATFORM_CODEBUDDY => Some(Self::Codebuddy),
             crate::modules::tray_layout::PLATFORM_CODEBUDDY_CN => Some(Self::CodebuddyCn),
             crate::modules::tray_layout::PLATFORM_QODER => Some(Self::Qoder),
+            crate::modules::tray_layout::PLATFORM_ZCODE => Some(Self::Zcode),
             crate::modules::tray_layout::PLATFORM_TRAE => Some(Self::Trae),
+            crate::modules::tray_layout::PLATFORM_TRAE_SOLO => Some(Self::TraeSolo),
+            crate::modules::tray_layout::PLATFORM_TRAE_CN => Some(Self::TraeCn),
+            crate::modules::tray_layout::PLATFORM_TRAE_SOLO_CN => Some(Self::TraeSoloCn),
             crate::modules::tray_layout::PLATFORM_WORKBUDDY => Some(Self::Workbuddy),
             _ => None,
         }
@@ -227,10 +242,15 @@ impl PlatformId {
             Self::Kiro => crate::modules::tray_layout::PLATFORM_KIRO,
             Self::Cursor => crate::modules::tray_layout::PLATFORM_CURSOR,
             Self::Gemini => crate::modules::tray_layout::PLATFORM_GEMINI,
+            Self::Grok => crate::modules::tray_layout::PLATFORM_GROK,
             Self::Codebuddy => crate::modules::tray_layout::PLATFORM_CODEBUDDY,
             Self::CodebuddyCn => crate::modules::tray_layout::PLATFORM_CODEBUDDY_CN,
             Self::Qoder => crate::modules::tray_layout::PLATFORM_QODER,
+            Self::Zcode => crate::modules::tray_layout::PLATFORM_ZCODE,
             Self::Trae => crate::modules::tray_layout::PLATFORM_TRAE,
+            Self::TraeSolo => crate::modules::tray_layout::PLATFORM_TRAE_SOLO,
+            Self::TraeCn => crate::modules::tray_layout::PLATFORM_TRAE_CN,
+            Self::TraeSoloCn => crate::modules::tray_layout::PLATFORM_TRAE_SOLO_CN,
             Self::Workbuddy => crate::modules::tray_layout::PLATFORM_WORKBUDDY,
         }
     }
@@ -246,10 +266,15 @@ impl PlatformId {
             Self::Kiro => "Kiro",
             Self::Cursor => "Cursor",
             Self::Gemini => "Gemini Cli",
+            Self::Grok => "Grok CLI",
             Self::Codebuddy => "CodeBuddy",
             Self::CodebuddyCn => "CodeBuddy CN",
             Self::Qoder => "Qoder",
+            Self::Zcode => "ZCode",
             Self::Trae => "Trae",
+            Self::TraeSolo => "TRAE SOLO",
+            Self::TraeCn => "Trae CN",
+            Self::TraeSoloCn => "TRAE SOLO CN",
             Self::Workbuddy => "WorkBuddy",
         }
     }
@@ -265,10 +290,15 @@ impl PlatformId {
             Self::Kiro => "kiro",
             Self::Cursor => "cursor",
             Self::Gemini => "gemini",
+            Self::Grok => "grok",
             Self::Codebuddy => "codebuddy",
             Self::CodebuddyCn => "codebuddy-cn",
             Self::Qoder => "qoder",
+            Self::Zcode => "zcode",
             Self::Trae => "trae",
+            Self::TraeSolo => "trae-solo",
+            Self::TraeCn => "trae-cn",
+            Self::TraeSoloCn => "trae-solo-cn",
             Self::Workbuddy => "workbuddy",
         }
     }
@@ -789,10 +819,14 @@ fn get_account_display_info(platform: PlatformId, lang: &str) -> AccountDisplayI
         PlatformId::Kiro => build_kiro_display_info(lang),
         PlatformId::Cursor => build_cursor_display_info(lang),
         PlatformId::Gemini => build_gemini_display_info(lang),
+        PlatformId::Grok => build_grok_display_info(lang),
         PlatformId::Codebuddy => build_codebuddy_display_info(lang),
         PlatformId::CodebuddyCn => build_codebuddy_cn_display_info(lang),
         PlatformId::Qoder => build_qoder_display_info(lang),
-        PlatformId::Trae => build_trae_display_info(lang),
+        PlatformId::Zcode => build_zcode_display_info(lang),
+        PlatformId::Trae | PlatformId::TraeSolo | PlatformId::TraeCn | PlatformId::TraeSoloCn => {
+            build_trae_display_info(lang, platform)
+        }
         PlatformId::Workbuddy => build_workbuddy_display_info(lang),
     }
 }
@@ -1470,6 +1504,60 @@ fn build_gemini_display_info(lang: &str) -> AccountDisplayInfo {
 }
 
 #[cfg(not(target_os = "macos"))]
+fn build_grok_display_info(lang: &str) -> AccountDisplayInfo {
+    let accounts = crate::modules::grok_account::list_accounts_checked().unwrap_or_default();
+    let current_id = crate::modules::grok_account::current_account_id()
+        .ok()
+        .flatten();
+    let account = current_id
+        .as_deref()
+        .and_then(|id| accounts.iter().find(|account| account.id == id))
+        .or_else(|| accounts.iter().max_by_key(|account| account.last_used));
+    let Some(account) = account else {
+        return AccountDisplayInfo {
+            account: format!("📧 {}", get_text("not_logged_in", lang)),
+            quota_lines: vec!["—".to_string()],
+        };
+    };
+
+    let mut quota_lines = Vec::new();
+    if let Some(plan) = account
+        .plan_type
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        quota_lines.push(format!("{}: {}", get_text("plan", lang), plan));
+    }
+    if let Some(quota) = account.quota.as_ref() {
+        if let Some(used) = quota.weekly_limit_percent {
+            quota_lines.push(format!(
+                "{}: {:.0}% {}",
+                crate::modules::i18n::translate(lang, "grok.quota.weekly", &[]),
+                (100.0 - used.clamp(0.0, 100.0)),
+                get_text("left", lang)
+            ));
+        }
+        for product in quota.products.iter().take(3) {
+            if let Some(used) = product.usage_percent {
+                quota_lines.push(format!(
+                    "{}: {:.0}% {}",
+                    product.product,
+                    (100.0 - used.clamp(0.0, 100.0)),
+                    get_text("left", lang)
+                ));
+            }
+        }
+    }
+    if quota_lines.is_empty() {
+        quota_lines.push(get_text("loading", lang));
+    }
+    AccountDisplayInfo {
+        account: format!("📧 {}", account.email),
+        quota_lines,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
 fn build_codebuddy_display_info(lang: &str) -> AccountDisplayInfo {
     let accounts = crate::modules::codebuddy_account::list_accounts();
     build_codebuddy_family_display_info(lang, resolve_codebuddy_current_account(&accounts))
@@ -1914,6 +2002,87 @@ fn build_qoder_display_info(lang: &str) -> AccountDisplayInfo {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn build_zcode_display_info(lang: &str) -> AccountDisplayInfo {
+    let accounts = crate::modules::zcode_account::list_accounts_checked().unwrap_or_default();
+    let current_id = crate::modules::zcode_account::current_account_id()
+        .ok()
+        .flatten();
+    let account = current_id
+        .as_deref()
+        .and_then(|id| accounts.iter().find(|item| item.id == id))
+        .cloned()
+        .or_else(|| {
+            accounts
+                .iter()
+                .max_by_key(|item| item.last_used.max(item.created_at))
+                .cloned()
+        });
+
+    let Some(account) = account else {
+        return AccountDisplayInfo {
+            account: format!("📧 {}", get_text("not_logged_in", lang)),
+            quota_lines: vec!["—".to_string()],
+        };
+    };
+
+    let display = if account.email.trim().is_empty()
+        || account.email.eq_ignore_ascii_case("unknown@zcode.local")
+    {
+        first_non_empty(&[
+            account.display_name.as_deref(),
+            account.user_id.as_deref(),
+            Some(account.id.as_str()),
+        ])
+        .unwrap_or("—")
+    } else {
+        account.email.as_str()
+    };
+    let mut quota_lines = Vec::new();
+    if let Some(plan) = account
+        .plan_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        quota_lines.push(format!("{}: {}", get_text("plan", lang), plan));
+    }
+    if let Some(balances) = account
+        .quota_raw
+        .as_ref()
+        .and_then(serde_json::Value::as_array)
+    {
+        for balance in balances {
+            let name = balance
+                .get("show_name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("ZCode");
+            let used = balance
+                .get("used_units")
+                .and_then(json_as_f64)
+                .unwrap_or(0.0);
+            let total = balance
+                .get("total_units")
+                .and_then(json_as_f64)
+                .unwrap_or(0.0);
+            quota_lines.push(format!(
+                "{}: {} / {}",
+                name,
+                format_quota_number(used),
+                format_quota_number(total)
+            ));
+        }
+    }
+    if quota_lines.is_empty() {
+        quota_lines.push("—".to_string());
+    }
+
+    AccountDisplayInfo {
+        account: format!("📧 {}", display),
+        quota_lines,
+    }
+}
+
 /// Qoder quota bucket parsed from nested JSON
 #[cfg(not(target_os = "macos"))]
 struct QoderQuotaBucket {
@@ -2048,9 +2217,9 @@ fn json_first_f64(values: &[Option<f64>]) -> Option<f64> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn build_trae_display_info(lang: &str) -> AccountDisplayInfo {
+fn build_trae_display_info(lang: &str, platform: PlatformId) -> AccountDisplayInfo {
     let accounts = crate::modules::trae_account::list_accounts();
-    let Some(account) = resolve_trae_current_account(&accounts) else {
+    let Some(account) = resolve_trae_current_account(&accounts, platform) else {
         return AccountDisplayInfo {
             account: format!("📧 {}", get_text("not_logged_in", lang)),
             quota_lines: vec!["—".to_string()],
@@ -2547,13 +2716,17 @@ fn resolve_cursor_current_account(
 #[cfg(not(target_os = "macos"))]
 fn resolve_trae_current_account(
     accounts: &[crate::models::trae::TraeAccount],
+    platform: PlatformId,
 ) -> Option<crate::models::trae::TraeAccount> {
-    crate::modules::trae_account::resolve_current_account_id(accounts).and_then(|account_id| {
-        accounts
-            .iter()
-            .find(|account| account.id == account_id)
-            .cloned()
-    })
+    let platform_kind =
+        crate::modules::trae_account::TraePlatformKind::parse(Some(platform.as_str())).ok()?;
+    crate::modules::trae_account::resolve_current_account_id_for_platform(accounts, platform_kind)
+        .and_then(|account_id| {
+            accounts
+                .iter()
+                .find(|account| account.id == account_id)
+                .cloned()
+        })
 }
 
 #[cfg(not(target_os = "macos"))]

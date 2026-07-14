@@ -91,6 +91,10 @@ import {
   type CodexModelProviderUsageSummary,
   updateCodexModelProvider,
 } from "../../services/codexModelProviderService";
+import {
+  CODEX_API_KEY_USAGE_REFRESHED_EVENT,
+  readCodexApiKeyUsageCache,
+} from "../../services/codexApiKeyUsageRefreshService";
 import { useSponsorStore } from "../../stores/useSponsorStore";
 import type { Sponsor } from "../../types/sponsor";
 import {
@@ -116,6 +120,11 @@ import {
 import {
   splitValidityFilterValues,
 } from "../../utils/accountValidityFilter";
+import {
+  buildCodexPlanFilterOptions,
+  createCodexPlanFilterCounts,
+  incrementCodexPlanFilterCount,
+} from "../../utils/codexAccountOverview";
 import {
   resolveCodexProviderCapabilityProfile,
   type CodexProviderEnableModePreference,
@@ -225,6 +234,7 @@ type ProviderUsageState = {
   summary?: CodexModelProviderUsageSummary;
   error?: string;
   unavailable?: boolean;
+  updatedAt?: number;
 };
 
 function readProviderUsageCache(): Record<string, ProviderUsageState> {
@@ -240,12 +250,17 @@ function readProviderUsageCache(): Record<string, ProviderUsageState> {
         summary?: CodexModelProviderUsageSummary;
         error?: string;
         unavailable?: boolean;
+        updatedAt?: number;
       };
       next[providerId] = {
         loading: false,
         summary: item.summary,
         error: typeof item.error === "string" ? item.error : undefined,
         unavailable: item.unavailable === true,
+        updatedAt:
+          typeof item.updatedAt === "number" && Number.isFinite(item.updatedAt)
+            ? item.updatedAt
+            : undefined,
       };
     });
     return next;
@@ -266,6 +281,7 @@ function writeProviderUsageCache(value: Record<string, ProviderUsageState>): voi
               summary: item.summary,
               error: item.error,
               unavailable: item.unavailable === true,
+              updatedAt: item.updatedAt,
             },
           ]),
         ),
@@ -274,6 +290,36 @@ function writeProviderUsageCache(value: Record<string, ProviderUsageState>): voi
   } catch {
     // ignore persistence failures
   }
+}
+
+function getAccountUsageForProviderApiKey(
+  provider: CodexModelProvider,
+  apiKey: CodexModelProviderApiKey,
+  accounts: CodexAccount[],
+): ProviderUsageState | null {
+  const normalizedProviderBaseUrl = normalizeCodexModelProviderBaseUrl(
+    provider.baseUrl,
+  );
+  if (!normalizedProviderBaseUrl || !apiKey.apiKey.trim()) return null;
+
+  const matchedAccount = accounts.find(
+    (account) =>
+      isCodexApiKeyAccount(account) &&
+      account.openai_api_key?.trim() === apiKey.apiKey.trim() &&
+      normalizeCodexModelProviderBaseUrl(account.api_base_url ?? "") ===
+        normalizedProviderBaseUrl,
+  );
+  if (!matchedAccount) return null;
+
+  const accountUsage = readCodexApiKeyUsageCache()[matchedAccount.id];
+  if (!accountUsage) return null;
+  return {
+    loading: false,
+    summary: accountUsage.summary,
+    error: accountUsage.error,
+    unavailable: accountUsage.unavailable,
+    updatedAt: accountUsage.updatedAt,
+  };
 }
 
 function readCodexProviderCustomSortOrder(): string[] {
@@ -332,6 +378,7 @@ interface ProviderFormState {
   website: string;
   apiKeyUrl: string;
   wireApi: CodexProviderWireApi;
+  supportsWebsockets: boolean;
   enableModePreference: CodexProviderEnableModePreference;
   integrationType: "sub2api" | "new_api" | "";
   newApiKeyName: string;
@@ -349,6 +396,7 @@ const EMPTY_FORM: ProviderFormState = {
   website: "",
   apiKeyUrl: "",
   wireApi: "responses",
+  supportsWebsockets: false,
   enableModePreference: "direct",
   integrationType: "",
   newApiKeyName: "",
@@ -1113,6 +1161,54 @@ export function CodexModelProviderManager({
     [selectedProviderApiKeyMap],
   );
 
+  const syncProviderUsageFromAccountCache = useCallback(() => {
+    setProviderUsageMap((previous) => {
+      let changed = false;
+      const next = { ...previous };
+
+      for (const provider of providers) {
+        const apiKey = getSelectedProviderApiKey(provider);
+        if (!apiKey) continue;
+        const accountUsage = getAccountUsageForProviderApiKey(
+          provider,
+          apiKey,
+          accounts,
+        );
+        if (!accountUsage) continue;
+
+        const existing = previous[provider.id];
+        if ((existing?.updatedAt ?? 0) > (accountUsage.updatedAt ?? 0)) {
+          continue;
+        }
+        if (
+          existing?.summary === accountUsage.summary &&
+          existing?.error === accountUsage.error &&
+          existing?.unavailable === accountUsage.unavailable &&
+          existing?.updatedAt === accountUsage.updatedAt
+        ) {
+          continue;
+        }
+        next[provider.id] = accountUsage;
+        changed = true;
+      }
+
+      return changed ? next : previous;
+    });
+  }, [accounts, getSelectedProviderApiKey, providers]);
+
+  useEffect(() => {
+    syncProviderUsageFromAccountCache();
+    window.addEventListener(
+      CODEX_API_KEY_USAGE_REFRESHED_EVENT,
+      syncProviderUsageFromAccountCache,
+    );
+    return () =>
+      window.removeEventListener(
+        CODEX_API_KEY_USAGE_REFRESHED_EVENT,
+        syncProviderUsageFromAccountCache,
+      );
+  }, [syncProviderUsageFromAccountCache]);
+
   const providerBatchTestVisibleProviders = useMemo(() => {
     const query = batchTestSearchQuery.trim().toLowerCase();
     if (!query) return filteredProviders;
@@ -1376,6 +1472,8 @@ export function CodexModelProviderManager({
       website: provider.website ?? "",
       apiKeyUrl: provider.apiKeyUrl ?? "",
       wireApi: resolvedWireApi,
+      supportsWebsockets:
+        resolvedWireApi === "responses" && provider.supportsWebsockets === true,
       enableModePreference:
         provider.enableModePreference ??
         resolveEnableModePreferenceForWireApi(resolvedWireApi),
@@ -1409,7 +1507,10 @@ export function CodexModelProviderManager({
     (presetId: string) => {
       setSelectedPresetId(presetId);
       setSelectedSponsorTemplateId(null);
-      if (presetId === CODEX_API_PROVIDER_CUSTOM_ID) return;
+      if (presetId === CODEX_API_PROVIDER_CUSTOM_ID) {
+        mutateForm({ supportsWebsockets: false });
+        return;
+      }
       const preset = findCodexApiProviderPresetById(presetId);
       if (!preset) return;
       const wireApi = resolveDefaultProviderWireApi(preset.id);
@@ -1423,6 +1524,7 @@ export function CodexModelProviderManager({
         website: preset.website ?? "",
         apiKeyUrl: preset.apiKeyUrl ?? "",
         wireApi,
+        supportsWebsockets: false,
         enableModePreference: resolveEnableModePreferenceForWireApi(wireApi),
         integrationType: "",
       });
@@ -1448,6 +1550,7 @@ export function CodexModelProviderManager({
         website: template.website,
         apiKeyUrl: template.apiKeyUrl,
         wireApi,
+        supportsWebsockets: false,
         enableModePreference: resolveEnableModePreferenceForWireApi(wireApi),
         integrationType: template.integrationType ?? "",
       });
@@ -1925,6 +2028,7 @@ export function CodexModelProviderManager({
           website: form.website,
           apiKeyUrl: form.apiKeyUrl,
           wireApi: form.wireApi,
+          supportsWebsockets: form.supportsWebsockets,
           enableModePreference: form.enableModePreference,
           integrationType: form.integrationType || undefined,
           initialApiKey: newApiKey || undefined,
@@ -1942,6 +2046,7 @@ export function CodexModelProviderManager({
           website: form.website,
           apiKeyUrl: form.apiKeyUrl,
           wireApi: form.wireApi,
+          supportsWebsockets: form.supportsWebsockets,
           enableModePreference: form.enableModePreference,
           integrationType: form.integrationType || null,
         });
@@ -2171,25 +2276,22 @@ export function CodexModelProviderManager({
   );
 
   const providerOauthTierCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+    const counts = createCodexPlanFilterCounts(
+      providerOauthEligibleAccounts.length,
+    );
     providerOauthEligibleAccounts.forEach((account) => {
-      const key = resolvePlanKey(account);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      incrementCodexPlanFilterCount(counts, resolvePlanKey(account));
     });
-    return {
-      all: providerOauthEligibleAccounts.length,
-      counts,
-    };
+    return counts;
   }, [providerOauthEligibleAccounts, resolvePlanKey]);
 
   const providerOauthTierFilterOptions = useMemo<MultiSelectFilterOption[]>(
     () =>
-      Array.from(providerOauthTierCounts.counts.entries()).map(([value, count]) => ({
-        value,
-        label: `${value} (${count})`,
-        count,
-      })),
-    [providerOauthTierCounts.counts],
+      buildCodexPlanFilterOptions(providerOauthTierCounts, {
+        includeError: false,
+        pendingLabel: t("codex.pendingAuth.badge", "待授权"),
+      }),
+    [providerOauthTierCounts, t],
   );
 
   const providerOauthAvailableTags = useMemo(() => {
@@ -2515,6 +2617,7 @@ export function CodexModelProviderManager({
           provider.visionRoutingModel,
           undefined,
           wireApi,
+          provider.supportsWebsockets,
         );
         await updateCodexApiKeyBoundOAuthAccount(
           account.id,
@@ -2653,7 +2756,7 @@ export function CodexModelProviderManager({
         }
         setProviderUsageMap((previous) => ({
           ...previous,
-          [provider.id]: { loading: false, summary },
+          [provider.id]: { loading: false, summary, updatedAt: Date.now() },
         }));
       } catch (err) {
         const errorMessage = parseServiceError(err);
@@ -2668,6 +2771,7 @@ export function CodexModelProviderManager({
             summary: previous[provider.id]?.summary,
             error: unavailable ? undefined : errorMessage,
             unavailable,
+            updatedAt: Date.now(),
           },
         }));
       }
@@ -3379,7 +3483,7 @@ export function CodexModelProviderManager({
                             ? t("codex.modelProviders.enableAndStart", "启用并启动")
                             : t(
                                 "codex.modelProviders.instance.uninitializedHint",
-                                "目标实例尚未初始化，请先到多开实例页启动一次。",
+                                "目标实例尚未初始化，请先到应用多开页启动一次。",
                               )
                         }
                         onClick={() =>
@@ -4329,6 +4433,7 @@ export function CodexModelProviderManager({
                     onClick={() =>
                       mutateForm({
                         wireApi: "chat_completions",
+                        supportsWebsockets: false,
                         enableModePreference:
                           resolveEnableModePreferenceForWireApi(
                             "chat_completions",
@@ -4345,6 +4450,45 @@ export function CodexModelProviderManager({
                     </span>
                   </button>
                 </div>
+              </div>
+              <div className="form-group">
+                <label>
+                  {t(
+                    "codex.modelProviders.fields.supportsWebsockets",
+                    "WebSocket 传输",
+                  )}
+                </label>
+                <label className="provider-vision-toggle">
+                  <span className="provider-vision-toggle-copy">
+                    <span className="provider-vision-toggle-title">
+                      {t(
+                        "codex.modelProviders.websockets.title",
+                        "允许 Codex 使用 Responses WebSocket",
+                      )}
+                    </span>
+                    <span className="provider-vision-toggle-desc">
+                      {t(
+                        "codex.modelProviders.websockets.help",
+                        "仅在供应商明确支持 Responses WebSocket 时开启；连接方式可通过 Codex 或代理服务日志确认。",
+                      )}
+                    </span>
+                  </span>
+                  <span className="provider-vision-switch">
+                    <input
+                      type="checkbox"
+                      checked={form.supportsWebsockets}
+                      onChange={(event) =>
+                        mutateForm({ supportsWebsockets: event.target.checked })
+                      }
+                      disabled={
+                        saving ||
+                        form.wireApi !== "responses" ||
+                        selectedPresetId === "openai_official"
+                      }
+                    />
+                    <span className="provider-vision-switch-track" />
+                  </span>
+                </label>
               </div>
               {form.wireApi === "chat_completions" && (
                 <>
@@ -4662,13 +4806,18 @@ export function CodexModelProviderManager({
                 {t("common.cancel", "取消")}
               </button>
               <button
-                className="btn btn-primary"
+                className="btn btn-primary codex-provider-save-button"
                 onClick={() => void handleSaveProvider()}
                 disabled={saving}
               >
-                {saving
-                  ? t("common.saving", "保存中...")
-                  : t("common.save", "保存")}
+                <span className="codex-provider-save-button-label">
+                  <span aria-hidden={saving}>
+                    {t("common.save", "保存")}
+                  </span>
+                  <span aria-hidden={!saving}>
+                    {t("common.saving", "保存中...")}
+                  </span>
+                </span>
               </button>
             </div>
           </div>
@@ -5151,6 +5300,18 @@ export function CodexModelProviderManager({
                     "Responses 原生",
                   ),
             rawKey: "wireApi",
+          },
+          {
+            key: "supportsWebsockets",
+            label: t(
+              "codex.modelProviders.fields.supportsWebsockets",
+              "WebSocket 传输",
+            ),
+            value:
+              resolvedWireApi === "responses" && provider.supportsWebsockets
+                ? t("codex.modelProviders.websockets.enabled", "已启用")
+                : t("codex.modelProviders.websockets.disabled", "已停用"),
+            rawKey: "supportsWebsockets",
           },
           {
             key: "oauthBinding",

@@ -3,6 +3,7 @@ import {
   lazy,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -18,9 +19,11 @@ import { useTranslation } from 'react-i18next';
 import { FileText, FolderOpen, RefreshCw, X } from 'lucide-react';
 import { SideNav } from './components/layout/SideNav';
 import { GlobalModal } from './components/GlobalModal';
+import { AnnouncementHost } from './components/AnnouncementCenter';
 import { TopCenterPromoBanner } from './components/TopCenterPromoBanner';
 import type { QuickSettingsType } from './components/QuickSettingsPopover';
-import { Page } from './types/navigation';
+import type { Page } from './types/navigation';
+import type { TopRightAd } from './types/topRightAd';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
 import { useEasterEggTrigger } from './hooks/useEasterEggTrigger';
 import { useGlobalModal } from './hooks/useGlobalModal';
@@ -33,6 +36,7 @@ import { useWindsurfAccountStore } from './stores/useWindsurfAccountStore';
 import { useKiroAccountStore } from './stores/useKiroAccountStore';
 import { useCursorAccountStore } from './stores/useCursorAccountStore';
 import { useGeminiAccountStore } from './stores/useGeminiAccountStore';
+import { useGrokAccountStore } from './stores/useGrokAccountStore';
 import { useCodebuddyAccountStore } from './stores/useCodebuddyAccountStore';
 import { useCodebuddyCnAccountStore } from './stores/useCodebuddyCnAccountStore';
 import { useQoderAccountStore } from './stores/useQoderAccountStore';
@@ -45,6 +49,7 @@ import { useTopRightAdStore } from './stores/useTopRightAdStore';
 import { useSponsorStore } from './stores/useSponsorStore';
 import { useRemoteConfigStore } from './stores/useRemoteConfigStore';
 import type { UpdateCheckResult, UpdateInfo } from './components/UpdateNotification';
+import type { RemoteUpdatePromptMode } from './types/remoteConfig';
 import type { Update as UpdaterUpdate } from '@tauri-apps/plugin-updater';
 import { parseUpdaterReleaseNotes, resolveUpdaterDownloadUrl } from './utils/updaterReleaseNotes';
 import { FloatingCardWindow } from './pages/FloatingCardWindow';
@@ -99,6 +104,9 @@ const CursorAccountsPage = lazy(() =>
 const GeminiAccountsPage = lazy(() =>
   import('./pages/GeminiAccountsPage').then((module) => ({ default: module.GeminiAccountsPage })),
 );
+const GrokAccountsPage = lazy(() =>
+  import('./pages/GrokAccountsPage').then((module) => ({ default: module.GrokAccountsPage })),
+);
 const CodebuddyAccountsPage = lazy(() =>
   import('./pages/CodebuddyAccountsPage').then((module) => ({ default: module.CodebuddyAccountsPage })),
 );
@@ -107,6 +115,9 @@ const CodebuddyCnAccountsPage = lazy(() =>
 );
 const QoderAccountsPage = lazy(() =>
   import('./pages/QoderAccountsPage').then((module) => ({ default: module.QoderAccountsPage })),
+);
+const ZcodeAccountsPage = lazy(() =>
+  import('./pages/ZcodeAccountsPage').then((module) => ({ default: module.ZcodeAccountsPage })),
 );
 const TraeAccountsPage = lazy(() =>
   import('./pages/TraeAccountsPage').then((module) => ({ default: module.TraeAccountsPage })),
@@ -161,6 +172,146 @@ const LogViewerModal = lazy(() =>
   import('./components/LogViewerModal').then((module) => ({ default: module.LogViewerModal })),
 );
 
+const ACTIVE_PAGE_STORAGE_KEY = 'agtools.active_page';
+const RENDERABLE_PAGE_VALUES: readonly Page[] = [
+  'dashboard',
+  'api-relay',
+  'overview',
+  'codex',
+  'claude',
+  'claude-cli',
+  'codex-api-service',
+  'github-copilot',
+  'windsurf',
+  'kiro',
+  'cursor',
+  'gemini',
+  'grok',
+  'codebuddy',
+  'codebuddy-cn',
+  'qoder',
+  'zcode',
+  'trae',
+  'trae-solo',
+  'trae-cn',
+  'trae-solo-cn',
+  'workbuddy',
+  'zed',
+  'instances',
+  'wakeup',
+  'verification',
+  '2fa',
+  'manual',
+  'settings',
+];
+const RENDERABLE_PAGE_SET = new Set<string>(RENDERABLE_PAGE_VALUES);
+
+const TOP_PROMO_DEFAULT_EXCLUDED_PAGES: readonly Page[] = ['api-relay', 'settings'];
+const TOP_PROMO_PAGE_PLATFORM_TARGETS: Partial<Record<Page, readonly string[]>> = {
+  overview: ['antigravity', 'antigravity-ide'],
+  instances: ['antigravity', 'antigravity-ide'],
+  wakeup: ['antigravity', 'antigravity-ide'],
+  verification: ['antigravity', 'antigravity-ide'],
+  codex: ['codex'],
+  'codex-api-service': ['codex'],
+  'codex-instances': ['codex'],
+  claude: ['claude', 'claude-manager'],
+  'claude-cli': ['claude', 'claude-manager'],
+  zed: ['zed'],
+  'github-copilot': ['github-copilot'],
+  windsurf: ['windsurf'],
+  kiro: ['kiro'],
+  cursor: ['cursor'],
+  gemini: ['gemini'],
+  grok: ['grok'],
+  codebuddy: ['codebuddy'],
+  'codebuddy-cn': ['codebuddy-cn'],
+  qoder: ['qoder'],
+  zcode: ['zcode'],
+  trae: ['trae', 'trae-suite'],
+  'trae-solo': ['trae-solo', 'trae-suite'],
+  'trae-cn': ['trae-cn', 'trae-suite'],
+  'trae-solo-cn': ['trae-solo-cn', 'trae-suite'],
+  workbuddy: ['workbuddy'],
+};
+
+function normalizePromoTarget(value: string): string {
+  return value.trim().toLowerCase().replace(/_/g, '-');
+}
+
+function normalizePromoTargets(values?: string[] | null): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return values
+    .map((value) => normalizePromoTarget(value))
+    .filter(Boolean);
+}
+
+function promoTargetsMatch(configuredTargets: string[], activeTargets: Set<string>): boolean {
+  return configuredTargets.some((target) => target === '*' || activeTargets.has(target));
+}
+
+function resolveTopPromoDisplayMode(ad: TopRightAd): string {
+  const mode = ad.displayMode ? normalizePromoTarget(ad.displayMode).replace(/[^a-z0-9]/g, '') : '';
+  if (!mode) {
+    return ad.displayPages?.length || ad.displayPlatforms?.length ? 'targets' : 'all';
+  }
+  return mode;
+}
+
+function isTopPromoAdVisibleOnPage(ad: TopRightAd, page: Page): boolean {
+  const pageTargets = new Set([normalizePromoTarget(page)]);
+  const platformTargets = new Set(
+    (TOP_PROMO_PAGE_PLATFORM_TARGETS[page] ?? []).map((value) => normalizePromoTarget(value)),
+  );
+  const displayPages = normalizePromoTargets(ad.displayPages);
+  const displayPlatforms = normalizePromoTargets(ad.displayPlatforms);
+  const pageMatches = promoTargetsMatch(displayPages, pageTargets);
+  const platformMatches = promoTargetsMatch(displayPlatforms, platformTargets);
+
+  if (
+    TOP_PROMO_DEFAULT_EXCLUDED_PAGES.includes(page)
+    && !pageMatches
+    && !displayPages.includes('*')
+  ) {
+    return false;
+  }
+
+  if (promoTargetsMatch(normalizePromoTargets(ad.excludePages), pageTargets)) {
+    return false;
+  }
+  if (promoTargetsMatch(normalizePromoTargets(ad.excludePlatforms), platformTargets)) {
+    return false;
+  }
+
+  switch (resolveTopPromoDisplayMode(ad)) {
+    case 'dashboard':
+      return page === 'dashboard';
+    case 'platforms':
+      return platformMatches;
+    case 'dashboardandplatforms':
+      return page === 'dashboard' || platformMatches;
+    case 'pages':
+      return pageMatches;
+    case 'dashboardandpages':
+      return page === 'dashboard' || pageMatches;
+    case 'targets':
+      return pageMatches || platformMatches;
+    case 'all':
+    default:
+      return true;
+  }
+}
+
+function normalizeStoredActivePage(value: string | null): Page | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  return RENDERABLE_PAGE_SET.has(normalized) ? (normalized as Page) : null;
+}
+
 
 interface GeneralConfigTheme {
   theme: string;
@@ -187,6 +338,14 @@ interface GeneralConfig extends GeneralConfigTheme, GeneralConfigLanguage {
   codebuddy_cn_app_path: string;
   qoder_app_path: string;
   trae_app_path: string;
+  trae_solo_app_path: string;
+  trae_cn_app_path: string;
+  trae_solo_cn_app_path: string;
+  trae_app_scan_roots: string;
+  trae_solo_app_scan_roots: string;
+  trae_cn_app_scan_roots: string;
+  trae_solo_cn_app_scan_roots: string;
+  workbuddy_app_path: string;
   zed_app_path: string;
 }
 
@@ -203,6 +362,10 @@ type AppPathMissingDetail = {
     | 'codebuddy_cn'
     | 'qoder'
     | 'trae'
+    | 'trae_solo'
+    | 'trae_cn'
+    | 'trae_solo_cn'
+    | 'workbuddy'
     | 'zed';
   retry?:
     | { kind: 'default'; runtimeTarget?: string }
@@ -210,7 +373,7 @@ type AppPathMissingDetail = {
     | { kind: 'switchAccount'; accountId?: string; runtimeTarget?: string };
 };
 
-type ClaudeDesktopLaunchCandidate = {
+type AppLaunchCandidate = {
   target_type: string;
   label: string;
   target: string;
@@ -226,6 +389,40 @@ function isClaudeWindowsAppLaunchTarget(value: string): boolean {
 const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
 const TASKS_STORAGE_KEY = 'agtools.wakeup.tasks';
 const WAKEUP_FORCE_DISABLE_MIGRATION_KEY = 'agtools.wakeup.migration.force_disable_0_8_14';
+
+function isTraePlatformApp(app: string): app is 'trae' | 'trae_solo' | 'trae_cn' | 'trae_solo_cn' {
+  return app === 'trae' || app === 'trae_solo' || app === 'trae_cn' || app === 'trae_solo_cn';
+}
+
+type TraePlatformApp = 'trae' | 'trae_solo' | 'trae_cn' | 'trae_solo_cn';
+
+function getTraeAppPath(config: GeneralConfig, app: TraePlatformApp): string {
+  switch (app) {
+    case 'trae_solo':
+      return config.trae_solo_app_path;
+    case 'trae_cn':
+      return config.trae_cn_app_path;
+    case 'trae_solo_cn':
+      return config.trae_solo_cn_app_path;
+    case 'trae':
+    default:
+      return config.trae_app_path;
+  }
+}
+
+function getTraeAppScanRoots(config: GeneralConfig, app: TraePlatformApp): string {
+  switch (app) {
+    case 'trae_solo':
+      return config.trae_solo_app_scan_roots;
+    case 'trae_cn':
+      return config.trae_cn_app_scan_roots;
+    case 'trae_solo_cn':
+      return config.trae_solo_cn_app_scan_roots;
+    case 'trae':
+    default:
+      return config.trae_app_scan_roots;
+  }
+}
 const TOP_RIGHT_AD_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 const REMOTE_CONFIG_FALLBACK_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const EXTERNAL_IMPORT_DEDUPE_WINDOW_MS = 30 * 1000;
@@ -272,6 +469,7 @@ type QuotaAlertPlatform =
   | 'kiro'
   | 'cursor'
   | 'gemini'
+  | 'grok'
   | 'codebuddy'
   | 'codebuddy_cn'
   | 'qoder'
@@ -373,6 +571,8 @@ function normalizeQuotaAlertPlatform(platform: string | undefined): QuotaAlertPl
       return 'cursor';
     case 'gemini':
       return 'gemini';
+    case 'grok':
+      return 'grok';
     case 'codebuddy':
       return 'codebuddy';
     case 'codebuddy_cn':
@@ -380,6 +580,12 @@ function normalizeQuotaAlertPlatform(platform: string | undefined): QuotaAlertPl
     case 'qoder':
       return 'qoder';
     case 'trae':
+    case 'trae-solo':
+    case 'trae_solo':
+    case 'trae-cn':
+    case 'trae_cn':
+    case 'trae-solo-cn':
+    case 'trae_solo_cn':
       return 'trae';
     case 'zed':
       return 'zed';
@@ -407,6 +613,8 @@ function getQuotaAlertPlatformLabel(
       return 'Cursor';
     case 'gemini':
       return 'Gemini Cli';
+    case 'grok':
+      return 'Grok CLI';
     case 'codebuddy':
       return 'CodeBuddy';
     case 'codebuddy_cn':
@@ -438,6 +646,8 @@ function getQuotaAlertTargetPage(platform: QuotaAlertPlatform): Page {
       return 'cursor';
     case 'gemini':
       return 'gemini';
+    case 'grok':
+      return 'grok';
     case 'codebuddy':
       return 'codebuddy';
     case 'codebuddy_cn':
@@ -471,6 +681,8 @@ function getQuotaAlertQuickSettingsType(platform: QuotaAlertPlatform): QuickSett
       return 'cursor';
     case 'gemini':
       return 'gemini';
+    case 'grok':
+      return 'grok';
     case 'codebuddy':
       return 'codebuddy';
     case 'codebuddy_cn':
@@ -525,7 +737,30 @@ function MainApp() {
   const sideNavClassicFirstSyncDone = useSideNavLayoutStore((state) => state.classicFirstSyncDone);
   const markSideNavClassicFirstSyncDone = useSideNavLayoutStore((state) => state.markClassicFirstSyncDone);
   const syncSidebarEntriesFromDashboard = usePlatformLayoutStore((state) => state.syncSidebarEntriesFromDashboard);
-  const [page, setPage] = useState<Page>('dashboard');
+  const [page, setPage] = useState<Page>(() => {
+    try {
+      const saved = normalizeStoredActivePage(localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY));
+      if (saved) {
+        return saved;
+      }
+      localStorage.removeItem(ACTIVE_PAGE_STORAGE_KEY);
+    } catch {}
+    return 'dashboard';
+  });
+
+  useEffect(() => {
+    try {
+      const normalized = normalizeStoredActivePage(page);
+      if (normalized) {
+        localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, normalized);
+      } else {
+        localStorage.removeItem(ACTIVE_PAGE_STORAGE_KEY);
+        setPage('dashboard');
+      }
+    } catch (e) {
+      console.warn('Failed to save active page to localStorage:', e);
+    }
+  }, [page]);
   const [showUpdateNotification, setShowUpdateNotification] = useState(false);
   const [updateNotificationKey, setUpdateNotificationKey] = useState(0);
   const [showCloseDialog, setShowCloseDialog] = useState(false);
@@ -539,7 +774,7 @@ function MainApp() {
   const [appPathDetecting, setAppPathDetecting] = useState(false);
   const [appPathDraft, setAppPathDraft] = useState('');
   const [appPathScanRootsDraft, setAppPathScanRootsDraft] = useState('');
-  const [claudeLaunchCandidates, setClaudeLaunchCandidates] = useState<ClaudeDesktopLaunchCandidate[]>([]);
+  const [appLaunchCandidates, setAppLaunchCandidates] = useState<AppLaunchCandidate[]>([]);
   const [appPathActionError, setAppPathActionError] = useState('');
   const [appPathCodexLaunchOnSwitch, setAppPathCodexLaunchOnSwitch] = useState(true);
   const [appPathCodexLaunchSetting, setAppPathCodexLaunchSetting] = useState(false);
@@ -572,16 +807,23 @@ function MainApp() {
   const updateDownloadTaskIdRef = useRef(0);
   const updateDownloadOwnerRef = useRef<'none' | 'shared' | 'silent'>('none');
   const updateCheckRequestIdRef = useRef(0);
+  const autoPromptedUpdateVersionsRef = useRef<Set<string>>(new Set());
   const externalImportHandledAtRef = useRef<Map<string, number>>(new Map());
   const { showModal, closeModal } = useGlobalModal();
   const topRightAdState = useTopRightAdStore((state) => state.state);
   const fetchTopRightAdState = useTopRightAdStore((state) => state.fetchState);
+  const forceRefreshTopRightAdState = useTopRightAdStore((state) => state.forceRefreshState);
   const sponsorModuleState = useSponsorStore((state) => state.state);
   const fetchSponsorModuleState = useSponsorStore((state) => state.fetchState);
   const sponsorModuleInitialized = useSponsorStore((state) => state.initialized);
   const fetchRemoteConfigState = useRemoteConfigStore((state) => state.fetchState);
   const sponsorEntryVisible = Boolean(sponsorModuleState.sponsorModule);
   const [topRightAdVisible, setTopRightAdVisible] = useState(true);
+  const topRightAdVisibleRef = useRef<boolean | null>(null);
+  const visibleTopCenterPromoAds = useMemo(
+    () => topRightAdState.ads.filter((ad) => isTopPromoAdVisibleOnPage(ad, page)),
+    [page, topRightAdState.ads],
+  );
   const trayRefreshInFlightRef = useRef(false);
   const openPlatformLayoutModal = useCallback(() => {
     setPlatformLayoutRequestedGroupId(null);
@@ -772,12 +1014,27 @@ function MainApp() {
   }, [fetchTopRightAdState]);
 
   useEffect(() => {
+    let disposed = false;
+
     const loadTopRightAdVisible = async () => {
       try {
         const config = await invoke<GeneralConfig>('get_general_config');
-        setTopRightAdVisible(config.top_right_ad_visible ?? true);
+        if (disposed) {
+          return;
+        }
+        const nextVisible = config.top_right_ad_visible ?? true;
+        const previousVisible = topRightAdVisibleRef.current;
+        topRightAdVisibleRef.current = nextVisible;
+        setTopRightAdVisible(nextVisible);
+        if (previousVisible === false && nextVisible) {
+          void forceRefreshTopRightAdState();
+        }
       } catch (error) {
+        if (disposed) {
+          return;
+        }
         console.error('Failed to load top-right ad visibility config:', error);
+        topRightAdVisibleRef.current = true;
         setTopRightAdVisible(true);
       }
     };
@@ -785,9 +1042,10 @@ function MainApp() {
     void loadTopRightAdVisible();
     window.addEventListener('config-updated', loadTopRightAdVisible);
     return () => {
+      disposed = true;
       window.removeEventListener('config-updated', loadTopRightAdVisible);
     };
-  }, []);
+  }, [forceRefreshTopRightAdState]);
 
   useEffect(() => {
     void fetchSponsorModuleState();
@@ -894,6 +1152,18 @@ function MainApp() {
     void invoke('update_log', { level, message }).catch(() => {});
   }, []);
 
+  const openAutomaticUpdatePrompt = useCallback((
+    version: string,
+    mode: RemoteUpdatePromptMode,
+  ) => {
+    if (mode !== 'popup' || autoPromptedUpdateVersionsRef.current.has(version)) {
+      return;
+    }
+    autoPromptedUpdateVersionsRef.current.add(version);
+    openUpdateNotificationDetails();
+    writeUpdateLog('info', `远端更新策略已自动打开更新弹框: version=${version}`);
+  }, [openUpdateNotificationDetails, writeUpdateLog]);
+
   const prepareCodexLocalAccessBeforeRelaunch = useCallback(async () => {
     setUpdateRetryStatus(
       t('update_notification.stoppingApiService', '正在关闭 API 服务...'),
@@ -905,11 +1175,17 @@ function MainApp() {
         `应用重启前已关闭 Codex API 服务监听: enabled=${Boolean(state.collection?.enabled)}, running=${state.running}`,
       );
     } catch (error) {
+      const compactError = sanitizeUpdaterErrorMessage(error);
       writeUpdateLog(
         'warn',
-        `应用重启前关闭 Codex API 服务监听失败，已中止本次重启: error=${sanitizeUpdaterErrorMessage(error)}`,
+        `应用重启前关闭 Codex API 服务监听失败，将继续重启: error=${compactError}`,
       );
-      throw error;
+      setUpdateRetryStatus(
+        t(
+          'update_notification.stopApiServiceFailedContinue',
+          'API 服务未正常关闭，将继续重启...',
+        ),
+      );
     }
   }, [t, writeUpdateLog]);
 
@@ -1044,10 +1320,7 @@ function MainApp() {
     && updateRuntimeInfo.linux_managed_install_supported;
 
   const getUpdaterCheckTarget = useCallback((): string | undefined => {
-    if (updateRuntimeInfo?.platform !== 'windows') {
-      return undefined;
-    }
-    if (typeof updateRuntimeInfo.updater_target !== 'string') {
+    if (typeof updateRuntimeInfo?.updater_target !== 'string') {
       return undefined;
     }
 
@@ -1621,17 +1894,7 @@ function MainApp() {
     }
     setUpdateSkipError('');
     try {
-      const settings = await invoke<{
-        auto_check?: boolean;
-        check_interval_hours?: number;
-        auto_install?: boolean;
-        last_run_version?: string;
-        remind_on_update?: boolean;
-        skipped_version?: string;
-      }>('get_update_settings');
-      await invoke('save_update_settings', {
-        settings: { ...settings, skipped_version: targetVersion },
-      });
+      await invoke('patch_update_settings', { skippedVersion: targetVersion });
       const pendingUpdate = pendingSilentUpdateRef.current;
       if (pendingUpdate && pendingUpdate.version === targetVersion) {
         await closeUpdaterHandle(pendingUpdate);
@@ -1863,10 +2126,13 @@ function MainApp() {
         const autoInstall = settings?.auto_install ?? false;
         const remindOnUpdate = settings?.remind_on_update ?? true;
         const skippedVersion = (settings?.skipped_version ?? '').trim();
+        const remoteConfigState = await fetchRemoteConfigState(false);
+        const updatePromptMode = remoteConfigState.updatePromptMode;
+        const shouldAutoOpenUpdatePrompt = updatePromptMode === 'popup';
         setUpdateRemindersEnabled(remindOnUpdate);
         writeUpdateLog(
           'info',
-          `读取更新设置: auto_install=${autoInstall}；启动始终执行更新检查`,
+          `读取更新设置: auto_install=${autoInstall}, update_prompt_mode=${updatePromptMode}；启动始终执行更新检查`,
         );
 
         writeUpdateLog('info', '启动检查立即执行');
@@ -1917,7 +2183,7 @@ function MainApp() {
                 });
               } else {
                 preparedUpdateInfo = await prepareUpdateNotificationInfo(update);
-                if (remindOnUpdate) {
+                if (remindOnUpdate || shouldAutoOpenUpdatePrompt) {
                   setUpdateNotificationInfo(preparedUpdateInfo);
                   handleUpdateCheckResult({
                     source: 'auto',
@@ -1926,6 +2192,7 @@ function MainApp() {
                     latestVersion: preparedUpdateInfo.latest_version,
                   });
                 }
+                openAutomaticUpdatePrompt(update.version, updatePromptMode);
                 console.log('[App] Update found, downloading silently with retry...');
                 writeUpdateLog('info', `检测到新版本，开始静默下载: version=${update.version}`);
                 updateDownloadOwnerRef.current = 'silent';
@@ -2177,7 +2444,7 @@ function MainApp() {
                 });
               } else {
                 const info = await prepareUpdateNotificationInfo(update);
-                if (remindOnUpdate) {
+                if (remindOnUpdate || shouldAutoOpenUpdatePrompt) {
                   setUpdateNotificationInfo(info);
                 }
                 handleUpdateCheckResult({
@@ -2186,7 +2453,13 @@ function MainApp() {
                   currentVersion: info.current_version,
                   latestVersion: info.latest_version,
                 });
-                writeUpdateLog('info', `检测到新版本，已在左上角显示更新入口: version=${update.version}`);
+                openAutomaticUpdatePrompt(update.version, updatePromptMode);
+                writeUpdateLog(
+                  'info',
+                  shouldAutoOpenUpdatePrompt
+                    ? `检测到新版本，已按远端策略打开更新弹框: version=${update.version}`
+                    : `检测到新版本，已在左上角显示更新入口: version=${update.version}`,
+                );
                 await closeUpdaterHandle(update);
               }
             } else {
@@ -2248,8 +2521,10 @@ function MainApp() {
     };
   }, [
     closeUpdaterHandle,
+    fetchRemoteConfigState,
     handleUpdateCheckResult,
     isLinuxManagedUpdate,
+    openAutomaticUpdatePrompt,
     prepareUpdateNotificationInfo,
     runUpdaterCheck,
     updateRuntimeInfo?.linux_install_kind,
@@ -2275,11 +2550,16 @@ function MainApp() {
         );
         if (jumpInfo) {
           console.log('[App] Version jump detected:', jumpInfo.previous_version, '->', jumpInfo.current_version);
+          (
+            window as Window & {
+              __agtoolsVersionJumpModalRequestedAt?: number;
+            }
+          ).__agtoolsVersionJumpModalRequestedAt = performance.now();
           setVersionJumpInfo(jumpInfo);
-          setShowVersionJumpNotification(false);
+          setShowVersionJumpNotification(true);
           requestAnimationFrame(() => {
             console.log(
-              `[StartupPerf][VersionJump] first frame after collapsed version jump entry in ${(performance.now() - versionJumpStartedAt).toFixed(2)}ms`,
+              `[StartupPerf][VersionJump] first frame after opening version jump modal in ${(performance.now() - versionJumpStartedAt).toFixed(2)}ms`,
             );
           });
         }
@@ -2331,9 +2611,11 @@ function MainApp() {
       const platform = normalizeQuotaAlertPlatform(payload.platform);
       const platformLabel = getQuotaAlertPlatformLabel(platform, t);
       const hasRecommendation = Boolean(payload.recommended_account_id && payload.recommended_email);
-      const modelsText = payload.low_models.length > 0
+      const lowQuotaItemsText = payload.low_models.length > 0
         ? payload.low_models.join(', ')
-        : t('quotaAlert.modal.unknownModel', '未知模型');
+        : platform === 'grok'
+          ? t('grok.quotaAlert.unknownItem', '未知配额项')
+          : t('quotaAlert.modal.unknownModel', '未知模型');
 
       showModal({
         title: t('quotaAlert.modal.title', '配额预警'),
@@ -2361,8 +2643,12 @@ function MainApp() {
               <strong>{payload.lowest_percentage}%</strong>
             </div>
             <div className="quota-alert-modal-row quota-alert-modal-row--stack">
-              <span>{t('quotaAlert.modal.models', '触发模型')}</span>
-              <strong>{modelsText}</strong>
+              <span>
+                {platform === 'grok'
+                  ? t('grok.quotaAlert.items', '触发配额项')
+                  : t('quotaAlert.modal.models', '触发模型')}
+              </span>
+              <strong>{lowQuotaItemsText}</strong>
             </div>
             <div className="quota-alert-modal-row">
               <span>{t('quotaAlert.modal.recommended', '建议切换')}</span>
@@ -2419,6 +2705,9 @@ function MainApp() {
                     } else if (platform === 'gemini') {
                       await useGeminiAccountStore.getState().switchAccount(targetAccountId);
                       setPage('gemini');
+                    } else if (platform === 'grok') {
+                      await useGrokAccountStore.getState().switchAccount(targetAccountId);
+                      setPage('grok');
                     } else if (platform === 'codebuddy') {
                       await useCodebuddyAccountStore.getState().switchAccount(targetAccountId);
                       setPage('codebuddy');
@@ -2642,6 +2931,10 @@ function MainApp() {
         errorMessage: 'Failed to refresh Gemini:',
       },
       {
+        command: 'refresh_all_grok_accounts',
+        errorMessage: 'Failed to refresh Grok:',
+      },
+      {
         command: 'refresh_all_codebuddy_tokens',
         errorMessage: 'Failed to refresh CodeBuddy:',
       },
@@ -2652,6 +2945,10 @@ function MainApp() {
       {
         command: 'refresh_all_qoder_tokens',
         errorMessage: 'Failed to refresh Qoder:',
+      },
+      {
+        command: 'refresh_all_zcode_accounts',
+        errorMessage: 'Failed to refresh ZCode:',
       },
       {
         command: 'refresh_all_trae_tokens',
@@ -2705,7 +3002,8 @@ function MainApp() {
         detail.app !== 'codebuddy' &&
         detail.app !== 'codebuddy_cn' &&
         detail.app !== 'qoder' &&
-        detail.app !== 'trae' &&
+        !isTraePlatformApp(detail.app) &&
+        detail.app !== 'workbuddy' &&
         detail.app !== 'zed'
       ) {
         return;
@@ -2736,7 +3034,7 @@ function MainApp() {
     if (!appPathMissing) {
       setAppPathDraft('');
       setAppPathScanRootsDraft('');
-      setClaudeLaunchCandidates([]);
+      setAppLaunchCandidates([]);
       setAppPathDetecting(false);
       setAppPathActionError('');
       setAppPathCodexLaunchOnSwitch(true);
@@ -2746,6 +3044,7 @@ function MainApp() {
       };
     }
     setAppPathActionError('');
+    setAppLaunchCandidates([]);
     (async () => {
       try {
         const config = await invoke<GeneralConfig>('get_general_config');
@@ -2768,8 +3067,10 @@ function MainApp() {
                 ? config.codebuddy_cn_app_path
               : appPathMissing.app === 'qoder'
                 ? config.qoder_app_path
-              : appPathMissing.app === 'trae'
-                ? config.trae_app_path
+              : isTraePlatformApp(appPathMissing.app)
+                ? getTraeAppPath(config, appPathMissing.app)
+              : appPathMissing.app === 'workbuddy'
+                ? config.workbuddy_app_path
               : appPathMissing.app === 'zed'
                 ? config.zed_app_path
               : config.antigravity_app_path;
@@ -2780,7 +3081,13 @@ function MainApp() {
             appPathMissing.retry?.kind === 'instance' &&
             isClaudeWindowsAppLaunchTarget(normalizedPath);
           setAppPathDraft(shouldClearClaudeDefaultTarget ? '' : normalizedPath);
-          setAppPathScanRootsDraft(config.claude_app_scan_roots || '');
+          setAppPathScanRootsDraft(
+            appPathMissing.app === 'claude'
+              ? config.claude_app_scan_roots || ''
+              : isTraePlatformApp(appPathMissing.app)
+                ? getTraeAppScanRoots(config, appPathMissing.app) || ''
+                : '',
+          );
           setAppPathCodexLaunchOnSwitch(config.codex_launch_on_switch ?? true);
         }
       } catch (error) {
@@ -2803,13 +3110,14 @@ function MainApp() {
       if (path) {
         setAppPathActionError('');
         setAppPathDraft(path);
+        setAppLaunchCandidates([]);
       }
     } catch (error) {
       console.error('选择应用路径失败:', error);
     }
   };
 
-  const handlePickMissingClaudeScanRoot = async () => {
+  const handlePickMissingAppScanRoot = async () => {
     if (appPathSetting || appPathDetecting) return;
     try {
       const selected = await open({
@@ -2820,16 +3128,18 @@ function MainApp() {
       if (path) {
         setAppPathActionError('');
         setAppPathScanRootsDraft(path);
+        setAppLaunchCandidates([]);
       }
     } catch (error) {
       console.error('选择 Claude 扫描范围失败:', error);
     }
   };
 
-  const handleClearMissingClaudeScanRoot = () => {
+  const handleClearMissingAppScanRoot = () => {
     if (appPathSetting || appPathDetecting) return;
     setAppPathActionError('');
     setAppPathScanRootsDraft('');
+    setAppLaunchCandidates([]);
   };
 
   const handleSaveMissingAppPath = async () => {
@@ -2844,7 +3154,7 @@ function MainApp() {
       setAppPathActionError(
         t(
           'appPath.missing.claudeMultiInstanceRequiresExe',
-          'Claude 多开实例需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
+          'Claude 应用多开需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
         ),
       );
       return;
@@ -2855,12 +3165,17 @@ function MainApp() {
       const app = appPathMissing.app;
       const retry = appPathMissing.retry;
       const antigravityInstanceStartCommand =
-        app === 'antigravity' && retry?.runtimeTarget === 'antigravity'
+        app === 'antigravity' && retry?.runtimeTarget !== 'antigravity_ide'
           ? 'antigravity_legacy_start_instance'
           : 'start_instance';
       await invoke('set_app_path', { app, path });
       if (app === 'claude') {
         await invoke('set_claude_app_scan_roots', {
+          scanRoots: appPathScanRootsDraft.trim(),
+        });
+      } else if (isTraePlatformApp(app)) {
+        await invoke('set_trae_app_scan_roots', {
+          app,
           scanRoots: appPathScanRootsDraft.trim(),
         });
       }
@@ -2899,8 +3214,10 @@ function MainApp() {
           await invoke('codebuddy_cn_start_instance', { instanceId: retry.instanceId });
         } else if (app === 'qoder') {
           await invoke('qoder_start_instance', { instanceId: retry.instanceId });
-        } else if (app === 'trae') {
-          await invoke('trae_start_instance', { instanceId: retry.instanceId });
+        } else if (isTraePlatformApp(app)) {
+          await invoke('trae_start_instance', { platformId: app, instanceId: retry.instanceId });
+        } else if (app === 'workbuddy') {
+          await invoke('workbuddy_start_instance', { instanceId: retry.instanceId });
         } else if (app === 'zed') {
           await invoke('zed_start_default_session');
         } else {
@@ -2925,8 +3242,10 @@ function MainApp() {
           await invoke('codebuddy_cn_start_instance', { instanceId: '__default__' });
         } else if (app === 'qoder') {
           await invoke('qoder_start_instance', { instanceId: '__default__' });
-        } else if (app === 'trae') {
-          await invoke('trae_start_instance', { instanceId: '__default__' });
+        } else if (isTraePlatformApp(app)) {
+          await invoke('trae_start_instance', { platformId: app, instanceId: '__default__' });
+        } else if (app === 'workbuddy') {
+          await invoke('workbuddy_start_instance', { instanceId: '__default__' });
         } else if (app === 'zed') {
           await invoke('zed_start_default_session');
         } else {
@@ -2944,18 +3263,23 @@ function MainApp() {
 
   const handleResetMissingAppPath = async () => {
     if (!appPathMissing || appPathSetting || appPathDetecting) return;
-    if (appPathMissing.app === 'claude') {
+    const scanApp =
+      appPathMissing.app === 'antigravity' && appPathMissing.retry?.runtimeTarget !== 'antigravity_ide'
+        ? 'antigravity_legacy'
+        : appPathMissing.app === 'antigravity' && appPathMissing.retry?.runtimeTarget === 'antigravity_ide'
+          ? 'antigravity_ide'
+          : appPathMissing.app;
+
+    if (isWindowsPlatform()) {
       setAppPathDetecting(true);
       setAppPathActionError('');
       try {
-        const candidates = await invoke<ClaudeDesktopLaunchCandidate[]>(
-          'scan_claude_desktop_launch_targets',
-          {
-            scanRoots: appPathScanRootsDraft.trim() || null,
-          },
-        );
-        setClaudeLaunchCandidates(candidates);
-        if (appPathMissing.retry?.kind === 'instance') {
+        const candidates = await invoke<AppLaunchCandidate[]>('scan_app_launch_targets', {
+          app: scanApp,
+          scanRoots: appPathScanRootsDraft.trim() || null,
+        });
+        setAppLaunchCandidates(candidates);
+        if (appPathMissing.app === 'claude' && appPathMissing.retry?.kind === 'instance') {
           const exeCandidate = candidates.find((candidate) => candidate.supports_multi_instance);
           if (exeCandidate) {
             setAppPathDraft(exeCandidate.target);
@@ -2963,12 +3287,20 @@ function MainApp() {
             setAppPathActionError(
               t(
                 'appPath.missing.claudeMultiInstanceRequiresExe',
-                'Claude 多开实例需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
+                'Claude 应用多开需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
               ),
             );
           }
+        } else if (candidates.length > 0) {
+          setAppPathDraft(candidates[0].target);
         }
-        if (candidates.length === 0) {
+        if (candidates.length === 0 && appPathMissing.app !== 'claude') {
+          setAppPathActionError(
+            t('appPath.missing.scanEmptyGeneric', '未扫描到 {{app}}，请手动选择路径或调整扫描范围。', {
+              app: appPathMissingAppName,
+            }),
+          );
+        } else if (candidates.length === 0) {
           setAppPathActionError(
             t('appPath.missing.claudeScanEmpty', '未扫描到 Claude Desktop，请手动选择 Claude.exe 或调整扫描范围。'),
           );
@@ -2983,14 +3315,8 @@ function MainApp() {
     }
     setAppPathDetecting(true);
     try {
-      const detectApp =
-        appPathMissing.app === 'antigravity' && appPathMissing.retry?.runtimeTarget === 'antigravity'
-          ? 'antigravity_legacy'
-          : appPathMissing.app === 'antigravity' && appPathMissing.retry?.runtimeTarget === 'antigravity_ide'
-            ? 'antigravity_ide'
-            : appPathMissing.app;
       const detected = await invoke<string | null>('detect_app_path', {
-        app: detectApp,
+        app: scanApp,
         force: true,
       });
       setAppPathActionError('');
@@ -3021,7 +3347,7 @@ function MainApp() {
     }
   };
 
-  const handleSelectClaudeLaunchCandidate = (candidate: ClaudeDesktopLaunchCandidate) => {
+  const handleSelectAppLaunchCandidate = (candidate: AppLaunchCandidate) => {
     if (
       appPathMissing?.app === 'claude' &&
       appPathMissing.retry?.kind === 'instance' &&
@@ -3065,10 +3391,14 @@ function MainApp() {
             case 'kiro':
             case 'cursor':
             case 'gemini':
+            case 'grok':
             case 'codebuddy':
             case 'codebuddy-cn':
             case 'qoder':
             case 'trae':
+            case 'trae-solo':
+            case 'trae-cn':
+            case 'trae-solo-cn':
             case 'workbuddy':
             case 'zed':
             case 'manual':
@@ -3188,11 +3518,13 @@ function MainApp() {
                 ? 'CodeBuddy CN'
               : appPathMissing.app === 'qoder'
                 ? 'Qoder'
-              : appPathMissing.app === 'trae'
+              : isTraePlatformApp(appPathMissing.app)
                 ? 'Trae'
-              : appPathMissing.app === 'antigravity' && appPathMissingRuntimeTarget === 'antigravity'
-                ? 'Antigravity'
-                : 'Antigravity IDE'
+              : appPathMissing.app === 'workbuddy'
+                ? 'WorkBuddy'
+              : appPathMissing.app === 'antigravity' && appPathMissingRuntimeTarget === 'antigravity_ide'
+                ? 'Antigravity IDE'
+                : 'Antigravity'
     : '';
 
   const appPathMissingPathLabel = appPathMissing
@@ -3214,7 +3546,7 @@ function MainApp() {
                 ? t('quickSettings.codebuddyCn.appPath', 'CodeBuddy CN 路径')
               : appPathMissing.app === 'qoder'
                 ? t('quickSettings.qoder.appPath', 'Qoder 路径')
-              : appPathMissing.app === 'trae'
+              : isTraePlatformApp(appPathMissing.app)
                 ? t('quickSettings.trae.appPath', 'Trae 路径')
               : t('quickSettings.antigravity.appPath', '启动路径')
     : t('quickSettings.antigravity.appPath', '启动路径');
@@ -3311,7 +3643,7 @@ function MainApp() {
                   <p className="app-path-missing-hint">
                     {t(
                       'appPath.missing.claudeMultiInstanceRequiresExe',
-                      'Claude 多开实例需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
+                      'Claude 应用多开需要真实 Claude.exe 路径；Microsoft Store 启动目标仅适用于默认桌面端。',
                     )}
                   </p>
                 ) : null}
@@ -3347,7 +3679,7 @@ function MainApp() {
                   <FolderOpen size={15} />
                   <span>{appPathMissingPathLabel}</span>
                 </div>
-                {appPathMissing.app === 'claude' ? (
+                {isWindowsPlatform() ? (
                   <div className="app-path-missing-scan-roots">
                     <label>{t('appPath.missing.scanRoots', '扫描范围')}</label>
                     <div className="app-path-missing-scan-root-row">
@@ -3365,14 +3697,14 @@ function MainApp() {
                       <div className="qs-path-actions">
                         <button
                           className="qs-btn"
-                          onClick={handlePickMissingClaudeScanRoot}
+                          onClick={handlePickMissingAppScanRoot}
                           disabled={appPathMissingBusy}
                         >
                           {t('settings.general.codexPathSelect', '选择')}
                         </button>
                         <button
                           className="qs-btn"
-                          onClick={handleClearMissingClaudeScanRoot}
+                          onClick={handleClearMissingAppScanRoot}
                           disabled={appPathMissingBusy || !appPathScanRootsDraft.trim()}
                         >
                           {t('common.clear', '清除')}
@@ -3412,7 +3744,9 @@ function MainApp() {
                       title={
                         appPathDetecting
                           ? t('common.loading', '加载中...')
-                          : (
+                          : isWindowsPlatform()
+                            ? t('appPath.missing.scanApps', '鎵弿搴旂敤')
+                            : (
                             appPathMissing.app === 'vscode'
                               ? t('settings.general.vscodePathReset', '重置默认')
                               : appPathMissing.app === 'windsurf'
@@ -3427,13 +3761,13 @@ function MainApp() {
                                       ? t('settings.general.codebuddyPathReset', '重置默认')
                                     : appPathMissing.app === 'qoder'
                                       ? t('settings.general.qoderPathReset', '重置默认')
-                                    : appPathMissing.app === 'trae'
+                                    : isTraePlatformApp(appPathMissing.app)
                                       ? t('settings.general.traePathReset', '重置默认')
                                     : t('settings.general.codexPathReset', '重置默认')
                           )
                       }
                     >
-                      {appPathMissing.app === 'claude' ? (
+                      {isWindowsPlatform() ? (
                         appPathDetecting
                           ? t('common.loading', '加载中...')
                           : t('appPath.missing.scanApps', '扫描应用')
@@ -3443,25 +3777,25 @@ function MainApp() {
                     </button>
                   </div>
                 </div>
-                {appPathMissing.app === 'claude' ? (
+                {isWindowsPlatform() ? (
                   <>
-                    {claudeLaunchCandidates.length > 0 ? (
+                    {appLaunchCandidates.length > 0 ? (
                       <div className="app-path-candidate-list">
-                        {claudeLaunchCandidates.map((candidate) => (
+                        {appLaunchCandidates.map((candidate) => (
                           <button
                             key={`${candidate.target_type}:${candidate.target}`}
                             type="button"
                             className={`app-path-candidate-item${
                               appPathDraft.trim() === candidate.target ? ' selected' : ''
                             }`}
-                            onClick={() => handleSelectClaudeLaunchCandidate(candidate)}
+                            onClick={() => handleSelectAppLaunchCandidate(candidate)}
                             disabled={
                               appPathMissingBusy ||
                               (claudeMultiInstanceNeedsExe && !candidate.supports_multi_instance)
                             }
                           >
                             <div className="app-path-candidate-main">
-                              <span>{candidate.label || 'Claude Desktop'}</span>
+                              <span>{candidate.label || appPathMissingAppName}</span>
                               <span className="app-path-candidate-badge">
                                 {candidate.target_type === 'windows_app'
                                   ? t('appPath.missing.windowsApp', 'Microsoft Store')
@@ -3473,7 +3807,7 @@ function MainApp() {
                               <div className="app-path-candidate-note">
                                 {t(
                                   'appPath.missing.defaultOnly',
-                                  '仅适用于默认桌面端；多开实例请选择真实 Claude.exe',
+                                  '仅适用于默认桌面端；应用多开请选择真实 Claude.exe',
                                 )}
                               </div>
                             ) : null}
@@ -3529,11 +3863,12 @@ function MainApp() {
         updateActionState={updateAction.state}
         updateProgress={updateAction.progress}
         onUpdateActionClick={handleQuickUpdateActionClick}
-        versionJumpAvailable={Boolean(versionJumpInfo)}
         updateRemindersEnabled={updateRemindersEnabled}
         sponsorEntryVisible={sponsorEntryVisible}
         onOpenLogViewer={() => setShowLogViewer(true)}
       />
+
+      <AnnouncementHost onNavigate={setPage} />
 
       {sideNavLayoutMode !== 'classic' && (
         <button
@@ -3562,6 +3897,11 @@ function MainApp() {
       </Suspense>
 
       <div className="main-wrapper">
+        {topRightAdVisible && visibleTopCenterPromoAds.length > 0 ? (
+          <div className="app-global-promo-layer" aria-hidden={false}>
+            <TopCenterPromoBanner ads={visibleTopCenterPromoAds} reserveWhenEmpty={false} />
+          </div>
+        ) : null}
         {/* overview 现在是合并后的账号总览页面 */}
         <Suspense fallback={suspenseFallback}>
           {page === 'dashboard' && (
@@ -3569,11 +3909,6 @@ function MainApp() {
               onNavigate={setPage}
               onOpenPlatformLayout={openPlatformLayoutModal}
               onEasterEggTriggerClick={handleBreakoutEntryTriggerClick}
-              topCenterBanner={
-                topRightAdVisible && topRightAdState.ads.length > 0 ? (
-                  <TopCenterPromoBanner reserveWhenEmpty={false} />
-                ) : null
-              }
             />
           )}
           {page === 'api-relay' && <ApiKeyFunPage />}
@@ -3587,10 +3922,15 @@ function MainApp() {
           {page === 'kiro' && <KiroAccountsPage />}
           {page === 'cursor' && <CursorAccountsPage />}
           {page === 'gemini' && <GeminiAccountsPage />}
+          {page === 'grok' && <GrokAccountsPage />}
           {page === 'codebuddy' && <CodebuddyAccountsPage />}
           {page === 'codebuddy-cn' && <CodebuddyCnAccountsPage />}
           {page === 'qoder' && <QoderAccountsPage />}
-          {page === 'trae' && <TraeAccountsPage />}
+          {page === 'zcode' && <ZcodeAccountsPage />}
+          {page === 'trae' && <TraeAccountsPage platformId="trae" />}
+          {page === 'trae-solo' && <TraeAccountsPage platformId="trae_solo" />}
+          {page === 'trae-cn' && <TraeAccountsPage platformId="trae_cn" />}
+          {page === 'trae-solo-cn' && <TraeAccountsPage platformId="trae_solo_cn" />}
           {page === 'workbuddy' && <WorkbuddyAccountsPage />}
           {page === 'zed' && <ZedAccountsPage />}
           {page === 'instances' && <InstancesPage onNavigate={setPage} />}

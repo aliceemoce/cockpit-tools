@@ -37,6 +37,7 @@ import {
 import { ModalErrorMessage, useModalErrorState } from '../components/ModalErrorMessage';
 import { useEscClose } from '../hooks/useEscClose';
 import { OverviewTabsHeader } from '../components/OverviewTabsHeader';
+import { useAntigravityRuntimeTarget } from '../hooks/useAntigravityRuntimeTarget';
 
 const TASKS_STORAGE_KEY = 'agtools.wakeup.tasks';
 const WAKEUP_ENABLED_KEY = 'agtools.wakeup.enabled';
@@ -661,7 +662,9 @@ const getTriggerMode = (task: WakeupTask): TriggerMode => {
 
 export function WakeupTasksPage({ onNavigate }: WakeupPageProps) {
   const { t, i18n } = useTranslation();
-  const { accounts, currentAccount, fetchAccounts, fetchCurrentAccount } = useAccountStore();
+  const antigravityRuntimeTarget = useAntigravityRuntimeTarget();
+  const { accounts, currentAccountsByTarget, fetchAccounts, fetchCurrentAccount } = useAccountStore();
+  const currentAccount = currentAccountsByTarget[antigravityRuntimeTarget] ?? null;
   const locale = i18n.language || 'zh-CN';
   const [tasks, setTasks] = useState<WakeupTask[]>(() => loadTasks(t('wakeup.defaultTaskName')));
   const [wakeupEnabled, setWakeupEnabled] = useState(() => {
@@ -1015,8 +1018,8 @@ export function WakeupTasksPage({ onNavigate }: WakeupPageProps) {
 
   useEffect(() => {
     fetchAccounts();
-    fetchCurrentAccount();
-  }, [fetchAccounts, fetchCurrentAccount]);
+    fetchCurrentAccount(antigravityRuntimeTarget);
+  }, [antigravityRuntimeTarget, fetchAccounts, fetchCurrentAccount]);
 
   useEffect(() => {
     const syncMode = () => {
@@ -1955,19 +1958,8 @@ export function WakeupTasksPage({ onNavigate }: WakeupPageProps) {
         const oldValue = config.auto_refresh_minutes;
         
         // 更新配置
-        await invoke('save_general_config', {
-          language: config.language,
-          theme: config.theme,
+        await invoke('save_refresh_interval_config', {
           autoRefreshMinutes: minMinutes,
-          codexAutoRefreshMinutes: config.codex_auto_refresh_minutes ?? 10,
-          closeBehavior: config.close_behavior || 'ask',
-          opencodeAppPath: config.opencode_app_path ?? '',
-          antigravityAppPath: config.antigravity_app_path ?? '',
-          codexAppPath: config.codex_app_path ?? '',
-          vscodeAppPath: config.vscode_app_path ?? '',
-          opencodeSyncOnSwitch: config.opencode_sync_on_switch ?? false,
-          opencodeAuthOverwriteOnSwitch: config.opencode_auth_overwrite_on_switch ?? false,
-          codexLaunchOnSwitch: config.codex_launch_on_switch ?? true,
         });
         
         // 触发配置更新事件（让 useAutoRefresh 重新设置定时器）

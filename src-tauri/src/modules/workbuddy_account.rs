@@ -1510,6 +1510,35 @@ pub fn sync_account_to_default_client(account_id: &str) -> Result<(), String> {
 }
 
 pub(crate) fn resolve_current_account_id(accounts: &[WorkbuddyAccount]) -> Option<String> {
+    match import_payload_from_local() {
+        Ok(Some(payload)) => {
+            let incoming_uid = normalize_identity(payload.uid.as_deref());
+            let incoming_email = normalize_email_identity(Some(payload.email.as_str()));
+
+            if let Some(account_id) = accounts
+                .iter()
+                .find(|account| {
+                    let existing_uid = normalize_identity(account.uid.as_deref());
+                    let existing_email = normalize_email_identity(Some(account.email.as_str()));
+                    account_matches_payload_identity(
+                        existing_uid.as_ref(),
+                        existing_email.as_ref(),
+                        incoming_uid.as_ref(),
+                        incoming_email.as_ref(),
+                    )
+                })
+                .map(|account| account.id.clone())
+            {
+                return Some(account_id);
+            }
+        }
+        Ok(None) => {}
+        Err(err) => logger::log_warn(&format!(
+            "[WorkBuddy Account] 读取默认客户端当前账号失败，回退内部当前账号: {}",
+            err
+        )),
+    }
+
     crate::modules::provider_current_state::resolve_existing_current_account_id(
         "workbuddy",
         accounts.iter().map(|account| account.id.as_str()),

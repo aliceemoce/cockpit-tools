@@ -1,7 +1,7 @@
 use crate::modules::config;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 #[cfg(not(target_os = "macos"))]
@@ -13,6 +13,8 @@ const OPENCODE_APP_NAME: &str = "OpenCode";
 const TRAE_APP_NAME: &str = "Trae";
 #[cfg(target_os = "macos")]
 const CODEX_APP_PATH: &str = "/Applications/Codex.app/Contents/MacOS/Codex";
+#[cfg(target_os = "macos")]
+const CODEX_CHATGPT_APP_PATH: &str = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT";
 #[cfg(target_os = "macos")]
 const ANTIGRAVITY_APP_PATH: &str = "/Applications/Antigravity IDE.app/Contents/MacOS/Electron";
 #[cfg(target_os = "macos")]
@@ -1140,8 +1142,11 @@ fn resolve_macos_exec_path(path_str: &str, _binary_name: &str) -> Option<std::pa
     }
 }
 
-fn update_app_path_in_config(app: &str, path: &Path) {
-    let mut current = config::get_user_config();
+fn app_path_matches_snapshot(current: &str, expected: &str) -> bool {
+    current.trim() == expected.trim()
+}
+
+fn update_app_path_in_config(app: &str, path: &Path, expected_current: &str) {
     let normalized = {
         #[cfg(target_os = "macos")]
         {
@@ -1152,80 +1157,38 @@ fn update_app_path_in_config(app: &str, path: &Path) {
             path.to_string_lossy().to_string()
         }
     };
-    match app {
-        "antigravity" => {
-            if current.antigravity_app_path != normalized {
-                current.antigravity_app_path = normalized;
-            } else {
-                return;
-            }
+    let _ = config::patch_user_config(move |current| {
+        let target = match app {
+            "antigravity" => &mut current.antigravity_app_path,
+            "codex" => &mut current.codex_app_path,
+            "zed" => &mut current.zed_app_path,
+            "vscode" => &mut current.vscode_app_path,
+            "opencode" => &mut current.opencode_app_path,
+            "codebuddy" => &mut current.codebuddy_app_path,
+            "codebuddy_cn" => &mut current.codebuddy_cn_app_path,
+            "qoder" => &mut current.qoder_app_path,
+            "trae" => &mut current.trae_app_path,
+            "workbuddy" => &mut current.workbuddy_app_path,
+            _ => return Ok(()),
+        };
+        if app_path_matches_snapshot(target, expected_current) && *target != normalized {
+            *target = normalized;
         }
-        "codex" => {
-            if current.codex_app_path != normalized {
-                current.codex_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "zed" => {
-            if current.zed_app_path != normalized {
-                current.zed_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "vscode" => {
-            if current.vscode_app_path != normalized {
-                current.vscode_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "opencode" => {
-            if current.opencode_app_path != normalized {
-                current.opencode_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "codebuddy" => {
-            if current.codebuddy_app_path != normalized {
-                current.codebuddy_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "codebuddy_cn" => {
-            if current.codebuddy_cn_app_path != normalized {
-                current.codebuddy_cn_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "qoder" => {
-            if current.qoder_app_path != normalized {
-                current.qoder_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "trae" => {
-            if current.trae_app_path != normalized {
-                current.trae_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        "workbuddy" => {
-            if current.workbuddy_app_path != normalized {
-                current.workbuddy_app_path = normalized;
-            } else {
-                return;
-            }
-        }
-        _ => return,
+        Ok(())
+    });
+}
+
+#[cfg(test)]
+mod app_path_config_guard_tests {
+    use super::app_path_matches_snapshot;
+
+    #[test]
+    fn detected_path_only_replaces_the_snapshot_it_was_detected_for() {
+        assert!(app_path_matches_snapshot("", ""));
+        assert!(app_path_matches_snapshot(" /old/path ", "/old/path"));
+        assert!(!app_path_matches_snapshot("/manual/path", ""));
+        assert!(!app_path_matches_snapshot("/new/path", "/old/path"));
     }
-    let _ = config::save_user_config(&current);
 }
 
 #[cfg(target_os = "macos")]
@@ -1499,7 +1462,7 @@ fn find_codex_process_exe() -> Option<std::path::PathBuf> {
         let _pid_str = parts.next().unwrap_or("").trim();
         let cmdline = parts.next().unwrap_or("").trim();
         let lower = cmdline.to_lowercase();
-        if !lower.contains("codex.app/contents/macos/codex") {
+        if !is_codex_macos_main_process_command_line(&lower) {
             continue;
         }
         if lower.contains("--type=") || lower.contains("crashpad_handler") {
@@ -1510,6 +1473,18 @@ fn find_codex_process_exe() -> Option<std::path::PathBuf> {
         }
     }
     None
+}
+
+#[cfg(target_os = "macos")]
+fn is_codex_macos_main_process_command_line(lower_cmdline: &str) -> bool {
+    lower_cmdline.contains("chatgpt.app/contents/macos/chatgpt")
+        || lower_cmdline.contains("codex.app/contents/macos/codex")
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_codex_macos_exec_path(path_str: &str) -> Option<std::path::PathBuf> {
+    resolve_macos_exec_path(path_str, "ChatGPT")
+        .or_else(|| resolve_macos_exec_path(path_str, "Codex"))
 }
 
 #[cfg(target_os = "windows")]
@@ -2414,10 +2389,14 @@ fn compare_windows_store_version(left: &[u32], right: &[u32]) -> std::cmp::Order
 #[cfg(target_os = "windows")]
 fn parse_codex_store_version_from_dir_name(dir_name: &str) -> Option<Vec<u32>> {
     let lower = dir_name.to_ascii_lowercase();
-    if !lower.starts_with("openai.codex_") {
-        return None;
-    }
-    let suffix = dir_name.get("OpenAI.Codex_".len()..)?;
+    let prefix = [
+        "openai.chatgpt_",
+        "openai.chatgpt-desktop_",
+        "openai.codex_",
+    ]
+    .iter()
+    .find(|prefix| lower.starts_with(**prefix))?;
+    let suffix = dir_name.get(prefix.len()..)?;
     let version_part = suffix.split('_').next()?.trim();
     if version_part.is_empty() {
         return None;
@@ -2433,6 +2412,17 @@ fn parse_codex_store_version_from_dir_name(dir_name: &str) -> Option<Vec<u32>> {
         return None;
     }
     Some(version)
+}
+
+#[cfg(target_os = "windows")]
+fn find_codex_windows_app_main_exe(app_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    for exe_name in ["ChatGPT.exe", "Codex.exe"] {
+        let candidate = app_dir.join(exe_name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 #[cfg(target_os = "windows")]
@@ -2470,10 +2460,10 @@ fn detect_codex_exec_path_by_windowsapps_scan() -> Option<std::path::PathBuf> {
                 continue;
             };
 
-            let candidate = entry.path().join("app").join("Codex.exe");
-            if !candidate.exists() {
-                continue;
-            }
+            let candidate = match find_codex_windows_app_main_exe(&entry.path().join("app")) {
+                Some(path) => path,
+                None => continue,
+            };
 
             let replace = match &best {
                 None => true,
@@ -2500,9 +2490,22 @@ fn detect_codex_exec_path_by_windowsapps_scan() -> Option<std::path::PathBuf> {
 
 #[cfg(target_os = "windows")]
 fn detect_codex_exec_path_by_appx_install_location() -> Option<std::path::PathBuf> {
-    let script = r#"$pkg = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue |
+    let script = r#"$names = @('OpenAI.ChatGPT', 'OpenAI.ChatGPT-Desktop', 'OpenAI.Codex')
+$pkg = $names |
+  ForEach-Object { Get-AppxPackage -Name $_ -ErrorAction SilentlyContinue } |
   Sort-Object -Property Version -Descending |
   Select-Object -First 1
+if (-not $pkg) {
+  $pkg = Get-AppxPackage |
+    Where-Object {
+      $_.Name -like 'OpenAI.ChatGPT*' -or
+      $_.Name -like 'OpenAI.Codex*' -or
+      $_.PackageFamilyName -like 'OpenAI.ChatGPT*' -or
+      $_.PackageFamilyName -like 'OpenAI.Codex*'
+    } |
+  Sort-Object -Property Version -Descending |
+  Select-Object -First 1
+}
 if ($pkg -and -not [string]::IsNullOrWhiteSpace($pkg.InstallLocation)) {
   Write-Output ([string]$pkg.InstallLocation.Trim())
 }"#;
@@ -2518,9 +2521,11 @@ if ($pkg -and -not [string]::IsNullOrWhiteSpace($pkg.InstallLocation)) {
         if install_location.is_empty() {
             continue;
         }
-        let candidate = std::path::PathBuf::from(install_location)
-            .join("app")
-            .join("Codex.exe");
+        let Some(candidate) = find_codex_windows_app_main_exe(
+            &std::path::PathBuf::from(install_location).join("app"),
+        ) else {
+            continue;
+        };
         if candidate.exists() {
             crate::modules::logger::log_info(&format!(
                 "[Path Detect] codex appx install hit: {}",
@@ -2534,7 +2539,14 @@ if ($pkg -and -not [string]::IsNullOrWhiteSpace($pkg.InstallLocation)) {
 
 #[cfg(target_os = "windows")]
 fn detect_codex_store_app_user_model_id_by_startapps() -> Option<String> {
-    let script = r#"$entry = Get-StartApps | Where-Object { $_.AppID -like 'OpenAI.Codex_*' } |
+    let script = r#"$entry = Get-StartApps |
+  Where-Object {
+    $_.AppID -like 'OpenAI.ChatGPT*' -or
+    $_.AppID -like 'OpenAI.Codex_*' -or
+    $_.Name -like 'ChatGPT*' -or
+    $_.Name -like 'Codex*'
+  } |
+  Sort-Object @{ Expression = { if ($_.AppID -like 'OpenAI.ChatGPT*' -or $_.Name -like 'ChatGPT*') { 0 } else { 1 } } }, Name |
   Select-Object -First 1
 if ($entry -and -not [string]::IsNullOrWhiteSpace($entry.AppID)) {
   Write-Output ([string]$entry.AppID.Trim())
@@ -2557,9 +2569,22 @@ if ($entry -and -not [string]::IsNullOrWhiteSpace($entry.AppID)) {
 
 #[cfg(target_os = "windows")]
 fn detect_codex_store_app_user_model_id_by_appx_fallback() -> Option<String> {
-    let script = r#"$pkg = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue |
+    let script = r#"$names = @('OpenAI.ChatGPT', 'OpenAI.ChatGPT-Desktop', 'OpenAI.Codex')
+$pkg = $names |
+  ForEach-Object { Get-AppxPackage -Name $_ -ErrorAction SilentlyContinue } |
   Sort-Object -Property Version -Descending |
   Select-Object -First 1
+if (-not $pkg) {
+  $pkg = Get-AppxPackage |
+    Where-Object {
+      $_.Name -like 'OpenAI.ChatGPT*' -or
+      $_.Name -like 'OpenAI.Codex*' -or
+      $_.PackageFamilyName -like 'OpenAI.ChatGPT*' -or
+      $_.PackageFamilyName -like 'OpenAI.Codex*'
+    } |
+  Sort-Object -Property Version -Descending |
+  Select-Object -First 1
+}
 if ($pkg -and -not [string]::IsNullOrWhiteSpace($pkg.PackageFamilyName)) {
   Write-Output ([string]($pkg.PackageFamilyName.Trim() + '!App'))
 }"#;
@@ -2634,6 +2659,10 @@ fn detect_codex_exec_path() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     {
         if let Some(path) = find_codex_process_exe() {
+            return Some(path);
+        }
+        let path = std::path::PathBuf::from(CODEX_CHATGPT_APP_PATH);
+        if path.exists() {
             return Some(path);
         }
         let path = std::path::PathBuf::from(CODEX_APP_PATH);
@@ -2713,13 +2742,12 @@ fn detect_opencode_exec_path() -> Option<std::path::PathBuf> {
 }
 
 fn resolve_antigravity_launch_path() -> Result<std::path::PathBuf, String> {
-    if let Some(custom) =
-        normalize_custom_path(Some(&config::get_user_config().antigravity_app_path))
-    {
+    let configured_path = config::get_user_config().antigravity_app_path;
+    if let Some(custom) = normalize_custom_path(Some(&configured_path)) {
         #[cfg(target_os = "macos")]
         if is_legacy_antigravity_macos_path(&custom) {
             if let Some(detected) = detect_antigravity_exec_path() {
-                update_app_path_in_config("antigravity", &detected);
+                update_app_path_in_config("antigravity", &detected, &configured_path);
                 return Ok(detected);
             }
         }
@@ -2728,14 +2756,14 @@ fn resolve_antigravity_launch_path() -> Result<std::path::PathBuf, String> {
             return Ok(exec);
         }
         if let Some(detected) = detect_antigravity_exec_path() {
-            update_app_path_in_config("antigravity", &detected);
+            update_app_path_in_config("antigravity", &detected, &configured_path);
             return Ok(detected);
         }
         return Err(app_path_missing_error("antigravity"));
     }
 
     if let Some(detected) = detect_antigravity_exec_path() {
-        update_app_path_in_config("antigravity", &detected);
+        update_app_path_in_config("antigravity", &detected, &configured_path);
         return Ok(detected);
     }
 
@@ -2974,11 +3002,21 @@ fn resolve_workbuddy_launch_path() -> Result<std::path::PathBuf, String> {
 
 #[cfg(target_os = "macos")]
 fn resolve_codex_launch_path() -> Result<std::path::PathBuf, String> {
-    if let Some(custom) = normalize_custom_path(Some(&config::get_user_config().codex_app_path)) {
-        if let Some(exec) = resolve_macos_exec_path(&custom, "Codex") {
+    let configured_path = config::get_user_config().codex_app_path;
+    if let Some(custom) = normalize_custom_path(Some(&configured_path)) {
+        if let Some(exec) = resolve_codex_macos_exec_path(&custom) {
             return Ok(exec);
         }
+        if let Some(detected) = detect_codex_exec_path() {
+            update_app_path_in_config("codex", &detected, &configured_path);
+            return Ok(detected);
+        }
         return Err(app_path_missing_error("codex"));
+    }
+
+    if let Some(detected) = detect_codex_exec_path() {
+        update_app_path_in_config("codex", &detected, &configured_path);
+        return Ok(detected);
     }
 
     Err(app_path_missing_error("codex"))
@@ -3011,7 +3049,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.antigravity_app_path);
             }
             if let Some(detected) = detect_antigravity_exec_path() {
-                update_app_path_in_config("antigravity", &detected);
+                update_app_path_in_config("antigravity", &detected, &current.antigravity_app_path);
                 return Some(config::get_user_config().antigravity_app_path);
             }
         }
@@ -3020,7 +3058,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.codex_app_path);
             }
             if let Some(detected) = detect_codex_exec_path() {
-                update_app_path_in_config("codex", &detected);
+                update_app_path_in_config("codex", &detected, &current.codex_app_path);
                 return Some(config::get_user_config().codex_app_path);
             }
         }
@@ -3029,7 +3067,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.zed_app_path);
             }
             if let Some(detected) = detect_zed_exec_path() {
-                update_app_path_in_config("zed", &detected);
+                update_app_path_in_config("zed", &detected, &current.zed_app_path);
                 return Some(config::get_user_config().zed_app_path);
             }
         }
@@ -3038,7 +3076,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.vscode_app_path);
             }
             if let Some(detected) = detect_vscode_exec_path() {
-                update_app_path_in_config("vscode", &detected);
+                update_app_path_in_config("vscode", &detected, &current.vscode_app_path);
                 return Some(config::get_user_config().vscode_app_path);
             }
         }
@@ -3047,7 +3085,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.codebuddy_app_path);
             }
             if let Some(detected) = detect_codebuddy_exec_path() {
-                update_app_path_in_config("codebuddy", &detected);
+                update_app_path_in_config("codebuddy", &detected, &current.codebuddy_app_path);
                 return Some(config::get_user_config().codebuddy_app_path);
             }
         }
@@ -3056,7 +3094,11 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.codebuddy_cn_app_path);
             }
             if let Some(detected) = detect_codebuddy_cn_exec_path() {
-                update_app_path_in_config("codebuddy_cn", &detected);
+                update_app_path_in_config(
+                    "codebuddy_cn",
+                    &detected,
+                    &current.codebuddy_cn_app_path,
+                );
                 return Some(config::get_user_config().codebuddy_cn_app_path);
             }
         }
@@ -3065,7 +3107,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.qoder_app_path);
             }
             if let Some(detected) = detect_qoder_exec_path() {
-                update_app_path_in_config("qoder", &detected);
+                update_app_path_in_config("qoder", &detected, &current.qoder_app_path);
                 return Some(config::get_user_config().qoder_app_path);
             }
         }
@@ -3074,7 +3116,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.trae_app_path);
             }
             if let Some(detected) = detect_trae_exec_path() {
-                update_app_path_in_config("trae", &detected);
+                update_app_path_in_config("trae", &detected, &current.trae_app_path);
                 return Some(config::get_user_config().trae_app_path);
             }
         }
@@ -3083,7 +3125,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.opencode_app_path);
             }
             if let Some(detected) = detect_opencode_exec_path() {
-                update_app_path_in_config("opencode", &detected);
+                update_app_path_in_config("opencode", &detected, &current.opencode_app_path);
                 return Some(config::get_user_config().opencode_app_path);
             }
         }
@@ -3092,7 +3134,7 @@ pub fn detect_and_save_app_path(app: &str, force: bool) -> Option<String> {
                 return Some(current.workbuddy_app_path);
             }
             if let Some(detected) = detect_workbuddy_exec_path() {
-                update_app_path_in_config("workbuddy", &detected);
+                update_app_path_in_config("workbuddy", &detected, &current.workbuddy_app_path);
                 return Some(config::get_user_config().workbuddy_app_path);
             }
         }
@@ -6389,7 +6431,7 @@ pub fn collect_codex_process_entries() -> Vec<(u32, Option<String>)> {
     let mut result = Vec::new();
     let mut pids: Vec<u32> = Vec::new();
     if let Ok(output) = Command::new("pgrep")
-        .args(["-f", "Codex.app/Contents/MacOS/Codex"])
+        .args(["-f", "(ChatGPT|Codex)\\.app/Contents/MacOS/(ChatGPT|Codex)"])
         .output()
     {
         if output.status.success() {
@@ -6422,10 +6464,8 @@ pub fn collect_codex_process_entries() -> Vec<(u32, Option<String>)> {
                 Ok(value) => value,
                 Err(_) => continue,
             };
-            if !cmdline
-                .to_lowercase()
-                .contains("codex.app/contents/macos/codex")
-            {
+            let lower = cmdline.to_lowercase();
+            if !is_codex_macos_main_process_command_line(&lower) {
                 continue;
             }
             pids.push(pid);
@@ -6451,7 +6491,7 @@ pub fn collect_codex_process_entries() -> Vec<(u32, Option<String>)> {
             continue;
         }
         let lower = cmdline.to_lowercase();
-        if !lower.contains("codex.app/contents/macos/codex") {
+        if !is_codex_macos_main_process_command_line(&lower) {
             continue;
         }
         let tokens = split_command_tokens(&cmdline);
@@ -6517,10 +6557,9 @@ fn collect_codex_process_entries_from_powershell(
     expected_exe_path: &str,
 ) -> Vec<(u32, Option<String>)> {
     let mut entries: Vec<(u32, Option<String>)> = Vec::new();
-    let process = escape_powershell_single_quoted("Codex.exe");
     let expected = escape_powershell_single_quoted(expected_exe_path);
     let script = format!(
-        r#"$processName='{process}';
+        r#"$processNames=@('ChatGPT.exe','Codex.exe');
 $expectedRaw='{expected}';
 function Normalize-ExePath([string]$path) {{
   if ([string]::IsNullOrWhiteSpace($path)) {{ return $null }}
@@ -6555,11 +6594,15 @@ function Get-ExePathFromCmdLine([string]$cmdline) {{
 }}
 $expected = Normalize-ExePath $expectedRaw
 if ([string]::IsNullOrWhiteSpace($expected)) {{ exit 0 }}
-Get-CimInstance Win32_Process -Filter ("Name='" + $processName + "'") |
+Get-CimInstance Win32_Process |
   Where-Object {{
-    $exe = Normalize-ExePath $_.ExecutablePath
-    if (-not $exe) {{ $exe = Normalize-ExePath (Get-ExePathFromCmdLine $_.CommandLine) }}
-    $exe -eq $expected
+    if (-not ($processNames -contains $_.Name)) {{
+      $false
+    }} else {{
+      $exe = Normalize-ExePath $_.ExecutablePath
+      if (-not $exe) {{ $exe = Normalize-ExePath (Get-ExePathFromCmdLine $_.CommandLine) }}
+      $exe -eq $expected
+    }}
   }} |
   ForEach-Object {{ "$($_.ProcessId)|$($_.ParentProcessId)|$($_.CommandLine)" }}"#
     );
@@ -6664,7 +6707,11 @@ fn collect_codex_process_entries_from_sysinfo_fallback(
             .and_then(|value| value.to_str())
             .unwrap_or("")
             .to_lowercase();
-        if name != "codex.exe" && !exe_path.ends_with("\\codex.exe") {
+        if name != "codex.exe"
+            && name != "chatgpt.exe"
+            && !exe_path.ends_with("\\codex.exe")
+            && !exe_path.ends_with("\\chatgpt.exe")
+        {
             continue;
         }
         let (resolved_exe, _) = resolve_windows_process_exe_for_match(process);
@@ -6874,7 +6921,7 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         let _ = (codex_home, extra_args);
-        Err("Codex 多开实例仅支持 macOS 和 Windows".to_string())
+        Err("Codex 应用多开仅支持 macOS 和 Windows".to_string())
     }
 }
 
@@ -7176,7 +7223,7 @@ pub fn close_codex_instances(codex_homes: &[String], timeout_secs: u64) -> Resul
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         let _ = (codex_homes, timeout_secs);
-        Err("Codex 多开实例仅支持 macOS 和 Windows".to_string())
+        Err("Codex 应用多开仅支持 macOS 和 Windows".to_string())
     }
 }
 
@@ -7285,6 +7332,42 @@ fn get_trae_pids() -> Vec<u32> {
     }
 
     pids
+}
+
+pub fn is_trae_running() -> bool {
+    !get_trae_pids().is_empty()
+}
+
+pub fn is_trae_running_for_platform(
+    platform: crate::modules::trae_account::TraePlatformKind,
+) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle_pattern = format!(
+            "{}/contents/",
+            platform.macos_app_name().to_ascii_lowercase()
+        );
+        if let Ok(output) = Command::new("ps")
+            .args(["-axww", "-o", "command="])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.lines().any(|line| {
+                let lower = line.to_lowercase();
+                lower.contains(&bundle_pattern)
+                    && !lower.contains("--type=")
+                    && !lower.contains("crashpad_handler")
+                    && !is_helper_command_line(&lower)
+            });
+        }
+        return false;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = platform;
+        is_trae_running()
+    }
 }
 
 pub fn close_trae(timeout_secs: u64) -> Result<(), String> {
@@ -7700,23 +7783,43 @@ pub fn kill_port_processes(port: u16) -> Result<usize, String> {
         return Ok(0);
     }
 
+    let mut cleaned = 0usize;
     let mut failed = Vec::new();
 
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         for pid in &pids {
+            if *pid == 0 || !is_pid_running(*pid) {
+                cleaned += 1;
+                continue;
+            }
             let output = Command::new("taskkill")
                 .args(["/F", "/PID", &pid.to_string()])
                 .creation_flags(0x08000000)
                 .output();
             match output {
-                Ok(out) if out.status.success() => {}
+                Ok(out) if out.status.success() => cleaned += 1,
                 Ok(out) => {
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    failed.push(format!("pid {}: {}", pid, stderr.trim()));
+                    if !is_pid_running(*pid) {
+                        cleaned += 1;
+                    } else {
+                        failed.push(format_kill_command_failure(
+                            *pid,
+                            "taskkill",
+                            out.status,
+                            &out.stderr,
+                            &out.stdout,
+                        ));
+                    }
                 }
-                Err(e) => failed.push(format!("pid {}: {}", pid, e)),
+                Err(e) => {
+                    if !is_pid_running(*pid) {
+                        cleaned += 1;
+                    } else {
+                        failed.push(format!("pid {}: taskkill failed: {}", pid, e));
+                    }
+                }
             }
         }
     }
@@ -7724,14 +7827,33 @@ pub fn kill_port_processes(port: u16) -> Result<usize, String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         for pid in &pids {
+            if *pid == 0 || !is_pid_running(*pid) {
+                cleaned += 1;
+                continue;
+            }
             let output = Command::new("kill").args(["-9", &pid.to_string()]).output();
             match output {
-                Ok(out) if out.status.success() => {}
+                Ok(out) if out.status.success() => cleaned += 1,
                 Ok(out) => {
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    failed.push(format!("pid {}: {}", pid, stderr.trim()));
+                    if !is_pid_running(*pid) {
+                        cleaned += 1;
+                    } else {
+                        failed.push(format_kill_command_failure(
+                            *pid,
+                            "kill",
+                            out.status,
+                            &out.stderr,
+                            &out.stdout,
+                        ));
+                    }
                 }
-                Err(e) => failed.push(format!("pid {}: {}", pid, e)),
+                Err(e) => {
+                    if !is_pid_running(*pid) {
+                        cleaned += 1;
+                    } else {
+                        failed.push(format!("pid {}: kill failed: {}", pid, e));
+                    }
+                }
             }
         }
     }
@@ -7740,7 +7862,34 @@ pub fn kill_port_processes(port: u16) -> Result<usize, String> {
         return Err(format!("关闭进程失败: {}", failed.join("; ")));
     }
 
-    Ok(pids.len())
+    Ok(cleaned)
+}
+
+fn utf8_command_output_snippet(bytes: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(bytes).ok()?.trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(summarize_text_for_process_log(text, 240))
+    }
+}
+
+fn format_kill_command_failure(
+    pid: u32,
+    command: &str,
+    status: ExitStatus,
+    stderr: &[u8],
+    stdout: &[u8],
+) -> String {
+    let detail =
+        utf8_command_output_snippet(stderr).or_else(|| utf8_command_output_snippet(stdout));
+    match detail {
+        Some(detail) => format!(
+            "pid {}: {} failed with status {}: {}",
+            pid, command, status, detail
+        ),
+        None => format!("pid {}: {} failed with status {}", pid, command, status),
+    }
 }
 
 pub fn start_vscode_with_args_with_new_window(
@@ -7872,7 +8021,7 @@ pub fn start_vscode_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (user_data_dir, extra_args, use_new_window);
-        Err("GitHub Copilot 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("GitHub Copilot 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8005,7 +8154,7 @@ pub fn start_codebuddy_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (user_data_dir, extra_args, use_new_window);
-        Err("CodeBuddy 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("CodeBuddy 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8117,7 +8266,7 @@ pub fn start_codebuddy_default_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (extra_args, use_new_window);
-        Err("CodeBuddy 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("CodeBuddy 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8250,7 +8399,7 @@ pub fn start_codebuddy_cn_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (user_data_dir, extra_args, use_new_window);
-        Err("CodeBuddy CN 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("CodeBuddy CN 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8362,7 +8511,7 @@ pub fn start_codebuddy_cn_default_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (extra_args, use_new_window);
-        Err("CodeBuddy CN 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("CodeBuddy CN 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8493,7 +8642,7 @@ pub fn start_workbuddy_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (user_data_dir, extra_args, use_new_window);
-        Err("WorkBuddy 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("WorkBuddy 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8603,7 +8752,7 @@ pub fn start_workbuddy_default_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (extra_args, use_new_window);
-        Err("WorkBuddy 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("WorkBuddy 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8730,7 +8879,7 @@ pub fn start_qoder_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (user_data_dir, extra_args, use_new_window);
-        Err("Qoder 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("Qoder 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8836,7 +8985,7 @@ pub fn start_qoder_default_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (extra_args, use_new_window);
-        Err("Qoder 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("Qoder 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -8963,7 +9112,7 @@ pub fn start_trae_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (user_data_dir, extra_args, use_new_window);
-        Err("Trae 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("Trae 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -9069,7 +9218,7 @@ pub fn start_trae_default_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (extra_args, use_new_window);
-        Err("Trae 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("Trae 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 
@@ -9181,7 +9330,7 @@ pub fn start_vscode_default_with_args_with_new_window(
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (extra_args, use_new_window);
-        Err("GitHub Copilot 多开实例仅支持 macOS、Windows 和 Linux".to_string())
+        Err("GitHub Copilot 应用多开仅支持 macOS、Windows 和 Linux".to_string())
     }
 }
 

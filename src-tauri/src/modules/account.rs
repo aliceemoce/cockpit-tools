@@ -1287,6 +1287,7 @@ fn build_quota_alert_notification_text(payload: &QuotaAlertPayload) -> (String, 
         "kiro" => "Kiro",
         "cursor" => "Cursor",
         "gemini" => "Gemini Cli",
+        "grok" => "Grok CLI",
         "codebuddy" => "CodeBuddy",
         "zed" => "Zed",
         _ => "Antigravity IDE",
@@ -1754,6 +1755,13 @@ pub async fn fetch_quota_with_fresh_token(
 /// 完整流程：Token刷新 + 关闭程序 + 注入 + 重启
 pub async fn switch_account_internal(account_id: &str) -> Result<Account, String> {
     modules::logger::log_info("[Switch] 开始切换账号");
+
+    if !modules::config::get_user_config().antigravity_launch_on_switch {
+        modules::logger::log_info(
+            "[Switch] 切号启动 Antigravity IDE 已关闭，改为仅写入默认账号数据",
+        );
+        return switch_account_local_no_restart(account_id).await;
+    }
 
     // 路径缺失时不执行关闭/注入，避免破坏当前运行态。
     modules::process::ensure_antigravity_launch_path_configured()?;

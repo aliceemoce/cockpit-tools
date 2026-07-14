@@ -51,6 +51,3 @@ target/
 docs/plugin-architecture-proposal.md
 .aitasks
 .qoder/
-
-# Auto-generated context docs
-.reposynapse/

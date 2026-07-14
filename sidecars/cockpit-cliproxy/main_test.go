@@ -143,6 +143,479 @@ func TestLoadManifestIndexesAPIKeyAccounts(t *testing.T) {
 	}
 }
 
+func TestLoadManifestParsesBoundOAuthQuotaReserve(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	if err := os.WriteFile(path, []byte(`{
+		"accounts": [{
+			"id": "oauth-account",
+			"email": "oauth@example.com",
+			"authId": "oauth-account.json",
+			"quotaReserve": {
+				"hourlyThresholdPercent": 10,
+				"weeklyThresholdPercent": 20,
+				"snapshotUpdatedAtUnixSeconds": 1234567890,
+				"hourlyRemainingPercent": 55,
+				"weeklyRemainingPercent": 66,
+				"hourlyWindowPresent": true,
+				"weeklyWindowPresent": false
+			}
+		}]
+	}`), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	m, err := loadManifest(path)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	account := m.accountByID["oauth-account"]
+	if account == nil || account.QuotaReserve == nil {
+		t.Fatalf("quota reserve should be parsed: %#v", account)
+	}
+	reserve := account.QuotaReserve
+	if reserve.HourlyThresholdPercent == nil || *reserve.HourlyThresholdPercent != 10 ||
+		reserve.WeeklyThresholdPercent == nil || *reserve.WeeklyThresholdPercent != 20 ||
+		reserve.SnapshotUpdatedAtUnixSeconds == nil || *reserve.SnapshotUpdatedAtUnixSeconds != 1234567890 ||
+		reserve.HourlyRemainingPercent == nil || *reserve.HourlyRemainingPercent != 55 ||
+		reserve.WeeklyRemainingPercent == nil || *reserve.WeeklyRemainingPercent != 66 ||
+		reserve.HourlyWindowPresent == nil || !*reserve.HourlyWindowPresent ||
+		reserve.WeeklyWindowPresent == nil || *reserve.WeeklyWindowPresent {
+		t.Fatalf("unexpected parsed quota reserve: %#v", reserve)
+	}
+}
+
+func TestCockpitSelectorPickSkipsBoundOAuthAtEitherQuotaReserve(t *testing.T) {
+	tests := []struct {
+		name            string
+		hourlyRemaining int
+		weeklyRemaining int
+	}{
+		{name: "hourly", hourlyRemaining: 10, weeklyRemaining: 90},
+		{name: "weekly", hourlyRemaining: 90, weeklyRemaining: 20},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hourlyThreshold := 10
+			weeklyThreshold := 20
+			snapshotUpdatedAt := time.Now().Unix()
+			windowPresent := true
+			protectedAccount := &accountSpec{
+				ID:     "protected",
+				Email:  "protected@example.com",
+				AuthID: "protected.json",
+				QuotaReserve: &quotaReserveSpec{
+					HourlyThresholdPercent:       &hourlyThreshold,
+					WeeklyThresholdPercent:       &weeklyThreshold,
+					SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
+					HourlyRemainingPercent:       &tt.hourlyRemaining,
+					WeeklyRemainingPercent:       &tt.weeklyRemaining,
+					HourlyWindowPresent:          &windowPresent,
+					WeeklyWindowPresent:          &windowPresent,
+				},
+			}
+			normalAccount := &accountSpec{ID: "normal", AuthID: "normal.json"}
+			selector := &cockpitSelector{manifest: &manifest{
+				accountByAuthID: map[string]*accountSpec{
+					"protected.json": protectedAccount,
+					"normal.json":    normalAccount,
+				},
+			}}
+
+			selected, err := selector.Pick(
+				context.Background(),
+				"codex",
+				"gpt-5.4",
+				cliproxyexecutor.Options{},
+				[]*coreauth.Auth{{ID: "protected.json"}, {ID: "normal.json"}},
+			)
+			if err != nil {
+				t.Fatalf("Pick: %v", err)
+			}
+			if selected == nil || selected.ID != "normal.json" {
+				t.Fatalf("expected normal auth after reserve filtering, got %#v", selected)
+			}
+		})
+	}
+}
+
+func TestCockpitSelectorPickIgnoresExplicitlyMissingQuotaWindow(t *testing.T) {
+	hourlyThreshold := 10
+	weeklyThreshold := 20
+	snapshotUpdatedAt := time.Now().Unix()
+	weeklyRemaining := 80
+	hourlyWindowPresent := false
+	weeklyWindowPresent := true
+	account := &accountSpec{
+		ID:     "protected",
+		AuthID: "protected.json",
+		QuotaReserve: &quotaReserveSpec{
+			HourlyThresholdPercent:       &hourlyThreshold,
+			WeeklyThresholdPercent:       &weeklyThreshold,
+			SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
+			HourlyRemainingPercent:       nil,
+			WeeklyRemainingPercent:       &weeklyRemaining,
+			HourlyWindowPresent:          &hourlyWindowPresent,
+			WeeklyWindowPresent:          &weeklyWindowPresent,
+		},
+	}
+	selector := &cockpitSelector{manifest: &manifest{
+		accountByAuthID: map[string]*accountSpec{"protected.json": account},
+	}}
+
+	selected, err := selector.Pick(
+		context.Background(),
+		"codex",
+		"gpt-5.4",
+		cliproxyexecutor.Options{},
+		[]*coreauth.Auth{{ID: "protected.json"}},
+	)
+	if err != nil {
+		t.Fatalf("Pick: %v", err)
+	}
+	if selected == nil || selected.ID != "protected.json" {
+		t.Fatalf("expected auth with explicitly absent hourly window, got %#v", selected)
+	}
+}
+
+func TestCockpitSelectorPickFailsClosedForUnknownBoundOAuthQuota(t *testing.T) {
+	hourlyThreshold := 10
+	weeklyThreshold := 20
+	snapshotUpdatedAt := time.Now().Unix()
+	weeklyWindowPresent := false
+	account := &accountSpec{
+		ID:     "protected",
+		Email:  "protected@example.com",
+		AuthID: "protected.json",
+		QuotaReserve: &quotaReserveSpec{
+			HourlyThresholdPercent:       &hourlyThreshold,
+			WeeklyThresholdPercent:       &weeklyThreshold,
+			SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
+			HourlyRemainingPercent:       nil,
+			WeeklyRemainingPercent:       nil,
+			HourlyWindowPresent:          nil,
+			WeeklyWindowPresent:          &weeklyWindowPresent,
+		},
+	}
+	selector := &cockpitSelector{manifest: &manifest{
+		accountByAuthID: map[string]*accountSpec{"protected.json": account},
+	}}
+
+	selected, err := selector.Pick(
+		context.Background(),
+		"codex",
+		"gpt-5.4",
+		cliproxyexecutor.Options{},
+		[]*coreauth.Auth{{ID: "protected.json"}},
+	)
+	if selected != nil {
+		t.Fatalf("expected no selected auth, got %#v", selected)
+	}
+	if err == nil {
+		t.Fatal("expected quota reserve error")
+	}
+	message := err.Error()
+	for _, fragment := range []string{
+		"no auth available",
+		"bound OAuth quota reserve blocked 1 auth(s)",
+		"protected@example.com",
+		"5h remaining quota unknown",
+	} {
+		if !strings.Contains(message, fragment) {
+			t.Fatalf("expected %q in error %q", fragment, message)
+		}
+	}
+}
+
+func TestCockpitSelectorPickFailsClosedForInvalidQuotaSnapshotTimestamp(t *testing.T) {
+	now := time.Now().Unix()
+	tests := []struct {
+		name      string
+		timestamp *int64
+		reason    string
+	}{
+		{name: "missing", timestamp: nil, reason: "quota snapshot timestamp unknown"},
+		{name: "non-positive", timestamp: int64PointerForTest(0), reason: "quota snapshot timestamp invalid"},
+		{name: "future", timestamp: int64PointerForTest(now + 60), reason: "quota snapshot timestamp invalid"},
+		{name: "stale", timestamp: int64PointerForTest(now - int64(quotaReserveMaxSnapshotAge/time.Second) - 1), reason: "quota snapshot stale"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hourlyThreshold := 10
+			weeklyThreshold := 20
+			hourlyRemaining := 80
+			weeklyRemaining := 80
+			windowPresent := true
+			account := &accountSpec{
+				ID:     "protected",
+				Email:  "protected@example.com",
+				AuthID: "protected.json",
+				QuotaReserve: &quotaReserveSpec{
+					HourlyThresholdPercent:       &hourlyThreshold,
+					WeeklyThresholdPercent:       &weeklyThreshold,
+					SnapshotUpdatedAtUnixSeconds: tt.timestamp,
+					HourlyRemainingPercent:       &hourlyRemaining,
+					WeeklyRemainingPercent:       &weeklyRemaining,
+					HourlyWindowPresent:          &windowPresent,
+					WeeklyWindowPresent:          &windowPresent,
+				},
+			}
+			selector := &cockpitSelector{manifest: &manifest{
+				accountByAuthID: map[string]*accountSpec{"protected.json": account},
+			}}
+
+			selected, err := selector.Pick(
+				context.Background(),
+				"codex",
+				"gpt-5.4",
+				cliproxyexecutor.Options{},
+				[]*coreauth.Auth{{ID: "protected.json"}},
+			)
+			if selected != nil {
+				t.Fatalf("expected no selected auth, got %#v", selected)
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.reason) {
+				t.Fatalf("expected %q in quota reserve error, got %v", tt.reason, err)
+			}
+		})
+	}
+}
+
+func TestQuotaReserveStateStoreHotReloadsSnapshot(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "quota-reserve.json")
+	hourlyThreshold := 20
+	weeklyThreshold := 10
+	account := &accountSpec{
+		ID:    "protected",
+		Email: "protected@example.com",
+		QuotaReserve: &quotaReserveSpec{
+			HourlyThresholdPercent: &hourlyThreshold,
+			WeeklyThresholdPercent: &weeklyThreshold,
+		},
+	}
+	writeState := func(hourly, weekly int) {
+		t.Helper()
+		content, err := json.Marshal(quotaReserveStateFile{Accounts: map[string]quotaReserveSnapshot{
+			"protected": {
+				SnapshotUpdatedAtUnixSeconds: int64PointerForTest(time.Now().Unix()),
+				HourlyRemainingPercent:       intPointerForTest(hourly),
+				WeeklyRemainingPercent:       intPointerForTest(weekly),
+				HourlyWindowPresent:          boolPointerForTest(true),
+				WeeklyWindowPresent:          boolPointerForTest(true),
+			},
+		}})
+		if err != nil {
+			t.Fatalf("marshal quota reserve state: %v", err)
+		}
+		if err := os.WriteFile(statePath, content, 0o600); err != nil {
+			t.Fatalf("write quota reserve state: %v", err)
+		}
+	}
+
+	writeState(80, 80)
+	store := newQuotaReserveStateStore(statePath, nil)
+	if err := store.load(); err != nil {
+		t.Fatalf("load available state: %v", err)
+	}
+	if reason := quotaReserveBlockReasonWithState(account, store, time.Now()); reason != "" {
+		t.Fatalf("expected available snapshot, got %q", reason)
+	}
+
+	writeState(20, 80)
+	if err := store.load(); err != nil {
+		t.Fatalf("load blocked state: %v", err)
+	}
+	if reason := quotaReserveBlockReasonWithState(account, store, time.Now()); !strings.Contains(reason, "5h remaining 20% <= reserve 20%") {
+		t.Fatalf("expected hot-reloaded reserve block, got %q", reason)
+	}
+}
+
+func TestQuotaReserveSelectorFiltersCachedSessionAffinityAuth(t *testing.T) {
+	tests := []struct {
+		name          string
+		includeNormal bool
+		mutateReserve func(*quotaReserveSpec)
+		wantAuthID    string
+		wantError     string
+	}{
+		{
+			name:          "blocked reselects normal",
+			includeNormal: true,
+			mutateReserve: func(reserve *quotaReserveSpec) {
+				*reserve.HourlyRemainingPercent = *reserve.HourlyThresholdPercent
+			},
+			wantAuthID: "normal.json",
+		},
+		{
+			name:          "stale reselects normal",
+			includeNormal: true,
+			mutateReserve: func(reserve *quotaReserveSpec) {
+				*reserve.SnapshotUpdatedAtUnixSeconds = time.Now().Add(-quotaReserveMaxSnapshotAge - time.Second).Unix()
+			},
+			wantAuthID: "normal.json",
+		},
+		{
+			name: "blocked without fallback returns quota error",
+			mutateReserve: func(reserve *quotaReserveSpec) {
+				*reserve.WeeklyRemainingPercent = *reserve.WeeklyThresholdPercent
+			},
+			wantError: "bound OAuth quota reserve blocked 1 auth(s)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hourlyThreshold := 10
+			weeklyThreshold := 20
+			snapshotUpdatedAt := time.Now().Unix()
+			hourlyRemaining := 80
+			weeklyRemaining := 80
+			windowPresent := true
+			protectedPlanRank := 2
+			normalPlanRank := 1
+			reserve := &quotaReserveSpec{
+				HourlyThresholdPercent:       &hourlyThreshold,
+				WeeklyThresholdPercent:       &weeklyThreshold,
+				SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
+				HourlyRemainingPercent:       &hourlyRemaining,
+				WeeklyRemainingPercent:       &weeklyRemaining,
+				HourlyWindowPresent:          &windowPresent,
+				WeeklyWindowPresent:          &windowPresent,
+			}
+			protectedAccount := &accountSpec{
+				ID:           "protected",
+				Email:        "protected@example.com",
+				AuthID:       "protected.json",
+				PlanRank:     &protectedPlanRank,
+				QuotaReserve: reserve,
+			}
+			normalAccount := &accountSpec{
+				ID:       "normal",
+				Email:    "normal@example.com",
+				AuthID:   "normal.json",
+				PlanRank: &normalPlanRank,
+			}
+			m := &manifest{
+				Accounts:          []accountSpec{*protectedAccount, *normalAccount},
+				RoutingStrategy:   "plan_high_first",
+				accountByID:       map[string]*accountSpec{"protected": protectedAccount, "normal": normalAccount},
+				accountByAuthID:   map[string]*accountSpec{"protected.json": protectedAccount, "normal.json": normalAccount},
+				originalIndexByID: map[string]int{"protected": 0, "normal": 1},
+			}
+			cfg := &config.Config{}
+			cfg.Routing.SessionAffinity = true
+			cfg.Routing.SessionAffinityTTL = time.Minute.String()
+			selector := buildCoreAuthSelector(cfg, &cockpitSelector{manifest: m}, m, nil)
+			if stoppable, ok := selector.(coreauth.StoppableSelector); ok {
+				defer stoppable.Stop()
+			}
+
+			auths := []*coreauth.Auth{{ID: "protected.json"}}
+			if tt.includeNormal {
+				auths = append(auths, &coreauth.Auth{ID: "normal.json"})
+			}
+			opts := cliproxyexecutor.Options{
+				OriginalRequest: []byte(`{"metadata":{"user_id":"user_xxx_account__session_ac980658-63bd-4fb3-97ba-8da64cb1e344"}}`),
+			}
+
+			first, err := selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
+			if err != nil {
+				t.Fatalf("initial Pick: %v", err)
+			}
+			if first == nil || first.ID != "protected.json" {
+				t.Fatalf("expected protected auth to establish affinity, got %#v", first)
+			}
+			cached, err := selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
+			if err != nil || cached == nil || cached.ID != "protected.json" {
+				t.Fatalf("expected protected affinity cache hit, got auth=%#v err=%v", cached, err)
+			}
+
+			tt.mutateReserve(reserve)
+			selected, err := selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
+			if tt.wantError != "" {
+				if selected != nil {
+					t.Fatalf("expected no auth after reserve block, got %#v", selected)
+				}
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("expected quota error containing %q, got %v", tt.wantError, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Pick after reserve change: %v", err)
+			}
+			if selected == nil || selected.ID != tt.wantAuthID {
+				t.Fatalf("expected %s after cached auth was filtered, got %#v", tt.wantAuthID, selected)
+			}
+		})
+	}
+}
+
+func TestBackupAccountSelectorOverridesCachedAffinityWhenRegularRecovers(t *testing.T) {
+	regularAccount := &accountSpec{ID: "regular", AuthID: "regular.json"}
+	backupAccount := &accountSpec{ID: "backup", AuthID: "backup.json"}
+	m := &manifest{
+		Accounts:        []accountSpec{*regularAccount, *backupAccount},
+		RoutingStrategy: "custom",
+		CustomRoutingRules: []customRoutingRule{
+			{AccountID: "regular", Priority: 0, Weight: 1},
+			{AccountID: "backup", Priority: 100, Weight: 1, IsBackup: true},
+		},
+		accountByID: map[string]*accountSpec{
+			"regular": regularAccount,
+			"backup":  backupAccount,
+		},
+		accountByAuthID: map[string]*accountSpec{
+			"regular.json": regularAccount,
+			"backup.json":  backupAccount,
+		},
+		originalIndexByID: map[string]int{"regular": 0, "backup": 1},
+	}
+	cfg := &config.Config{}
+	cfg.Routing.SessionAffinity = true
+	cfg.Routing.SessionAffinityTTL = time.Minute.String()
+	selector := buildCoreAuthSelector(cfg, &cockpitSelector{manifest: m}, m, nil)
+	if stoppable, ok := selector.(coreauth.StoppableSelector); ok {
+		defer stoppable.Stop()
+	}
+
+	regularAuth := &coreauth.Auth{
+		ID:             "regular.json",
+		Unavailable:    true,
+		NextRetryAfter: time.Now().Add(time.Minute),
+	}
+	backupAuth := &coreauth.Auth{ID: "backup.json"}
+	auths := []*coreauth.Auth{regularAuth, backupAuth}
+	opts := cliproxyexecutor.Options{
+		OriginalRequest: []byte(`{"metadata":{"user_id":"user_xxx_account__session_43d54db9-d7ba-4b2f-b09a-47f238dc78ac"}}`),
+	}
+
+	selected, err := selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
+	if err != nil || selected == nil || selected.ID != "backup.json" {
+		t.Fatalf("expected backup while regular is unavailable, got auth=%#v err=%v", selected, err)
+	}
+
+	regularAuth.Unavailable = false
+	regularAuth.NextRetryAfter = time.Time{}
+	selected, err = selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
+	if err != nil || selected == nil || selected.ID != "regular.json" {
+		t.Fatalf("expected recovered regular auth to override backup affinity, got auth=%#v err=%v", selected, err)
+	}
+}
+
+func int64PointerForTest(value int64) *int64 {
+	return &value
+}
+
+func intPointerForTest(value int) *int {
+	return &value
+}
+
+func boolPointerForTest(value bool) *bool {
+	return &value
+}
+
 func TestSidecarRuntimeRegistersConfigCodexAPIKeyAuths(t *testing.T) {
 	tempDir := t.TempDir()
 	authDir := filepath.Join(tempDir, "auths")
@@ -166,7 +639,7 @@ func TestSidecarRuntimeRegistersConfigCodexAPIKeyAuths(t *testing.T) {
 		accountByAPIKey: map[string]*accountSpec{"sk-upstream": account},
 		ModelIDs:        []string{"gpt-5.4"},
 	}
-	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m})
+	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, nil, newRequestUsageTracker())
 
 	runtime, err := newSidecarRuntime(context.Background(), configPath, cfg, m, manager)
 	if err != nil {
@@ -259,7 +732,7 @@ func TestManifestRegisteredModelsPreserveReasoningEffortThroughThinkingPipeline(
 		Provider: "codex",
 		Status:   coreauth.StatusActive,
 	}
-	manager := buildCoreAuthManager(&config.Config{}, &cockpitSelector{}, nil)
+	manager := buildCoreAuthManager(&config.Config{}, &cockpitSelector{}, nil, nil, nil, nil)
 	registered, err := manager.Register(context.Background(), auth)
 	if err != nil {
 		t.Fatalf("register auth: %v", err)
@@ -420,6 +893,10 @@ func TestWriteExecutorErrorThrottlesRetryableDownstreamError(t *testing.T) {
 
 func TestRequestUsageTrackerFinalizesWithLastSuccessfulAttempt(t *testing.T) {
 	tracker := newRequestUsageTracker()
+	tracker.recordSelectedAccount("req-1", &accountSpec{
+		ID:    "account-ok",
+		Email: "ok@example.com",
+	}, "auth-ok")
 	tracker.record(usagePayload{
 		Type:          "usage",
 		RequestID:     "req-1",
@@ -468,6 +945,113 @@ func TestRequestUsageTrackerFinalizesWithLastSuccessfulAttempt(t *testing.T) {
 	}
 	if payload.LatencyMS != 446_000 || payload.APIKeyID != "key_1" {
 		t.Fatalf("final request metadata was not applied: %#v", payload)
+	}
+}
+
+func TestRequestUsageTrackerFinalizesWithSelectedAccount(t *testing.T) {
+	tracker := newRequestUsageTracker()
+	tracker.recordSelectedAccount("req-selected", &accountSpec{
+		ID:    "account-selected",
+		Email: "selected@example.com",
+	}, "auth-selected")
+
+	payload, ok := tracker.finalize("req-selected", usageFinalizeInput{
+		spec:          &apiKeySpec{ID: "key_1", Label: "Default"},
+		requestKind:   "text",
+		model:         "gpt-5.5",
+		status:        http.StatusOK,
+		latencyMS:     100,
+		completedAtMS: 123,
+	})
+
+	if !ok {
+		t.Fatal("expected finalized usage payload")
+	}
+	if payload.AccountID != "account-selected" || payload.AccountEmail != "selected@example.com" || payload.AuthID != "auth-selected" {
+		t.Fatalf("expected selected account metadata, got %#v", payload)
+	}
+}
+
+func TestRequestUsageTrackerSelectedAccountOverridesUsageAccount(t *testing.T) {
+	tracker := newRequestUsageTracker()
+	tracker.recordSelectedAccount("req-usage", &accountSpec{
+		ID:    "account-selected",
+		Email: "selected@example.com",
+	}, "auth-selected")
+	tracker.record(usagePayload{
+		Type:         "usage",
+		RequestID:    "req-usage",
+		AccountID:    "account-usage",
+		AccountEmail: "usage@example.com",
+		AuthID:       "auth-usage",
+		Success:      true,
+	})
+
+	payload, ok := tracker.finalize("req-usage", usageFinalizeInput{
+		status:        http.StatusOK,
+		latencyMS:     100,
+		completedAtMS: 123,
+	})
+
+	if !ok {
+		t.Fatal("expected finalized usage payload")
+	}
+	if payload.AccountID != "account-selected" || payload.AccountEmail != "selected@example.com" || payload.AuthID != "auth-selected" {
+		t.Fatalf("selected account metadata should win, got %#v", payload)
+	}
+}
+
+type countingSelector struct {
+	auth  *coreauth.Auth
+	count int
+}
+
+func (s *countingSelector) Pick(context.Context, string, string, cliproxyexecutor.Options, []*coreauth.Auth) (*coreauth.Auth, error) {
+	s.count++
+	return s.auth, nil
+}
+
+func TestRecordingSelectorRecordsSessionAffinityCacheHit(t *testing.T) {
+	account := &accountSpec{ID: "account-selected", Email: "selected@example.com"}
+	m := &manifest{
+		accountByAuthID: map[string]*accountSpec{"auth-selected": account},
+		accountByID:     map[string]*accountSpec{"account-selected": account},
+		accountByAPIKey: map[string]*accountSpec{},
+	}
+	auth := &coreauth.Auth{ID: "auth-selected", Provider: "codex", Status: coreauth.StatusActive}
+	fallback := &countingSelector{auth: auth}
+	affinity := coreauth.NewSessionAffinitySelectorWithConfig(coreauth.SessionAffinityConfig{
+		Fallback: fallback,
+		TTL:      time.Hour,
+	})
+	tracker := newRequestUsageTracker()
+	selector := &recordingSelector{inner: affinity, manifest: m, tracker: tracker}
+	headers := make(http.Header)
+	headers.Set("X-Session-ID", "session-selected")
+	opts := cliproxyexecutor.Options{Headers: headers}
+
+	ctx1 := internallogging.WithRequestID(context.Background(), "req-first")
+	if _, err := selector.Pick(ctx1, "codex", "gpt-5.5", opts, []*coreauth.Auth{auth}); err != nil {
+		t.Fatalf("first pick: %v", err)
+	}
+	ctx2 := internallogging.WithRequestID(context.Background(), "req-cache")
+	if _, err := selector.Pick(ctx2, "codex", "gpt-5.5", opts, []*coreauth.Auth{auth}); err != nil {
+		t.Fatalf("cache pick: %v", err)
+	}
+	if fallback.count != 1 {
+		t.Fatalf("expected second pick to use affinity cache, fallback count=%d", fallback.count)
+	}
+
+	payload, ok := tracker.finalize("req-cache", usageFinalizeInput{
+		status:        http.StatusOK,
+		latencyMS:     100,
+		completedAtMS: 123,
+	})
+	if !ok {
+		t.Fatal("expected finalized usage payload")
+	}
+	if payload.AccountID != "account-selected" || payload.AccountEmail != "selected@example.com" || payload.AuthID != "auth-selected" {
+		t.Fatalf("expected cache hit selected account metadata, got %#v", payload)
 	}
 }
 
@@ -711,6 +1295,14 @@ func TestRelayServerProviderGatewayRoutesResponsesToChatCompletions(t *testing.T
 			},
 		}},
 		ModelIDs: []string{"deepseek-chat"},
+		ModelAliases: []modelAliasSpec{
+			{SourceModel: "deepseek-v4-flash", Alias: "gpt-5.5"},
+			{SourceModel: "deepseek-v4-pro", Alias: "gpt-5.4"},
+		},
+		aliasToSource: map[string]string{
+			"gpt-5.5": "deepseek-v4-flash",
+			"gpt-5.4": "deepseek-v4-pro",
+		},
 		apiKeyByValue: map[string]*apiKeySpec{
 			"client-key": {
 				ID:      "provider_gateway_account_1",
@@ -734,7 +1326,7 @@ func TestRelayServerProviderGatewayRoutesResponsesToChatCompletions(t *testing.T
 		policy:   &requestPolicy{manifest: m},
 	}).router()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"deepseek-v4-flash","input":"hello","stream":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hello","stream":false}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -755,7 +1347,7 @@ func TestRelayServerProviderGatewayRoutesResponsesToChatCompletions(t *testing.T
 	if !strings.Contains(upstreamBody, `"messages"`) || !strings.Contains(upstreamBody, `"stream":false`) {
 		t.Fatalf("request should be converted to chat completions: %s", upstreamBody)
 	}
-	if !strings.Contains(upstreamBody, `"model":"deepseek-v4-flash"`) || strings.Contains(upstreamBody, `"model":"gpt-5.5"`) {
+	if !strings.Contains(upstreamBody, `"model":"deepseek-v4-pro"`) || strings.Contains(upstreamBody, `"model":"gpt-5.4"`) {
 		t.Fatalf("request should use provider upstream model: %s", upstreamBody)
 	}
 	if !strings.Contains(w.Body.String(), `"object":"response"`) || !strings.Contains(w.Body.String(), `"output_text"`) {
@@ -769,61 +1361,8 @@ func TestRelayServerProviderGatewayRoutesResponsesToChatCompletions(t *testing.T
 	if modelW.Code != http.StatusOK {
 		t.Fatalf("unexpected models status: %d body=%s", modelW.Code, modelW.Body.String())
 	}
-	if !strings.Contains(modelW.Body.String(), "deepseek-v4-flash") || !strings.Contains(modelW.Body.String(), "deepseek-v4-pro") || strings.Contains(modelW.Body.String(), "gpt-5.5") {
-		t.Fatalf("provider gateway should expose DeepSeek models only: %s", modelW.Body.String())
-	}
-}
-
-func TestSanitizeProviderGatewayChatCompletionsBodyMapsXHighToMax(t *testing.T) {
-	out := sanitizeProviderGatewayChatCompletionsBody([]byte(`{"model":"deepseek-v4-flash","reasoning_effort":"xhigh","messages":[{"role":"user","content":"hi"}]}`))
-	if !strings.Contains(string(out), `"reasoning_effort":"max"`) {
-		t.Fatalf("xhigh should map to max: %s", out)
-	}
-}
-
-func TestRelayServerProviderGatewayMapsXHighReasoningEffortForUpstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	var upstreamBody string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		upstreamBody = string(body)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","object":"chat.completion","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
-	}))
-	defer upstream.Close()
-
-	gateway := &providerGatewaySpec{
-		BaseURL:        upstream.URL,
-		APIKey:         "nvidia-key",
-		UpstreamModel:  "deepseek-v4-flash",
-		UpstreamModels: []string{"deepseek-v4-flash"},
-		WireAPI:        "chat_completions",
-	}
-	m := &manifest{
-		APIKeys:  []apiKeySpec{{ID: "provider_gateway_account_1", Label: "Provider Gateway", Key: "client-key", Enabled: true, ProviderGateway: gateway}},
-		ModelIDs: []string{"gpt-5.4"},
-		apiKeyByValue: map[string]*apiKeySpec{
-			"client-key": {ID: "provider_gateway_account_1", Label: "Provider Gateway", Key: "client-key", Enabled: true, ProviderGateway: gateway},
-		},
-	}
-	router := (&relayServer{
-		runtime:  &fakeRuntime{},
-		cfg:      &config.Config{},
-		manifest: m,
-		policy:   &requestPolicy{manifest: m},
-	}).router()
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hello","reasoning":{"effort":"xhigh"},"stream":false}`))
-	req.Header.Set("Authorization", "Bearer client-key")
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(upstreamBody, `"reasoning_effort":"max"`) || strings.Contains(upstreamBody, `"xhigh"`) {
-		t.Fatalf("upstream should receive max instead of xhigh: %s", upstreamBody)
+	if !strings.Contains(modelW.Body.String(), "gpt-5.5") || !strings.Contains(modelW.Body.String(), "gpt-5.4") || strings.Contains(modelW.Body.String(), "deepseek-v4-pro") {
+		t.Fatalf("provider gateway should expose client model slots only: %s", modelW.Body.String())
 	}
 }
 

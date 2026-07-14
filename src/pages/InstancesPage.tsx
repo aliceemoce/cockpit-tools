@@ -32,7 +32,8 @@ export function InstancesPage({ onNavigate }: InstancesPageProps) {
   const ideInstanceStore = useInstanceStore();
   const instanceStore =
     runtimeTarget === 'antigravity' ? legacyInstanceStore : ideInstanceStore;
-  const { accounts, currentAccount, fetchAccounts } = useAccountStore();
+  const { accounts, currentAccountsByTarget, fetchAccounts, fetchCurrentAccount } = useAccountStore();
+  const currentAccount = currentAccountsByTarget[runtimeTarget] ?? null;
   const [displayGroups, setDisplayGroups] = useState<DisplayGroup[]>([]);
   const [sortBy] = useState(() =>
     normalizeAntigravitySortBy(
@@ -59,6 +60,11 @@ export function InstancesPage({ onNavigate }: InstancesPageProps) {
     () => [...accounts].sort(accountSortComparator),
     [accountSortComparator, accounts],
   );
+
+  useEffect(() => {
+    fetchAccounts();
+    fetchCurrentAccount(runtimeTarget);
+  }, [fetchAccounts, fetchCurrentAccount, runtimeTarget]);
 
   useEffect(() => {
     getDisplayGroups()

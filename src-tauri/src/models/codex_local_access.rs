@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum CodexLocalAccessRoutingStrategy {
     Auto,
+    SingleAccount,
     QuotaHighFirst,
     QuotaLowFirst,
     PlanHighFirst,
@@ -104,6 +105,10 @@ fn default_restrict_free_accounts() -> bool {
     true
 }
 
+fn default_model_pricing_version() -> u64 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexLocalAccessCustomRoutingRule {
@@ -112,6 +117,8 @@ pub struct CodexLocalAccessCustomRoutingRule {
     pub priority: i32,
     #[serde(default = "default_custom_routing_weight")]
     pub weight: u32,
+    #[serde(default)]
+    pub is_backup: bool,
 }
 
 fn default_custom_routing_weight() -> u32 {
@@ -230,7 +237,7 @@ fn default_upstream_send_retry_max_delay_ms() -> u64 {
 }
 
 fn default_single_account_status_retry_attempts() -> u8 {
-    5
+    2
 }
 
 fn default_single_account_status_retry_base_delay_ms() -> u64 {
@@ -242,7 +249,7 @@ fn default_single_account_status_retry_max_delay_ms() -> u64 {
 }
 
 fn default_sidecar_streaming_bootstrap_retries() -> u8 {
-    3
+    1
 }
 
 fn default_timeout_preset_long_wait() -> String {
@@ -394,6 +401,13 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessQuotaReserve {
+    pub hourly_percent: i32,
+    pub weekly_percent: i32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexLocalAccessCollection {
@@ -420,6 +434,8 @@ pub struct CodexLocalAccessCollection {
     pub account_model_rules: Vec<CodexLocalAccessAccountModelRule>,
     #[serde(default)]
     pub model_aliases: Vec<CodexLocalAccessModelAlias>,
+    #[serde(default = "default_model_pricing_version")]
+    pub model_pricing_version: u64,
     #[serde(default)]
     pub model_pricings: Vec<CodexLocalAccessModelPricing>,
     #[serde(default)]
@@ -448,6 +464,8 @@ pub struct CodexLocalAccessCollection {
     pub debug_logs: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bound_oauth_account_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bound_oauth_quota_reserve: Option<CodexLocalAccessQuotaReserve>,
     pub account_ids: Vec<String>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -587,6 +605,8 @@ pub struct CodexLocalAccessUsageEvent {
     pub reasoning_tokens: u64,
     #[serde(default)]
     pub estimated_cost_usd: f64,
+    #[serde(default = "default_model_pricing_version")]
+    pub model_pricing_version: u64,
     #[serde(default)]
     pub input_usd_per_million: f64,
     #[serde(default)]
@@ -684,6 +704,36 @@ pub struct CodexLocalAccessState {
     pub member_count: usize,
     pub stats: CodexLocalAccessStats,
     pub account_health: Vec<CodexLocalAccessAccountHealth>,
+    pub quota_reserve_status: Option<CodexLocalAccessQuotaReserveStatus>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessAppendAccountSkipped {
+    pub account_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessAppendAccountsResult {
+    pub state: CodexLocalAccessState,
+    pub synced_account_ids: Vec<String>,
+    pub added_account_ids: Vec<String>,
+    pub skipped_accounts: Vec<CodexLocalAccessAppendAccountSkipped>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLocalAccessQuotaReserveStatus {
+    pub account_id: String,
+    pub snapshot_updated_at: Option<i64>,
+    pub snapshot_fresh: bool,
+    pub blocked: bool,
+    pub warning: bool,
+    pub effective_window: Option<String>,
+    pub effective_remaining_percent: Option<i32>,
+    pub effective_reserve_percent: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]

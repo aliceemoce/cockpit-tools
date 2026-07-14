@@ -20,7 +20,6 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   isPrivacyModeEnabledByDefault,
@@ -28,7 +27,6 @@ import {
   persistPrivacyModeEnabled,
 } from '../utils/privacy';
 import { useModalErrorState } from '../components/ModalErrorMessage';
-import { sanitizeCursorUserError } from '../types/cursor';
 import { useExportJsonModal } from './useExportJsonModal';
 import { parseFileCorruptedError } from '../components/FileCorruptedModal';
 import {
@@ -40,7 +38,6 @@ import {
   consumeQueuedExternalProviderImportForPlatform,
   EXTERNAL_PROVIDER_IMPORT_EVENT,
   type ExternalProviderImportPayload,
-  isNavigationOnlyExternalImportToken,
 } from '../utils/externalProviderImport';
 import { useDropdownPanelPlacement } from './useDropdownPanelPlacement';
 import { useEscClose } from './useEscClose';
@@ -55,6 +52,7 @@ import {
   setAccountsOverviewFilterPersistenceEnabled,
   writeAccountsOverviewFilterField,
 } from '../utils/accountsOverviewFilterPersistence';
+import { normalizeTimestamp } from '../utils/dataExtract';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,7 +96,7 @@ export interface OAuthService {
   completeLogin: (loginId: string) => Promise<unknown>;
   cancelLogin: (loginId?: string) => Promise<void>;
   submitCallbackUrl?: (loginId: string, callbackUrl: string) => Promise<void>;
-  openAuthUrl?: (url: string) => Promise<void>;
+  openAuthUrl?: (url: string, incognito?: boolean) => Promise<void>;
 }
 
 export interface OAuthStartResponse {
@@ -168,6 +166,10 @@ export interface ProviderPageConfig<TAccount extends ProviderAccountBase> {
   }) => void | Promise<void>;
   /** OAuth 成功后的提示文案（可选） */
   resolveOauthSuccessMessage?: () => string;
+  /** 外部浏览器导入完成后的扩展处理（可选） */
+  onExternalImportCompleted?: (accountIds: string[]) => void | Promise<void>;
+  /** 首次渲染时使用的搜索内容 */
+  initialSearchQuery?: string;
   defaultSortBy?: string;
 }
 
@@ -694,6 +696,7 @@ export interface UseProviderAccountsPageReturn {
   setAddStatus: (s: AddModalStatus) => void;
   addMessage: string | null;
   setAddMessage: (msg: string | null) => void;
+  addErrorScrollKey: number;
   tokenInput: string;
   setTokenInput: (v: string) => void;
   importing: boolean;
@@ -729,6 +732,7 @@ export interface UseProviderAccountsPageReturn {
   handleRetryOauth: () => void;
   handleRetryOauthComplete: () => void;
   handleOpenOauthUrl: () => Promise<void>;
+  handleOpenOauthUrlWithMode: (incognito: boolean) => Promise<void>;
   handleSubmitOauthCallbackUrl: () => Promise<void>;
 
   // Inject / Switch
@@ -770,7 +774,9 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     oauthService,
     oauthTabKeys: oauthTabKeysConfig,
     dataService,
+    initialSearchQuery: initialSearchQueryConfig,
     defaultSortBy: defaultSortByConfig,
+    onExternalImportCompleted,
   } = config;
   const defaultSortBy = defaultSortByConfig?.trim() || DEFAULT_SORT_BY;
 
@@ -866,7 +872,9 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
   });
 
   // ─── Search & Filter ──────────────────────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(
+    () => initialSearchQueryConfig ?? '',
+  );
   const [filterType, setFilterType] = useState<string>(() => {
     if (!readAccountsOverviewFilterPersistenceEnabled(filterPersistenceScope)) {
       return 'all';
@@ -1135,40 +1143,6 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     fetchAccounts();
   }, [fetchAccounts]);
 
-  // TokenKeeper 本地换号 / 导入写盘后 emit accounts:changed；长驻页须重拉列表与 current
-  const ACCOUNTS_CHANGED_DEBOUNCE_MS = 500;
-  const accountsChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!platformId) return;
-    let unlisten: UnlistenFn | null = null;
-    void listen('accounts:changed', (event) => {
-      const payload = event.payload as {
-        platformId?: string;
-        accountId?: string | null;
-        reason?: string;
-      } | null;
-      if (payload?.platformId !== platformId) return;
-      if (payload.reason === 'delete') return;
-      if (accountsChangedTimerRef.current) {
-        clearTimeout(accountsChangedTimerRef.current);
-      }
-      accountsChangedTimerRef.current = setTimeout(() => {
-        accountsChangedTimerRef.current = null;
-        void fetchAccounts();
-      }, ACCOUNTS_CHANGED_DEBOUNCE_MS);
-    }).then((fn) => {
-      unlisten = fn;
-    });
-    return () => {
-      if (accountsChangedTimerRef.current) {
-        clearTimeout(accountsChangedTimerRef.current);
-        accountsChangedTimerRef.current = null;
-      }
-      void unlisten?.();
-    };
-  }, [fetchAccounts, platformId]);
-
   // ─── CRUD ─────────────────────────────────────────────────────────────
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -1306,13 +1280,9 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
           }
         }
       } catch (e: unknown) {
-        const rawError =
-          platformKey === 'Cursor'
-            ? sanitizeCursorUserError(e)
-            : String(e) || t('common.failed', 'Failed');
         setMessage({
           text: t('messages.switchFailed', {
-            error: rawError,
+            error: String(e) || t('common.failed', 'Failed'),
           }),
           tone: 'error',
         });
@@ -1379,8 +1349,9 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
   // ─── Add Modal ────────────────────────────────────────────────────────
   const [showAddModal, setShowAddModal] = useState(false);
   const [addTab, setAddTab] = useState<string>('oauth');
-  const [addStatus, setAddStatus] = useState<AddModalStatus>('idle');
+  const [addStatus, setAddStatusState] = useState<AddModalStatus>('idle');
   const [addMessage, setAddMessage] = useState<string | null>(null);
+  const [addErrorScrollKey, setAddErrorScrollKey] = useState(0);
   const [tokenInput, setTokenInput] = useState('');
   const [importing, setImporting] = useState(false);
   const [externalAutoImportNonce, setExternalAutoImportNonce] = useState(0);
@@ -1394,12 +1365,40 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const oauthServiceRef = useRef(oauthService);
 
+  const setAddStatus = useCallback((nextStatus: AddModalStatus) => {
+    setAddStatusState(nextStatus);
+    if (nextStatus === 'error') {
+      setAddErrorScrollKey((current) => current + 1);
+    }
+  }, []);
+
   useEffect(() => {
     showAddModalRef.current = showAddModal;
     addTabRef.current = addTab;
     addStatusRef.current = addStatus;
     oauthServiceRef.current = oauthService;
   }, [showAddModal, addTab, addStatus, oauthService]);
+
+  const cancelPendingOauthLogin = useCallback(
+    (force = false) => {
+      const loginId = oauthLoginIdRef.current ?? undefined;
+      if (
+        !force
+        && !loginId
+        && !oauthActiveRef.current
+        && !oauthCompletingRef.current
+      ) {
+        return;
+      }
+      oauthServiceRef.current?.cancelLogin(loginId).catch((error) => {
+        console.error(`[${oauthLogPrefix}] 取消 OAuth 授权失败`, {
+          loginId,
+          error: String(error),
+        });
+      });
+    },
+    [oauthLogPrefix],
+  );
 
   const resetAddModalState = useCallback(() => {
     oauthAttemptSeqRef.current += 1;
@@ -1426,17 +1425,19 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
   const openAddModal = useCallback(
     (tab: string) => {
+      cancelPendingOauthLogin();
       setAddTab(tab);
       setShowAddModal(true);
       resetAddModalState();
     },
-    [resetAddModalState],
+    [cancelPendingOauthLogin, resetAddModalState],
   );
 
   const closeAddModal = useCallback(() => {
+    cancelPendingOauthLogin(true);
     setShowAddModal(false);
     resetAddModalState();
-  }, [resetAddModalState]);
+  }, [cancelPendingOauthLogin, resetAddModalState]);
 
   useEscClose(showAddModal, closeAddModal);
 
@@ -1648,6 +1649,9 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
               reason: 'import',
             });
           }
+          if (importedAccountIds.length > 0 && onExternalImportCompleted) {
+            await onExternalImportCompleted([...new Set(importedAccountIds)]);
+          }
 
           const status: ExternalImportProgressStatus =
             failures.length === 0 ? 'success' : success > 0 ? 'partial' : 'error';
@@ -1674,7 +1678,15 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
         }
       })();
     },
-    [dataService, fetchAccounts, platformId, refreshToken, switchAccount, t],
+    [
+      dataService,
+      fetchAccounts,
+      onExternalImportCompleted,
+      platformId,
+      refreshToken,
+      switchAccount,
+      t,
+    ],
   );
 
   const consumeExternalProviderImport = useCallback(() => {
@@ -1683,11 +1695,6 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     if (!request) return;
     if (request.importUrl || (platformId === 'codex' && request.token.trim())) {
       runExternalProviderImport(request);
-      return;
-    }
-
-    if (isNavigationOnlyExternalImportToken(request.token)) {
-      console.info('[ExternalImport] token=nav 仅导航，跳过添加账号弹框', { platformId });
       return;
     }
 
@@ -2171,6 +2178,8 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
   const handleCopyOauthUrl = useCallback(async () => {
     if (!oauthUrl) return;
+    setAddStatus('idle');
+    setAddMessage(null);
     try {
       await navigator.clipboard.writeText(oauthUrl);
       oauthLog('已复制授权链接', {
@@ -2181,11 +2190,17 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
       window.setTimeout(() => setOauthUrlCopied(false), 1200);
     } catch (e) {
       console.error('复制失败:', e);
+      setAddStatus('error');
+      setAddMessage(
+        t('common.shared.export.copyFailed', '复制失败，请手动复制'),
+      );
     }
-  }, [oauthUrl, oauthLog]);
+  }, [oauthUrl, oauthLog, setAddStatus, t]);
 
   const handleCopyOauthUserCode = useCallback(async () => {
     if (!oauthUserCode) return;
+    setAddStatus('idle');
+    setAddMessage(null);
     try {
       await navigator.clipboard.writeText(oauthUserCode);
       oauthLog('已复制 user_code', { loginId: oauthLoginIdRef.current });
@@ -2193,8 +2208,12 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
       window.setTimeout(() => setOauthUserCodeCopied(false), 1200);
     } catch (e) {
       console.error('复制失败:', e);
+      setAddStatus('error');
+      setAddMessage(
+        t('common.shared.export.copyFailed', '复制失败，请手动复制'),
+      );
     }
-  }, [oauthUserCode, oauthLog]);
+  }, [oauthUserCode, oauthLog, setAddStatus, t]);
 
   const handleRetryOauth = useCallback(() => {
     const previousLoginId = oauthLoginIdRef.current ?? undefined;
@@ -2279,25 +2298,34 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     handleOauthCompleteError,
   ]);
 
-  const handleOpenOauthUrl = useCallback(async () => {
+  const handleOpenOauthUrlWithMode = useCallback(async (incognito: boolean) => {
     if (!oauthUrl) return;
+    setOauthCompleteError(null);
     oauthLog('用户点击打开授权链接', {
       loginId: oauthLoginIdRef.current,
       authUrl: oauthUrl,
+      incognito,
     });
     try {
       if (oauthService?.openAuthUrl) {
-        await oauthService.openAuthUrl(oauthUrl);
+        await oauthService.openAuthUrl(oauthUrl, incognito);
       } else {
         await openUrl(oauthUrl);
       }
     } catch (e) {
       console.error('打开授权链接失败:', e);
+      const msg = String(e).replace(/^Error:\s*/, '');
+      setOauthCompleteError(`${t('common.shared.oauth.failed', '授权失败')}: ${msg}`);
       await navigator.clipboard.writeText(oauthUrl).catch(() => {});
       setOauthUrlCopied(true);
       setTimeout(() => setOauthUrlCopied(false), 1200);
     }
-  }, [oauthUrl, oauthLog, oauthService]);
+  }, [oauthUrl, oauthLog, oauthService, t]);
+
+  const handleOpenOauthUrl = useCallback(
+    () => handleOpenOauthUrlWithMode(false),
+    [handleOpenOauthUrlWithMode],
+  );
 
   const oauthSupportsManualCallback = useMemo(
     () => Boolean(oauthService?.submitCallbackUrl && oauthCallbackUrl),
@@ -2405,7 +2433,8 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
   // ─── Utilities ────────────────────────────────────────────────────────
   const formatDate = useCallback(
     (timestamp: number) => {
-      const d = new Date(timestamp * 1000);
+      const normalized = normalizeTimestamp(timestamp);
+      const d = new Date((normalized ?? 0) * 1000);
       return (
         d.toLocaleDateString(locale, {
           year: 'numeric',
@@ -2508,6 +2537,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     setAddStatus,
     addMessage,
     setAddMessage,
+    addErrorScrollKey,
     tokenInput,
     setTokenInput,
     importing,
@@ -2541,6 +2571,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     handleRetryOauth,
     handleRetryOauthComplete,
     handleOpenOauthUrl,
+    handleOpenOauthUrlWithMode,
     handleSubmitOauthCallbackUrl,
     handleInjectToVSCode,
     isFlowNoticeCollapsed,
