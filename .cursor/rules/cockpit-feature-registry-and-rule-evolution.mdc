@@ -18,13 +18,14 @@ alwaysApply: true
 
 ---
 
-## 2. 当前已核实特征（2026-07-15，v1.3.0 真合并 redo — 已升能用）
+## 2. 当前已核实特征（2026-07-15，v1.3.2 同步 — 能用）
 
 ### 能用
 
 | 项 | 证据 |
 |----|------|
-| **当前最新安装/运行构建** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`DEA43F62…`**，ProductVersion 1.3.0；分支 `sync-upstream-v1.3.0-20260714-redo`；merge `27c3ee93` parents=`918980e9`+`da0deca4`；UIA hwnd 锁 `Cockpit Tools` + PrintWindow：Cursor `ALL (1872)`、`FREE`/`当前`、无红 UNKNOWN、非网络错误；Release digest=本地 SHA；PR #6 |
+| **当前最新安装/运行构建** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`3374C285…`**，ProductVersion **1.3.2**；分支 `sync-upstream-v1.3.2-20260715` @ `a6efd371`；merge parents=`ebd0dca8`+`a84a97cb`（upstream tag **v1.3.2**）；含 `sync_cursor_local_watch` + `accounts:changed` listen；UIA：`Cockpit Tools` Cursor `ALL (1873)`、`配额未查询`/`FREE`/`当前`；Release digest=本地 SHA；PR #7 |
+| **上一可用 1.3.0 redo** | SHA **`DEA43F62…`**；分支 `sync-upstream-v1.3.0-20260714-redo`；Release 同名 |
 | **合并前可用源码锚点** | `origin/fork-20260705` @ **`918980e9`** |
 | **合并前 exe 资产** | Draft release `fork-20260705-baseline`（exe SHA **`83E85D7F…`**） |
 | **历史 Cursor 验收包** | `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` SHA **`F5256511…`** |
@@ -32,6 +33,7 @@ alwaysApply: true
 | 多开 + 默认 **可同时存在** | 默认 `close_cursor`；多开 `close_cursor_profile_strict` |
 | 配额 transient | 网络/超时失败 **不写盘** |
 | 满额换号 + Kh 裸 JWT | `pick_full_quota_account`、`nirvana_kh_auth_tokens` |
+| 常驻本地跟号 | `provider_token_keeper::sync_cursor_local_watch` 每 20s → `sync_local_cursor_from_default_profile` → emit `accounts:changed`；`useProviderAccountsPage` listen |
 
 ### 不能用
 
@@ -51,7 +53,9 @@ alwaysApply: true
 - 多开 profile 隔离 + **每次 Play/多开强制轮换**（`pick_cursor_rotation_account`）
 - transient 失败不写盘；auth 类失败可写 `quota_query_last_error`
 - **邮箱去重**（`e9d5182f` 口径；HR-20260626-004）
-- upstream 同步必须 **真用** `fork-20260705` + 正式 tag tip；禁止第三套拼装
+- upstream 同步必须 **真用** 允许的 fork tip + 正式 tag tip；禁止第三套拼装
+- **常驻自动刷新**：`sync_cursor_local_watch` + `accounts:changed` listen（合并后须保留调用点）
+- 提到**当前最新构建**默认 SHA `3374C285…` / 分支 `sync-upstream-v1.3.2-20260715`
 - 提到**历史桌面验收包**默认 `Cockpit-nirvana-token-test.exe`（`F5256511…`）
 - 提到**合并前 fork 锚点**默认 `fork-20260705` @ `918980e9`
 

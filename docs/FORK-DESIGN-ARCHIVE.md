@@ -107,7 +107,7 @@
 
 **自然语言设计**: “发布新更新”指 release/tag/版本号变化，不是 `main` 有新提交。若没有正式版本更新，任务立即停止，不做动作。
 
-**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支，保留 fork 功能和 release 边界。
+**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支（当前默认 `sync-upstream-v1.3.2-20260715` / 已记 **1.3.2**，上一项为 1.3.0 redo），保留 fork 功能（含 `sync_cursor_local_watch`）和 release 边界。
 
 **保留边界**: `announcements.json`、广告位开关、公告配置、普通 commit 不触发同步、构建、发布或文档改动。
 
@@ -340,3 +340,13 @@
 - **验证方式**: 源码 hash 对照；无「Take upstream frontend」类提交。
 - **风险**：初写「确认前不标能用」已被 **HR-20260715-006** 推翻；验收由 Agent 证据闭环，达标即标能用/已修好。
 - **增量（2026-07-15）**: 注册表将 SHA `DEA43F62…` 升为**能用**；UIA 再验 Cursor 页达标。
+
+### 2026-07-15（upstream v1.3.2 正式版同步）
+
+- **触碰功能**: F-006、F-007、F-008；Cursor 常驻跟号（`sync_cursor_local_watch` / `accounts:changed`）。
+- **用户目标是否变化**: 否。
+- **本次目的**: 主仓正式发布 **v1.3.2**（`a84a97cb`）高于已记 1.3.0，执行隔离合并与交付；合并前恢复并保留 fork 常驻 watch。
+- **实现手段**: 分支 `sync-upstream-v1.3.2-20260715`；merge `a6efd371` parents=`ebd0dca8`+`a84a97cb`；strip workflows base `upstream-v1.3.2-base`；release exe SHA `3374C285…` + NSIS；PR #7。
+- **涉及文件/模块**: `provider_token_keeper.rs`、`useProviderAccountsPage.ts`、`cursor_account.rs`（secure load）、安装/Release/注册表/SCOPE/AGENTS。
+- **验证方式**: ProductVersion 1.3.2；UIA Cursor `ALL (1873)`/`配额未查询`/`FREE`；Edge UIA 锁 PR#7/Release/分支页；源码调用点含 `sync_cursor_local_watch`。
+- **风险**: updater 签名缺私钥导致 `tauri build` exit≠0，但 exe/NSIS 已产出；Play/多开 GUI 点验仍待单独立项。

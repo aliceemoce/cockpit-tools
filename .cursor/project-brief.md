@@ -1,5 +1,4 @@
-﻿# 会话快照 — 2026-07-15（upstream 巡检）
-
-## 巡检
-- 本地已记录集成：v1.3.0 / da0deca4 / 分支 sync-upstream-v1.3.0-20260714-redo / SHA DEA43F62…
-- F-007：仅正式 release/tag 高于已记录版本才同步；无改动不重写设计档案
+﻿# 会话快照 — 2026-07-15
+- 巡检发现 upstream v1.3.2 > 本地 1.3.0；已同步
+- 能用：SHA 3374C285… / 分支 sync-upstream-v1.3.2-20260715 / PR#7 / Release 同名
+- fork watch 保留；Cursor UIA ALL(1873)

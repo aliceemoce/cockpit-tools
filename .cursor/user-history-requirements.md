@@ -578,7 +578,12 @@
 ### HR-20260715-003
 - **原文摘要**：你确定这个没有？
 - **类型**：验真追问
-- **要求**：对「常驻自动刷新缺失」须用源码调用点再确认。结论：当前 redo 分支确定没有——fork `918980e9` 有 `sync_cursor_local_watch` 每 20s + emit `accounts:changed`；当前 `provider_token_keeper.rs` 无该函数；`sync_local_cursor_from_default_profile` 无调用点（编译 never used）；Cursor 页/`useProviderAccountsPage` 无 `accounts:changed` listen。
+- **要求**：对「常驻自动刷新缺失」须用源码调用点再确认。（此前结论针对旧 redo；用户已改代码后须重验。）
+
+### HR-20260715-004
+- **原文摘要**：我改了一下，你检查当前代码和规划，历史我的发言看看它这个版本对不对
+- **类型**：验真 / 对照历史
+- **要求**：对照 HR（长驻 `accounts:changed`→`fetchAccounts`、F-010、500ms 防抖、不依赖重启）检查当前源码是否正确恢复 watch 链；区分「源码对」与「UI 长驻换号实测」。
 
 ### HR-20260715-005
 - **ԭ��ժҪ**����û��ɾ�ȥ���
@@ -611,3 +616,8 @@
   1. 新增并遵守 .cursor/rules/user-requirements-over-plan-ceremony.mdc（alwaysApply）。
   2. 完成标准只能是用户要求/主档产品行为；禁止用 plan 勾选、merge parents、SHA、截图、PR 冒充完成。
   3. 计划窄于用户要求时改计划或扩验收，不得缩用户目标。
+
+### HR-20260715-010
+- **原文摘要**：执行 Cockpit 主仓同步巡检与交付（正式版才触发）
+- **类型**：流程任务
+- **要求**：仅正式 release/tag 高于已记版本才合并；保留 fork 行为（含常驻 watch）；合并前/后个人仓代码+exe 可追溯；PR=对照；系统浏览器+UIA 复核。
