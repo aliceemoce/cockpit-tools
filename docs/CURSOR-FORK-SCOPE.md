@@ -91,7 +91,7 @@
 
 ## Agent 操作约束
 
-- 说**最新构建 / 当前运行**时，默认指 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `71E052FB…`）。
+- 说**最新构建**时：本轮候选指 SHA `D6C85620…`（用户确认前不标能用）；拼装 `1A0EC65E…` 不能用；合并前锚点 `fork-20260705` @ `918980e9`。
 - 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
 - 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
 - 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。
