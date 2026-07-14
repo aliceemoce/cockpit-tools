@@ -1,0 +1,8 @@
+﻿# 失败经历档案
+
+
+## 2026-07-14 — redo 交付仍露红 UNKNOWN 角标
+- **失败物**：用户截图粉红 `UNKNOWN`；安装 SHA `D6C85620…`。
+- **根因**：Dashboard/presentation 比对 `!== 'UNKNOWN'` 而 displayName 为 `'Unknown'`；CSS uppercase 显示 UNKNOWN；浮窗直出 planLabel。
+- **禁止再用**：只保 CursorAccountsPage、其它入口仍打 Unknown。
+- **换法方向**：`resolveCursorPlanUiBadge` 统一禁 UNKNOWN；pending→配额未查询。

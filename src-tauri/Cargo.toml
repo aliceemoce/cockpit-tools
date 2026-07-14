@@ -7,6 +7,10 @@ license = "CC-BY-NC-SA-4.0"
 edition = "2021"
 autobins = false
 
+[[bin]]
+name = "cockpit-tools"
+path = "src/main.rs"
+
 [lib]
 name = "antigravity_cockpit_tools_lib"
 crate-type = ["staticlib", "rlib"]
@@ -76,6 +80,7 @@ pbkdf2 = "0.12"
 sha1 = "0.10"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.55"
 windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_Shell"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

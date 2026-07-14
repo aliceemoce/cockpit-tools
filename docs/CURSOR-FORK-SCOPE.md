@@ -5,7 +5,7 @@
 | 项 | 值 |
 |----|-----|
 | 磁盘路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
-| SHA-256 | `D6C856208FC6CF24167F5E44456E546BD5A6115DF84B85CFA27E7B74CACEDCBD` |
+| SHA-256 | `DEA43F6204A5BD8ADF3DFCF4D2FE3CA7027120796B17B751EA311F8195CC352B` |
 | 版本 | ProductVersion `1.3.0` |
 | 源码 | `sync-upstream-v1.3.0-20260714-redo` @ `418b7bb2`（merge `918980e9`+`da0deca4`） |
 | Release | `sync-upstream-v1.3.0-20260714-redo`（exe + NSIS） |
@@ -91,7 +91,7 @@
 
 ## Agent 操作约束
 
-- 说**最新构建**时：本轮候选指 SHA `D6C85620…`（用户确认前不标能用）；拼装 `1A0EC65E…` 不能用；合并前锚点 `fork-20260705` @ `918980e9`。
+- 说**最新构建**时：本轮候选指 SHA `DEA43F62…`（用户确认前不标能用）；拼装 `1A0EC65E…` 不能用；合并前锚点 `fork-20260705` @ `918980e9`。
 - 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
 - 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
 - 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。

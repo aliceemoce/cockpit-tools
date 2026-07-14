@@ -293,7 +293,8 @@ async fn refresh_due_cursor_accounts() -> bool {
 
         attempted_refreshes += 1;
         match cursor_account::refresh_account_async(&account.id).await {
-            Ok(updated) => {
+            Ok(refreshed) => {
+                let updated = refreshed.account;
                 clear_attempt_backoff(&key);
                 refreshed_any = true;
                 if current_id.as_deref() == Some(updated.id.as_str()) {

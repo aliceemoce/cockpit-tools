@@ -339,3 +339,13 @@
 - **实现手段**: 分支 `sync-upstream-v1.3.0-20260714-redo` @ `418b7bb2`；Cursor 页/模块=fork blob；Grok/Zcode=上游 blob；release exe SHA `D6C85620…`；NSIS 已出；PR #6；Release tag 同名。
 - **验证方式**: PrintWindow 目检 Cockpit Cursor 页；浏览器窗口标题含 redo Release/分支；源码 hash 对照。
 - **风险**: 用户确认前不标「能用/已修好」。
+
+### 2026-07-15（UNKNOWN 角标封死 + 真合并 exe 再部署）
+
+- **触碰功能**: F-007、F-008、F-011、Cursor 角标口径。
+- **用户目标是否变化**: 否。
+- **本次目的**: 封死红 UNKNOWN（Dashboard/presentation 大小写漏洞）；补 [[bin]]+winreg；完整 tauri release 覆盖安装。
+- **实现手段**: 
+esolveCursorPlanUiBadge；安装 SHA DEA43F62…；分支 sync-upstream-v1.3.0-20260714-redo。
+- **验证方式**: BitBlt 目检 Cockpit Tools Cursor 页：FREE、无 UNKNOWN、非 localhost 网络错误。
+- **风险**: 用户确认前仍不标「能用」。

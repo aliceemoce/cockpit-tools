@@ -518,6 +518,33 @@ export function isCursorQuotaPendingQuery(account: CursorAccount): boolean {
   return !hasCursorQuotaData(account);
 }
 
+export type CursorPlanUiBadge = {
+  label: string;
+  className: string;
+};
+
+/**
+ * Cursor 套餐角标 UI（HR-20260701-003 / HR-20260714-007）：
+ * 禁止红 UNKNOWN；未查配额显示「配额未查询」。
+ */
+export function resolveCursorPlanUiBadge(
+  account: CursorAccount,
+  pendingLabel: string = '配额未查询',
+): CursorPlanUiBadge | null {
+  const quotaError = (account.quota_query_last_error || '').trim();
+  const plan = getCursorPlanBadge(account);
+  if (plan === 'UNKNOWN') {
+    if (!quotaError && isCursorQuotaPendingQuery(account)) {
+      return { label: pendingLabel, className: 'pending-query' };
+    }
+    return null;
+  }
+  return {
+    label: getCursorPlanDisplayName(account),
+    className: getCursorPlanBadgeClass(account.membership_type, account),
+  };
+}
+
 /** 磁盘/后端旧文案识别（pick 判定与 UI 脱敏共用） */
 export function isCursorAuthQuotaError(message: string): boolean {
   const lower = message.toLowerCase();
