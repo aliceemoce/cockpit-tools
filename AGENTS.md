@@ -49,3 +49,4 @@
 6. 先读并增量维护 `docs/FORK-DESIGN-ARCHIVE.md`
 7. 历史要求见 `.cursor/user-history-requirements.md`
 8. 对用户结论仅 **已修好** / **没修好**（验收由 Agent 用磁盘/UIA 证据自决；禁止把「等用户确认」当完成门槛）
+9. **用户要求 > 计划勾选** — 见 `.cursor/rules/user-requirements-over-plan-ceremony.mdc`；禁止用 merge/SHA/截图/PR 冒充完成；fork 行为须在可运行产品里
