@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +60,27 @@ func TestCodexClientModelsResponseShape(t *testing.T) {
 	}
 }
 
+func TestCodexSparkUsesCompleteCodexClientCatalogTemplate(t *testing.T) {
+	response := buildCodexClientModelsResponse([]string{codexSparkCatalogTemplateModel, codexSparkModel})
+	models, ok := response["models"].([]map[string]any)
+	if !ok {
+		t.Fatalf("models response should contain a models array: %#v", response["models"])
+	}
+	template := findCodexClientModelForTest(models, codexSparkCatalogTemplateModel)
+	spark := findCodexClientModelForTest(models, codexSparkModel)
+	if template == nil || spark == nil {
+		t.Fatalf("expected template and Spark models, got %#v", models)
+	}
+	if spark["display_name"] != "GPT-5.3 Codex Spark" || spark["visibility"] != "list" || spark["supported_in_api"] != true {
+		t.Fatalf("Spark should be listed as an API model: %#v", spark)
+	}
+	for _, field := range []string{"available_in_plans", "base_instructions", "minimal_client_version", "model_messages", "prefer_websockets"} {
+		if spark[field] == nil || !reflect.DeepEqual(spark[field], template[field]) {
+			t.Fatalf("Spark should inherit %s from the Codex client template: %#v", field, spark[field])
+		}
+	}
+}
+
 func findCodexClientModelForTest(models []map[string]any, slug string) map[string]any {
 	for _, model := range models {
 		if model["slug"] == slug {
@@ -100,6 +122,176 @@ func TestClientCatalogModelsIncludesAutoReviewWithoutPrefix(t *testing.T) {
 	if len(models) != 2 || models[0] != "team/gpt-5.4" || models[1] != codexAutoReviewModel {
 		t.Fatalf("unexpected client catalog models: %#v", models)
 	}
+}
+
+func TestCockpitSelectorRestrictsAuthsToClientAPIKeyAccountScope(t *testing.T) {
+	highQuotaAccount := &accountSpec{
+		ID:       "account-high",
+		AuthID:   "account-high.json",
+		PlanRank: intPtrForTest(500),
+	}
+	scopedAccount := &accountSpec{
+		ID:       "account-scoped",
+		AuthID:   "account-scoped.json",
+		PlanRank: intPtrForTest(300),
+	}
+	selector := &cockpitSelector{
+		manifest: &manifest{
+			RoutingStrategy: "auto",
+			accountByAuthID: map[string]*accountSpec{
+				"account-high.json":   highQuotaAccount,
+				"account-scoped.json": scopedAccount,
+			},
+			accountByID: map[string]*accountSpec{
+				"account-high":   highQuotaAccount,
+				"account-scoped": scopedAccount,
+			},
+		},
+	}
+	apiKey := &apiKeySpec{
+		ID:         "key-scoped",
+		Label:      "Scoped client",
+		AccountIDs: []string{"account-scoped"},
+	}
+	ctx := context.WithValue(context.Background(), clientAPIKeyContextKey, apiKey)
+	auths := []*coreauth.Auth{
+		{ID: "account-high.json", Provider: "codex", Status: coreauth.StatusActive},
+		{ID: "account-scoped.json", Provider: "codex", Status: coreauth.StatusActive},
+	}
+
+	selected, err := selector.Pick(ctx, "codex", "gpt-5.6-sol", cliproxyexecutor.Options{}, auths)
+
+	if err != nil {
+		t.Fatalf("pick scoped auth: %v", err)
+	}
+	if selected.ID != "account-scoped.json" {
+		t.Fatalf("expected only scoped account to be selected, got %q", selected.ID)
+	}
+}
+
+func TestAPIKeyPriorityStateOrdersFallbackAccountsWithoutRestart(t *testing.T) {
+	tempDir := t.TempDir()
+	priorityPath := filepath.Join(tempDir, "api-key-priorities.json")
+	if err := os.WriteFile(priorityPath, []byte(`{"priorityAccountIds":{"key-team":["account-a","account-b"]}}`), 0o600); err != nil {
+		t.Fatalf("write priority state: %v", err)
+	}
+	store := newAPIKeyPriorityStateStore(filepath.Join(tempDir, "manifest.json"))
+
+	accountA := &accountSpec{ID: "account-a"}
+	accountB := &accountSpec{ID: "account-b"}
+	accountC := &accountSpec{ID: "account-c"}
+	selector := &cockpitSelector{
+		manifest: &manifest{
+			accountByAuthID: map[string]*accountSpec{
+				"auth-a": accountA,
+				"auth-b": accountB,
+				"auth-c": accountC,
+			},
+		},
+		priorities: store,
+	}
+	ctx := context.WithValue(context.Background(), clientAPIKeyContextKey, &apiKeySpec{ID: "key-team"})
+	auths := []*coreauth.Auth{{ID: "auth-c"}, {ID: "auth-b"}, {ID: "auth-a"}}
+	ordered := selector.prioritizeAuthsForAPIKey(ctx, auths)
+	if ordered[0].ID != "auth-a" || ordered[1].ID != "auth-b" || ordered[2].ID != "auth-c" {
+		t.Fatalf("priority accounts should lead in order, got %#v", ordered)
+	}
+	fallbackAuths := []*coreauth.Auth{{ID: "auth-c"}, {ID: "auth-b"}}
+	ordered = selector.prioritizeAuthsForAPIKey(ctx, fallbackAuths)
+	if ordered[0].ID != "auth-b" {
+		t.Fatalf("next priority account should lead when the first is unavailable, got %#v", ordered)
+	}
+
+	if err := os.WriteFile(priorityPath, []byte(`{"priorityAccountIds":{"key-team":["account-b","account-a"]}}`), 0o600); err != nil {
+		t.Fatalf("update priority state: %v", err)
+	}
+	updatedAt := time.Now().Add(time.Second)
+	if err := os.Chtimes(priorityPath, updatedAt, updatedAt); err != nil {
+		t.Fatalf("advance priority state timestamp: %v", err)
+	}
+	ordered = selector.prioritizeAuthsForAPIKey(ctx, auths)
+	if ordered[0].ID != "auth-b" || ordered[1].ID != "auth-a" {
+		t.Fatalf("updated priority should apply without a sidecar restart, got %#v", ordered)
+	}
+}
+
+func TestCockpitSessionAffinitySeparatesClientAPIKeyScopes(t *testing.T) {
+	highQuotaAccount := &accountSpec{
+		ID:       "account-high",
+		AuthID:   "account-high.json",
+		PlanRank: intPtrForTest(500),
+	}
+	scopedAccount := &accountSpec{
+		ID:       "account-scoped",
+		AuthID:   "account-scoped.json",
+		PlanRank: intPtrForTest(300),
+	}
+	fallback := &cockpitSelector{
+		manifest: &manifest{
+			RoutingStrategy: "auto",
+			accountByAuthID: map[string]*accountSpec{
+				"account-high.json":   highQuotaAccount,
+				"account-scoped.json": scopedAccount,
+			},
+			accountByID: map[string]*accountSpec{
+				"account-high":   highQuotaAccount,
+				"account-scoped": scopedAccount,
+			},
+		},
+	}
+	selector := &cockpitSessionAffinitySelector{
+		inner: coreauth.NewSessionAffinitySelectorWithConfig(coreauth.SessionAffinityConfig{
+			Fallback: fallback,
+			TTL:      time.Hour,
+		}),
+	}
+	auths := []*coreauth.Auth{
+		{ID: "account-high.json", Provider: "codex", Status: coreauth.StatusActive},
+		{ID: "account-scoped.json", Provider: "codex", Status: coreauth.StatusActive},
+	}
+	opts := cliproxyexecutor.Options{
+		Headers: http.Header{"X-Session-ID": []string{"shared-session"}},
+	}
+	defaultKey := &apiKeySpec{
+		ID:         "default-key",
+		AccountIDs: []string{"account-high", "account-scoped"},
+	}
+	scopedKey := &apiKeySpec{
+		ID:         "scoped-key",
+		AccountIDs: []string{"account-scoped"},
+	}
+
+	first, err := selector.Pick(
+		context.WithValue(context.Background(), clientAPIKeyContextKey, defaultKey),
+		"codex",
+		"gpt-5.4",
+		opts,
+		auths,
+	)
+	if err != nil {
+		t.Fatalf("pick default key auth: %v", err)
+	}
+	if first.ID != "account-high.json" {
+		t.Fatalf("expected default key to select high quota auth, got %q", first.ID)
+	}
+
+	second, err := selector.Pick(
+		context.WithValue(context.Background(), clientAPIKeyContextKey, scopedKey),
+		"codex",
+		"gpt-5.4",
+		opts,
+		auths,
+	)
+	if err != nil {
+		t.Fatalf("pick scoped key auth: %v", err)
+	}
+	if second.ID != "account-scoped.json" {
+		t.Fatalf("expected scoped key not to reuse default key affinity auth, got %q", second.ID)
+	}
+}
+
+func intPtrForTest(value int) *int {
+	return &value
 }
 
 func TestCanonicalModelForClientModelHandlesPrefixAliasAndSnapshot(t *testing.T) {
