@@ -1196,7 +1196,6 @@ fn write_windows_builtin_openai_provider_to_doc(
     doc: &mut Document,
     base_url: Option<&str>,
 ) -> Result<(), String> {
-    doc[CODEX_CONFIG_MODEL_PROVIDER_KEY] = value(CODEX_OPENAI_PROVIDER_ID);
     match base_url {
         Some(base_url) if base_url != CODEX_DEFAULT_OPENAI_BASE_URL => {
             doc[CODEX_CONFIG_OPENAI_BASE_URL_KEY] = value(base_url);

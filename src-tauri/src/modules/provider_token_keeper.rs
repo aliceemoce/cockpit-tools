@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde_json::Value;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::Notify;
 
 use crate::modules::{
@@ -16,6 +16,8 @@ use crate::modules::{
 };
 
 const TOKEN_KEEPER_TICK_SECONDS: u64 = 60;
+/// 默认 Cursor profile `state.vscdb` 轮询（fork 长驻自动导入/对齐 current）
+const CURSOR_LOCAL_WATCH_SECONDS: u64 = 20;
 const TOKEN_KEEPER_STARTUP_DELAY_SECONDS: u64 = 5 * 60;
 const TOKEN_KEEPER_MAX_REFRESHES_PER_PLATFORM: usize = 3;
 const TOKEN_KEEPER_IDLE_SCAN_SECONDS: i64 = 10 * 60;
@@ -53,6 +55,14 @@ pub fn ensure_started(app_handle: AppHandle) {
     }
 
     logger::log_info("[TokenKeeper] 后端 OAuth token 保活已启动");
+    let watch_app = app_handle.clone();
+    // 独立于 OAuth 保活：不延迟，立刻开始 20s 读默认 profile（合并上游时曾被整文件冲掉）
+    tauri::async_runtime::spawn(async move {
+        loop {
+            sync_cursor_local_watch(&watch_app).await;
+            tokio::time::sleep(Duration::from_secs(CURSOR_LOCAL_WATCH_SECONDS)).await;
+        }
+    });
     tauri::async_runtime::spawn(async move {
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(TOKEN_KEEPER_STARTUP_DELAY_SECONDS)) => {}
@@ -67,6 +77,55 @@ pub fn ensure_started(app_handle: AppHandle) {
             }
         }
     });
+}
+
+async fn sync_cursor_local_watch(app_handle: &AppHandle) {
+    let result = tokio::task::spawn_blocking(cursor_account::sync_local_cursor_from_default_profile)
+        .await;
+
+    let sync_result = match result {
+        Ok(Ok(value)) => value,
+        Ok(Err(err)) => {
+            logger::log_warn(&format!(
+                "[TokenKeeper][Cursor] 本地账号同步失败: {}",
+                err
+            ));
+            return;
+        }
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[TokenKeeper][Cursor] 本地账号同步任务异常: {}",
+                err
+            ));
+            return;
+        }
+    };
+
+    if !sync_result.imported && !sync_result.current_updated && !sync_result.profile_updated {
+        return;
+    }
+
+    let account_id = sync_result
+        .account
+        .as_ref()
+        .map(|account| account.id.as_str())
+        .unwrap_or("");
+    let reason = if sync_result.imported {
+        "local-auto-import"
+    } else if sync_result.current_updated {
+        "local-current-sync"
+    } else {
+        "local-profile-update"
+    };
+    let _ = app_handle.emit(
+        "accounts:changed",
+        serde_json::json!({
+            "platformId": "cursor",
+            "accountId": account_id,
+            "reason": reason,
+        }),
+    );
+    let _ = crate::modules::tray::update_tray_menu(app_handle);
 }
 
 pub fn notify_config_changed(app_handle: AppHandle, enabled: bool) {
@@ -335,7 +394,8 @@ async fn refresh_due_cursor_accounts() -> bool {
 
         attempted_refreshes += 1;
         match cursor_account::refresh_account_async(&account.id).await {
-            Ok(updated) => {
+            Ok(refreshed) => {
+                let updated = refreshed.account;
                 clear_attempt_backoff(&key);
                 refreshed_any = true;
                 if current_id.as_deref() == Some(updated.id.as_str()) {

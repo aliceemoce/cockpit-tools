@@ -189,7 +189,9 @@
         "weekly": "Chat messages",
         "resetAt": "重置：{{time}}",
         "expiresAt": "到期时间：{{time}}",
-        "leftPercent": "剩余 {{value}}%"
+        "leftPercent": "剩余 {{value}}%",
+        "pendingQueryBadge": "配额未查询",
+        "pendingQuery": "待查询配额"
       },
       "subtitle": "实时监控所有账号的配额状态。",
       "time": {

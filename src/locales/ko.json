@@ -182,7 +182,9 @@
         "weekly": "주간 쿼터",
         "resetAt": "초기화: {{time}}",
         "expiresAt": "만료 시간: {{time}}",
-        "leftPercent": "{{value}}% 남음"
+        "leftPercent": "{{value}}% 남음",
+        "pendingQueryBadge": "할당량 미조회",
+        "pendingQuery": "할당량 대기 중"
       },
       "subtitle": "GitHub Copilot 계정을 관리합니다",
       "time": {

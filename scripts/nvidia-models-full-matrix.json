@@ -1,0 +1,1212 @@
+[
+  {
+    "model_id": "mistralai/mistral-large-3-675b-instruct-2512",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": 675.0,
+    "active_params_B": 675.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/nemotron-4-340b-instruct",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 340.0,
+    "active_params_B": 340.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 253.0,
+    "active_params_B": 253.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "mistralai/mistral-medium-3.5-128b",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": 128.0,
+    "active_params_B": 128.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "writer/palmyra-creative-122b",
+    "vendor": "writer",
+    "category": "general_chat",
+    "total_params_B": 122.0,
+    "active_params_B": 122.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "openai/gpt-oss-120b",
+    "vendor": "openai",
+    "category": "general_chat",
+    "total_params_B": 120,
+    "active_params_B": 120,
+    "spec_source": "名称 120B",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "mistralai/mistral-small-4-119b-2603",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": 119.0,
+    "active_params_B": 119.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "stockmark/stockmark-2-100b-instruct",
+    "vendor": "stockmark",
+    "category": "general_chat",
+    "total_params_B": 100.0,
+    "active_params_B": 100.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "abacusai/dracarys-llama-3.1-70b-instruct",
+    "vendor": "abacusai",
+    "category": "general_chat",
+    "total_params_B": 70.0,
+    "active_params_B": 70.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "meta/codellama-70b",
+    "vendor": "meta",
+    "category": "code_chat",
+    "total_params_B": 70,
+    "active_params_B": 70,
+    "spec_source": "名称 70B 稠密",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "meta/llama-3.1-70b-instruct",
+    "vendor": "meta",
+    "category": "general_chat",
+    "total_params_B": 70,
+    "active_params_B": 70,
+    "spec_source": "名称 70B 稠密",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "meta/llama-3.3-70b-instruct",
+    "vendor": "meta",
+    "category": "general_chat",
+    "total_params_B": 70,
+    "active_params_B": 70,
+    "spec_source": "名称 70B 稠密",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "meta/llama2-70b",
+    "vendor": "meta",
+    "category": "general_chat",
+    "total_params_B": 70,
+    "active_params_B": 70,
+    "spec_source": "名称 70B 稠密",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemotron-70b-instruct",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 70.0,
+    "active_params_B": 70.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/llama3-chatqa-1.5-70b",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 70.0,
+    "active_params_B": 70.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "writer/palmyra-fin-70b-32k",
+    "vendor": "writer",
+    "category": "general_chat",
+    "total_params_B": 70.0,
+    "active_params_B": 70.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "writer/palmyra-med-70b",
+    "vendor": "writer",
+    "category": "general_chat",
+    "total_params_B": 70.0,
+    "active_params_B": 70.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "writer/palmyra-med-70b-32k",
+    "vendor": "writer",
+    "category": "general_chat",
+    "total_params_B": 70.0,
+    "active_params_B": 70.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/nemotron-3-ultra-550b-a55b",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 550.0,
+    "active_params_B": 55.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemotron-51b-instruct",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 51.0,
+    "active_params_B": 51.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "deepseek-ai/deepseek-v4-pro",
+    "vendor": "deepseek-ai",
+    "category": "general_chat",
+    "total_params_B": 1600,
+    "active_params_B": 49,
+    "spec_source": "DeepSeek 官方: 1.6T / 49B active",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/llama-3.3-nemotron-super-49b-v1",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 49.0,
+    "active_params_B": 49.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 49.0,
+    "active_params_B": 49.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 5,
+    "chat_tier_label": "旗舰"
+  },
+  {
+    "model_id": "databricks/dbrx-instruct",
+    "vendor": "databricks",
+    "category": "general_chat",
+    "total_params_B": 132,
+    "active_params_B": 36,
+    "spec_source": "DBRX 公开: 132B total / 36B active MoE",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "bytedance/seed-oss-36b-instruct",
+    "vendor": "bytedance",
+    "category": "general_chat",
+    "total_params_B": 36.0,
+    "active_params_B": 36.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "ibm/granite-34b-code-instruct",
+    "vendor": "ibm",
+    "category": "code_chat",
+    "total_params_B": 34.0,
+    "active_params_B": 34.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "google/gemma-4-31b-it",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 31.0,
+    "active_params_B": 31.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "mistralai/codestral-22b-instruct-v0.1",
+    "vendor": "mistralai",
+    "category": "code_chat",
+    "total_params_B": 22,
+    "active_params_B": 22,
+    "spec_source": "名称 22B 稠密",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "mistralai/mixtral-8x22b-v0.1",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": 22.0,
+    "active_params_B": 22.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "openai/gpt-oss-20b",
+    "vendor": "openai",
+    "category": "general_chat",
+    "total_params_B": 20,
+    "active_params_B": 20,
+    "spec_source": "名称 20B",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "qwen/qwen3.5-397b-a17b",
+    "vendor": "qwen",
+    "category": "general_chat",
+    "total_params_B": 397.0,
+    "active_params_B": 17.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "meta/llama-4-maverick-17b-128e-instruct",
+    "vendor": "meta",
+    "category": "general_chat",
+    "total_params_B": 17.0,
+    "active_params_B": 17.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 4,
+    "chat_tier_label": "很强"
+  },
+  {
+    "model_id": "bigcode/starcoder2-15b",
+    "vendor": "bigcode",
+    "category": "code_chat",
+    "total_params_B": 15.0,
+    "active_params_B": 15.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "mistralai/ministral-14b-instruct-2512",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": 14.0,
+    "active_params_B": 14.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "deepseek-ai/deepseek-v4-flash",
+    "vendor": "deepseek-ai",
+    "category": "general_chat",
+    "total_params_B": 284,
+    "active_params_B": 13,
+    "spec_source": "DeepSeek 官方: 284B / 13B active",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "nvidia/nemotron-3-super-120b-a12b",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 120.0,
+    "active_params_B": 12.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "google/gemma-3-12b-it",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 12.0,
+    "active_params_B": 12.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "nv-mistralai/mistral-nemo-12b-instruct",
+    "vendor": "nv-mistralai",
+    "category": "general_chat",
+    "total_params_B": 12.0,
+    "active_params_B": 12.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "upstage/solar-10.7b-instruct",
+    "vendor": "upstage",
+    "category": "general_chat",
+    "total_params_B": 10.7,
+    "active_params_B": 10.7,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "qwen/qwen3.5-122b-a10b",
+    "vendor": "qwen",
+    "category": "general_chat",
+    "total_params_B": 122.0,
+    "active_params_B": 10.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "nvidia/nvidia-nemotron-nano-9b-v2",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 9.0,
+    "active_params_B": 9.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "ibm/granite-3.0-8b-instruct",
+    "vendor": "ibm",
+    "category": "general_chat",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "ibm/granite-8b-code-instruct",
+    "vendor": "ibm",
+    "category": "code_chat",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "meta/llama-3.1-8b-instruct",
+    "vendor": "meta",
+    "category": "general_chat",
+    "total_params_B": 8,
+    "active_params_B": 8,
+    "spec_source": "名称 8B 稠密",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "nvidia/cosmos-reason2-8b",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemotron-nano-8b-v1",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "nvidia/mistral-nemo-minitron-8b-8k-instruct",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 3,
+    "chat_tier_label": "中等"
+  },
+  {
+    "model_id": "aisingapore/sea-lion-7b-instruct",
+    "vendor": "aisingapore",
+    "category": "general_chat",
+    "total_params_B": 7.0,
+    "active_params_B": 7.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "google/codegemma-1.1-7b",
+    "vendor": "google",
+    "category": "code_chat",
+    "total_params_B": 7.0,
+    "active_params_B": 7.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "google/codegemma-7b",
+    "vendor": "google",
+    "category": "code_chat",
+    "total_params_B": 7.0,
+    "active_params_B": 7.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "mistralai/mistral-7b-instruct-v0.3",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": 7,
+    "active_params_B": 7,
+    "spec_source": "名称 7B 稠密",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "mistralai/mixtral-8x7b-instruct-v0.1",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": 7.0,
+    "active_params_B": 7.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "zyphra/zamba2-7b-instruct",
+    "vendor": "zyphra",
+    "category": "general_chat",
+    "total_params_B": 7.0,
+    "active_params_B": 7.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "deepseek-ai/deepseek-coder-6.7b-instruct",
+    "vendor": "deepseek-ai",
+    "category": "code_chat",
+    "total_params_B": 6.7,
+    "active_params_B": 6.7,
+    "spec_source": "名称 6.7B 稠密",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "google/diffusiongemma-26b-a4b-it",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 26.0,
+    "active_params_B": 4.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "google/gemma-3-4b-it",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 4.0,
+    "active_params_B": 4.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "google/gemma-3n-e4b-it",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 4.0,
+    "active_params_B": 4.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "nvidia/nemotron-mini-4b-instruct",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 4.0,
+    "active_params_B": 4.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "qwen/qwen3-next-80b-a3b-instruct",
+    "vendor": "qwen",
+    "category": "general_chat",
+    "total_params_B": 80.0,
+    "active_params_B": 3.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "nvidia/nemotron-3-nano-30b-a3b",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 30.0,
+    "active_params_B": 3.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 30.0,
+    "active_params_B": 3.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "nvidia/nemotron-nano-3-30b-a3b",
+    "vendor": "nvidia",
+    "category": "general_chat",
+    "total_params_B": 30.0,
+    "active_params_B": 3.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "ibm/granite-3.0-3b-a800m-instruct",
+    "vendor": "ibm",
+    "category": "general_chat",
+    "total_params_B": 3.0,
+    "active_params_B": 3.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "meta/llama-3.2-3b-instruct",
+    "vendor": "meta",
+    "category": "general_chat",
+    "total_params_B": 3.0,
+    "active_params_B": 3.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 2,
+    "chat_tier_label": "轻量"
+  },
+  {
+    "model_id": "google/gemma-2-2b-it",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 2.0,
+    "active_params_B": 2.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 1,
+    "chat_tier_label": "迷你"
+  },
+  {
+    "model_id": "google/gemma-2b",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 2.0,
+    "active_params_B": 2.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 1,
+    "chat_tier_label": "迷你"
+  },
+  {
+    "model_id": "google/gemma-3n-e2b-it",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 2.0,
+    "active_params_B": 2.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 1,
+    "chat_tier_label": "迷你"
+  },
+  {
+    "model_id": "google/recurrentgemma-2b",
+    "vendor": "google",
+    "category": "general_chat",
+    "total_params_B": 2.0,
+    "active_params_B": 2.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 1,
+    "chat_tier_label": "迷你"
+  },
+  {
+    "model_id": "meta/llama-3.2-1b-instruct",
+    "vendor": "meta",
+    "category": "general_chat",
+    "total_params_B": 1.0,
+    "active_params_B": 1.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 1,
+    "chat_tier_label": "迷你"
+  },
+  {
+    "model_id": "01-ai/yi-large",
+    "vendor": "01-ai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "adept/fuyu-8b",
+    "vendor": "adept",
+    "category": "vision",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "ai21labs/jamba-1.5-large-instruct",
+    "vendor": "ai21labs",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "baai/bge-m3",
+    "vendor": "baai",
+    "category": "embedding",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "google/deplot",
+    "vendor": "google",
+    "category": "vision",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "meta/llama-3.2-11b-vision-instruct",
+    "vendor": "meta",
+    "category": "vision",
+    "total_params_B": 11.0,
+    "active_params_B": 11.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "meta/llama-3.2-90b-vision-instruct",
+    "vendor": "meta",
+    "category": "vision",
+    "total_params_B": 90.0,
+    "active_params_B": 90.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "meta/llama-guard-4-12b",
+    "vendor": "meta",
+    "category": "safety",
+    "total_params_B": 12.0,
+    "active_params_B": 12.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "microsoft/kosmos-2",
+    "vendor": "microsoft",
+    "category": "vision",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "microsoft/phi-3-vision-128k-instruct",
+    "vendor": "microsoft",
+    "category": "vision",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "microsoft/phi-3.5-moe-instruct",
+    "vendor": "microsoft",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "microsoft/phi-4-mini-instruct",
+    "vendor": "microsoft",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "microsoft/phi-4-multimodal-instruct",
+    "vendor": "microsoft",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "minimaxai/minimax-m2.7",
+    "vendor": "minimaxai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "minimaxai/minimax-m3",
+    "vendor": "minimaxai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "mistralai/mistral-large",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "mistralai/mistral-large-2-instruct",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "mistralai/mistral-nemotron",
+    "vendor": "mistralai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "moonshotai/kimi-k2.6",
+    "vendor": "moonshotai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "nvidia/ai-synthetic-video-detector",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/embed-qa-4",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/gliner-pii",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/ising-calibration-1-35b-a3b",
+    "vendor": "nvidia",
+    "category": "tooling",
+    "total_params_B": 35.0,
+    "active_params_B": 3.0,
+    "spec_source": "从模型名 MoE 模式解析",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemoguard-8b-content-safety",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemoguard-8b-topic-control",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+    "vendor": "nvidia",
+    "category": "vision",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": 8.0,
+    "active_params_B": 8.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": 1.0,
+    "active_params_B": 1.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-3.2-nv-embedqa-1b-v1",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": 1.0,
+    "active_params_B": 1.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-nemotron-embed-1b-v2",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": 1.0,
+    "active_params_B": 1.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/llama-nemotron-embed-vl-1b-v2",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": 1.0,
+    "active_params_B": 1.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nemoretriever-parse",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nemotron-3-content-safety",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nemotron-3.5-content-safety",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nemotron-4-340b-reward",
+    "vendor": "nvidia",
+    "category": "tooling",
+    "total_params_B": 340.0,
+    "active_params_B": 340.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nemotron-content-safety-reasoning-4b",
+    "vendor": "nvidia",
+    "category": "safety",
+    "total_params_B": 4.0,
+    "active_params_B": 4.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nemotron-nano-12b-v2-vl",
+    "vendor": "nvidia",
+    "category": "vision",
+    "total_params_B": 12.0,
+    "active_params_B": 12.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nemotron-parse",
+    "vendor": "nvidia",
+    "category": "tooling",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/neva-22b",
+    "vendor": "nvidia",
+    "category": "vision",
+    "total_params_B": 22.0,
+    "active_params_B": 22.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nv-embed-v1",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nv-embedcode-7b-v1",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": 7.0,
+    "active_params_B": 7.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nv-embedqa-e5-v5",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nv-embedqa-mistral-7b-v2",
+    "vendor": "nvidia",
+    "category": "embedding",
+    "total_params_B": 7.0,
+    "active_params_B": 7.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/nvclip",
+    "vendor": "nvidia",
+    "category": "tooling",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/riva-translate-4b-instruct",
+    "vendor": "nvidia",
+    "category": "translation",
+    "total_params_B": 4.0,
+    "active_params_B": 4.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/riva-translate-4b-instruct-v1.1",
+    "vendor": "nvidia",
+    "category": "translation",
+    "total_params_B": 4.0,
+    "active_params_B": 4.0,
+    "spec_source": "从模型名 *B 解析（稠密估计）",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "nvidia/vila",
+    "vendor": "nvidia",
+    "category": "vision",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "sarvamai/sarvam-m",
+    "vendor": "sarvamai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "snowflake/arctic-embed-l",
+    "vendor": "snowflake",
+    "category": "embedding",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": 0,
+    "chat_tier_label": "非对话主模型"
+  },
+  {
+    "model_id": "stepfun-ai/step-3.5-flash",
+    "vendor": "stepfun-ai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "stepfun-ai/step-3.7-flash",
+    "vendor": "stepfun-ai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  },
+  {
+    "model_id": "z-ai/glm-5.1",
+    "vendor": "z-ai",
+    "category": "general_chat",
+    "total_params_B": null,
+    "active_params_B": null,
+    "spec_source": "名称无参数标注",
+    "chat_tier": -1,
+    "chat_tier_label": "参数量未公开"
+  }
+]
