@@ -621,3 +621,15 @@
 - **原文摘要**：执行 Cockpit 主仓同步巡检与交付（正式版才触发）
 - **类型**：流程任务
 - **要求**：仅正式 release/tag 高于已记版本才合并；保留 fork 行为（含常驻 watch）；合并前/后个人仓代码+exe 可追溯；PR=对照；系统浏览器+UIA 复核。
+
+## 2026-07-15
+
+### HR-20260715-upstream-sync-v1.3.4
+- **原文**：Automation Cockpit Upstream Sync Watch — 正式版高于已记基线则完整同步交付
+- **类型**：upstream 正式版同步 / 交付链
+- **要求**：
+  1. 只按正式 release/tag/version 触发；v1.3.4 > 已记 1.3.2 才继续
+  2. 隔离分支合并，保留 fork watch；禁止整棵换 src/、拒收项回归
+  3. 合并前代码+exe 已在个人仓；合并后 push、对照 PR、exe Release、网页复核、更新规则/设计档案
+  4. Cockpit UI 用 UIA；画面非网络错误
+- **验收（本轮）**：分支 sync-upstream-v1.3.4-20260715 @ 68e7ebb7；安装 SHA 22778930… ProductVersion 1.3.4；UIA Cursor ALL (2020)；PR #8；Release 同名；digest 对齐

@@ -107,7 +107,7 @@
 
 **自然语言设计**: “发布新更新”指 release/tag/版本号变化，不是 `main` 有新提交。若没有正式版本更新，任务立即停止，不做动作。
 
-**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支（当前默认 `sync-upstream-v1.3.2-20260715` / 已记 **1.3.2**，上一项为 1.3.0 redo），保留 fork 功能（含 `sync_cursor_local_watch`）和 release 边界。
+**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支（当前默认 `sync-upstream-v1.3.4-20260715` / 已记 **1.3.4**，上一项为 1.3.2），保留 fork 功能（含 `sync_cursor_local_watch`）和 release 边界。
 
 **保留边界**: `announcements.json`、广告位开关、公告配置、普通 commit 不触发同步、构建、发布或文档改动。
 
@@ -350,3 +350,13 @@
 - **涉及文件/模块**: `provider_token_keeper.rs`、`useProviderAccountsPage.ts`、`cursor_account.rs`（secure load）、安装/Release/注册表/SCOPE/AGENTS。
 - **验证方式**: ProductVersion 1.3.2；UIA Cursor `ALL (1873)`/`配额未查询`/`FREE`；Edge UIA 锁 PR#7/Release/分支页；源码调用点含 `sync_cursor_local_watch`。
 - **风险**: updater 签名缺私钥导致 `tauri build` exit≠0，但 exe/NSIS 已产出；Play/多开 GUI 点验仍待单独立项。
+
+### 2026-07-15（upstream v1.3.4 正式版同步）
+
+- **触碰功能**: F-006、F-007、F-008；Cursor 常驻跟号（`sync_cursor_local_watch` / `accounts:changed`）。
+- **用户目标是否变化**: 否。
+- **本次目的**: 主仓正式发布 **v1.3.4**（`2d8f0fc2`）高于已记 1.3.2，执行隔离合并与交付；保留 fork 常驻 watch。
+- **实现手段**: 分支 `sync-upstream-v1.3.4-20260715`；merge `4f121eed` parents=`dd920a4f`+`2d8f0fc2`；修复 commit `68e7ebb7`（locale `pendingQuery`、Windows builtin OpenAI 不写 `model_provider`、sqlite/mtime 测试）；对照基线 `upstream-v1.3.4-pr-base`；release exe SHA `22778930…`（无 NSIS）；PR #8。
+- **涉及文件/模块**: `provider_token_keeper.rs`、`useProviderAccountsPage.ts`、`codex_account.rs`、`codex_session_visibility.rs`、`codex_thread_sync.rs`、多语言 locale、安装/Release/注册表/AGENTS。
+- **验证方式**: ProductVersion 1.3.4；release:preflight 612 passed；UIA Cursor `ALL (2020)`/`配额未查询`/`FREE`/`当前`；Release digest=安装 SHA；源码调用点含 `sync_cursor_local_watch`。
+- **风险**: 本机虚拟内存导致 release 编译曾 OOM，最终 exe 已产出；NSIS setup 本轮未打包；Play/多开 GUI 点验仍待单独立项。
