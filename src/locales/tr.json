@@ -182,7 +182,9 @@
         "weekly": "Haftalık kota",
         "resetAt": "Sıfırlama: {{time}}",
         "expiresAt": "Bitiş: {{time}}",
-        "leftPercent": "%{{value}} kaldı"
+        "leftPercent": "%{{value}} kaldı",
+        "pendingQueryBadge": "Kota sorgulanmadı",
+        "pendingQuery": "Kota beklemede"
       },
       "subtitle": "GitHub Copilot hesaplarınızı yönetin",
       "time": {

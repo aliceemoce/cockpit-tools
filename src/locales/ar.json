@@ -182,7 +182,9 @@
         "weekly": "رسائل الدردشة",
         "resetAt": "إعادة الضبط: {{time}}",
         "expiresAt": "ينتهي في: {{time}}",
-        "leftPercent": "متبقي {{value}}٪"
+        "leftPercent": "متبقي {{value}}٪",
+        "pendingQueryBadge": "لم يتم الاستعلام عن الحصة",
+        "pendingQuery": "الحصة معلقة"
       },
       "subtitle": "مراقبة حالة الحصة لجميع الحسابات في الوقت الفعلي.",
       "time": {

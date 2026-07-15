@@ -3788,6 +3788,22 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    fn cleanup_temp_dir(path: &Path) {
+        for attempt in 0..50 {
+            match fs::remove_dir_all(path) {
+                Ok(()) => return,
+                Err(error) if attempt < 49 => {
+                    std::thread::sleep(Duration::from_millis(100));
+                    if !path.exists() {
+                        return;
+                    }
+                    let _ = error;
+                }
+                Err(error) => panic!("cleanup temp dir: {error}"),
+            }
+        }
+    }
+
     fn make_temp_dir(prefix: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3796,7 +3812,7 @@ mod tests {
         let base_dir =
             std::env::temp_dir().join(format!("{}-{}-{}", prefix, std::process::id(), unique));
         if base_dir.exists() {
-            fs::remove_dir_all(&base_dir).expect("cleanup old temp dir");
+            cleanup_temp_dir(&base_dir);
         }
         fs::create_dir_all(&base_dir).expect("create temp dir");
         base_dir
@@ -3893,7 +3909,8 @@ mod tests {
             .expect("read provider-only row");
         assert_eq!(provider_only, ("relay".to_string(), 0));
 
-        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
+        drop(connection);
+        cleanup_temp_dir(&data_dir);
     }
 
     #[test]
@@ -3935,7 +3952,8 @@ mod tests {
             .expect("read old provider");
         assert_eq!(old_provider, "relay");
 
-        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
+        drop(connection);
+        cleanup_temp_dir(&data_dir);
     }
 
     #[test]
@@ -4030,7 +4048,8 @@ mod tests {
             .expect("read unrelated provider");
         assert_eq!(unrelated_provider, "old");
 
-        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
+        drop(connection);
+        cleanup_temp_dir(&data_dir);
     }
 
     #[test]
@@ -4111,7 +4130,7 @@ mod tests {
             unreferenced_line
         );
 
-        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
+        cleanup_temp_dir(&data_dir);
     }
 
     #[test]
@@ -4193,8 +4212,9 @@ mod tests {
         .expect("compatibility repair");
         assert_eq!(repaired.updated_sqlite_rows, 1);
 
-        let connection = Connection::open(&official_db_path).expect("reopen official sqlite");
-        let official_provider = connection
+        let official_connection =
+            Connection::open(&official_db_path).expect("reopen official sqlite");
+        let official_provider = official_connection
             .query_row(
                 "SELECT model_provider FROM threads WHERE id = 'thread-1'",
                 [],
@@ -4202,9 +4222,11 @@ mod tests {
             )
             .expect("read official provider");
         assert_eq!(official_provider, "relay");
+        drop(official_connection);
 
-        let connection = Connection::open(&unrelated_db_path).expect("reopen unrelated sqlite");
-        let unrelated_provider = connection
+        let unrelated_connection =
+            Connection::open(&unrelated_db_path).expect("reopen unrelated sqlite");
+        let unrelated_provider = unrelated_connection
             .query_row(
                 "SELECT model_provider FROM threads WHERE id = 'thread-1'",
                 [],
@@ -4212,13 +4234,14 @@ mod tests {
             )
             .expect("read unrelated provider");
         assert_eq!(unrelated_provider, "old");
+        drop(unrelated_connection);
 
         let referenced_content =
             fs::read_to_string(&referenced_rollout).expect("read deep repaired rollout");
         assert!(referenced_content.contains("\"model_provider\":\"relay\""));
         assert!(!referenced_content.contains("old-later"));
 
-        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
+        cleanup_temp_dir(&data_dir);
     }
 
     #[test]
@@ -4296,7 +4319,8 @@ mod tests {
             .expect("read restored provider");
         assert_eq!(provider, "old");
 
-        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
+        drop(connection);
+        cleanup_temp_dir(&data_dir);
     }
 
     #[test]
@@ -4399,6 +4423,7 @@ mod tests {
             .count();
         assert_eq!(backup_count, 0);
 
-        fs::remove_dir_all(&data_dir).expect("cleanup temp dir");
+        drop(connection);
+        cleanup_temp_dir(&data_dir);
     }
 }
