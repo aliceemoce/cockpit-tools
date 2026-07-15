@@ -3199,6 +3199,43 @@ fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {
         _ => None,
     };
 
+    // 读取 breakdown.included（月配额分配的 fast request 数量）
+    let breakdown = plan_value
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("breakdown"));
+    let plan_included = pick_number(breakdown, &["included"]);
+
+    // 零月配额检测：limit=0 且 breakdown.included=0 → 无任何 fast request 可用。
+    // 按需额度也未开启时，视为额度全部耗尽（100% used），避免进入换号池。
+    let od_individual = raw_obj
+        .get("individualUsage")
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("onDemand"));
+    let od_limit = pick_number(od_individual, &["limit"]);
+    let od_enabled = od_individual
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let is_unlimited = raw_obj
+        .get("isUnlimited")
+        .or_else(|| raw_obj.get("is_unlimited"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let is_zero_included_plan = !is_unlimited
+        && matches!(limit, Some(l) if l == 0.0)
+        && matches!(plan_included, Some(inc) if inc == 0.0)
+        && matches!(od_limit, None | Some(0.0))
+        && !od_enabled;
+
+    if is_zero_included_plan {
+        return CursorUsagePercent {
+            total_used: Some(100),
+            auto_used: Some(100),
+            api_used: Some(100),
+        };
+    }
+
     CursorUsagePercent {
         total_used: total_direct.or(total_ratio).map(clamp_percent),
         auto_used: auto_direct.map(clamp_percent),

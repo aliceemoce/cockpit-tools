@@ -1667,6 +1667,18 @@ export function buildCursorAccountPresentation(
     });
   }
 
+  // 零月配额账号：planIncludedQuota=0 时追加警示条目
+  if (usage.planIncludedQuota != null && usage.planIncludedQuota === 0 &&
+      !usage.isUnlimited && (usage.onDemandEnabled !== true)) {
+    quotaItems.push({
+      key: "monthly_quota",
+      label: t("cursor.quota.monthlyQuota", "月配额"),
+      percentage: 100,
+      quotaClass: "high",
+      valueText: "0",
+    });
+  }
+
   return {
     id: account.id,
     displayName: getCursorAccountDisplayEmail(account),

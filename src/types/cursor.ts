@@ -295,6 +295,8 @@ export type CursorUsage = {
   allowanceResetAt?: number | null;
   planUsedCents?: number | null;
   planLimitCents?: number | null;
+  /** 本月包含的 fast request 额度（breakdown.included）。0 = 无月配额账号。*/
+  planIncludedQuota?: number | null;
   totalPercentUsed?: number | null;
   autoPercentUsed?: number | null;
   apiPercentUsed?: number | null;
@@ -381,6 +383,11 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
   const apiPct = pickNumber(plan, 'apiPercentUsed', 'api_percent_used');
   const planUsed = pickNumber(plan, 'used', 'totalSpend', 'total_spend');
   const planLimit = pickNumber(plan, 'limit');
+
+  // 读取 breakdown.included（月配额包含的 fast request 数量）
+  const breakdown = getPath(plan, 'breakdown');
+  const planIncluded = pickNumber(breakdown, 'included');
+
   const odUsed = pickNumber(
     onDemand,
     'used',
@@ -438,11 +445,24 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
     if (Number.isFinite(ts)) resetAt = Math.floor(ts / 1000);
   }
 
+  // 零月配额检测：limit=0 且 breakdown.included=0 → 该账号无任何 fast request 额度。
+  // 将百分比强制为 100（视为已满），避免被误判为满额度账号进入换号池。
+  const isZeroIncludedPlan =
+    !isUnlimited &&
+    planLimit != null && planLimit === 0 &&
+    planIncluded != null && planIncluded === 0 &&
+    (odLimit == null || odLimit === 0) &&
+    odEnabled !== true;
+
+  const effectiveTotalPct = isZeroIncludedPlan ? 100 : totalPct;
+  const effectiveAutoPct  = isZeroIncludedPlan ? 100 : autoPct;
+  const effectiveApiPct   = isZeroIncludedPlan ? 100 : apiPct;
+
   const ratioPct =
     planUsed != null && planLimit != null && planLimit > 0
       ? (planUsed / planLimit) * 100
       : null;
-  const totalBase = totalPct ?? ratioPct;
+  const totalBase = effectiveTotalPct ?? ratioPct;
   const usedPct =
     totalBase == null
       ? null
@@ -456,9 +476,10 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
     allowanceResetAt: resetAt,
     planUsedCents: planUsed,
     planLimitCents: planLimit,
-    totalPercentUsed: totalPct,
-    autoPercentUsed: autoPct,
-    apiPercentUsed: apiPct,
+    planIncludedQuota: planIncluded,
+    totalPercentUsed: effectiveTotalPct,
+    autoPercentUsed: effectiveAutoPct,
+    apiPercentUsed: effectiveApiPct,
     onDemandUsedCents: odUsed,
     onDemandLimitCents: odLimit,
     teamOnDemandUsedCents: teamOdUsed,
