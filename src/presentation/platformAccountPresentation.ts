@@ -75,10 +75,9 @@ import {
   formatCursorUsageDollars,
   getCursorAccountDisplayEmail,
   getCursorOnDemandSummary,
-  getCursorPlanDisplayName,
-  getCursorPlanBadgeClass,
   getCursorUsage,
   isCursorAccountBanned,
+  resolveCursorPlanUiBadge,
 } from "../types/cursor";
 import {
   formatGrokQuotaUsedTotal,
@@ -1581,7 +1580,13 @@ export function buildCursorAccountPresentation(
   account: CursorAccount,
   t: Translate,
 ): CursorAccountPresentation {
-  const planLabel = getCursorPlanDisplayName(account);
+  const pendingBadgeLabel = t(
+    "common.shared.quota.pendingQueryBadge",
+    "配额未查询",
+  );
+  const planUi = resolveCursorPlanUiBadge(account, pendingBadgeLabel);
+  const planLabel = planUi?.label ?? "";
+  const planClass = planUi?.className ?? "";
   const usage = getCursorUsage(account);
   const ratioPercent =
     usage.planUsedCents != null &&
@@ -1662,11 +1667,23 @@ export function buildCursorAccountPresentation(
     });
   }
 
+  // 零月配额账号：planIncludedQuota=0 时追加警示条目
+  if (usage.planIncludedQuota != null && usage.planIncludedQuota === 0 &&
+      !usage.isUnlimited && (usage.onDemandEnabled !== true)) {
+    quotaItems.push({
+      key: "monthly_quota",
+      label: t("cursor.quota.monthlyQuota", "月配额"),
+      percentage: 100,
+      quotaClass: "high",
+      valueText: "0",
+    });
+  }
+
   return {
     id: account.id,
     displayName: getCursorAccountDisplayEmail(account),
     planLabel,
-    planClass: getCursorPlanBadgeClass(account.membership_type, account),
+    planClass,
     isBanned: isCursorAccountBanned(account),
     quotaItems,
   };

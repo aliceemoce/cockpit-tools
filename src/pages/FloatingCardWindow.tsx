@@ -1590,7 +1590,11 @@ export function FloatingCardWindow() {
                   ) : null}
                 </div>
                 <span className={`floating-card-plan floating-card-plan--${presentation.planClass || 'unknown'}`}>
-                  {presentation.planLabel || '--'}
+                  {presentation.planLabel &&
+                  presentation.planClass !== 'unknown' &&
+                  presentation.planLabel.toUpperCase() !== 'UNKNOWN'
+                    ? presentation.planLabel
+                    : '--'}
                 </span>
               </div>
 
