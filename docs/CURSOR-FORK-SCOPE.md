@@ -5,11 +5,11 @@
 | 项 | 值 |
 |----|-----|
 | 磁盘路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
-| SHA-256 | `3374C2853DE9A775686E0F6EADA85B8AEDCB46FC7E019622753F77FB64E2D690` |
-| 版本 | ProductVersion `1.3.2` |
-| 源码 | `sync-upstream-v1.3.2-20260715` @ `a6efd371`（merge `ebd0dca8`+`a84a97cb` / upstream v1.3.2） |
-| Release | `sync-upstream-v1.3.2-20260715`（exe + NSIS） |
-| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/7 |
+| SHA-256 | `22778930A5028B5F85E23DB50AA4DB5E3A7403F3A7D4DA8C1C85C9B149BCD7F2` |
+| 版本 | ProductVersion `1.3.4` |
+| 源码 | `sync-upstream-v1.3.4-20260715` @ `738975a0`（merge `4f121eed` parents=`dd920a4f`+`2d8f0fc2` / upstream v1.3.4） |
+| Release | `sync-upstream-v1.3.4-20260715`（exe） |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/8 |
 | 状态 | **能用**（正式版同步 + Cursor watch 保留 + UIA）；拼装 `1A0EC65E…` **不能用** |
 
 > 合并前锚点：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`（`83E85D7F…`）。
@@ -91,7 +91,7 @@
 
 ## Agent 操作约束
 
-- 说**最新构建**时：默认 SHA `3374C285…` / v1.3.2（能用）；上一 1.3.0=`DEA43F62…`；拼装 `1A0EC65E…` 不能用；合并前锚点 `fork-20260705` @ `918980e9`。
+- 说**最新构建**时：默认 SHA `22778930…` / v1.3.4（能用）；上一 1.3.2=`3374C285…`；上一 1.3.0=`DEA43F62…`；拼装 `1A0EC65E…` 不能用；合并前锚点 `fork-20260705` @ `918980e9`。
 - 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
 - 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
 - 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。
