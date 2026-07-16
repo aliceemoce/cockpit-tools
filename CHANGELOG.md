@@ -7,6 +7,13 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.6] - 2026-07-16
+
+### Fixed
+
+- **Fixed Cursor full quota refresh restarting from the account-index head every round**, which left many accounts with stale usage for days: auto-refresh now serial-walks the oldest `usage_updated_at` first (batch of 120, 8-minute wall clock cap per round); recently failed attempts cool down so dead tokens do not monopolize the queue. Manual refresh-all still covers everyone, also oldest-first. The 20s local watch still only syncs the current login.
+
+---
 ## [1.3.5] - 2026-07-16
 
 ### Added

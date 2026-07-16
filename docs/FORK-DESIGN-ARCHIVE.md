@@ -331,7 +331,19 @@
 - **用户要求**: 不发明「按什么标准说已修好」的分拆话术；已修好=已修好，没修好=没修好，撒谎=撒谎。
 - **规则**: `.cursor/rules/honest-fix-status-only.mdc`（`alwaysApply`）；同步修订 `post-build-ui-must-verify.mdc`、`chinese-response-style.mdc`；Codex 镜像 `.codex/rules/honest-fix-status-only.md`；历史 **HR-20260626-002**。
 
-### 2026-07-14（v1.3.0 真合并 redo）
+### 2026-07-16（Cursor 配额最旧优先刷新 · v1.3.6）
+
+- **触碰功能**: Cursor 配额自动刷新（非 F-010 跟号；跟号仍只对齐 current）。
+- **用户目标是否变化**: 否；用户确认「全量每轮从头扫 → 大量账号额度陈旧」需要新版本修。
+- **约束**: 仍遵守 HR-20260626-005——**不恢复** `cursor_refresh_scheduler` / 并发 batch；保持串行。
+- **本次目的**: 自动刷新不再每轮按索引从头扫完全库；优先刷 `usage_updated_at` 最旧的账号，每轮有数量与时限，下一轮继续挑最旧。
+- **实现手段**:
+  - `refresh_tokens_stale_first(max_count, max_duration)`：按调度键升序串行；失败/刚尝试过用进程内 attempt map + `quota_query_last_error_at` 冷却。
+  - 自动刷新每轮 `max_count=120`、墙钟 8 分钟；手动全量 `max_count=None` 仍扫全部（同样最旧优先）。
+- **涉及文件**: `cursor_account.rs`、`commands/cursor.rs`、`useAutoRefresh.ts`、`cursorService.ts`、`cursor_refresh_batch` bin。
+- **验证方式**: 部署后看日志含「最旧优先刷新开始」；陈旧号 `usage_updated_at` 在多轮自动刷新后应前进；UI 非网络错误。
+- **风险**: 单号 transient 失败仍不写新 usage（既有 F-004）；冷却后会再试。
+
 
 - **触碰功能**: F-007、F-008、F-011。
 - **用户目标是否变化**: 否；纠正为必须同时真用 fork tip 与线上 tip，角标是露馅不是单修项。

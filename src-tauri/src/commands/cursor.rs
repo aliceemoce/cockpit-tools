@@ -128,21 +128,28 @@ pub async fn refresh_cursor_token(
 }
 
 #[tauri::command]
-pub async fn refresh_all_cursor_tokens(app: AppHandle) -> Result<i32, String> {
+pub async fn refresh_all_cursor_tokens(
+    app: AppHandle,
+    max_count: Option<i32>,
+) -> Result<i32, String> {
     let started_at = Instant::now();
-    logger::log_info("[Cursor Command] 批量刷新开始");
+    let limit = max_count.and_then(|n| if n > 0 { Some(n as usize) } else { None });
+    // 自动刷新传入 max_count 时加墙钟上限，避免一轮扫完全库占死 guard。
+    let max_duration = limit.map(|_| {
+        std::time::Duration::from_secs(cursor_account::CURSOR_AUTO_REFRESH_MAX_DURATION_SECS)
+    });
+    logger::log_info(&format!(
+        "[Cursor Command] 批量刷新开始: max_count={:?}, max_duration_secs={:?}",
+        limit,
+        max_duration.map(|d| d.as_secs())
+    ));
 
-    let accounts = cursor_account::list_accounts();
-    let active_accounts: Vec<CursorAccount> = accounts
-        .into_iter()
-        .filter(|account| !cursor_account::is_banned_account(account))
-        .collect();
+    let results = cursor_account::refresh_tokens_stale_first(limit, max_duration).await?;
 
     let mut success_count = 0usize;
     let mut persisted_any = false;
-    for account in active_accounts {
-        let id = account.id.clone();
-        match cursor_account::refresh_account_async(&id).await {
+    for (_id, result) in results {
+        match result {
             Ok(refreshed) => {
                 success_count += 1;
                 if refreshed.persisted {

@@ -38,7 +38,14 @@ lazy_static::lazy_static! {
     static ref CURSOR_INDEX_MAINTENANCE_DONE: AtomicBool = AtomicBool::new(false);
     static ref CURSOR_INDEX_MAINTENANCE_SCHEDULED: AtomicBool = AtomicBool::new(false);
     static ref CURSOR_REFRESH_IN_FLIGHT: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    /// 本进程内最近一次刷新尝试时间（成功/失败/transient 都记），用于最旧优先调度时给失败号冷却。
+    static ref CURSOR_REFRESH_RECENT_ATTEMPTS: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
 }
+
+/// 自动全量刷新每轮默认最多刷多少个（仍串行；下一轮继续挑最旧）。
+pub const CURSOR_AUTO_REFRESH_BATCH_SIZE: usize = 120;
+/// 自动全量刷新每轮墙钟上限（秒），避免一轮占满整个 interval。
+pub const CURSOR_AUTO_REFRESH_MAX_DURATION_SECS: u64 = 8 * 60;
 
 pub fn index_maintenance_completed() -> bool {
     CURSOR_INDEX_MAINTENANCE_DONE.load(Ordering::Acquire)
@@ -3099,21 +3106,99 @@ pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorRefres
     result
 }
 
-pub async fn refresh_all_tokens(
+fn mark_refresh_attempted(account_id: &str) {
+    let now = now_ts();
+    let Ok(mut map) = CURSOR_REFRESH_RECENT_ATTEMPTS.lock() else {
+        return;
+    };
+    map.insert(account_id.to_string(), now);
+    let prune_before = now.saturating_sub(6 * 60 * 60);
+    map.retain(|_, ts| *ts >= prune_before);
+}
+
+fn recent_refresh_attempt_ts(account_id: &str) -> i64 {
+    CURSOR_REFRESH_RECENT_ATTEMPTS
+        .lock()
+        .ok()
+        .and_then(|map| map.get(account_id).copied())
+        .unwrap_or(0)
+}
+
+/// 调度键越小越优先刷：从未成功拉过用量 / 用量很旧的在前；
+/// 刚失败或刚尝试过的用尝试时间做冷却，避免死号占满每一轮。
+fn refresh_schedule_ts(account: &CursorAccount) -> i64 {
+    let usage = account.usage_updated_at.unwrap_or(0);
+    let err_at = account
+        .quota_query_last_error_at
+        .map(|ms| ms / 1000)
+        .unwrap_or(0);
+    let recent = recent_refresh_attempt_ts(&account.id);
+    let last_touch = recent.max(err_at);
+    if last_touch > usage {
+        last_touch
+    } else {
+        usage
+    }
+}
+
+/// 按用量新鲜度升序串行刷新（最旧优先）。
+/// `max_count`：本轮最多刷几个；`None` = 全部。
+/// `max_duration`：墙钟时限；超时提前结束，下一轮仍会挑当前最旧的。
+pub async fn refresh_tokens_stale_first(
+    max_count: Option<usize>,
+    max_duration: Option<Duration>,
 ) -> Result<Vec<(String, Result<CursorRefreshResult, String>)>, String> {
-    let accounts = list_accounts();
-    let active_accounts: Vec<CursorAccount> = accounts
+    let mut active_accounts: Vec<CursorAccount> = list_accounts()
         .into_iter()
         .filter(|account| !is_banned_account(account))
         .collect();
 
+    active_accounts.sort_by(|left, right| {
+        refresh_schedule_ts(left)
+            .cmp(&refresh_schedule_ts(right))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+
+    let total_active = active_accounts.len();
+    if let Some(limit) = max_count {
+        if active_accounts.len() > limit {
+            active_accounts.truncate(limit);
+        }
+    }
+
+    logger::log_info(&format!(
+        "[Cursor Refresh] 最旧优先刷新开始: active={}, this_round={}, max_count={:?}, max_duration_secs={:?}",
+        total_active,
+        active_accounts.len(),
+        max_count,
+        max_duration.map(|d| d.as_secs())
+    ));
+
+    let started = std::time::Instant::now();
     let mut results = Vec::with_capacity(active_accounts.len());
     for account in active_accounts {
+        if let Some(max_dur) = max_duration {
+            if started.elapsed() >= max_dur {
+                logger::log_info(&format!(
+                    "[Cursor Refresh] 达到时限提前结束: elapsed={}ms, done={}",
+                    started.elapsed().as_millis(),
+                    results.len()
+                ));
+                break;
+            }
+        }
         let id = account.id.clone();
+        mark_refresh_attempted(&id);
         let result = refresh_account_async(&id).await;
         results.push((id, result));
     }
     Ok(results)
+}
+
+pub async fn refresh_all_tokens(
+) -> Result<Vec<(String, Result<CursorRefreshResult, String>)>, String> {
+    // 全量仍串行；改为最旧优先，避免每轮只按索引从头扫、旧号长期得不到成功写回。
+    refresh_tokens_stale_first(None, None).await
 }
 
 // ---------------------------------------------------------------------------

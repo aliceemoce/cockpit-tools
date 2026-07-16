@@ -586,6 +586,26 @@
 - **要求**：对照 HR（长驻 `accounts:changed`→`fetchAccounts`、F-010、500ms 防抖、不依赖重启）检查当前源码是否正确恢复 watch 链；区分「源码对」与「UI 长驻换号实测」。
 
 ### HR-20260715-005
+- **原文摘要**：检查一下新账号较少和排序错误的问题（附图 Cursor ALL(1876)、按创建时间）
+- **类型**：故障排查 / 数量与排序
+- **要求**：对照附图与磁盘索引核实 ALL 口径、创建时间排序、相对历史池是否变少；不得用文档代替磁盘。
+
+### HR-20260715-006
+- **原文摘要**：看一下桌面的那个账号自动获取的脚本文件夹，cursor账号的自动获取是不是比我这个cockpit多几个
+- **类型**：对照 / 数据盘口
+- **要求**：对照 `%USERPROFILE%\Desktop\CursorRunningAccounts` 与 Cockpit 运行时 `cursor_accounts.json` 唯一邮箱数，回答桌面侧是否更多。
+
+### HR-20260715-007
+- **原文摘要**：那进入
+- **类型**：执行 / 合并
+- **要求**：将桌面 `CursorRunningAccounts` 中 Cockpit 缺失的邮箱导入运行时池；导入后核对仅桌面剩余为 0。
+
+### HR-20260715-008
+- **原文摘要**：你说的这几个失败是因为什么失败
+- **类型**：说明
+- **要求**：说明 merge_desktop_cursor Rust 编译失败原因（非合并数据本身失败）。
+
+### HR-20260715-005
 - **ԭ��ժҪ**����û��ɾ�ȥ���
 - **����**���ߴ� / ����
 - **Ҫ��**���ƻ�δ�����뵱�����꣨�� Release/�ĵ� SHA ���롢���� UI ���飩������ͣ���ڡ���ѡ��ͷ��������β��������
@@ -621,3 +641,138 @@
 - **原文摘要**：执行 Cockpit 主仓同步巡检与交付（正式版才触发）
 - **类型**：流程任务
 - **要求**：仅正式 release/tag 高于已记版本才合并；保留 fork 行为（含常驻 watch）；合并前/后个人仓代码+exe 可追溯；PR=对照；系统浏览器+UIA 复核。
+
+### HR-20260716-001
+- **原文摘要**：那堆 AppData\Roaming\Cursor\globalStorage、AppData\Roaming\.antigravity_cockpit、~\.antigravity_cockpit 里上百 GB 的 state.vscdb / bak-board / restore_backups，有没有用？
+- **类型**：问询 / 清理口径
+- **要求**：说明各目录用途、可删与必留边界；禁止误删 Cockpit 账号池（cursor_accounts）。
+
+### HR-20260716-002
+- **原文摘要**：确定打开的是 Cockpit Tools；别幻想；关掉 MyDock 再找可见窗口；按规则覆盖/打开/UI检测；用户确认只要打开可见 + UI 检测
+- **类型**：纠正 / 执行 / UI 验收
+- **要求**：
+  1. 打开对象必须是 Cockpit Tools（标题栏「Cockpit Tools」），禁止把其它程序（含任务看板）当打开成功。
+  2. 禁止幻想窗口已打开；须枚举 hwnd/title/class + 截图目检。
+  3. 用户允许关闭 MyDock 后再找可见窗。
+  4. 本次用户裁决范围：打开可见 + UI 检测（不含上传）。
+
+### HR-20260716-003
+- **原文摘要**：另一个窗口明明正确，你这个窗口一直错；你有什么特殊的吗？此前要求对话框在左边。
+- **类型**：纠正 / 布局
+- **要求**：Agent 侧栏位置按工作区存储；cockpit-tools 误为 right，应与其它窗一致为 left；清理 VACUUM 未完成不得再静默强杀导致布局漂移。
+
+### HR-20260716-004
+- **原文摘要**：试过把这个工作区重启还是错；其他工作区都正常，就你这样。
+- **类型**：纠正
+- **要求**：仅改 sidebarLocation 不够；须对齐 unifiedSidebarVisible/auxBarVisible 与 agentLayout.shared.v6，使 cockpit-tools Agent 对话在左侧与其它工作区一致。
+
+### HR-20260716-006
+- **原文摘要**：好了，你去做下一个任务吧。
+- **类型**：继续未完成清理
+- **要求**：完成 bak 再删 + 四库 VACUUM；进度可见；结束后自动开 Cursor+cockpit-tools；恢复左侧 Agent 布局键。
+
+
+### HR-20260716-005
+- **原文摘要**：好了，你去做下一个任务吧（继续完成 state.vscdb 清理）；此前要求可见进度、结束后自动开 Cursor、勿再弄坏左侧布局。
+- **类型**：清理执行
+- **执行结果**：ok=False junk_freed_gb≈551.31 accounts=2036 leftover_bak=['state.vscdb.bak-board-1784165995', 'state.vscdb.bak-board-1784166012', 'state.vscdb.bak-board-1784166037']
+- **compact**：
+  - ok=True 34.49->0.02GB C:\Users\aliceemoce\AppData\Roaming\Cursor\User\globalStorage\state.vscdb err=None
+  - ok=True 19.14->0.02GB C:\Users\aliceemoce\AppData\Roaming\.antigravity_cockpit\instances\cursor\202cb962ac59075b\User\globalStorage\state.vscdb err=None
+  - ok=True 19.04->0.02GB C:\Users\aliceemoce\AppData\Roaming\.antigravity_cockpit\instances\cursor\827ccb0eea8a706c\User\globalStorage\state.vscdb err=None
+  - ok=True 19.56->0.02GB C:\Users\aliceemoce\AppData\Roaming\.antigravity_cockpit\instances\cursor\19ca14e7ea6328a4\User\globalStorage\state.vscdb err=None
+- **layout**：sidebarLocation=left visibility={"auxBarVisible":false,"unifiedSidebarVisible":true}
+- **日志**：C:\Users\aliceemoce\.antigravity_cockpit\logs\vscdb_cleanup_20260716-093600.log
+
+### HR-20260716-007
+- **原文摘要**：最近一次修改应该是为了让没有额度、没有月费的账号能够凸显出来吧？这个做完了吗是说现在账号能够看到月费了吗
+- **类型**：问询 / 完成状态核实
+- **要求**：对照最近提交说明「零月配额凸显」是否已落地；区分「月配额/零额度凸显」与「订阅月费金额展示」；按源码与安装包事实回答，禁止幻想。
+
+### HR-20260716-008
+- **原文摘要**：为什么所有的账号都是零额度的
+- **类型**：故障归因 / 修复
+- **要求**：
+  1. 定位全员「零额度/100%」根因（磁盘解密后的 usage 字段 vs d7cc731b 判定）
+  2. 修复误判：不得用 `included==0` 当零额度；须用 `breakdown.total`
+  3. 修完编译部署并 UI 验收（有额度账号不得全红 100%）
+
+### HR-20260716-009
+- **原文摘要**：你刚才清除缓存的任务做完了吗
+- **类型**：问询 / 完成状态核实
+- **要求**：按磁盘与清理日志事实回答：VACUUM/账号池/残留 bak 是否完成；禁止把半完成标成做完。
+
+### HR-20260716-010
+- **原文摘要**：清理导致左侧所有对话无法打开，必须新对话才能打开；是不是把所有对话记录删除了
+- **类型**：事故核实 / 数据恢复
+- **要求**：
+  1. 按事实说明：清理对 state.vscdb 执行了 DELETE cursorDiskKV（对话气泡/正文所在表），导致旧对话无法打开。
+  2. 禁止再删残留 bak / 卷影副本，直到恢复完成或用户裁决。
+  3. 从清理前 VSS（今日 8:01 / 9:05）尝试恢复对话数据。
+
+### HR-20260716-011
+- **原文摘要**：恢复记录功能成功了，但过程中 H 盘占用极高；是不是内容一直保存在 HDD？HDD 没有 SSD 方便，查怎么回事
+- **类型**：问询 / 存储路径说明
+- **要求**：
+  1. 说明日常对话数据落盘位置（C: SSD vs H: HDD）。
+  2. 说明恢复过程为何写 H:、占用高的原因。
+  3. 说明 `H:\Downloads\cursor_vscdb_recovery` 是临时恢复暂存还是长期主存。
+
+### HR-20260716-012
+- **原文摘要**：好像把整体对话恢复之前的对话给覆盖了；能不能把「这个对话 / 你这个期间的对话」给我且不要覆盖；不能就放弃，别浪费时间
+- **类型**：边界 / 拒收再折腾
+- **要求**：
+  1. 不得再对 live `state.vscdb` 做「合并/再整体恢复」试图同时保住恢复前 UI 对话与恢复期间新对话（会继续覆盖，浪费时间）。
+  2. 「期间对话」以 agent-transcripts 独立存档为准；可只读导出，禁止为拼 UI 侧栏再写库。
+  3. 用户明确：不能就放弃。
+
+### HR-20260716-013
+- **原文摘要**：每月的额度是不是还是没有数字？前端有数字，但之前被告知那是固定额度、不是每月额度；为何让做的每月额度数字还没做出来。参考此前对话。
+- **类型**：问询 / 完成状态核实 / 口径纠正
+- **要求**：
+  1. 对照此前对话（月额度上限 = `breakdown.total`，非 `plan.limit` 美元 0）说明当前是否已显示每月额度数字。
+  2. 区分 Total Usage「已用 / 上限」（月额度）与 On-Demand「$已用 / $上限」（按需固定消费限额）与百分比。
+  3. 按安装包 UI 与磁盘事实回答。
+- **核实（2026-07-16）**：
+  - 源码：`formatCursorPlanQuotaText`（`8a02192c`）在 `plan.limit==0` 时用 `breakdown.total` 显示 `已用 / 上限`。
+  - 安装包：`cockpit-tools.exe` SHA `01397B2F…` ProductVersion **1.3.5**。
+  - UI（PrintWindow）：Total Usage 可见如 `51 / 101`、`58 / 108`；按需为「已禁用」。
+  - 磁盘：约 1007 个账号 `breakdown.total>0` 走月额度数字路径。
+
+### HR-20260716-014
+- **原文摘要**：你确定这个是每日额度吗？去官方看接口含义；另外为什么接口数字差这么多
+- **类型**：口径核实 / 接口说明
+- **要求**：
+  1. 对照 Cursor `usage-summary` 接口字段（含 `billingCycleStart/End`、`breakdown`）说明卡片上 `已用/上限` 是日额度还是计费周期额度。
+  2. 用本机账号数据解释 FREE 号 `breakdown.total` 为何彼此差很多。
+  3. 按接口文档与磁盘事实回答，禁止幻想。
+
+### HR-20260716-015
+- **原文摘要**：就是说他的这个每日额度，有多少的每日额度是0。语音输入法导致我把月输成日了
+- **类型**：纠正 / 统计问询
+- **要求**：
+  1. 用户明确：此前「日」为语音误输入，本意是「月」；后续按月额度口径。
+  2. 回答本机有多少账号月额度（`breakdown.total`）为 0。
+
+### HR-20260716-016
+- **原文摘要**：月额度=0 的账号是死了还是什么情况？为什么有的有月额度有的没有？为什么账号间月额度差很多、几乎没有一模一样、有的能差几十倍
+- **类型**：说明 / 口径核实
+- **要求**：按磁盘字段与 Cursor usage-summary/社区对 bonus 的说明回答；区分封禁死号 vs 本周期无 bonus；解释差异来源。
+
+### HR-20260716-017
+- **原文摘要**：现在这个账号是多久刷新一次一回，会不会出现账号已经没有额度了但是没有刷新更新的情况
+- **类型**：问询 / 刷新滞后说明
+- **要求**：说明 Cursor 配额刷新周期（自动全量/当前号/20s 跟号各做什么）；明确是否会出现额度已尽但 UI/磁盘仍显示旧额度。
+
+### HR-20260716-018
+- **原文摘要**：是不是很多账号会重复扫？串行是不是不按列表顺序、每次都从头扫，所以才有 19 天前的旧数据
+- **类型**：问询 / 刷新顺序核实
+- **要求**：按源码说明全量刷新顺序、是否每轮从头、未完成时是否叠扫、与尾部账号陈旧的关系。
+
+### HR-20260716-019
+- **原文摘要**：所以这个大概是需要进行一个新的版本的
+- **类型**：功能修复 / 发版
+- **要求**：
+  1. 新版本修 Cursor 全量配额刷新「每轮按索引从头串行、大量账号额度长期不更新」。
+  2. 仍串行、不叠扫；不恢复已删的 `cursor_refresh_scheduler` / 并发 batch（HR-20260626-005）。
+  3. 自动刷新改为最旧优先 + 每轮限额/时限；编译部署并 UI 验收。
