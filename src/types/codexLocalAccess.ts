@@ -127,6 +127,7 @@ export interface CodexLocalAccessCollection {
   modelPricings: CodexLocalAccessModelPricing[];
   debugLogs: boolean;
   immediateSseResponse: boolean;
+  maxConcurrentImageRequests: number;
   excludedModels: string[];
   sessionAffinity: boolean;
   sessionAffinityTtlMs: number;

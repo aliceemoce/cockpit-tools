@@ -3905,9 +3905,14 @@ pub fn save_floating_card_position(x: i32, y: i32) -> Result<(), String> {
     Ok(())
 }
 
+/// Must run window recreate on the UI/main thread. Sync invoke handlers run on a
+/// worker pool; building a WebView there hangs on Windows after tray destroy.
 #[tauri::command]
-pub fn show_main_window_and_navigate(app: tauri::AppHandle, page: String) -> Result<(), String> {
-    modules::floating_card_window::show_main_window_and_navigate(&app, &page)
+pub async fn show_main_window_and_navigate(
+    app: tauri::AppHandle,
+    page: String,
+) -> Result<(), String> {
+    modules::floating_card_window::show_main_window_and_navigate_async(app, page).await
 }
 
 #[tauri::command]

@@ -88,6 +88,7 @@ import type {
 import { buildCodexAccountPresentation } from "../presentation/platformAccountPresentation";
 import {
   formatCodexQuotaPoolPercent,
+  formatCodexQuotaPoolWindowLabel,
   summarizeCodexQuotaPool,
 } from "../utils/codexQuotaPool";
 import { filterCodexLocalAccessAccountIds } from "../utils/codexLocalAccessAccounts";
@@ -787,6 +788,8 @@ export function CodexApiServicePage() {
   const [maxRetryIntervalDraft, setMaxRetryIntervalDraft] = useState("3");
   const [disableCoolingDraft, setDisableCoolingDraft] = useState(false);
   const [immediateSseResponseDraft, setImmediateSseResponseDraft] = useState(false);
+  const [maxConcurrentImageRequestsDraft, setMaxConcurrentImageRequestsDraft] =
+    useState("1");
   const [requestLogPage, setRequestLogPage] = useState(1);
   const [requestLogPageSize, setRequestLogPageSize] = useState(() =>
     readStoredRequestLogPageSize(),
@@ -1473,6 +1476,9 @@ export function CodexApiServicePage() {
     );
     setDisableCoolingDraft(collection?.disableCooling ?? false);
     setImmediateSseResponseDraft(collection?.immediateSseResponse ?? false);
+    setMaxConcurrentImageRequestsDraft(
+      String(collection?.maxConcurrentImageRequests ?? 1),
+    );
     setTimeoutDrafts(timeoutDraftsFromValue(collection?.timeouts));
     setSelectedTimeoutPresetId(
       collection?.activeTimeoutPresetId || "long_wait",
@@ -1487,6 +1493,7 @@ export function CodexApiServicePage() {
     collection?.maxRetryIntervalMs,
     collection?.disableCooling,
     collection?.immediateSseResponse,
+    collection?.maxConcurrentImageRequests,
     collection?.timeouts,
     collection?.activeTimeoutPresetId,
   ]);
@@ -2508,6 +2515,21 @@ export function CodexApiServicePage() {
       );
       return;
     }
+    const maxConcurrentImageRequests = parseIntegerDraft(
+      maxConcurrentImageRequestsDraft,
+      1,
+      16,
+    );
+    if (maxConcurrentImageRequests === null) {
+      setError(
+        t("codex.apiService.validation.numberRange", {
+          min: 1,
+          max: 16,
+          defaultValue: "Please enter a number between {{min}} and {{max}}",
+        }),
+      );
+      return;
+    }
     await runAction(
       async () => {
         const next =
@@ -2518,6 +2540,7 @@ export function CodexApiServicePage() {
             maxRetryIntervalMs: maxRetryIntervalSeconds * 1000,
             disableCooling: disableCoolingDraft,
             immediateSseResponse: immediateSseResponseDraft,
+            maxConcurrentImageRequests,
           });
         setState(next);
       },
@@ -3097,11 +3120,11 @@ export function CodexApiServicePage() {
       key: "tokens",
       label: t("codex.localAccess.stats.tokens", "总 Token 数"),
       value: formatCompactNumber(totals?.totalTokens ?? 0),
-      detail: t("codex.localAccess.stats.tokensDetail", {
+      detail: `${t("codex.localAccess.stats.tokensDetail", {
         input: formatCompactNumber(totals?.inputTokens ?? 0),
         output: formatCompactNumber(totals?.outputTokens ?? 0),
         defaultValue: "输入 {{input}} / 输出 {{output}}",
-      }),
+      })} / ${t("codex.localAccess.stats.cached", "缓存")} ${formatCompactNumber(totals?.cachedTokens ?? 0)}`,
     },
     {
       key: "cost",
@@ -3569,10 +3592,18 @@ export function CodexApiServicePage() {
                 ) : (
                   quotaPoolSummary.visiblePlans.map((item) => (
                     <span key={item.key}>
-                      {item.key} ({item.count}) · 5h{" "}
-                      {formatCodexQuotaPoolPercent(item.hourly)} ·{" "}
-                      {t("codex.localAccess.quotaPool.weeklyShort", "周")}{" "}
-                      {formatCodexQuotaPoolPercent(item.weekly)}
+                      {item.key} ({item.count})
+                      {item.windows.length > 0
+                        ? ` · ${item.windows
+                            .map(
+                              (window) =>
+                                `${formatCodexQuotaPoolWindowLabel(
+                                  window.label,
+                                  t("codex.localAccess.quotaPool.weeklyShort", "周"),
+                                )} ${formatCodexQuotaPoolPercent(window.percentage)}`,
+                            )
+                            .join(" · ")}`
+                        : ""}
                     </span>
                   ))
                 )}
@@ -4498,6 +4529,24 @@ export function CodexApiServicePage() {
                     checked={immediateSseResponseDraft}
                     onChange={(event) =>
                       setImmediateSseResponseDraft(event.target.checked)
+                    }
+                    disabled={busy || !collection || gatewayMode !== "sidecar"}
+                  />
+                </label>
+                <label>
+                  <span>
+                    {t(
+                      "codex.apiService.routing.maxConcurrentImageRequests",
+                      "Image requests per account",
+                    )}
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={16}
+                    value={maxConcurrentImageRequestsDraft}
+                    onChange={(event) =>
+                      setMaxConcurrentImageRequestsDraft(event.target.value)
                     }
                     disabled={busy || !collection || gatewayMode !== "sidecar"}
                   />

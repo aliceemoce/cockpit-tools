@@ -110,6 +110,7 @@ const DEFAULT_SESSION_AFFINITY_TTL_MS: i64 = 60 * 60 * 1000;
 const MAX_RETRY_INTERVAL_MIN_MS: u64 = 0;
 const MAX_RETRY_INTERVAL_MAX_MS: u64 = 30 * 1000;
 const DEFAULT_MAX_RETRY_INTERVAL_MS: u64 = 3 * 1000;
+const MAX_CONCURRENT_IMAGE_REQUESTS_PER_ACCOUNT: u16 = 16;
 const LOCAL_ACCESS_TIMEOUT_MIN_MS: u64 = 1_000;
 const LOCAL_ACCESS_TIMEOUT_MAX_MS: u64 = 600_000;
 const LEGACY_STREAM_TOTAL_TIMEOUT_MAX_MS: u64 = 30 * 60 * 1000;
@@ -6434,6 +6435,13 @@ fn open_local_access_logs_db_once(
         "request_kind",
         "request_kind TEXT NOT NULL DEFAULT 'other'",
     )?;
+    if include_service_tier_column {
+        ensure_request_logs_column(
+            &conn,
+            "service_tier",
+            "service_tier TEXT NOT NULL DEFAULT ''",
+        )?;
+    }
     ensure_request_logs_column(&conn, "success", "success INTEGER NOT NULL DEFAULT 0")?;
     ensure_request_logs_column(&conn, "http_status", "http_status INTEGER")?;
     ensure_request_logs_column(
@@ -9001,12 +9009,26 @@ fn build_lan_base_url(port: u16) -> Option<String> {
 }
 
 fn sidecar_config_fingerprint(config_content: &str, manifest_content: &str) -> String {
+    let stable_config_content = stable_sidecar_config_for_fingerprint(config_content);
     let stable_manifest_content = stable_sidecar_manifest_for_fingerprint(manifest_content);
     let mut hasher = Sha1::new();
-    hasher.update(config_content.as_bytes());
+    hasher.update(stable_config_content.as_bytes());
     hasher.update(b"\n--manifest--\n");
     hasher.update(stable_manifest_content.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+fn stable_sidecar_config_for_fingerprint(config_content: &str) -> String {
+    let Ok(mut config) = serde_json::from_str::<Value>(config_content) else {
+        return config_content.to_string();
+    };
+    if let Some(config) = config.as_object_mut() {
+        // CLIProxyAPI watches the config file and applies payload defaults to new
+        // requests. Excluding this hot-reloadable field keeps active streams alive
+        // when the API service speed changes.
+        config.remove("payload");
+    }
+    serde_json::to_string(&config).unwrap_or_else(|_| config_content.to_string())
 }
 
 fn stable_sidecar_manifest_for_fingerprint(manifest_content: &str) -> String {
@@ -10522,6 +10544,7 @@ async fn prepare_sidecar_launch_config_in_dir(
         })).collect::<Vec<_>>(),
         "debugLogs": collection.debug_logs,
         "immediateSseResponse": collection.immediate_sse_response,
+        "maxConcurrentImageRequests": collection.max_concurrent_image_requests,
     });
 
     let mut config = Map::new();
@@ -13413,6 +13436,7 @@ async fn ensure_runtime_loaded_without_start_with_profile_restore(
                 restrict_free_accounts: true,
                 debug_logs: true,
                 immediate_sse_response: false,
+                max_concurrent_image_requests: 1,
                 bound_oauth_account_id: None,
                 bound_oauth_quota_reserve: None,
                 account_ids: Vec::new(),
@@ -14706,6 +14730,7 @@ fn new_empty_local_access_collection() -> Result<CodexLocalAccessCollection, Str
         restrict_free_accounts: true,
         debug_logs: true,
         immediate_sse_response: false,
+        max_concurrent_image_requests: 1,
         bound_oauth_account_id: None,
         bound_oauth_quota_reserve: None,
         account_ids: Vec::new(),
@@ -17344,6 +17369,7 @@ fn new_local_access_collection() -> Result<CodexLocalAccessCollection, String> {
         restrict_free_accounts: true,
         debug_logs: true,
         immediate_sse_response: false,
+        max_concurrent_image_requests: 1,
         bound_oauth_account_id: None,
         bound_oauth_quota_reserve: None,
         account_ids: Vec::new(),
@@ -17783,6 +17809,7 @@ pub async fn update_local_access_routing_options(
     max_retry_interval_ms: u64,
     disable_cooling: bool,
     immediate_sse_response: bool,
+    max_concurrent_image_requests: u16,
 ) -> Result<CodexLocalAccessState, String> {
     ensure_runtime_loaded().await?;
 
@@ -17805,6 +17832,8 @@ pub async fn update_local_access_routing_options(
         max_retry_interval_ms.clamp(MAX_RETRY_INTERVAL_MIN_MS, MAX_RETRY_INTERVAL_MAX_MS);
     collection.disable_cooling = disable_cooling;
     collection.immediate_sse_response = immediate_sse_response;
+    collection.max_concurrent_image_requests = max_concurrent_image_requests
+        .clamp(1, MAX_CONCURRENT_IMAGE_REQUESTS_PER_ACCOUNT);
     collection.updated_at = now_ms();
     save_collection_to_disk(&collection)?;
 
@@ -23627,6 +23656,7 @@ mod tests {
             restrict_free_accounts: true,
             debug_logs: true,
             immediate_sse_response: false,
+            max_concurrent_image_requests: 1,
             bound_oauth_account_id: None,
             bound_oauth_quota_reserve: None,
             account_ids,
@@ -24621,6 +24651,31 @@ wire_api = "responses"
         assert_ne!(
             sidecar_config_fingerprint(config, manifest_b),
             sidecar_config_fingerprint(config, manifest_c)
+        );
+    }
+
+    #[test]
+    fn sidecar_fingerprint_ignores_hot_reloadable_payload_defaults() {
+        let manifest = r#"{"accounts":[],"routingStrategy":"auto"}"#;
+        let standard = r#"{"host":"127.0.0.1","port":58393}"#;
+        let priority = r#"{
+          "host": "127.0.0.1",
+          "port": 58393,
+          "payload": {"default":[{"models":[{"name":"gpt-*","protocol":"openai/responses"}],"params":{"service_tier":"priority"}}]}
+        }"#;
+        let other_port = r#"{
+          "host": "127.0.0.1",
+          "port": 58394,
+          "payload": {"default":[{"models":[{"name":"gpt-*","protocol":"openai/responses"}],"params":{"service_tier":"priority"}}]}
+        }"#;
+
+        assert_eq!(
+            sidecar_config_fingerprint(standard, manifest),
+            sidecar_config_fingerprint(priority, manifest),
+        );
+        assert_ne!(
+            sidecar_config_fingerprint(priority, manifest),
+            sidecar_config_fingerprint(other_port, manifest),
         );
     }
 
@@ -25662,6 +25717,40 @@ wire_api = "responses"
         assert_eq!(loaded.1, long_error);
         assert!(loaded.1.contains("tail-marker"));
         assert_eq!(loaded.2, 7);
+
+        drop(conn);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn request_log_db_adds_service_tier_to_existing_schema() {
+        let dir = make_temp_dir("codex-local-access-service-tier-migration");
+        let db_path = dir.join("request_logs.sqlite");
+        let conn = open_local_access_logs_db_once(&db_path, false).expect("open legacy logs db");
+        conn.execute(
+            "INSERT INTO request_logs (event_key, timestamp, request_id) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["legacy-event", 1_700_000_000_000_i64, "legacy-request"],
+        )
+        .expect("insert legacy request log");
+        let legacy_column_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('request_logs') WHERE name = 'service_tier'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("inspect legacy schema");
+        assert_eq!(legacy_column_count, 0);
+        drop(conn);
+
+        let conn = open_local_access_logs_db_once(&db_path, true).expect("migrate logs db");
+        let migrated: (String, String) = conn
+            .query_row(
+                "SELECT request_id, service_tier FROM request_logs WHERE event_key = ?1",
+                ["legacy-event"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read migrated request log");
+        assert_eq!(migrated, ("legacy-request".to_string(), String::new()));
 
         drop(conn);
         let _ = fs::remove_dir_all(dir);

@@ -6032,6 +6032,40 @@ pub fn focus_current_process_main_window() -> Result<(), String> {
     focus_window_by_pid(std::process::id())
 }
 
+/// Focus a specific HWND (e.g. Tauri `main` window), not the process MainWindowHandle.
+/// After tray destroy, MainWindowHandle often points at the floating card.
+#[cfg(target_os = "windows")]
+pub fn focus_window_by_hwnd(hwnd: isize) -> Result<(), String> {
+    if hwnd == 0 {
+        return Err("HWND_EMPTY".to_string());
+    }
+    let command = format!(
+        r#"Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class Win32FocusHwnd {{
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+}}
+'@; $h = [IntPtr]{hwnd}; [Win32FocusHwnd]::ShowWindowAsync($h, 9) | Out-Null; [Win32FocusHwnd]::SetForegroundWindow($h) | Out-Null;"#
+    );
+    crate::modules::logger::log_info(&format!(
+        "[Focus] Windows PowerShell focus hwnd={}",
+        hwnd
+    ));
+    let output = powershell_output(&["-NoProfile", "-Command", &command])
+        .map_err(|e| format!("调用 PowerShell 失败: {}", e))?;
+    if output.status.success() {
+        crate::modules::logger::log_info(&format!(
+            "[Focus] Windows PowerShell hwnd success hwnd={}",
+            hwnd
+        ));
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!("窗口聚焦失败: {}", stderr.trim()))
+}
+
 #[cfg(target_os = "linux")]
 fn focus_window_by_pid(pid: u32) -> Result<(), String> {
     if let Ok(output) = Command::new("wmctrl").arg("-lp").output() {
