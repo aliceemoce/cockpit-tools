@@ -797,6 +797,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     currentAccountId: storeCurrentAccountId,
     error: storeError,
     fetchAccounts,
+    fetchCurrentAccountId: storeFetchCurrentAccountId,
     deleteAccounts,
     refreshToken,
     refreshAllTokens,
@@ -1294,11 +1295,18 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
       const displayEmail = account ? config.getDisplayEmail(account) : accountId;
       try {
         await injectFn(accountId);
-        setCurrentAccountId(accountId);
+        // Grok：以后端为准（关闭「切号同步官方登录」时不应有「当前账号」）。
+        // 其他平台仍乐观标记当前账号，避免 resolver 短暂为空导致标识闪烁。
+        let resolvedCurrentAccountId: string | null = accountId;
+        if (platformKey === 'grok' && storeFetchCurrentAccountId) {
+          resolvedCurrentAccountId = await storeFetchCurrentAccountId();
+        } else {
+          setCurrentAccountId(accountId);
+        }
         if (platformId) {
           await emitCurrentAccountChanged({
             platformId,
-            accountId,
+            accountId: resolvedCurrentAccountId,
             reason: 'switch',
           });
         }
@@ -1324,7 +1332,16 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
       }
       setInjecting(null);
     };
-  }, [accounts, config, dataService.injectToVSCode, maskAccountText, platformId, platformKey, t]);
+  }, [
+    accounts,
+    config,
+    dataService.injectToVSCode,
+    maskAccountText,
+    platformId,
+    platformKey,
+    storeFetchCurrentAccountId,
+    t,
+  ]);
 
   // ─── Export ───────────────────────────────────────────────────────────
   const handleExportError = useCallback(
@@ -1861,7 +1878,9 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
     try {
       let importedCount = 0;
-      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      // 「粘贴 JSON」页签只走 JSON 导入；Token/API Key 页签仍兼容 JSON 与纯 token
+      const preferJsonOnly = addTab === 'paste';
+      if (preferJsonOnly || trimmed.startsWith('{') || trimmed.startsWith('[')) {
         const imported = await dataService.importFromJson(trimmed);
         importedCount = imported.length;
       } else if (dataService.addWithToken) {
@@ -1900,7 +1919,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
       );
     }
     setImporting(false);
-  }, [dataService, fetchAccounts, platformId, resetAddModalState, t, tokenInput]);
+  }, [addTab, dataService, fetchAccounts, platformId, resetAddModalState, t, tokenInput]);
 
   useEffect(() => {
     if (

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +60,27 @@ func TestCodexClientModelsResponseShape(t *testing.T) {
 	}
 }
 
+func TestCodexSparkUsesCompleteCodexClientCatalogTemplate(t *testing.T) {
+	response := buildCodexClientModelsResponse([]string{codexSparkCatalogTemplateModel, codexSparkModel})
+	models, ok := response["models"].([]map[string]any)
+	if !ok {
+		t.Fatalf("models response should contain a models array: %#v", response["models"])
+	}
+	template := findCodexClientModelForTest(models, codexSparkCatalogTemplateModel)
+	spark := findCodexClientModelForTest(models, codexSparkModel)
+	if template == nil || spark == nil {
+		t.Fatalf("expected template and Spark models, got %#v", models)
+	}
+	if spark["display_name"] != "GPT-5.3 Codex Spark" || spark["visibility"] != "list" || spark["supported_in_api"] != true {
+		t.Fatalf("Spark should be listed as an API model: %#v", spark)
+	}
+	for _, field := range []string{"available_in_plans", "base_instructions", "minimal_client_version", "model_messages", "prefer_websockets"} {
+		if spark[field] == nil || !reflect.DeepEqual(spark[field], template[field]) {
+			t.Fatalf("Spark should inherit %s from the Codex client template: %#v", field, spark[field])
+		}
+	}
+}
+
 func findCodexClientModelForTest(models []map[string]any, slug string) map[string]any {
 	for _, model := range models {
 		if model["slug"] == slug {
@@ -100,6 +122,176 @@ func TestClientCatalogModelsIncludesAutoReviewWithoutPrefix(t *testing.T) {
 	if len(models) != 2 || models[0] != "team/gpt-5.4" || models[1] != codexAutoReviewModel {
 		t.Fatalf("unexpected client catalog models: %#v", models)
 	}
+}
+
+func TestCockpitSelectorRestrictsAuthsToClientAPIKeyAccountScope(t *testing.T) {
+	highQuotaAccount := &accountSpec{
+		ID:       "account-high",
+		AuthID:   "account-high.json",
+		PlanRank: intPtrForTest(500),
+	}
+	scopedAccount := &accountSpec{
+		ID:       "account-scoped",
+		AuthID:   "account-scoped.json",
+		PlanRank: intPtrForTest(300),
+	}
+	selector := &cockpitSelector{
+		manifest: &manifest{
+			RoutingStrategy: "auto",
+			accountByAuthID: map[string]*accountSpec{
+				"account-high.json":   highQuotaAccount,
+				"account-scoped.json": scopedAccount,
+			},
+			accountByID: map[string]*accountSpec{
+				"account-high":   highQuotaAccount,
+				"account-scoped": scopedAccount,
+			},
+		},
+	}
+	apiKey := &apiKeySpec{
+		ID:         "key-scoped",
+		Label:      "Scoped client",
+		AccountIDs: []string{"account-scoped"},
+	}
+	ctx := context.WithValue(context.Background(), clientAPIKeyContextKey, apiKey)
+	auths := []*coreauth.Auth{
+		{ID: "account-high.json", Provider: "codex", Status: coreauth.StatusActive},
+		{ID: "account-scoped.json", Provider: "codex", Status: coreauth.StatusActive},
+	}
+
+	selected, err := selector.Pick(ctx, "codex", "gpt-5.6-sol", cliproxyexecutor.Options{}, auths)
+
+	if err != nil {
+		t.Fatalf("pick scoped auth: %v", err)
+	}
+	if selected.ID != "account-scoped.json" {
+		t.Fatalf("expected only scoped account to be selected, got %q", selected.ID)
+	}
+}
+
+func TestAPIKeyPriorityStateOrdersFallbackAccountsWithoutRestart(t *testing.T) {
+	tempDir := t.TempDir()
+	priorityPath := filepath.Join(tempDir, "api-key-priorities.json")
+	if err := os.WriteFile(priorityPath, []byte(`{"priorityAccountIds":{"key-team":["account-a","account-b"]}}`), 0o600); err != nil {
+		t.Fatalf("write priority state: %v", err)
+	}
+	store := newAPIKeyPriorityStateStore(filepath.Join(tempDir, "manifest.json"))
+
+	accountA := &accountSpec{ID: "account-a"}
+	accountB := &accountSpec{ID: "account-b"}
+	accountC := &accountSpec{ID: "account-c"}
+	selector := &cockpitSelector{
+		manifest: &manifest{
+			accountByAuthID: map[string]*accountSpec{
+				"auth-a": accountA,
+				"auth-b": accountB,
+				"auth-c": accountC,
+			},
+		},
+		priorities: store,
+	}
+	ctx := context.WithValue(context.Background(), clientAPIKeyContextKey, &apiKeySpec{ID: "key-team"})
+	auths := []*coreauth.Auth{{ID: "auth-c"}, {ID: "auth-b"}, {ID: "auth-a"}}
+	ordered := selector.prioritizeAuthsForAPIKey(ctx, auths)
+	if ordered[0].ID != "auth-a" || ordered[1].ID != "auth-b" || ordered[2].ID != "auth-c" {
+		t.Fatalf("priority accounts should lead in order, got %#v", ordered)
+	}
+	fallbackAuths := []*coreauth.Auth{{ID: "auth-c"}, {ID: "auth-b"}}
+	ordered = selector.prioritizeAuthsForAPIKey(ctx, fallbackAuths)
+	if ordered[0].ID != "auth-b" {
+		t.Fatalf("next priority account should lead when the first is unavailable, got %#v", ordered)
+	}
+
+	if err := os.WriteFile(priorityPath, []byte(`{"priorityAccountIds":{"key-team":["account-b","account-a"]}}`), 0o600); err != nil {
+		t.Fatalf("update priority state: %v", err)
+	}
+	updatedAt := time.Now().Add(time.Second)
+	if err := os.Chtimes(priorityPath, updatedAt, updatedAt); err != nil {
+		t.Fatalf("advance priority state timestamp: %v", err)
+	}
+	ordered = selector.prioritizeAuthsForAPIKey(ctx, auths)
+	if ordered[0].ID != "auth-b" || ordered[1].ID != "auth-a" {
+		t.Fatalf("updated priority should apply without a sidecar restart, got %#v", ordered)
+	}
+}
+
+func TestCockpitSessionAffinitySeparatesClientAPIKeyScopes(t *testing.T) {
+	highQuotaAccount := &accountSpec{
+		ID:       "account-high",
+		AuthID:   "account-high.json",
+		PlanRank: intPtrForTest(500),
+	}
+	scopedAccount := &accountSpec{
+		ID:       "account-scoped",
+		AuthID:   "account-scoped.json",
+		PlanRank: intPtrForTest(300),
+	}
+	fallback := &cockpitSelector{
+		manifest: &manifest{
+			RoutingStrategy: "auto",
+			accountByAuthID: map[string]*accountSpec{
+				"account-high.json":   highQuotaAccount,
+				"account-scoped.json": scopedAccount,
+			},
+			accountByID: map[string]*accountSpec{
+				"account-high":   highQuotaAccount,
+				"account-scoped": scopedAccount,
+			},
+		},
+	}
+	selector := &cockpitSessionAffinitySelector{
+		inner: coreauth.NewSessionAffinitySelectorWithConfig(coreauth.SessionAffinityConfig{
+			Fallback: fallback,
+			TTL:      time.Hour,
+		}),
+	}
+	auths := []*coreauth.Auth{
+		{ID: "account-high.json", Provider: "codex", Status: coreauth.StatusActive},
+		{ID: "account-scoped.json", Provider: "codex", Status: coreauth.StatusActive},
+	}
+	opts := cliproxyexecutor.Options{
+		Headers: http.Header{"X-Session-ID": []string{"shared-session"}},
+	}
+	defaultKey := &apiKeySpec{
+		ID:         "default-key",
+		AccountIDs: []string{"account-high", "account-scoped"},
+	}
+	scopedKey := &apiKeySpec{
+		ID:         "scoped-key",
+		AccountIDs: []string{"account-scoped"},
+	}
+
+	first, err := selector.Pick(
+		context.WithValue(context.Background(), clientAPIKeyContextKey, defaultKey),
+		"codex",
+		"gpt-5.4",
+		opts,
+		auths,
+	)
+	if err != nil {
+		t.Fatalf("pick default key auth: %v", err)
+	}
+	if first.ID != "account-high.json" {
+		t.Fatalf("expected default key to select high quota auth, got %q", first.ID)
+	}
+
+	second, err := selector.Pick(
+		context.WithValue(context.Background(), clientAPIKeyContextKey, scopedKey),
+		"codex",
+		"gpt-5.4",
+		opts,
+		auths,
+	)
+	if err != nil {
+		t.Fatalf("pick scoped key auth: %v", err)
+	}
+	if second.ID != "account-scoped.json" {
+		t.Fatalf("expected scoped key not to reuse default key affinity auth, got %q", second.ID)
+	}
+}
+
+func intPtrForTest(value int) *int {
+	return &value
 }
 
 func TestCanonicalModelForClientModelHandlesPrefixAliasAndSnapshot(t *testing.T) {
@@ -2562,6 +2754,15 @@ type fakeRuntime struct {
 	streamCalls  int
 	lastReq      cliproxyexecutor.Request
 	lastOpts     cliproxyexecutor.Options
+
+	alphaSearchStatus  int
+	alphaSearchHeaders http.Header
+	alphaSearchPayload []byte
+	alphaSearchErr     error
+	alphaSearchCalls   int
+	lastAlphaModel     string
+	lastAlphaBody      []byte
+	lastAlphaHeaders   http.Header
 }
 
 func (r *fakeRuntime) Execute(_ context.Context, _ []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
@@ -2569,6 +2770,24 @@ func (r *fakeRuntime) Execute(_ context.Context, _ []string, req cliproxyexecuto
 	r.lastReq = req
 	r.lastOpts = opts
 	return r.response, r.err
+}
+
+func (r *fakeRuntime) CodexAlphaSearch(_ context.Context, model string, body []byte, headers http.Header) (int, http.Header, []byte, error) {
+	r.alphaSearchCalls++
+	r.lastAlphaModel = model
+	r.lastAlphaBody = append([]byte(nil), body...)
+	if headers != nil {
+		r.lastAlphaHeaders = headers.Clone()
+	}
+	status := r.alphaSearchStatus
+	if status == 0 {
+		status = http.StatusOK
+	}
+	payload := r.alphaSearchPayload
+	if payload == nil {
+		payload = []byte(`{"ok":true}`)
+	}
+	return status, r.alphaSearchHeaders, payload, r.alphaSearchErr
 }
 
 func (r *fakeRuntime) ExecuteStream(ctx context.Context, _ []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
@@ -2662,5 +2881,218 @@ func TestRelayAcceptsResponsesPathAppendedToChatCompletionsBase(t *testing.T) {
 		if w.Code == http.StatusNotFound {
 			t.Fatalf("path %s should not be NoRoute 404 (got %d body=%s)", path, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestSanitizeCodexAlphaSearchBodyRemovesLocalRoutingFields(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"query":"hello","prompt_cache_key":"drop-me","prompt_cache_retention":"24h","id":"sess-1"}`)
+	out := sanitizeCodexAlphaSearchBody(body)
+	if strings.Contains(string(out), "prompt_cache_key") || strings.Contains(string(out), "prompt_cache_retention") {
+		t.Fatalf("local routing fields survived: %s", out)
+	}
+	if !strings.Contains(string(out), `"query":"hello"`) || !strings.Contains(string(out), `"id":"sess-1"`) {
+		t.Fatalf("expected search fields preserved: %s", out)
+	}
+}
+
+func TestResolveCodexAlphaSearchURL(t *testing.T) {
+	t.Parallel()
+	if got := resolveCodexAlphaSearchURL(nil); got != defaultCodexAlphaSearchURL {
+		t.Fatalf("nil auth = %q, want default", got)
+	}
+	auth := &coreauth.Auth{Attributes: map[string]string{"base_url": "https://example.test/backend-api/codex/"}}
+	if got := resolveCodexAlphaSearchURL(auth); got != "https://example.test/backend-api/codex/alpha/search" {
+		t.Fatalf("codex base = %q", got)
+	}
+	auth.Attributes["base_url"] = "https://example.test/backend-api"
+	if got := resolveCodexAlphaSearchURL(auth); got != "https://example.test/backend-api/codex/alpha/search" {
+		t.Fatalf("backend-api base = %q", got)
+	}
+}
+
+func TestRequestKindFromPathTreatsAlphaSearchAsText(t *testing.T) {
+	t.Parallel()
+	if got := requestKindFromPath("/v1/alpha/search"); got != "text" {
+		t.Fatalf("requestKindFromPath(/v1/alpha/search) = %q, want text", got)
+	}
+	if got := requestKindFromPath("/backend-api/codex/alpha/search"); got != "text" {
+		t.Fatalf("requestKindFromPath(direct) = %q, want text", got)
+	}
+}
+
+func TestCodexAlphaSearchRouteForwardsToRuntime(t *testing.T) {
+	t.Parallel()
+	runtime := &fakeRuntime{
+		alphaSearchStatus:  http.StatusOK,
+		alphaSearchPayload: []byte(`{"results":[{"title":"ok"}]}`),
+		alphaSearchHeaders: http.Header{"Content-Type": []string{"application/json"}},
+	}
+	m := &manifest{
+		APIKeys: []apiKeySpec{{
+			ID:      "key_1",
+			Label:   "Test key",
+			Key:     "client-key",
+			Enabled: true,
+		}},
+		ModelIDs: []string{"gpt-5.6-sol"},
+	}
+	m.apiKeyByValue = map[string]*apiKeySpec{
+		"client-key": &m.APIKeys[0],
+	}
+	router := (&relayServer{
+		runtime:  runtime,
+		cfg:      &config.Config{},
+		manifest: m,
+		policy:   &requestPolicy{manifest: m},
+	}).router()
+
+	body := `{"query":"OpenAI Codex authentication documentation","model":"gpt-5.6-sol","id":"sess-42"}`
+	req := httptest.NewRequest(http.MethodPost, codexAlphaSearchPath, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer client-key")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Openai-Actor-Authorization", "actor-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if runtime.alphaSearchCalls != 1 {
+		t.Fatalf("alphaSearchCalls = %d, want 1", runtime.alphaSearchCalls)
+	}
+	if runtime.lastAlphaModel != "gpt-5.6-sol" {
+		t.Fatalf("model = %q, want gpt-5.6-sol", runtime.lastAlphaModel)
+	}
+	if !strings.Contains(string(runtime.lastAlphaBody), `"query":"OpenAI Codex authentication documentation"`) {
+		t.Fatalf("body not forwarded: %s", runtime.lastAlphaBody)
+	}
+	if got := runtime.lastAlphaHeaders.Get("X-Session-ID"); got != "sess-42" {
+		t.Fatalf("X-Session-ID = %q, want sess-42", got)
+	}
+	if got := runtime.lastAlphaHeaders.Get("X-Openai-Actor-Authorization"); got != "actor-token" {
+		t.Fatalf("actor header = %q", got)
+	}
+	if !strings.Contains(w.Body.String(), `"results"`) {
+		t.Fatalf("response body missing results: %s", w.Body.String())
+	}
+}
+
+func TestCodexAlphaSearchDirectPathIsRegistered(t *testing.T) {
+	t.Parallel()
+	runtime := &fakeRuntime{alphaSearchPayload: []byte(`{"ok":true}`)}
+	m := &manifest{
+		APIKeys: []apiKeySpec{{ID: "key_1", Key: "client-key", Enabled: true}},
+	}
+	m.apiKeyByValue = map[string]*apiKeySpec{"client-key": &m.APIKeys[0]}
+	router := (&relayServer{
+		runtime:  runtime,
+		manifest: m,
+		policy:   &requestPolicy{manifest: m},
+	}).router()
+
+	req := httptest.NewRequest(http.MethodPost, codexDirectAlphaSearchPath, strings.NewReader(`{"query":"ping"}`))
+	req.Header.Set("Authorization", "Bearer client-key")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code == http.StatusNotFound {
+		t.Fatalf("direct path should not be NoRoute 404: %s", w.Body.String())
+	}
+	if runtime.alphaSearchCalls != 1 {
+		t.Fatalf("alphaSearchCalls = %d, want 1", runtime.alphaSearchCalls)
+	}
+}
+
+func TestCodexAlphaSearchRequiresAPIKey(t *testing.T) {
+	t.Parallel()
+	router := (&relayServer{
+		runtime:  &fakeRuntime{},
+		manifest: &manifest{},
+		policy:   &requestPolicy{manifest: &manifest{}},
+	}).router()
+	req := httptest.NewRequest(http.MethodPost, codexAlphaSearchPath, strings.NewReader(`{"query":"ping"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestResponsesWebsocketRouteRequiresAPIKey(t *testing.T) {
+	t.Parallel()
+	called := false
+	router := (&relayServer{
+		runtime: &fakeRuntime{},
+		manifest: &manifest{
+			APIKeys: []apiKeySpec{{ID: "key_1", Key: "client-key", Enabled: true}},
+			apiKeyByValue: map[string]*apiKeySpec{
+				"client-key": {ID: "key_1", Key: "client-key", Enabled: true},
+			},
+		},
+		policy: &requestPolicy{
+			manifest: &manifest{
+				APIKeys: []apiKeySpec{{ID: "key_1", Key: "client-key", Enabled: true}},
+				apiKeyByValue: map[string]*apiKeySpec{
+					"client-key": {ID: "key_1", Key: "client-key", Enabled: true},
+				},
+			},
+		},
+		responsesWebsocket: func(c *gin.Context) {
+			called = true
+			c.Status(http.StatusSwitchingProtocols)
+		},
+	}).router()
+
+	// Missing key → 401, handler not invoked.
+	req := httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("missing key status = %d, want 401 body=%s", w.Code, w.Body.String())
+	}
+	if called {
+		t.Fatal("websocket handler should not run without API key")
+	}
+
+	// Valid key → handler runs.
+	req = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	req.Header.Set("Authorization", "Bearer client-key")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if !called {
+		t.Fatal("websocket handler should run with valid API key")
+	}
+	if w.Code != http.StatusSwitchingProtocols {
+		t.Fatalf("valid key status = %d, want 101 body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestResponsesWebsocketRouteUnavailableWithoutHandler(t *testing.T) {
+	t.Parallel()
+	m := &manifest{
+		APIKeys: []apiKeySpec{{ID: "key_1", Key: "client-key", Enabled: true}},
+	}
+	m.apiKeyByValue = map[string]*apiKeySpec{"client-key": &m.APIKeys[0]}
+	router := (&relayServer{
+		runtime:  &fakeRuntime{},
+		manifest: m,
+		policy:   &requestPolicy{manifest: m},
+	}).router()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	req.Header.Set("Authorization", "Bearer client-key")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "responses websocket unavailable") {
+		t.Fatalf("body = %s", w.Body.String())
 	}
 }

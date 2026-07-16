@@ -108,7 +108,13 @@ import {
   type CodexResetCreditsSnapshot,
 } from "../types/codex";
 import { filterCodexLocalAccessAccountIds } from "../utils/codexLocalAccessAccounts";
-import { isBlockingCodexQuotaError } from "../utils/codexQuotaError";
+import {
+  extractCodexQuotaErrorCode,
+  extractCodexQuotaErrorStatusCode,
+  isBlockingCodexQuotaError,
+  isVerboseCodexQuotaErrorMessage,
+  summarizeCodexQuotaErrorMessage,
+} from "../utils/codexQuotaError";
 import { buildCodexAccountPresentation } from "../presentation/platformAccountPresentation";
 import {
   readCodexImportSyncApiService,
@@ -1289,6 +1295,10 @@ export function CodexAccountsPage() {
   const [apiKeyUsageDetailAccountId, setApiKeyUsageDetailAccountId] = useState<
     string | null
   >(null);
+  const [quotaErrorDetail, setQuotaErrorDetail] = useState<{
+    accountName: string;
+    message: string;
+  } | null>(null);
   const [editingAccountNoteId, setEditingAccountNoteId] = useState<
     string | null
   >(null);
@@ -3869,10 +3879,6 @@ export function CodexAccountsPage() {
     useState("");
   const [oauthBindingSaving, setOauthBindingSaving] = useState(false);
   const [oauthBindingAutoSwitch, setOauthBindingAutoSwitch] = useState(false);
-  const [
-    oauthBindingUseLocalGateway,
-    setOauthBindingUseLocalGateway,
-  ] = useState(false);
   const [oauthBindingQuotaReserve, setOauthBindingQuotaReserve] =
     useState<CodexLocalAccessOAuthQuotaReserve | null>(null);
   const [oauthBindingQuotaReserveEditorOpen, setOauthBindingQuotaReserveEditorOpen] =
@@ -4180,7 +4186,6 @@ export function CodexAccountsPage() {
       setOauthBindingAccountId(null);
       setOauthBindingSelectedAccountId("");
       setOauthBindingAutoSwitch(false);
-      setOauthBindingUseLocalGateway(false);
       setOauthBindingError(null);
     }
     if (oauthBindingTargetKind === "local_access" && !localAccessCollection) {
@@ -4188,7 +4193,6 @@ export function CodexAccountsPage() {
       setOauthBindingAccountId(null);
       setOauthBindingSelectedAccountId("");
       setOauthBindingAutoSwitch(false);
-      setOauthBindingUseLocalGateway(false);
       setOauthBindingError(null);
     }
   }, [
@@ -5198,7 +5202,6 @@ export function CodexAccountsPage() {
     setOauthBindingAccountId(null);
     setOauthBindingSelectedAccountId("");
     setOauthBindingAutoSwitch(false);
-    setOauthBindingUseLocalGateway(false);
     setOauthBindingQuotaReserve(null);
     setOauthBindingQuotaReserveEditorOpen(false);
     setOauthBindingHourlyReserveDraft("");
@@ -5212,44 +5215,6 @@ export function CodexAccountsPage() {
     resetOAuthBindingModal();
   }, [oauthBindingSaving, resetOAuthBindingModal]);
 
-  const handleOAuthBindingLocalGatewayToggle = useCallback(
-    async (checked: boolean) => {
-      if (!checked) {
-        setOauthBindingUseLocalGateway(false);
-        return;
-      }
-      const isLocalAccessBinding = oauthBindingTargetKind === "local_access";
-      const confirmed = await confirmDialog(
-        isLocalAccessBinding
-          ? t(
-              "codex.localAccess.oauthBinding.imageGenerationConfirm.message",
-              "开启后，API 服务会在本地网关转发普通文本对话前移除 image_generation 工具声明，避免部分供应商报 “Image generation is not enabled”；不会删除 gpt-image 等生图模型。是否继续？",
-            )
-          : t(
-              "codex.api.oauthBinding.localGatewayConfirm.message",
-              "开启后，该 API Key 账号绑定 OAuth 后的普通文本对话会走本地网关，并在转发前移除 image_generation 工具声明，避免部分供应商报 “Image generation is not enabled”；不会删除 gpt-image 等生图模型。是否继续？",
-            ),
-        {
-          title: isLocalAccessBinding
-            ? t(
-                "codex.localAccess.oauthBinding.imageGenerationConfirm.title",
-                "禁用 image_generation 能力",
-              )
-            : t(
-                "codex.api.oauthBinding.localGatewayConfirm.title",
-                "禁用 image_generation 能力",
-              ),
-          okLabel: t("common.confirm", "确认"),
-          cancelLabel: t("common.cancel", "取消"),
-        },
-      );
-      if (confirmed) {
-        setOauthBindingUseLocalGateway(true);
-      }
-    },
-    [oauthBindingTargetKind, t],
-  );
-
   const openOAuthBindingModal = useCallback(
     (account: CodexAccount, options?: { autoSwitch?: boolean }) => {
       if (!isCodexApiKeyAccount(account)) return;
@@ -5262,9 +5227,6 @@ export function CodexAccountsPage() {
           : "",
       );
       setOauthBindingAutoSwitch(options?.autoSwitch ?? false);
-      setOauthBindingUseLocalGateway(
-        Boolean(account.bound_oauth_use_local_gateway),
-      );
       setOauthBindingQuotaReserve(null);
       setOauthBindingQuotaReserveEditorOpen(false);
       setOauthBindingHourlyReserveDraft("");
@@ -5306,9 +5268,6 @@ export function CodexAccountsPage() {
           : "",
       );
       setOauthBindingAutoSwitch(options?.autoSwitch ?? false);
-      setOauthBindingUseLocalGateway(
-        localAccessCollection?.imageGenerationMode === "images_only",
-      );
       setOauthBindingQuotaReserve(quotaReserve);
       setOauthBindingQuotaReserveEditorOpen(false);
       setOauthBindingHourlyReserveDraft("");
@@ -5319,7 +5278,6 @@ export function CodexAccountsPage() {
     [
       boundLocalAccessOAuthAccount,
       isOAuthBindingEligibleAccount,
-      localAccessCollection?.imageGenerationMode,
       localAccessCollection?.boundOauthQuotaReserve,
       setOauthBindingError,
     ],
@@ -5582,7 +5540,6 @@ export function CodexAccountsPage() {
         const nextState =
           await codexLocalAccessService.updateCodexLocalAccessBoundOAuthAccount(
             selectedOAuthBindingAccount.id,
-            oauthBindingUseLocalGateway,
             quotaReserve,
           );
         setLocalAccessState(nextState);
@@ -5590,7 +5547,6 @@ export function CodexAccountsPage() {
         await updateApiKeyBoundOAuthAccount(
           oauthBindingAccount.id,
           selectedOAuthBindingAccount.id,
-          oauthBindingUseLocalGateway,
         );
       }
       setMessage({
@@ -5619,7 +5575,6 @@ export function CodexAccountsPage() {
     oauthBindingAutoSwitch,
     oauthBindingQuotaReserve,
     oauthBindingTargetKind,
-    oauthBindingUseLocalGateway,
     isOAuthBindingEligibleAccount,
     selectedOAuthBindingAccount,
     setMessage,
@@ -5645,7 +5600,7 @@ export function CodexAccountsPage() {
           );
         setLocalAccessState(nextState);
       } else if (oauthBindingAccount) {
-        await updateApiKeyBoundOAuthAccount(oauthBindingAccount.id, null, false);
+        await updateApiKeyBoundOAuthAccount(oauthBindingAccount.id, null);
       }
       setMessage({
         text: t("codex.api.oauthBinding.clearSuccess", "OAuth 绑定已解除"),
@@ -6934,6 +6889,18 @@ export function CodexAccountsPage() {
     page.setAddMessage(t("common.shared.token.importing", "正在导入..."));
     try {
       const imported = await codexService.importCodexFromJson(trimmed);
+      // 待授权账号若带 2FA 秘钥，同步写入本地 MFA 速查
+      for (const account of imported) {
+        const secret = account.two_factor_secret?.trim();
+        if (!secret) continue;
+        setSavedMfaRecords(
+          upsertSavedMfaRecord({
+            secret,
+            accountName: account.email,
+            remark: account.account_note,
+          }),
+        );
+      }
       await fetchAccounts();
       await assignCodexAccountsToTargetGroup(imported);
       if (imported.length > 0) {
@@ -8115,6 +8082,7 @@ export function CodexAccountsPage() {
           displayText: "",
           rawMessage: "",
           isRefreshRequestFailure: false,
+          isVerbose: false,
         };
       }
       const rawMessage = quotaError.message;
@@ -8127,36 +8095,190 @@ export function CodexAccountsPage() {
       const requestErrorMessage = isRefreshRequestFailure
         ? normalizedRawMessage.slice(requestErrorIndex).trim()
         : normalizedRawMessage;
-      const statusCode =
-        rawMessage.match(/API 返回错误\s+(\d{3})/i)?.[1] ||
-        rawMessage.match(/status[=: ]+(\d{3})/i)?.[1] ||
-        "";
-      const errorCode =
-        quotaError.code ||
-        rawMessage.match(/\[error_code:([^\]]+)\]/)?.[1] ||
-        rawMessage.match(/error_code[=:]\s*([^,\]\s]+)/i)?.[1] ||
-        "";
+      const statusCode = extractCodexQuotaErrorStatusCode(rawMessage);
+      const errorCode = extractCodexQuotaErrorCode(
+        rawMessage,
+        quotaError.code,
+      );
       const authFailureText =
         formatCodexAuthFailureMessage(normalizedRawMessage);
-      const displayText =
+      const isVerbose = isVerboseCodexQuotaErrorMessage(normalizedRawMessage);
+      let displayText =
         authFailureText !== normalizedRawMessage
           ? authFailureText
           : errorCode ||
             (isRefreshRequestFailure
               ? t("codex.quotaError.requestFailedManualRetry", {
-                  error: requestErrorMessage,
+                  error: summarizeCodexQuotaErrorMessage(requestErrorMessage),
                 })
-              : normalizedRawMessage);
+              : "");
+      if (!displayText) {
+        if (statusCode) {
+          displayText = t("codex.quotaError.httpStatusSummary", {
+            status: statusCode,
+            defaultValue: "API 返回错误 {{status}}",
+          });
+        } else if (isVerbose) {
+          displayText = t(
+            "codex.quotaError.generic",
+            "配额刷新失败，请稍后重试",
+          );
+        } else {
+          displayText = summarizeCodexQuotaErrorMessage(normalizedRawMessage);
+        }
+      } else if (isVerboseCodexQuotaErrorMessage(displayText)) {
+        // Never keep HTML/body dumps in the card summary.
+        displayText = statusCode
+          ? t("codex.quotaError.httpStatusSummary", {
+              status: statusCode,
+              defaultValue: "API 返回错误 {{status}}",
+            })
+          : summarizeCodexQuotaErrorMessage(displayText);
+      }
       return {
         statusCode,
         errorCode,
         displayText,
         rawMessage,
         isRefreshRequestFailure,
+        isVerbose:
+          isVerbose ||
+          normalizedRawMessage.length > displayText.length + 12 ||
+          normalizedRawMessage !== displayText,
       };
     },
     [formatCodexAuthFailureMessage, t],
   );
+
+  const openQuotaErrorDetail = useCallback(
+    (accountName: string, message: string) => {
+      const text = message.trim();
+      if (!text) return;
+      setQuotaErrorDetail({
+        accountName: accountName.trim() || t("common.unknown", "未知"),
+        message: text,
+      });
+    },
+    [t],
+  );
+
+  const renderQuotaErrorInline = useCallback(
+    (options: {
+      accountName: string;
+      displayText: string;
+      rawMessage: string;
+      isVerbose: boolean;
+      isRefreshNotice?: boolean;
+      showReauthorize?: boolean;
+      onReauthorize?: () => void;
+      table?: boolean;
+    }) => {
+      const {
+        accountName,
+        displayText,
+        rawMessage,
+        isVerbose,
+        isRefreshNotice = false,
+        showReauthorize = false,
+        onReauthorize,
+        table = false,
+      } = options;
+      const showDetailAction =
+        isVerbose ||
+        rawMessage.trim().length > displayText.trim().length + 12 ||
+        rawMessage.trim() !== displayText.trim();
+      return (
+        <div
+          className={`quota-error-inline${table ? " table" : ""}${
+            isRefreshNotice ? " quota-refresh-notice" : ""
+          }`}
+        >
+          {isRefreshNotice ? (
+            <Info size={table ? 12 : 14} />
+          ) : (
+            <CircleAlert size={table ? 12 : 14} />
+          )}
+          <span className="quota-error-inline-text" title={displayText}>
+            {displayText}
+          </span>
+          {showDetailAction && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline quota-error-action"
+              onClick={() => openQuotaErrorDetail(accountName, rawMessage)}
+              title={t("codex.quotaError.viewDetails", "查看详情")}
+            >
+              {t("codex.quotaError.viewDetails", "查看详情")}
+            </button>
+          )}
+          {showReauthorize && onReauthorize && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline quota-error-action"
+              onClick={onReauthorize}
+              title={t("common.shared.addModal.oauth", "OAuth 授权")}
+            >
+              {t("common.shared.addModal.oauth", "OAuth 授权")}
+            </button>
+          )}
+        </div>
+      );
+    },
+    [openQuotaErrorDetail, t],
+  );
+
+  const renderQuotaErrorDetailModal = () => {
+    if (!quotaErrorDetail) return null;
+    return createPortal(
+      <div className="modal-overlay">
+        <div
+          className="modal-content codex-quota-error-detail-modal"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="modal-header">
+            <h3>{t("codex.quotaError.detailTitle", "错误详情")}</h3>
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setQuotaErrorDetail(null)}
+              aria-label={t("common.close", "关闭")}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="modal-body codex-quota-error-detail-body">
+            <div className="codex-quota-error-detail-account">
+              {quotaErrorDetail.accountName}
+            </div>
+            <pre className="codex-quota-error-detail-text">
+              {quotaErrorDetail.message}
+            </pre>
+          </div>
+          <div className="modal-footer">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                void navigator.clipboard
+                  ?.writeText(quotaErrorDetail.message)
+                  .catch(() => undefined);
+              }}
+            >
+              {t("common.copy", "复制")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setQuotaErrorDetail(null)}
+            >
+              {t("common.close", "关闭")}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+  };
 
   const shouldOfferReauthorizeAction = useCallback(
     (quotaErrorMeta: {
@@ -10386,7 +10508,7 @@ export function CodexAccountsPage() {
             {hasQuotaError && (
               <span
                 className={`codex-status-pill ${isQuotaRefreshNotice ? "quota-refresh" : "quota-error"}`}
-                title={accountIssueMeta.rawMessage}
+                title={accountIssueMeta.displayText}
               >
                 {isQuotaRefreshNotice ? (
                   <Info size={12} />
@@ -10492,28 +10614,17 @@ export function CodexAccountsPage() {
                 renderApiKeyUsagePanel(account, apiKeyUsageProvider)
               ) : (
               <>
-                {!isPendingOAuthAccount && hasQuotaError && (
-                  <div
-                    className={`quota-error-inline ${isQuotaRefreshNotice ? "quota-refresh-notice" : ""}`}
-                    title={accountIssueMeta.rawMessage}
-                  >
-                    {isQuotaRefreshNotice ? (
-                      <Info size={14} />
-                    ) : (
-                      <CircleAlert size={14} />
-                    )}
-                    <span>{accountIssueMeta.displayText}</span>
-                    {showReauthorizeAction && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => openCodexAddModal("oauth", account)}
-                        title={t("common.shared.addModal.oauth", "OAuth 授权")}
-                      >
-                        {t("common.shared.addModal.oauth", "OAuth 授权")}
-                      </button>
-                    )}
-                  </div>
-                )}
+                {!isPendingOAuthAccount &&
+                  hasQuotaError &&
+                  renderQuotaErrorInline({
+                    accountName: presentation.displayName,
+                    displayText: accountIssueMeta.displayText,
+                    rawMessage: accountIssueMeta.rawMessage,
+                    isVerbose: accountIssueMeta.isVerbose,
+                    isRefreshNotice: isQuotaRefreshNotice,
+                    showReauthorize: showReauthorizeAction,
+                    onReauthorize: () => openCodexAddModal("oauth", account),
+                  })}
                 {cockpitApiAccountBalanceText && (
                   <div className="codex-account-balance-line">
                     <span>
@@ -11318,7 +11429,29 @@ export function CodexAccountsPage() {
             {localAccessState?.lastError && (
               <div className="quota-error-inline">
                 <CircleAlert size={14} />
-                <span>{localAccessState.lastError}</span>
+                <span
+                  className="quota-error-inline-text"
+                  title={summarizeCodexQuotaErrorMessage(
+                    localAccessState.lastError,
+                  )}
+                >
+                  {summarizeCodexQuotaErrorMessage(localAccessState.lastError)}
+                </span>
+                {isVerboseCodexQuotaErrorMessage(localAccessState.lastError) && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline quota-error-action"
+                    onClick={() =>
+                      openQuotaErrorDetail(
+                        t("codex.localAccess.title", "API 服务"),
+                        localAccessState.lastError || "",
+                      )
+                    }
+                    title={t("codex.quotaError.viewDetails", "查看详情")}
+                  >
+                    {t("codex.quotaError.viewDetails", "查看详情")}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="folder-icon-btn codex-local-access-error-action"
@@ -11885,7 +12018,7 @@ export function CodexAccountsPage() {
                 <div className="account-sub-line">
                   <span
                     className={`codex-status-pill ${isQuotaRefreshNotice ? "quota-refresh" : "quota-error"}`}
-                    title={accountIssueMeta.rawMessage}
+                    title={accountIssueMeta.displayText}
                   >
                     {isQuotaRefreshNotice ? (
                       <Info size={12} />
@@ -12002,28 +12135,18 @@ export function CodexAccountsPage() {
                     </span>
                   )}
                 </div>
-                {!isPendingOAuthAccount && hasQuotaError && (
-                  <div
-                    className={`quota-error-inline table ${isQuotaRefreshNotice ? "quota-refresh-notice" : ""}`}
-                    title={accountIssueMeta.rawMessage}
-                  >
-                    {isQuotaRefreshNotice ? (
-                      <Info size={12} />
-                    ) : (
-                      <CircleAlert size={12} />
-                    )}
-                    <span>{accountIssueMeta.displayText}</span>
-                    {showReauthorizeAction && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => openCodexAddModal("oauth", account)}
-                        title={t("common.shared.addModal.oauth", "OAuth 授权")}
-                      >
-                        {t("common.shared.addModal.oauth", "OAuth 授权")}
-                      </button>
-                    )}
-                  </div>
-                )}
+                {!isPendingOAuthAccount &&
+                  hasQuotaError &&
+                  renderQuotaErrorInline({
+                    accountName: presentation.displayName,
+                    displayText: accountIssueMeta.displayText,
+                    rawMessage: accountIssueMeta.rawMessage,
+                    isVerbose: accountIssueMeta.isVerbose,
+                    isRefreshNotice: isQuotaRefreshNotice,
+                    showReauthorize: showReauthorizeAction,
+                    onReauthorize: () => openCodexAddModal("oauth", account),
+                    table: true,
+                  })}
                 {isPendingOAuthAccount && (
                   <div className="quota-error-inline table quota-refresh-notice">
                     <Info size={12} />
@@ -13535,6 +13658,7 @@ export function CodexAccountsPage() {
 
       {renderCockpitApiServicePanel()}
       {renderApiKeyUsageDetailModal()}
+      {renderQuotaErrorDetailModal()}
 
       {activeTab === "overview" && (
         <>
@@ -15581,41 +15705,6 @@ export function CodexAccountsPage() {
                                 </button>
                               )}
                             </div>
-                          )}
-                          {oauthBindingTargetKind && (
-                            <label
-                              className="codex-oauth-binding-gateway-toggle"
-                              title={t(
-                                oauthBindingTargetKind === "local_access"
-                                  ? "codex.localAccess.oauthBinding.imageGenerationTooltip"
-                                  : "codex.api.oauthBinding.localGatewayTooltip",
-                                oauthBindingTargetKind === "local_access"
-                                  ? "开启后，API 服务会在本地网关转发普通文本对话前移除 image_generation 工具声明；不会删除生图模型。"
-                                  : "开启后，绑定 OAuth 的 API Key 文本对话会走本地网关，并在转发前移除 image_generation 工具声明；不会删除生图模型。",
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={oauthBindingUseLocalGateway}
-                                onChange={(event) =>
-                                  void handleOAuthBindingLocalGatewayToggle(
-                                    event.target.checked,
-                                  )
-                                }
-                                disabled={oauthBindingSaving}
-                              />
-                              <span
-                                className="codex-oauth-binding-checkbox-ui"
-                                aria-hidden="true"
-                              />
-                              <span>
-                                {t(
-                                  "codex.api.oauthBinding.useLocalGateway",
-                                  "禁用 image_generation",
-                                )}
-                              </span>
-                              <Info size={14} />
-                            </label>
                           )}
                         </div>
                       </div>

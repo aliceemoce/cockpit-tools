@@ -7,6 +7,52 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.5] - 2026-07-16
+
+### Added
+
+- **Codex API Service proxies Responses Lite web search**: the local gateway adds `/v1/alpha/search` (plus a direct-compatible path), schedules an OAuth account, and forwards to ChatGPT Codex alpha search so Lite web.run search works again.
+- **Codex API Service supports Responses WebSocket**: the gateway exposes a `GET /v1/responses` upgrade route; local API Service profiles advertise WebSocket support so the client can use WS instead of always falling back to SSE.
+- **Grok CLI supports full account export and re-import**: export keeps credentials for recovery; add-account tabs match Codex (OAuth · Token / JSON · API Key · Local import) so you can paste official `auth.json` or Cockpit export JSON, or pick a JSON file.
+- **Codex quota error cards show a short summary with a details modal**: cards keep a compact summary (including HTTP status summaries); full error bodies (including HTML/body dumps) open via View Details so long failures no longer blow up the list layout.
+
+### Fixed
+
+- **Fixed model pricing settings that could not be saved**: non-long-context models (such as `gpt-5.4-mini`) may leave the long-context token threshold empty; save is blocked only when the value is invalid, or long-context price tiers are set without a valid threshold. Thanks @andrew05060414 for #1592.
+- **Fixed WorkBuddy daily check-in status not matching the official client**: status queries prefer the official Buddy fuel-station endpoint `checkin-activity-status` (with fallback to `checkin-status`); the UI state machine matches the official available / claimed / inactive flow; accounts with `today_checked_in` show as Claimed, and a successful claim updates local state first then refreshes in the background so success no longer stays Not Checked In or Unavailable.
+- **Fixed deleting a Grok account that was bound to an instance**: delete now clears default/multi-instance bindings automatically, so you no longer need to unbind first.
+- **Fixed legacy “disable image generation” settings that left image gen clickable while the gateway hid `gpt-image-2`**: collection-level `Disabled` / `ImagesOnly` now migrate to `Enabled`, matching the 1.3.4 removal of the disable UI.
+- **Fixed OAuth-backed local API Responses Lite requests that incorrectly injected hosted tools and failed or broke image generation**: HTTP, SSE, and WebSocket paths filter unsupported hosted tools while keeping client-executed tools. Thanks @kin001 for #1577.
+- **Fixed WorkBuddy multi-instance data directories not matching the official layout**: defaults resolve and create the official `~/.workbuddy` config root and `~/.workbuddy/app` Electron userData layout, and start instances with the correct `WORKBUDDY_CONFIG_DIR` / `WORKBUDDY_USER_DATA_DIR`.
+- **Fixed Windows app paths showing the `\\?\` extended prefix**: load, detect, save, and Settings display now strip `\\?\` / `\\?\UNC\` so users see normal drive-letter or UNC paths.
+
+---
+## [1.3.4] - 2026-07-15
+
+### Added
+
+- **Codex API Service Client Keys support per-key account routing and model policy**: each key can inherit the service account pool or use a custom ordered pool with a pinned priority account; keys can restrict allowed/excluded models and model prefixes; OAuth-bound and provider-gateway keys keep a fixed account scope instead of inheriting or clearing it; the sidecar enforces the selected pool and isolates session affinity per client key. Thanks @kin001 for #1470.
+- **Client Keys show per-key usage for today, this week, and this month**: each key surfaces request count, compact token totals, success rate, and estimated cost using local calendar boundaries (local midnight, Monday, and the first day of the month). Thanks @kin001 for #1470.
+- **Codex API Service supports random account routing**: new requests can distribute across eligible accounts while preserving session affinity, cooldown, account health, quota reserve, and model eligibility rules.
+- **Optional immediate SSE 200 responses for the sidecar gateway**: commits `200 OK` and an `: accepted` SSE comment before the upstream stream opens; disabled by default, with upstream failures reported as SSE errors after headers are committed.
+- **Codex API Service request logs can show and filter by multi-instance source**: instances bound to the local API service record a source marker; the log list displays the instance name, and the filter is a dropdown of instance names (no need to remember directory IDs).
+
+### Changed
+
+- **Removed the `image_generation` disable feature**: the previous request filtering and OAuth local-gateway workaround for providers returning `Image generation is not enabled` are no longer used; image generation remains available through the normal Codex API path.
+- **Devin/Windsurf no longer participates in background token keepalive**: Cockpit will not automatically refresh and write back the local login without an explicit user action, avoiding background macOS Keychain prompts; manual account switching and bound-instance startup still inject credentials when requested.
+
+### Fixed
+
+- **Fixed Grok CLI still showing a “current” badge when “sync official login on switch” is off**: with the switch off, account switches no longer track a global current account and the overview no longer shows the current badge; with it on, official login sync and the current badge still work as before.
+- **Fixed OAuth-backed Codex API Service requests failing or losing image tools on Responses Lite models**: regular Lite requests now filter unsupported hosted tools, while image-generation requests automatically use full Responses and preserve hosted `image_generation`, `image_gen.imagegen`, and `image_gen` namespace tools; pure API-key service behavior remains unchanged.
+- **Fixed GPT-5.3-Codex-Spark missing from model selection and profile catalogs**: Spark now appears in the model selector and generated Codex profile catalogs, with quota progress available when the account reports it. Thanks @kin001 for #1470.
+- **Fixed OAuth binding conflicting with Codex API Service image-generation settings and inconsistent local/third-party projection**: OAuth-bound profiles use `requires_openai_auth = true` so the OAuth login remains active; local loopback API Service always allows image-generation projection; third-party providers only write actor and related headers when the model catalog explicitly includes `gpt-image-2`, and clear stale actor headers when it does not, so the client does not open image gen and hang on Confirming; multi-instance profiles and takeover checks follow the same rules.
+- **Fixed the “copy source instance” dropdown failing to open or closing immediately when creating multi-instance profiles**: the control now uses a stable portal-mounted select so parent re-renders no longer tear down the open menu.
+- **Fixed Codex accounts failing to batch-import or batch-delete under special Windows mount paths**: batch operations are no longer blocked when their task snapshot directory cannot be created, and existing directories are no longer recreated.
+- **Fixed Codex wakeup tasks still listing accounts after they were deleted**: deleting accounts now prunes matching `account_ids` from wakeup tasks; load / save / run also drop missing accounts; tasks with no remaining accounts are removed; cards, edit drafts, and test lists only show accounts that still exist.
+
+---
 ## [1.3.2] - 2026-07-15
 
 ### Highlights
@@ -139,10 +185,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Fixed legacy Antigravity launch fallback opening Antigravity IDE on Windows**: taskbar shortcut matching now excludes Antigravity IDE when Cockpit is launching the legacy Antigravity app. Thanks @khanra17 for #1453.
 
 ---
+## [1.1.10] - 2026-07-11
+
+### Fixed
+
+- **Client Key usage ranges now follow local calendar boundaries**: daily usage starts at local midnight, weekly usage starts Monday at local midnight, and monthly usage starts on the first day of the month instead of using rolling 24-hour, 7-day, and 30-day windows. The range labels now read Today, This week, and This month.
+
+---
+## [1.1.9] - 2026-07-11
+
+### Changed
+
+- **Client Key routing and usage are easier to scan**: the shared usage range now sits above the service totals, identifies its rolling 24-hour, 7-day, or 30-day window, and each Key separates its routing-account scope from labeled request, token, success-rate, and estimated-cost metrics.
+
+### Fixed
+
+- **Refreshing statistics now expires old events from rolling windows**: state snapshots recompute all three time windows against the current time, while switching the range updates the already-loaded view immediately without waiting for another backend reload.
+
+---
+## [1.1.8] - 2026-07-11
+
+### Fixed
+
+- **Client Key usage now refreshes reliably when switching daily, weekly, and monthly ranges**: range changes reload the latest local statistics and rebuild each Key's request, token, success-rate, and cost view from the selected window.
+- **Local Windows packages now include a sidecar compatible with OAuth quota-reserve startup arguments**.
+
+---
+## [1.1.7] - 2026-07-10
+
+### Changed
+
+- **Compact per-client-key token usage**: client-key rows now render token totals with the same compact notation as service totals, such as `56.7M`.
+
+---
+## [1.1.6] - 2026-07-10
+
+### Fixed
+
+- **Fixed Codex API Service compatibility snippets duplicating `/v1`**: OpenAI and Responses now use the service's existing `/v1` base URL, while Anthropic, Gemini, and Ollama receive the correct service-root paths.
+
+---
 ## [1.1.5] - 2026-07-11
 
 ### Added
 
+- **Codex API Service client keys can use independent account-pool scopes**: each key can inherit the service pool or select its own OAuth and API Key accounts, with the selected scope shown alongside that key's request, token, success-rate, and estimate totals.
 - **Codex API Service can protect quota on its bound OAuth account**: separate 1-100% reserves can be configured for the 5-hour and weekly windows; HTTP, WebSocket, embedded-gateway, sidecar, and session-affinity routing remove only the bound account from the eligible pool when either remaining quota reaches its reserve, while missing, stale, invalid, or failed quota snapshots fail closed.
 - **OAuth quota protection is continuously monitored and visible**: while API Service is running, the bound account quota refreshes every minute and after successful use with request throttling; sidecar mode hot-reloads the dynamic quota snapshot without restarting, and the Codex account card shows the effective window, remaining quota, and reserve when quota is near or below the configured threshold.
 
@@ -155,6 +242,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Fixed scoped client keys bypassing their selected account pool at the sidecar**: account IDs are now carried into the sidecar manifest and enforced before credential selection.
+- **Fixed session affinity leaking an account choice between client API keys**: affinity cache entries are now namespaced by client key, so different keys may safely use the same downstream session identifier without crossing account-pool scopes.
+- **Fixed the release metadata version drift**: frontend, Tauri, and lockfile package versions now stay aligned.
 - **Fixed Codex 5.6 Responses Lite request compatibility**: `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` now advertise and enforce disabled parallel tool calls, the Responses Lite header is preserved across `/responses`, `/responses/compact`, HTTP, and WebSocket paths, and non-Lite models retain an explicit `parallel_tool_calls: false` setting.
 - **Fixed Windows official ChatGPT launch-path migration**: discovery now prefers the ChatGPT Store package over legacy Codex packages, migrates saved official Codex Store paths when ChatGPT is available, rejects keyword-matching helper executables, and preserves custom executable paths.
 - **Fixed invalid Codex quota responses being treated as fully available**: missing or out-of-range `used_percent` values and account-preparation failures are persisted as refresh errors instead of producing misleading remaining quota or bypassing quota protection.
