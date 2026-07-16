@@ -77,7 +77,7 @@ impl Default for CursorAccountIndex {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CursorImportPayload {
     pub email: String,
     pub auth_id: Option<String>,

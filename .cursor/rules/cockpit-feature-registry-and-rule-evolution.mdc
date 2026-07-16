@@ -1,0 +1,146 @@
+---
+description: Cockpit 特征注册表（能用/不能用/需要/不需要）+ 规则主动维护与 Plan 方针
+alwaysApply: true
+---
+
+# Cockpit 特征注册表与规则演进
+
+## 1. 四维分类（会话必读）
+
+| 维度 | 含义 | Agent 行为 |
+|------|------|------------|
+| **能用** | 用户实测或日志/SHA/代码核实过的正确行为与 exe | 部署、验收、对比以此为锚 |
+| **不能用** | 实测失败、用户拒收、或代码/日志证伪的版本与行为 | 禁止再当基线部署或宣称「已修复」 |
+| **需要** | 用户明确要求保留或待实现的能力 | 改代码/编译前对照，不得删 |
+| **不需要** | 用户明确拒收或未纳入 release 的能力 | 禁止擅自加回或当验收项 |
+
+**优先级**：用户当场纠正 > 用户对历史冲突的裁决 > **历史要求**（`.cursor/user-history-requirements.md`，见 `user-history-requirements.mdc`）> 本规则注册表 > `docs/FORK-DESIGN-ARCHIVE.md` > `project-brief.md` > `AGENTS.md` / `docs/CURSOR-FORK-SCOPE.md`（若冲突，**立即改注册表并同步旧文档**，不得沿用过期基线）。
+
+---
+
+## 2. 当前已核实特征（2026-07-15，v1.3.2 同步 — 能用）
+
+### 能用
+
+| 项 | 证据 |
+|----|------|
+| **当前最新安装/运行构建** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`D12C81F3…`**，ProductVersion **1.3.6**；Cursor 配额自动刷新=最旧优先串行批次（每轮 120 / 8 分钟）；日志含 `max_count=Some(120)` + `最旧优先刷新开始`；UIA：`Cockpit Tools` Cursor `ALL (2049)` |
+| **上一可用 1.3.5** | 部署前本机 1.3.5；本次覆盖为 1.3.6 |
+| **历史可用 1.3.2** | SHA **`3374C285…`**；分支 `sync-upstream-v1.3.2-20260715` @ `a6efd371`；含 `sync_cursor_local_watch` + `accounts:changed` listen；PR #7 |
+| **上一可用 1.3.0 redo** | SHA **`DEA43F62…`**；分支 `sync-upstream-v1.3.0-20260714-redo`；Release 同名 |
+| **合并前可用源码锚点** | `origin/fork-20260705` @ **`918980e9`** |
+| **合并前 exe 资产** | Draft release `fork-20260705-baseline`（exe SHA **`83E85D7F…`**） |
+| **历史 Cursor 验收包** | `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` SHA **`F5256511…`** |
+| 默认实例切号 | `close_cursor(仅默认 profile)`，**不全杀**其它 Cursor |
+| 多开 + 默认 **可同时存在** | 默认 `close_cursor`；多开 `close_cursor_profile_strict` |
+| 配额 transient | 网络/超时失败 **不写盘** |
+| 满额换号 + Kh 裸 JWT | `pick_full_quota_account`、`nirvana_kh_auth_tokens` |
+| 常驻本地跟号 | `provider_token_keeper::sync_cursor_local_watch` 每 20s → `sync_local_cursor_from_default_profile` → emit `accounts:changed`；`useProviderAccountsPage` listen |
+
+### 不能用
+
+| 项 | 原因 |
+|----|------|
+| **`1A0EC65E…` / `sync-upstream-v1.3.0-20260714(-full)` 拼装交付** | 用户拒收（HR-003/004/007）：整棵换上游 `src/`（`96ea7855`）；角标露馅=既非 fork 亦非线上 |
+| **`CB525188…`** staging r2 | Agent 误标；非用户验收包 |
+| **`94B7D986…`** / **`316B5F2A…`** 等中间桌面包 | 未合 transient 或含 `7761f453` 回归 |
+| **`7761f453`** | 无条件写 `quota_query_last_error` + 全局 listener |
+| **`9E0E625C…`** | 用户拒收 |
+| 纯 **`eba93695`** 默认切号 | `close_cursor_nirvana_style` 全杀 Cursor |
+
+### 需要
+
+- 默认实例启动 **保留** 其它 Cursor 进程
+- 无命令行闪屏
+- 多开 profile 隔离 + **每次 Play/多开强制轮换**（`pick_cursor_rotation_account`）
+- transient 失败不写盘；auth 类失败可写 `quota_query_last_error`
+- **邮箱去重**（`e9d5182f` 口径；HR-20260626-004）
+- upstream 同步必须 **真用** 允许的 fork tip + 正式 tag tip；禁止第三套拼装
+- **常驻自动刷新**：`sync_cursor_local_watch` + `accounts:changed` listen（合并后须保留调用点）
+- 提到**当前最新构建**默认 SHA `3374C285…` / 分支 `sync-upstream-v1.3.2-20260715`
+- 提到**历史桌面验收包**默认 `Cockpit-nirvana-token-test.exe`（`F5256511…`）
+- 提到**合并前 fork 锚点**默认 `fork-20260705` @ `918980e9`
+
+### 不需要
+
+- 默认实例 **taskkill 全部 Cursor**（`close_cursor_nirvana_style` 作默认 Play 降级；HR-20260626-005 已删降级路径）
+- 未说明就覆盖桌面 `Cockpit-nirvana-token-test.exe`
+- `7761f453` 式全局 `accounts:changed` 监听
+- **额度池 workos/sub 合并**（HR-20260626-004）
+- `cursor_refresh_scheduler` / batch 并发全量刷新（HR-20260626-005 删除）
+- UI「会话已过期」与「配额查询失败」分流（HR-20260626-005 删除）
+
+### 待修（代码层，非 exe 特征）
+
+- 合并后 **GUI** Play/多开/NVIDIA 点验；release 打包（NSIS 下载失败时需重试）
+
+---
+
+## 3. 主动 Plan（任务开工前）
+
+涉及 **编译、部署、切号、多开、验收 exe** 时，回复中须含简短 **Plan**（可嵌在 📋 项目理解后）：
+
+1. 对照本节 **能用/不能用** — 目标 exe 的 SHA、路径、行为
+2. 对照 **需要/不需要** — 本次改动是否触碰拒收项
+3. 完成条件 — 日志字段 / 进程行为 / 脚本 JSON，写可观测标准
+4. 若用户刚纠正过特征 — 本节是否已更新（未更新则先更新再动手）
+
+复杂任务先 Plan 再改代码；用户仅问问题时 Plan 可一行带过。
+
+---
+
+## 4. 规则演进方针（发现即改，禁止只记脑子里）
+
+### 必须写入或修改规则的情况
+
+- 用户纠正：原「能用」变「不能用」，或反之
+- 新 exe SHA / 路径 / 行为经磁盘或日志核实
+- 新 **需要** 或 **不需要** 能力被用户明确
+- 发现 `AGENTS.md`、`CURSOR-FORK-SCOPE.md`、`project-brief` 与实测矛盾
+- 重复犯的 Agent 错误（版本搞错、混跑 exe、列表污染）
+
+### 操作顺序
+
+1. **先改** 本文件对应小节（能用/不能用/需要/不需要 + 日期）
+2. **再改** 冲突文档（`AGENTS.md`、`docs/CURSOR-FORK-SCOPE.md`）一行指向或同步基线
+3. **可选** 拆出专注规则（`.cursor/rules/*.mdc`），单条 <80 行；本文件保留索引
+4. **`project-brief.md`** 本会话结论引用注册表，不重复编造版本故事
+5. 重要架构决策：`agent-context` → `log_decision`（若 MCP 可用）
+
+### 禁止（数据）
+
+- **禁止**用 Python/脚本 HTTP 探测批量写入 `quota_query_last_error`（会误标「会话已过期」）；列表恢复只许从 **credentials 镜像 / Cockpit 自动备份** 还原字段，或让 Cockpit 自身刷新写盘
+- `restore_cursor_quota_list.py` 已删除；误跑后用 `scripts/revert_restore_cursor_quota_list.py` 从镜像回滚
+- 无 SHA/日志/代码证据就改「能用/不能用」
+- 用户拒收后仍把同一特性标为「需要」或继续部署
+
+---
+
+## 5. Cursor 运行时路径（2026-07-02，HR-20260702-001）
+
+| 正确 | 错误 |
+|------|------|
+| `%USERPROFILE%\.antigravity_cockpit\cursor_accounts\` | `%USERPROFILE%\.antigravity_cockpit\data\cursor_accounts\` |
+| 索引 `%USERPROFILE%\.antigravity_cockpit\cursor_accounts.json` | 把 `data\cursor_accounts` 当运行时池（会系统性少数百～上千） |
+
+细则见 `.cursor/rules/cockpit-cursor-data-paths.mdc`。
+
+## 6. 维护入口
+
+- **主注册表**：本文件 §2（随纠正增量更新，注明日期）
+- **会话快照**：`.cursor/project-brief.md`
+- **release 边界**：`docs/CURSOR-FORK-SCOPE.md`（与 §2 冲突时以 §2 为准并回改文档）
+- **设计档案**：`docs/FORK-DESIGN-ARCHIVE.md`（长期功能设计档案；每次改动前先读，实际修改后按功能增量维护）
+- **Codex 规则镜像**：`.codex/rules/fork-design-archive-maintenance.md`（必须通过 `AGENTS.md`、自动化 prompt 或实际读取才对 Codex 可靠）
+
+---
+
+## 6. 设计档案协议
+
+- `docs/FORK-DESIGN-ARCHIVE.md` 是 fork 的长期功能设计档案，按功能记录用户目的、自然语言设计、代码设计、保留边界、验证方式和增量记录。
+- 每次手动 fork、自动化任务、代码或文档更新前，都要先读取设计档案；只要实际修改了内容，完成后必须按触碰功能增量维护。
+- 自然语言部分只写用户目标、边界和验收含义，保持简洁明确，不把实现手段写成目标，也不能被实现手段反向改写成另一个需求。
+- 代码设计部分记录实现手段、模块分工、依赖选择、验证方式与变更原因；这里可以随实现演进而更新。
+- 设计实现优先参考 upstream、官方文档、成熟库或 MCP 可访问的原作者做法，不自造术语和“语言”。
+- `.codex/rules/` 是 Codex 侧规则镜像，`.cursor/rules/` 是 Cursor 侧规则镜像；两者都不能替代 `AGENTS.md`。Codex 侧必须依赖 `AGENTS.md`、自动化 prompt 和实际读取来执行同一约束。
+- 若设计档案与注册表、范围文档或用户新纠正冲突，先更新注册表和设计档案，再同步其他文档。

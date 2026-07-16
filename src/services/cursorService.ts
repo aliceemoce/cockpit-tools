@@ -51,9 +51,14 @@ export async function refreshCursorToken(accountId: string): Promise<CursorAccou
   return await invoke('refresh_cursor_token', { accountId });
 }
 
-export async function refreshAllCursorTokens(): Promise<number> {
-  return await invoke('refresh_all_cursor_tokens');
+export async function refreshAllCursorTokens(maxCount?: number): Promise<number> {
+  return await invoke('refresh_all_cursor_tokens', {
+    maxCount: maxCount ?? null,
+  });
 }
+
+/** 自动刷新每轮默认批量（与后端 CURSOR_AUTO_REFRESH_BATCH_SIZE 对齐） */
+export const CURSOR_AUTO_REFRESH_BATCH_SIZE = 120;
 
 export async function addCursorAccountWithToken(accessToken: string): Promise<CursorAccount> {
   return await invoke('add_cursor_account_with_token', { accessToken });

@@ -63,6 +63,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Fixed Cursor full quota refresh restarting from the account-index head every round**, which left many accounts with stale usage for days: auto-refresh now serial-walks the oldest usage_updated_at first (batch of 120, 8-minute wall clock cap per round); recently failed attempts cool down so dead tokens do not monopolize the queue. Manual refresh-all still covers everyone, also oldest-first. The 20s local watch still only syncs the current login.
+
 - **Fixed Windows close-to-tray destroying the main WebView so floating-card reopen only worked once**: after tray destroy, residual `main` handles are cleared and the window is rebuilt on the UI thread, navigation is deferred until remount, and the main HWND is focused correctly. Thanks @happyplum for #1595.
 - **Fixed tray Quit not actually exiting after the main window was destroyed to tray**: mark an explicit user exit before quit so `ExitRequested` no longer keeps the process alive for tray-only mode. See #1595 / #1600.
 - **Fixed Codex multi-instance create/copy not applying the selected bound account**: after the profile is initialized and before create returns, credentials are written for `bind_account_id` so the new instance does not keep the source account. Thanks @kin001 for #1604 / #1599.
@@ -84,6 +86,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Fixed Antigravity list/card layout forgetting after leaving the page**: view mode always persists, independent of the “remember filters” switch. See #1200.
 - **Portuguese (Brazil) locale keeps full key coverage with native strings** for the new filter/export/import UX keys (and existing parity checks). See #860.
 - **Main window size and position are remembered across restarts and tray reopen**: resize/move are saved; close-to-tray destroy and full quit also snapshot geometry; the next launch and tray recreate restore width/height (and position when available), respecting the existing min size. See #948 / #1132.
+
 
 ---
 ## [1.3.5] - 2026-07-16
