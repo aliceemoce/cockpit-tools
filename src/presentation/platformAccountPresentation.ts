@@ -76,6 +76,7 @@ import {
   getCursorAccountDisplayEmail,
   getCursorOnDemandSummary,
   getCursorUsage,
+  formatCursorPlanQuotaText,
   isCursorAccountBanned,
   resolveCursorPlanUiBadge,
 } from "../types/cursor";
@@ -1602,6 +1603,7 @@ export function buildCursorAccountPresentation(
   const quotaItems: UnifiedQuotaMetric[] = [];
 
   if (totalPercent != null) {
+    const planQuotaText = formatCursorPlanQuotaText(usage);
     quotaItems.push({
       key: "total",
       label: "Total Usage",
@@ -1609,9 +1611,14 @@ export function buildCursorAccountPresentation(
       quotaClass: getCursorUsageQuotaClass(totalPercent),
       valueText: `${totalPercent}%`,
       resetAt: usage.allowanceResetAt,
-      resetText: usage.allowanceResetAt
-        ? formatCodexResetTime(usage.allowanceResetAt, t)
-        : "",
+      resetText: [
+        planQuotaText,
+        usage.allowanceResetAt
+          ? formatCodexResetTime(usage.allowanceResetAt, t)
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
     });
   }
 
@@ -1667,8 +1674,8 @@ export function buildCursorAccountPresentation(
     });
   }
 
-  // 零月配额账号：planIncludedQuota=0 时追加警示条目
-  if (usage.planIncludedQuota != null && usage.planIncludedQuota === 0 &&
+  // 真零月配额（breakdown.total=0）时追加警示；有额度时 Total 行已显示「已用 / 上限」
+  if (usage.planTotalQuota != null && usage.planTotalQuota === 0 &&
       !usage.isUnlimited && (usage.onDemandEnabled !== true)) {
     quotaItems.push({
       key: "monthly_quota",

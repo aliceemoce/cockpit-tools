@@ -3199,14 +3199,22 @@ fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {
         _ => None,
     };
 
-    // 读取 breakdown.included（月配额分配的 fast request 数量）
+    // 读取 breakdown：FREE 号 included 常为 0，真实额度在 bonus/total
     let breakdown = plan_value
         .and_then(|v| v.as_object())
         .and_then(|o| o.get("breakdown"));
     let plan_included = pick_number(breakdown, &["included"]);
+    let plan_bonus = pick_number(breakdown, &["bonus"]);
+    let plan_total_from_breakdown = pick_number(breakdown, &["total"]);
+    let plan_total_quota = plan_total_from_breakdown.or_else(|| {
+        if plan_included.is_some() || plan_bonus.is_some() {
+            Some(plan_included.unwrap_or(0.0) + plan_bonus.unwrap_or(0.0))
+        } else {
+            None
+        }
+    });
 
-    // 零月配额检测：limit=0 且 breakdown.included=0 → 无任何 fast request 可用。
-    // 按需额度也未开启时，视为额度全部耗尽（100% used），避免进入换号池。
+    // 零月配额：breakdown.total==0。禁止用 included==0——FREE 几乎都是 included=0。
     let od_individual = raw_obj
         .get("individualUsage")
         .and_then(|v| v.as_object())
@@ -3222,13 +3230,12 @@ fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {
         .or_else(|| raw_obj.get("is_unlimited"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let is_zero_included_plan = !is_unlimited
-        && matches!(limit, Some(l) if l == 0.0)
-        && matches!(plan_included, Some(inc) if inc == 0.0)
+    let is_zero_total_plan = !is_unlimited
+        && matches!(plan_total_quota, Some(t) if t == 0.0)
         && matches!(od_limit, None | Some(0.0))
         && !od_enabled;
 
-    if is_zero_included_plan {
+    if is_zero_total_plan {
         return CursorUsagePercent {
             total_used: Some(100),
             auto_used: Some(100),
@@ -3996,4 +4003,103 @@ mod cursor_auth_token_tests {
         assert_eq!(access, jwt);
         assert_eq!(out, session);
     }
+
+    #[test]
+    fn test_zero_quota_account_identification() {
+        // total=0 → 真正无月配额
+        let usage_json = serde_json::json!({
+            "isUnlimited": false,
+            "individualUsage": {
+                "plan": {
+                    "limit": 0.0,
+                    "totalPercentUsed": 0,
+                    "breakdown": {
+                        "included": 0.0,
+                        "bonus": 0.0,
+                        "total": 0.0
+                    }
+                },
+                "onDemand": {
+                    "enabled": false,
+                    "limit": 0.0
+                }
+            }
+        });
+        let account = CursorAccount {
+            id: "test_zero_quota".into(),
+            email: "zero@quota.com".into(),
+            auth_id: None,
+            name: None,
+            tags: None,
+            access_token: "fake_token".into(),
+            refresh_token: None,
+            membership_type: None,
+            subscription_status: None,
+            sign_up_type: None,
+            cursor_auth_raw: None,
+            cursor_usage_raw: Some(usage_json),
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: None,
+            created_at: 0,
+            last_used: 0,
+        };
+        let usage = read_usage_percent(&account);
+        assert_eq!(usage.total_used, Some(100));
+        assert_eq!(usage.auto_used, Some(100));
+        assert_eq!(usage.api_used, Some(100));
+    }
+
+    #[test]
+    fn test_free_bonus_quota_not_forced_exhausted() {
+        // FREE：included=0 但 bonus/total>0 → 必须保留真实百分比，禁止强制 100
+        let usage_json = serde_json::json!({
+            "isUnlimited": false,
+            "individualUsage": {
+                "plan": {
+                    "limit": 0.0,
+                    "totalPercentUsed": 67.0,
+                    "autoPercentUsed": 100.0,
+                    "apiPercentUsed": 0.0,
+                    "breakdown": {
+                        "included": 0.0,
+                        "bonus": 134.0,
+                        "total": 134.0
+                    }
+                },
+                "onDemand": {
+                    "enabled": false,
+                    "limit": null
+                }
+            }
+        });
+        let account = CursorAccount {
+            id: "test_bonus_quota".into(),
+            email: "bonus@quota.com".into(),
+            auth_id: None,
+            name: None,
+            tags: None,
+            access_token: "fake_token".into(),
+            refresh_token: None,
+            membership_type: Some("free".into()),
+            subscription_status: None,
+            sign_up_type: None,
+            cursor_auth_raw: None,
+            cursor_usage_raw: Some(usage_json),
+            status: None,
+            status_reason: None,
+            quota_query_last_error: None,
+            quota_query_last_error_at: None,
+            usage_updated_at: None,
+            created_at: 0,
+            last_used: 0,
+        };
+        let usage = read_usage_percent(&account);
+        assert_eq!(usage.total_used, Some(67));
+        assert_eq!(usage.auto_used, Some(100));
+        assert_eq!(usage.api_used, Some(0));
+    }
 }
+

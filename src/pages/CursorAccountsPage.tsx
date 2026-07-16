@@ -45,6 +45,7 @@ import {
   getCursorOnDemandSummary,
   getCursorUsage,
   formatCursorUsageDollars,
+  formatCursorPlanQuotaText,
   hasCursorQuotaData,
   isCursorAccountBanned,
   isCursorQuotaPendingQuery,
@@ -314,9 +315,7 @@ export function CursorAccountsPage() {
           ? (usage.planUsedCents / usage.planLimitCents) * 100
           : null;
       const total = normalizeCursorPercent(usage.totalPercentUsed ?? ratioPct);
-      const costText = usage.planUsedCents != null && usage.planLimitCents != null
-        ? `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`
-        : null;
+      const costText = formatCursorPlanQuotaText(usage);
       return {
         percentage: total.bar,
         quotaClass: getCursorQuotaClass(total.display),

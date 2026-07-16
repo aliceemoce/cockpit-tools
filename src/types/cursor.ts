@@ -295,8 +295,10 @@ export type CursorUsage = {
   allowanceResetAt?: number | null;
   planUsedCents?: number | null;
   planLimitCents?: number | null;
-  /** 本月包含的 fast request 额度（breakdown.included）。0 = 无月配额账号。*/
+  /** 本月套餐内 included（breakdown.included）；FREE 常为 0，不能单独当零额度。*/
   planIncludedQuota?: number | null;
+  /** 本月可用总量（breakdown.total = included + bonus）。0 = 真正无月配额。*/
+  planTotalQuota?: number | null;
   totalPercentUsed?: number | null;
   autoPercentUsed?: number | null;
   apiPercentUsed?: number | null;
@@ -384,9 +386,16 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
   const planUsed = pickNumber(plan, 'used', 'totalSpend', 'total_spend');
   const planLimit = pickNumber(plan, 'limit');
 
-  // 读取 breakdown.included（月配额包含的 fast request 数量）
+  // 读取 breakdown：FREE 号 included 常为 0，真实额度在 bonus/total
   const breakdown = getPath(plan, 'breakdown');
   const planIncluded = pickNumber(breakdown, 'included');
+  const planBonus = pickNumber(breakdown, 'bonus');
+  const planTotalFromBreakdown = pickNumber(breakdown, 'total');
+  const planTotalQuota =
+    planTotalFromBreakdown ??
+    (planIncluded != null || planBonus != null
+      ? (planIncluded ?? 0) + (planBonus ?? 0)
+      : null);
 
   const odUsed = pickNumber(
     onDemand,
@@ -445,18 +454,18 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
     if (Number.isFinite(ts)) resetAt = Math.floor(ts / 1000);
   }
 
-  // 零月配额检测：limit=0 且 breakdown.included=0 → 该账号无任何 fast request 额度。
-  // 将百分比强制为 100（视为已满），避免被误判为满额度账号进入换号池。
-  const isZeroIncludedPlan =
+  // 零月配额：breakdown.total==0（included+bonus 皆无）。
+  // 禁止用 included==0 判定——Cursor FREE 几乎都是 included=0、额度在 bonus。
+  const isZeroTotalPlan =
     !isUnlimited &&
-    planLimit != null && planLimit === 0 &&
-    planIncluded != null && planIncluded === 0 &&
+    planTotalQuota != null &&
+    planTotalQuota === 0 &&
     (odLimit == null || odLimit === 0) &&
     odEnabled !== true;
 
-  const effectiveTotalPct = isZeroIncludedPlan ? 100 : totalPct;
-  const effectiveAutoPct  = isZeroIncludedPlan ? 100 : autoPct;
-  const effectiveApiPct   = isZeroIncludedPlan ? 100 : apiPct;
+  const effectiveTotalPct = isZeroTotalPlan ? 100 : totalPct;
+  const effectiveAutoPct = isZeroTotalPlan ? 100 : autoPct;
+  const effectiveApiPct = isZeroTotalPlan ? 100 : apiPct;
 
   const ratioPct =
     planUsed != null && planLimit != null && planLimit > 0
@@ -477,6 +486,7 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
     planUsedCents: planUsed,
     planLimitCents: planLimit,
     planIncludedQuota: planIncluded,
+    planTotalQuota,
     totalPercentUsed: effectiveTotalPct,
     autoPercentUsed: effectiveAutoPct,
     apiPercentUsed: effectiveApiPct,
@@ -518,6 +528,29 @@ export function getCursorOnDemandSummary(usage: CursorUsage): CursorOnDemandSumm
 export function formatCursorUsageDollars(cents: number | null | undefined): string {
   if (cents == null) return '—';
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Total Usage 下方的额度文案。
+ * 美元套餐用 planUsed/planLimit；FREE 等 plan.limit=0 时改用 breakdown.total 作月额度上限。
+ */
+export function formatCursorPlanQuotaText(usage: CursorUsage): string | null {
+  if (usage.planLimitCents != null && usage.planLimitCents > 0) {
+    return `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`;
+  }
+  if (usage.planTotalQuota != null) {
+    const limit = usage.planTotalQuota;
+    if (usage.totalPercentUsed != null && Number.isFinite(usage.totalPercentUsed)) {
+      const pct = Math.min(100, Math.max(0, usage.totalPercentUsed));
+      const used = Math.round((pct / 100) * limit);
+      return `${used} / ${limit}`;
+    }
+    return `上限 ${limit}`;
+  }
+  if (usage.planUsedCents != null && usage.planLimitCents != null) {
+    return `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`;
+  }
+  return null;
 }
 
 export function isCursorAccountBanned(account: CursorAccount): boolean {
