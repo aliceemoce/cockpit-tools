@@ -1,0 +1,64 @@
+---
+description: 禁止 Cursor 内置/Glass 浏览器与空浏览器；网页操作用系统浏览器 + UIA MCP
+alwaysApply: true
+---
+
+# 浏览器：系统浏览器 + UIA MCP
+
+网页相关任务**禁止**使用 Cursor 内置浏览器；**必须**在用户系统浏览器中打开目标 URL，并用 UIA MCP 探测与操作。
+
+## 禁止
+
+| 类别 | 禁止项 |
+|------|--------|
+| 内置浏览器 MCP | `cursor-ide-browser` 全部工具：`browser_navigate`、`browser_click`、`browser_type`、`browser_snapshot`、`browser_cdp`、`browser_tabs` 等 |
+| Glass / IDE 内嵌 | `open_resource` 打开 `http://` / `https://`（走 Glass 或 IDE 内嵌浏览器） |
+| 空浏览器 | 无目标 URL 就 `browser_navigate`、只 `Start-Process chrome`/`msedge`/`firefox` 不带 URL、打开 `about:blank` 或空白新标签 |
+| 脚本点浏览器 | Python/PowerShell 坐标点击、盲目遍历浏览器控件（见 `no-ui-mouse-automation.mdc`） |
+
+## 必须怎么做
+
+### 1. 打开页面（Shell，带完整 URL）
+
+用系统默认或指定浏览器打开**明确 URL**，例如：
+
+```powershell
+Start-Process "https://example.com/path"
+# 或指定浏览器
+Start-Process msedge -ArgumentList "https://example.com/path"
+```
+
+**没有目标 URL = 不开浏览器。**
+
+### 2. 探测（UIA MCP，先于一切点击）
+
+1. `ui_find_window`：按窗口标题、进程名（Chrome / msedge / firefox）或 processId 定位浏览器窗口，勿认错窗口
+2. `ui_get_children` / `ui_find_control`：读地址栏、链接、按钮、输入框、Tab
+3. `ui_screenshot`：必要时截图核对页面已加载
+
+### 3. 操作（UIA MCP）
+
+| 用途 | 工具 |
+|------|------|
+| 点击链接/按钮 | `ui_invoke` |
+| 填表 | `ui_set_value` |
+| 勾选/开关 | `ui_toggle` |
+| 下拉 | `ui_select_item` |
+| 等待元素 | `ui_wait_for` |
+
+MCP 路由：`user-mcp-router`（`user-uiautomation` / `user-uia-pattern`）。
+
+### 4. 验收
+
+- 「浏览器已操作」= 系统浏览器窗口存在 + UIA MCP 证明目标控件存在并完成操作 + 必要时 `ui_screenshot` 一致
+- 不得称「已在内置浏览器里点过」
+
+## 不必开浏览器
+
+- 纯 API、CLI、`gh`、读写文件即可完成的任务
+- 只需在回复中给出链接、不需 Agent 代操作网页时：写 URL 即可，**禁止**用内置浏览器打开
+
+## 关联规则
+
+- 桌面 GUI 通用：`no-script-substitute-ui.mdc`（先 MCP 探测再点）
+- 禁止坐标/脚本代替 UIA：`no-ui-mouse-automation.mdc`

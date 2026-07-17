@@ -22,6 +22,7 @@ export interface CursorAccount {
 
   created_at: number;
   last_used: number;
+  usage_updated_at?: number | null;
 
   plan_type?: string;
   quota?: CursorQuota;
@@ -163,8 +164,22 @@ function resolveCursorPlanLabel(account: CursorAccount): string {
   }
 }
 
+/** 账号字段为空时从 cursor_auth_raw 回退读取（导入/vscdb 可能已有缓存） */
+export function resolveCursorMembershipType(account: CursorAccount): string {
+  const fromField = normalizeCursorMembershipType(account.membership_type);
+  if (fromField) return fromField;
+  return normalizeCursorMembershipType(
+    getCursorAuthRawString(
+      account,
+      'stripeMembershipType',
+      'membershipType',
+      'membership_type',
+    ),
+  );
+}
+
 export function getCursorPlanBadge(account: CursorAccount): CursorPlanBadge {
-  const membership = normalizeCursorMembershipType(account.membership_type);
+  const membership = resolveCursorMembershipType(account);
   switch (membership) {
     case 'free':
       return 'FREE';
@@ -191,7 +206,9 @@ export function getCursorPlanBadgeClass(
   planType?: string | null,
   account?: CursorAccount,
 ): string {
-  const normalized = normalizeCursorMembershipType(planType);
+  const normalized = account
+    ? resolveCursorMembershipType(account)
+    : normalizeCursorMembershipType(planType);
   switch (normalized) {
     case 'ultra':
       return 'ultra';
@@ -217,12 +234,71 @@ export function getCursorAccountDisplayEmail(account: CursorAccount): string {
   return account.id;
 }
 
+/** 邮箱去重后的账号数（ALL 筛选项计数口径） */
+export function countCursorUniqueEmails(accounts: CursorAccount[]): number {
+  const seen = new Set<string>();
+  for (const account of accounts) {
+    const email = getCursorAccountDisplayEmail(account).trim().toLowerCase();
+    if (email.includes('@')) {
+      seen.add(email);
+    }
+  }
+  return seen.size;
+}
+
+export const CURSOR_EMAIL_DEDUP_REPORT_MIN = 2000;
+
+function decodeJwtSub(accessToken: string): string | null {
+  const parts = accessToken.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+      sub?: string;
+    };
+    const sub = payload.sub?.trim();
+    return sub || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeQuotaPoolAuthId(value: string | null | undefined): string | null {
+  const trimmed = (value || '').trim();
+  if (!trimmed || trimmed.startsWith('user_cursor_')) return null;
+  if (trimmed.startsWith('auth0|')) {
+    const userId = trimmed.split('|').pop();
+    if (userId?.startsWith('user_')) return userId;
+  }
+  if (trimmed.startsWith('user_')) return trimmed;
+  return trimmed;
+}
+
+/** 真实 Cursor 额度池 ID（workosId / JWT sub），忽略 user_cursor_ 占位符。 */
+export function getCursorAccountQuotaPoolId(account: CursorAccount): string {
+  const fromRaw = normalizeQuotaPoolAuthId(
+    getCursorAuthRawString(account, 'workosId', 'workos_id', 'authId', 'auth_id'),
+  );
+  if (fromRaw) return fromRaw;
+
+  const fromJwt = normalizeQuotaPoolAuthId(decodeJwtSub(account.access_token));
+  if (fromJwt?.startsWith('user_')) return fromJwt.split('|').pop() || fromJwt;
+
+  const fromField = normalizeQuotaPoolAuthId(account.auth_id);
+  if (fromField) return fromField;
+
+  return '';
+}
+
 export type CursorUsage = {
   inlineSuggestionsUsedPercent: number | null;
   chatMessagesUsedPercent: number | null;
   allowanceResetAt?: number | null;
   planUsedCents?: number | null;
   planLimitCents?: number | null;
+  /** 本月套餐内 included（breakdown.included）；FREE 常为 0，不能单独当零额度。*/
+  planIncludedQuota?: number | null;
+  /** 本月可用总量（breakdown.total = included + bonus）。0 = 真正无月配额。*/
+  planTotalQuota?: number | null;
   totalPercentUsed?: number | null;
   autoPercentUsed?: number | null;
   apiPercentUsed?: number | null;
@@ -309,6 +385,18 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
   const apiPct = pickNumber(plan, 'apiPercentUsed', 'api_percent_used');
   const planUsed = pickNumber(plan, 'used', 'totalSpend', 'total_spend');
   const planLimit = pickNumber(plan, 'limit');
+
+  // 读取 breakdown：FREE 号 included 常为 0，真实额度在 bonus/total
+  const breakdown = getPath(plan, 'breakdown');
+  const planIncluded = pickNumber(breakdown, 'included');
+  const planBonus = pickNumber(breakdown, 'bonus');
+  const planTotalFromBreakdown = pickNumber(breakdown, 'total');
+  const planTotalQuota =
+    planTotalFromBreakdown ??
+    (planIncluded != null || planBonus != null
+      ? (planIncluded ?? 0) + (planBonus ?? 0)
+      : null);
+
   const odUsed = pickNumber(
     onDemand,
     'used',
@@ -366,11 +454,24 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
     if (Number.isFinite(ts)) resetAt = Math.floor(ts / 1000);
   }
 
+  // 零月配额：breakdown.total==0（included+bonus 皆无）。
+  // 禁止用 included==0 判定——Cursor FREE 几乎都是 included=0、额度在 bonus。
+  const isZeroTotalPlan =
+    !isUnlimited &&
+    planTotalQuota != null &&
+    planTotalQuota === 0 &&
+    (odLimit == null || odLimit === 0) &&
+    odEnabled !== true;
+
+  const effectiveTotalPct = isZeroTotalPlan ? 100 : totalPct;
+  const effectiveAutoPct = isZeroTotalPlan ? 100 : autoPct;
+  const effectiveApiPct = isZeroTotalPlan ? 100 : apiPct;
+
   const ratioPct =
     planUsed != null && planLimit != null && planLimit > 0
       ? (planUsed / planLimit) * 100
       : null;
-  const totalBase = totalPct ?? ratioPct;
+  const totalBase = effectiveTotalPct ?? ratioPct;
   const usedPct =
     totalBase == null
       ? null
@@ -384,9 +485,11 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
     allowanceResetAt: resetAt,
     planUsedCents: planUsed,
     planLimitCents: planLimit,
-    totalPercentUsed: totalPct,
-    autoPercentUsed: autoPct,
-    apiPercentUsed: apiPct,
+    planIncludedQuota: planIncluded,
+    planTotalQuota,
+    totalPercentUsed: effectiveTotalPct,
+    autoPercentUsed: effectiveAutoPct,
+    apiPercentUsed: effectiveApiPct,
     onDemandUsedCents: odUsed,
     onDemandLimitCents: odLimit,
     teamOnDemandUsedCents: teamOdUsed,
@@ -427,6 +530,29 @@ export function formatCursorUsageDollars(cents: number | null | undefined): stri
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/**
+ * Total Usage 下方的额度文案。
+ * 美元套餐用 planUsed/planLimit；FREE 等 plan.limit=0 时改用 breakdown.total 作月额度上限。
+ */
+export function formatCursorPlanQuotaText(usage: CursorUsage): string | null {
+  if (usage.planLimitCents != null && usage.planLimitCents > 0) {
+    return `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`;
+  }
+  if (usage.planTotalQuota != null) {
+    const limit = usage.planTotalQuota;
+    if (usage.totalPercentUsed != null && Number.isFinite(usage.totalPercentUsed)) {
+      const pct = Math.min(100, Math.max(0, usage.totalPercentUsed));
+      const used = Math.round((pct / 100) * limit);
+      return `${used} / ${limit}`;
+    }
+    return `上限 ${limit}`;
+  }
+  if (usage.planUsedCents != null && usage.planLimitCents != null) {
+    return `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`;
+  }
+  return null;
+}
+
 export function isCursorAccountBanned(account: CursorAccount): boolean {
   const status = (account.status || '').toLowerCase();
   const reason = (account.status_reason || '').toLowerCase();
@@ -436,4 +562,67 @@ export function isCursorAccountBanned(account: CursorAccount): boolean {
 
 export function hasCursorQuotaData(account: CursorAccount): boolean {
   return account.cursor_usage_raw != null;
+}
+
+/** 从未查过配额：无 usage_raw 且无 quota_query_last_error */
+export function isCursorQuotaPendingQuery(account: CursorAccount): boolean {
+  if ((account.quota_query_last_error || '').trim()) {
+    return false;
+  }
+  return !hasCursorQuotaData(account);
+}
+
+export type CursorPlanUiBadge = {
+  label: string;
+  className: string;
+};
+
+/**
+ * Cursor 套餐角标 UI（HR-20260701-003 / HR-20260714-007）：
+ * 禁止红 UNKNOWN；未查配额显示「配额未查询」。
+ */
+export function resolveCursorPlanUiBadge(
+  account: CursorAccount,
+  pendingLabel: string = '配额未查询',
+): CursorPlanUiBadge | null {
+  const quotaError = (account.quota_query_last_error || '').trim();
+  const plan = getCursorPlanBadge(account);
+  if (plan === 'UNKNOWN') {
+    if (!quotaError && isCursorQuotaPendingQuery(account)) {
+      return { label: pendingLabel, className: 'pending-query' };
+    }
+    return null;
+  }
+  return {
+    label: getCursorPlanDisplayName(account),
+    className: getCursorPlanBadgeClass(account.membership_type, account),
+  };
+}
+
+/** 磁盘/后端旧文案识别（pick 判定与 UI 脱敏共用） */
+export function isCursorAuthQuotaError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('配额查询失败')
+    || lower.includes('会话已过期')
+    || lower.includes('会话已失效')
+    || lower.includes('未认证')
+    || lower.includes('请重新导入')
+    || lower.includes('请重新登录')
+    || lower.includes('session expired')
+    || lower.includes('invalid credentials')
+    || lower.includes('unauthenticated')
+  );
+}
+
+/** 切换失败等用户可见错误：禁止露出「会话已过期/失效」 */
+export function sanitizeCursorUserError(error: unknown): string {
+  const raw = String(error ?? '').trim();
+  if (!raw) return '配额查询失败';
+  if (!isCursorAuthQuotaError(raw)) return raw;
+  const emailMatch = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (emailMatch) {
+    return `配额查询失败，请重新导入账号: ${emailMatch[0]}`;
+  }
+  return '配额查询失败';
 }

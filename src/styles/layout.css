@@ -18,7 +18,8 @@
 .app-container {
   display: flex;
   flex-direction: row; /* 改为水平布局 */
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: transparent; /* 背景由 body 处理 */
 }

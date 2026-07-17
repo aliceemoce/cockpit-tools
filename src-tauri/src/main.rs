@@ -1,5 +1,5 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Windows：始终用 GUI 子系统，避免 debug 构建弹出滚动的控制台窗口（日志走 app.log）。
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 fn main() {
     antigravity_cockpit_tools_lib::run()
