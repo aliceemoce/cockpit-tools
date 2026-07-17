@@ -283,6 +283,9 @@ export interface CodexLocalAccessAccountHealth {
   lastFailureMessage: string | null;
   imageGenerationStatus: CodexLocalAccessImageGenerationStatus;
   imageGenerationCheckedAt: number | null;
+  schedulerAvailable: boolean | null;
+  schedulerReason: string | null;
+  schedulerNextRetryAt: number | null;
   cooldowns: CodexLocalAccessAccountCooldown[];
 }
 
