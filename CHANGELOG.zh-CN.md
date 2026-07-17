@@ -7,6 +7,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [1.3.11] - 2026-07-17
+
+### 变更
+
+- **Cursor 列表排序与徽标对齐 Agent 真实对话验活**：`chat_probe=ok` →「有剩余」并排前；`rate_limited` →「额度用尽」并排后。磁盘 `totalPercentUsed≥100` 但未验活者标「待验活」，不再误标额度用尽（实测 8 个中有 5 个仍能对话）。
+
 ## [1.3.10] - 2026-07-17
 
 ### 修复

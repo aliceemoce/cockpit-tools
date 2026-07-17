@@ -3331,7 +3331,24 @@ const FULL_QUOTA_REMAINING_THRESHOLD: f64 = 99.0;
 const SWITCH_FULL_POOL_REMAINING_MIN: i32 = 99;
 
 /// 与账号总览 UI `resolveRemainingQuotaPercent` 对齐：100 - max(各维度已用%)。
+/// Agent 验活结果优先：ok 视为有剩余；rate_limited 视为用尽。
 pub fn cursor_switch_remaining_percent(account: &CursorAccount) -> Option<i32> {
+    if let Some(probe) = account.chat_probe.as_ref() {
+        if probe.outcome == "ok" {
+            return Some(
+                cursor_switch_remaining_percent_from_usage(account)
+                    .unwrap_or(1)
+                    .max(1),
+            );
+        }
+        if probe.outcome == "rate_limited" {
+            return Some(0);
+        }
+    }
+    cursor_switch_remaining_percent_from_usage(account)
+}
+
+fn cursor_switch_remaining_percent_from_usage(account: &CursorAccount) -> Option<i32> {
     if has_quota_query_failed(account) {
         return None;
     }

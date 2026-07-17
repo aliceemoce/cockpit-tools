@@ -7,6 +7,12 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.11] - 2026-07-17
+
+### Changed
+
+- **Cursor list sort/badges follow Agent chat probe**: `chat_probe=ok` → “remaining” at top; `rate_limited` → “exhausted” at bottom. Stale `totalPercentUsed≥100` without probe shows “pending verify” instead of falsely marking exhausted.
+
 ## [1.3.10] - 2026-07-17
 
 ### Fixed

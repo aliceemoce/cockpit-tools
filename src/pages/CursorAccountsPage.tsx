@@ -248,7 +248,7 @@ export function CursorAccountsPage() {
         tone: 'success',
         text: t(
           'cursor.chatProbe.batchDone',
-          '已完成 {{total}} 个账号抽样；Total 未满且有回话 {{ok}} 个',
+          '已完成 {{total}} 个账号验活；能对话 {{ok}} 个',
           {
             total: updated.length,
             ok: okCount,
@@ -567,7 +567,7 @@ export function CursorAccountsPage() {
       return currentFirstDiff;
     }
 
-    // 百分比尺度优先：有剩余在前；用尽/查询失败沉底。
+    // 能对话在前：验活 ok / total<100 → 有剩余；验活限额 → 额度用尽沉底。
     const quotaRank = (account: CursorAccount) => {
       switch (resolveCursorQuotaAvailability(account)) {
         case 'usable':
@@ -576,12 +576,14 @@ export function CursorAccountsPage() {
           return 1;
         case 'no_data':
           return 2;
-        case 'exhausted':
+        case 'needs_verify':
           return 3;
-        case 'query_failed':
+        case 'exhausted':
           return 4;
-        default:
+        case 'query_failed':
           return 5;
+        default:
+          return 6;
       }
     };
     const quotaDiff = quotaRank(a) - quotaRank(b);

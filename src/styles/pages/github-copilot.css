@@ -544,6 +544,8 @@
 
 .ghcp-account-card .tier-badge.quota-pending,
 .ghcp-accounts-page .account-table .tier-badge.quota-pending,
+.ghcp-account-card .tier-badge.quota-needs-verify,
+.ghcp-accounts-page .account-table .tier-badge.quota-needs-verify,
 .ghcp-account-card .tier-badge.quota-unknown,
 .ghcp-accounts-page .account-table .tier-badge.quota-unknown {
   text-transform: none;

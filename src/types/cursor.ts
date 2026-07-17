@@ -581,13 +581,36 @@ export function getCursorChatProbeOutcome(account: CursorAccount): string | null
 export type CursorQuotaAvailability =
   | 'usable'
   | 'exhausted'
+  | 'needs_verify'
   | 'query_failed'
   | 'pending'
   | 'no_data';
 
+/** Agent 真实对话验活：ok=能聊，rate_limited=不能聊（限额）。 */
+function resolveCursorChatProbeAvailability(
+  account: CursorAccount,
+): 'can_chat' | 'cannot_chat' | null {
+  const probe = getCursorChatProbeOutcome(account);
+  if (probe === 'ok') {
+    return 'can_chat';
+  }
+  if (probe === 'rate_limited') {
+    return 'cannot_chat';
+  }
+  return null;
+}
+
 export function resolveCursorQuotaAvailability(
   account: CursorAccount,
 ): CursorQuotaAvailability {
+  const chatAvail = resolveCursorChatProbeAvailability(account);
+  if (chatAvail === 'can_chat') {
+    return 'usable';
+  }
+  if (chatAvail === 'cannot_chat') {
+    return 'exhausted';
+  }
+
   if ((account.quota_query_last_error || '').trim()) {
     return 'query_failed';
   }
@@ -600,9 +623,9 @@ export function resolveCursorQuotaAvailability(
   }
   const totalPct = usage.totalPercentUsed;
   if (typeof totalPct === 'number' && Number.isFinite(totalPct) && totalPct >= 100) {
-    return 'exhausted';
+    // 磁盘 totalPercentUsed 可能过期；未验活前不得标「额度用尽」
+    return 'needs_verify';
   }
-  // totalPercentUsed 缺失时仍有 usage_raw：按主仓库一样只展示已有字段，不判死号
   if (totalPct == null) {
     return 'no_data';
   }
@@ -632,18 +655,31 @@ export function resolveCursorQuotaAvailabilityUi(
     typeof total === 'number' && Number.isFinite(total)
       ? `；Total Usage ${total}%`
       : '';
+  const chatAvail = resolveCursorChatProbeAvailability(account);
   switch (resolveCursorQuotaAvailability(account)) {
     case 'usable':
       return {
         label: '有剩余',
         className: 'quota-usable',
-        title: `totalPercentUsed 未满 100%${totalHint}${autoFull}`,
+        title:
+          chatAvail === 'can_chat'
+            ? `Agent 验活有回话${totalHint}${autoFull}`
+            : `totalPercentUsed 未满 100%${totalHint}${autoFull}`,
       };
     case 'exhausted':
       return {
         label: '额度用尽',
         className: 'quota-exhausted',
-        title: `totalPercentUsed≥100%${totalHint}`,
+        title:
+          chatAvail === 'cannot_chat'
+            ? `Agent 验活已限额${totalHint}`
+            : `totalPercentUsed≥100%${totalHint}`,
+      };
+    case 'needs_verify':
+      return {
+        label: '待验活',
+        className: 'quota-needs-verify',
+        title: `totalPercentUsed≥100%，须 Agent 验活后才能标额度用尽${totalHint}`,
       };
     case 'query_failed':
       return {
@@ -666,9 +702,7 @@ export function resolveCursorQuotaAvailabilityUi(
   }
 }
 
-/**
- * 抽样 CLI 结果仅作次要标注；禁止在额度用尽时显示「可用」。
- */
+/** 抽样 CLI 次要标注（主徽标已由验活结果决定）。 */
 export function resolveCursorChatProbeUi(
   account: CursorAccount,
 ): { label: string; className: string; title?: string } | null {
@@ -677,20 +711,12 @@ export function resolveCursorChatProbeUi(
     return null;
   }
   const detail = account.chat_probe?.detail?.trim() || undefined;
-  const quotaOk = isCursorPlanQuotaUsable(account);
   switch (outcome) {
     case 'ok':
-      if (!quotaOk) {
-        return {
-          label: '抽样回话≠可用',
-          className: 'chat-probe-mismatch',
-          title: detail || 'CLI 有回话但月额度标准未通过，不得标可用',
-        };
-      }
       return {
-        label: '抽样有回话',
+        label: '验活有回话',
         className: 'chat-probe-sample-ok',
-        title: detail || '仅抽样记录，usage-summary 仍须单独看',
+        title: detail || 'Agent 真实对话验活通过',
       };
     case 'rate_limited':
       return { label: '抽样已限额', className: 'chat-limited', title: detail };
