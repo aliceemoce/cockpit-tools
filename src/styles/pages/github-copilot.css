@@ -524,6 +524,35 @@
   letter-spacing: normal;
 }
 
+.ghcp-account-card .tier-badge.chat-ok,
+.ghcp-accounts-page .account-table .tier-badge.chat-ok {
+  text-transform: none;
+  background: color-mix(in srgb, #16a34a 18%, transparent);
+  color: #15803d;
+}
+
+.ghcp-account-card .tier-badge.chat-limited,
+.ghcp-accounts-page .account-table .tier-badge.chat-limited,
+.ghcp-account-card .tier-badge.chat-auth-failed,
+.ghcp-accounts-page .account-table .tier-badge.chat-auth-failed {
+  text-transform: none;
+  background: color-mix(in srgb, #dc2626 16%, transparent);
+  color: #b91c1c;
+}
+
+.ghcp-account-card .tier-badge.chat-network,
+.ghcp-accounts-page .account-table .tier-badge.chat-network,
+.ghcp-account-card .tier-badge.chat-unknown,
+.ghcp-accounts-page .account-table .tier-badge.chat-unknown,
+.ghcp-account-card .tier-badge.chat-missing,
+.ghcp-accounts-page .account-table .tier-badge.chat-missing,
+.ghcp-account-card .tier-badge.chat-unprobed,
+.ghcp-accounts-page .account-table .tier-badge.chat-unprobed {
+  text-transform: none;
+  background: color-mix(in srgb, #64748b 14%, transparent);
+  color: #475569;
+}
+
 .claude-accounts-page .claude-api-key-line {
   align-items: center;
   gap: 10px;

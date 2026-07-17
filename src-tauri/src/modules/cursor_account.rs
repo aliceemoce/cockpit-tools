@@ -1,6 +1,6 @@
 use base64::Engine as _;
 use rand::seq::SliceRandom;
-use rand::{Rng, RngCore};
+use rand::RngCore;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde_json::Value;
@@ -348,6 +348,15 @@ fn save_account_file(account: &CursorAccount) -> Result<(), String> {
         crate::modules::secure_account_storage::serialize_account_file("cursor", account)?;
     crate::modules::atomic_write::write_string_atomic(&path, &content)
         .map_err(|e| format!("保存账号失败: {}", e))?;
+    Ok(())
+}
+
+/// 持久化账号详情（供对话验活等模块写回 `chat_probe` 等字段）。
+pub fn persist_account(account: &CursorAccount) -> Result<(), String> {
+    save_account_file(account)?;
+    let mut index = load_account_index();
+    refresh_summary(&mut index, account);
+    save_account_index(&index)?;
     Ok(())
 }
 
@@ -1605,6 +1614,7 @@ fn upsert_account_with_outcome(
         quota_query_last_error: None,
         quota_query_last_error_at: None,
         usage_updated_at: None,
+        chat_probe: None,
         created_at,
         last_used: now,
     });
@@ -3579,12 +3589,16 @@ fn remaining_credits_sort_key(account: &CursorAccount) -> (i32, i64) {
 }
 
 /// 实例 Play / 多开启动：每次强制轮换（排除当前绑定），满额池均匀随机，否则好号按剩余额度加权随机。
+/// 优先使用真实对话验活为 ok 的账号；已验活为 rate_limited / auth_failed 的账号不进入候选。
 pub fn pick_cursor_rotation_account(
     exclude_ids: &HashSet<String>,
 ) -> Result<CursorRotationPick, String> {
     let mut full_pool: Vec<(CursorAccount, i32)> = Vec::new();
     let mut good_pool: Vec<(CursorAccount, i32)> = Vec::new();
+    let mut chat_ok_full_pool: Vec<(CursorAccount, i32)> = Vec::new();
+    let mut chat_ok_good_pool: Vec<(CursorAccount, i32)> = Vec::new();
     let mut excluded_exhausted = 0usize;
+    let mut excluded_chat_blocked = 0usize;
 
     for account in list_accounts() {
         if exclude_ids.contains(&account.id) {
@@ -3596,6 +3610,10 @@ pub fn pick_cursor_rotation_account(
         if !has_nirvana_switch_ready_tokens(&account) {
             continue;
         }
+        if crate::modules::cursor_chat_probe::is_chat_probe_blocked(&account) {
+            excluded_chat_blocked += 1;
+            continue;
+        }
         let Some(remaining) = cursor_overview_remaining_percent(&account) else {
             continue;
         };
@@ -3603,85 +3621,77 @@ pub fn pick_cursor_rotation_account(
             excluded_exhausted += 1;
             continue;
         }
+        let chat_ok = crate::modules::cursor_chat_probe::is_chat_probe_ok(&account);
         if remaining >= SWITCH_FULL_POOL_REMAINING_MIN {
-            full_pool.push((account, remaining));
+            full_pool.push((account.clone(), remaining));
+            if chat_ok {
+                chat_ok_full_pool.push((account, remaining));
+            }
         } else {
-            good_pool.push((account, remaining));
+            good_pool.push((account.clone(), remaining));
+            if chat_ok {
+                chat_ok_good_pool.push((account, remaining));
+            }
         }
     }
 
-    if excluded_exhausted > 0 {
+    if excluded_exhausted > 0 || excluded_chat_blocked > 0 {
         logger::log_info(&format!(
-            "[Cursor Switch] pick 排除耗尽账号: excluded_exhausted={}",
-            excluded_exhausted
+            "[Cursor Switch] pick 排除: exhausted={} chat_blocked={}",
+            excluded_exhausted, excluded_chat_blocked
         ));
     }
 
     let mut rng = rand::thread_rng();
 
-    if let Some((account, remaining)) = full_pool.choose(&mut rng).cloned() {
-        let candidates = full_pool.len();
+    let (use_pool_name, pool): (&str, &Vec<(CursorAccount, i32)>) =
+        if !chat_ok_full_pool.is_empty() {
+            ("chat_ok_full", &chat_ok_full_pool)
+        } else if !chat_ok_good_pool.is_empty() {
+            ("chat_ok_good", &chat_ok_good_pool)
+        } else if !full_pool.is_empty() {
+            ("full", &full_pool)
+        } else {
+            ("good", &good_pool)
+        };
+
+    if pool.is_empty() {
+        return Err("没有可用的 Cursor 轮换账号（含对话验活过滤后）".to_string());
+    }
+
+    if use_pool_name == "full" || use_pool_name == "good" {
+        logger::log_warn(
+            "[Cursor Switch] pick: 当前无 chat_probe=ok 账号，回退 usage-summary 剩余额度池；Play 前建议先批量对话验活",
+        );
+    }
+
+    if let Some((account, remaining)) = pool.choose(&mut rng).cloned() {
+        let candidates = pool.len();
         logger::log_info(&format!(
-            "[Cursor Switch] pick: pool=full candidates={} picked={} email={} remaining={}% auto={:?}% total={:?}%",
+            "[Cursor Switch] pick: pool={} candidates={} picked={} email={} remaining={}% auto={:?}% total={:?}% chat_probe={:?}",
+            use_pool_name,
             candidates,
             account.id,
             account.email,
             remaining,
-            read_usage_percent(&account).auto_used,
-            read_usage_percent(&account).total_used
+            cursor_switch_usage_snapshot(&account).1,
+            cursor_switch_usage_snapshot(&account).2,
+            account.chat_probe.as_ref().map(|p| p.outcome.as_str()),
         ));
         return Ok(CursorRotationPick {
             account_id: account.id,
-            pool: "full",
+            pool: match use_pool_name {
+                "chat_ok_full" => "chat_ok_full",
+                "chat_ok_good" => "chat_ok_good",
+                "full" => "full",
+                _ => "good",
+            },
             candidates,
             remaining_pct: remaining,
         });
     }
 
-    if good_pool.is_empty() {
-        return Err(
-            "没有可用的可切号 Cursor 账号，请重新导入失效账号或手动绑定正常账号".to_string(),
-        );
-    }
-
-    let candidates = good_pool.len();
-    let total_weight: u32 = good_pool
-        .iter()
-        .map(|(_, remaining)| (*remaining).max(1) as u32)
-        .sum();
-    let mut roll = rng.gen_range(0..total_weight);
-    for (account, remaining) in &good_pool {
-        let weight = (*remaining).max(1) as u32;
-        if roll < weight {
-            logger::log_info(&format!(
-                "[Cursor Switch] pick: pool=good candidates={} picked={} email={} remaining={}% auto={:?}% total={:?}%",
-                candidates,
-                account.id,
-                account.email,
-                remaining,
-                read_usage_percent(account).auto_used,
-                read_usage_percent(account).total_used
-            ));
-            return Ok(CursorRotationPick {
-                account_id: account.id.clone(),
-                pool: "good",
-                candidates,
-                remaining_pct: *remaining,
-            });
-        }
-        roll -= weight;
-    }
-
-    let (account, remaining) = good_pool
-        .last()
-        .cloned()
-        .expect("good_pool non-empty");
-    Ok(CursorRotationPick {
-        account_id: account.id,
-        pool: "good",
-        candidates,
-        remaining_pct: remaining,
-    })
+    Err("没有可用的 Cursor 轮换账号".to_string())
 }
 
 pub fn pick_full_quota_account(exclude_ids: &HashSet<String>) -> Option<String> {
@@ -3887,6 +3897,7 @@ mod cursor_overview_pick_tests {
             quota_query_last_error: None,
             quota_query_last_error_at: None,
             usage_updated_at: Some(1),
+            chat_probe: None,
             created_at: 0,
             last_used: 0,
         }
@@ -3961,6 +3972,7 @@ mod cursor_rotation_pick_tests {
             quota_query_last_error: None,
             quota_query_last_error_at: None,
             usage_updated_at: Some(1),
+            chat_probe: None,
             created_at: 0,
             last_used: 0,
         }
@@ -4013,6 +4025,7 @@ mod cursor_auth_token_tests {
             quota_query_last_error: None,
             quota_query_last_error_at: None,
             usage_updated_at: None,
+            chat_probe: None,
             created_at: 0,
             last_used: 0,
         };
@@ -4041,6 +4054,7 @@ mod cursor_auth_token_tests {
             quota_query_last_error: None,
             quota_query_last_error_at: None,
             usage_updated_at: None,
+            chat_probe: None,
             created_at: 0,
             last_used: 0,
         };
@@ -4070,6 +4084,7 @@ mod cursor_auth_token_tests {
             quota_query_last_error: None,
             quota_query_last_error_at: None,
             usage_updated_at: None,
+            chat_probe: None,
             created_at: 0,
             last_used: 0,
         };
@@ -4128,6 +4143,7 @@ mod cursor_auth_token_tests {
             quota_query_last_error: None,
             quota_query_last_error_at: None,
             usage_updated_at: None,
+            chat_probe: None,
             created_at: 0,
             last_used: 0,
         };
@@ -4178,6 +4194,7 @@ mod cursor_auth_token_tests {
             quota_query_last_error: None,
             quota_query_last_error_at: None,
             usage_updated_at: None,
+            chat_probe: None,
             created_at: 0,
             last_used: 0,
         };

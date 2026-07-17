@@ -75,3 +75,11 @@ export async function getCursorAccountsIndexPath(): Promise<string> {
 export async function injectCursorAccount(accountId: string): Promise<string> {
   return await invoke('inject_cursor_account', { accountId });
 }
+
+export async function probeCursorAccountChat(accountId: string): Promise<CursorAccount> {
+  return await invoke('probe_cursor_account_chat', { accountId });
+}
+
+export async function probeCursorAccountsChat(accountIds: string[]): Promise<CursorAccount[]> {
+  return await invoke('probe_cursor_accounts_chat', { accountIds });
+}

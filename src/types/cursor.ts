@@ -24,8 +24,28 @@ export interface CursorAccount {
   last_used: number;
   usage_updated_at?: number | null;
 
+  /** 真实 Agent 对话验活；未验活时为空，不得用 usage-summary 冒充可对话。 */
+  chat_probe?: CursorChatProbe | null;
+
   plan_type?: string;
   quota?: CursorQuota;
+}
+
+export type CursorChatProbeOutcome =
+  | 'ok'
+  | 'rate_limited'
+  | 'auth_failed'
+  | 'network_error'
+  | 'unknown_error'
+  | 'agent_missing';
+
+export interface CursorChatProbe {
+  outcome: CursorChatProbeOutcome | string;
+  probed_at: number;
+  detail?: string | null;
+  duration_ms?: number | null;
+  status_email?: string | null;
+  request_id?: string | null;
 }
 
 export interface CursorQuota {
@@ -532,24 +552,14 @@ export function formatCursorUsageDollars(cents: number | null | undefined): stri
 
 /**
  * Total Usage 下方的额度文案。
- * 美元套餐用 planUsed/planLimit；FREE 等 plan.limit=0 时改用 breakdown.total 作月额度上限。
+ * 仅在有真实美元套餐上下限（planUsed/planLimit）时显示金额。
+ * 禁止用 breakdown.total 推算「已用/总额」——该字段是已发生用量合计，会随使用增长，不是固定上限。
  */
 export function formatCursorPlanQuotaText(usage: CursorUsage): string | null {
   if (usage.planLimitCents != null && usage.planLimitCents > 0) {
     return `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`;
   }
-  if (usage.planTotalQuota != null) {
-    const limit = usage.planTotalQuota;
-    if (usage.totalPercentUsed != null && Number.isFinite(usage.totalPercentUsed)) {
-      const pct = Math.min(100, Math.max(0, usage.totalPercentUsed));
-      const used = Math.round((pct / 100) * limit);
-      return `${used} / ${limit}`;
-    }
-    return `上限 ${limit}`;
-  }
-  if (usage.planUsedCents != null && usage.planLimitCents != null) {
-    return `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`;
-  }
+  // FREE / 无美元上限：不伪造 used/limit；百分比条本身已展示 totalPercentUsed。
   return null;
 }
 
@@ -562,6 +572,38 @@ export function isCursorAccountBanned(account: CursorAccount): boolean {
 
 export function hasCursorQuotaData(account: CursorAccount): boolean {
   return account.cursor_usage_raw != null;
+}
+
+export function getCursorChatProbeOutcome(account: CursorAccount): string | null {
+  const outcome = account.chat_probe?.outcome?.trim();
+  return outcome || null;
+}
+
+export function isCursorChatUsable(account: CursorAccount): boolean {
+  return getCursorChatProbeOutcome(account) === 'ok';
+}
+
+export function resolveCursorChatProbeUi(
+  account: CursorAccount,
+): { label: string; className: string; title?: string } {
+  const outcome = getCursorChatProbeOutcome(account);
+  const detail = account.chat_probe?.detail?.trim() || undefined;
+  switch (outcome) {
+    case 'ok':
+      return { label: '可对话', className: 'chat-ok', title: detail };
+    case 'rate_limited':
+      return { label: '对话已限额', className: 'chat-limited', title: detail };
+    case 'auth_failed':
+      return { label: '对话认证失败', className: 'chat-auth-failed', title: detail };
+    case 'network_error':
+      return { label: '对话网络失败', className: 'chat-network', title: detail };
+    case 'agent_missing':
+      return { label: '缺少 Agent CLI', className: 'chat-missing', title: detail };
+    case 'unknown_error':
+      return { label: '对话验活失败', className: 'chat-unknown', title: detail };
+    default:
+      return { label: '未对话验活', className: 'chat-unprobed', title: '须用 Agent CLI 真实对话后才能标为可对话' };
+  }
 }
 
 /** 从未查过配额：无 usage_raw 且无 quota_query_last_error */

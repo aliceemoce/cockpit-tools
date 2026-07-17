@@ -1,7 +1,7 @@
 mod commands;
 pub mod error;
 mod models;
-mod modules;
+pub mod modules;
 mod utils;
 
 use modules::config::CloseWindowBehavior;
@@ -1122,6 +1122,8 @@ pub fn run() {
             commands::cursor::cursor_oauth_login_complete,
             commands::cursor::cursor_oauth_login_cancel,
             commands::cursor::inject_cursor_account,
+            commands::cursor::probe_cursor_account_chat,
+            commands::cursor::probe_cursor_accounts_chat,
             // Grok Commands
             commands::grok::grok_get_cli_status,
             commands::grok::grok_execute_cli_install_command,

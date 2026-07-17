@@ -1,5 +1,21 @@
 use serde::{Deserialize, Serialize};
 
+/// Cursor Agent CLI 真实对话验活结果（与 usage-summary 百分比独立）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CursorChatProbe {
+    /// ok | rate_limited | auth_failed | network_error | unknown_error | agent_missing
+    pub outcome: String,
+    pub probed_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CursorAccount {
     pub id: String,
@@ -37,6 +53,10 @@ pub struct CursorAccount {
     pub quota_query_last_error_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_updated_at: Option<i64>,
+
+    /// 真实 Agent 对话验活；未验活时为空，不得用 usage-summary 冒充。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_probe: Option<CursorChatProbe>,
 
     pub created_at: i64,
     pub last_used: i64,

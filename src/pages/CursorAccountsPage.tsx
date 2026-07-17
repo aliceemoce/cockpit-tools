@@ -23,6 +23,7 @@ import {
   Eye,
   EyeOff,
   Lock,
+  MessageSquare,
   BookOpen,
 } from 'lucide-react';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
@@ -49,6 +50,8 @@ import {
   hasCursorQuotaData,
   isCursorAccountBanned,
   isCursorQuotaPendingQuery,
+  resolveCursorChatProbeUi,
+  getCursorChatProbeOutcome,
 } from '../types/cursor';
 import type { CursorAccount } from '../types/cursor';
 import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
@@ -196,6 +199,53 @@ export function CursorAccountsPage() {
     currentAccountId,
     formatDate, normalizeTag,
   } = page;
+
+  const [probingChatId, setProbingChatId] = useState<string | null>(null);
+  const [probingChatBatch, setProbingChatBatch] = useState(false);
+
+  const handleProbeChat = useCallback(async (accountId: string) => {
+    setProbingChatId(accountId);
+    try {
+      const updated = await cursorService.probeCursorAccountChat(accountId);
+      const outcome = updated.chat_probe?.outcome || 'unknown_error';
+      setMessage({
+        tone: outcome === 'ok' ? 'success' : 'error',
+        text: outcome === 'ok'
+          ? t('cursor.chatProbe.ok', '对话验活成功：可对话')
+          : t('cursor.chatProbe.failed', '对话验活结果：{{outcome}}', { outcome }),
+      });
+      await store.fetchAccounts();
+    } catch (error) {
+      setMessage({ tone: 'error', text: String(error) });
+    } finally {
+      setProbingChatId(null);
+    }
+  }, [setMessage, store, t]);
+
+  const handleProbeChatSelected = useCallback(async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) {
+      setMessage({ tone: 'error', text: t('cursor.chatProbe.needSelection', '请先勾选要验活的账号') });
+      return;
+    }
+    setProbingChatBatch(true);
+    try {
+      const updated = await cursorService.probeCursorAccountsChat(ids);
+      const okCount = updated.filter((account) => account.chat_probe?.outcome === 'ok').length;
+      setMessage({
+        tone: 'success',
+        text: t('cursor.chatProbe.batchDone', '已完成 {{total}} 个账号对话验活，可对话 {{ok}} 个', {
+          total: updated.length,
+          ok: okCount,
+        }),
+      });
+      await store.fetchAccounts();
+    } catch (error) {
+      setMessage({ tone: 'error', text: String(error) });
+    } finally {
+      setProbingChatBatch(false);
+    }
+  }, [selected, setMessage, store, t]);
 
   useEffect(() => {
     if (!filterPersistenceEnabled) {
@@ -501,6 +551,21 @@ export function CursorAccountsPage() {
       return currentFirstDiff;
     }
 
+    // 真实对话验活优先于 usage-summary：可对话在前，限额/认证失败沉底。
+    const chatRank = (account: CursorAccount) => {
+      const outcome = getCursorChatProbeOutcome(account);
+      if (outcome === 'ok') return 0;
+      if (!outcome) return 1;
+      if (outcome === 'network_error' || outcome === 'unknown_error' || outcome === 'agent_missing') {
+        return 2;
+      }
+      return 3; // rate_limited / auth_failed
+    };
+    const chatDiff = chatRank(a) - chatRank(b);
+    if (chatDiff !== 0) {
+      return chatDiff;
+    }
+
     if (sortBy !== 'created_at') {
       const aQuotaFailed = Boolean(a.quota_query_last_error?.trim());
       const bQuotaFailed = Boolean(b.quota_query_last_error?.trim());
@@ -669,6 +734,8 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
       const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
+      const chatProbeUi = resolveCursorChatProbeUi(account);
+      const probingThis = probingChatId === account.id;
 
       return (
         <div
@@ -683,6 +750,9 @@ export function CursorAccountsPage() {
               {maskAccountText(emailText)}
             </span>
             {isCurrent && (<span className="current-tag">{t('accounts.status.current')}</span>)}
+            <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
+              {chatProbeUi.label}
+            </span>
             {hasStatusError && (
               <span className="status-pill warning" title={errorTitle}>
                 <CircleAlert size={12} />
@@ -808,6 +878,14 @@ export function CursorAccountsPage() {
                 <RotateCw size={14} className={refreshing === account.id ? 'loading-spinner' : ''} />
               </button>
               <button
+                className="card-action-btn"
+                onClick={() => handleProbeChat(account.id)}
+                disabled={probingThis || probingChatBatch || isBanned}
+                title={t('cursor.chatProbe.action', '对话验活（真实 Agent CLI）')}
+              >
+                {probingThis ? <RefreshCw size={14} className="loading-spinner" /> : <MessageSquare size={14} />}
+              </button>
+              <button
                 className="card-action-btn export-btn"
                 onClick={() => handleExportByIds([account.id], resolveSingleExportBaseName(account))}
                 title={t('common.shared.export.title', '导出')}
@@ -849,6 +927,8 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
       const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
+      const chatProbeUi = resolveCursorChatProbeUi(account);
+      const probingThis = probingChatId === account.id;
 
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={`${isCurrent ? 'current' : ''} ${isBanned ? 'disabled' : ''}`}>
@@ -858,6 +938,9 @@ export function CursorAccountsPage() {
               <div className="account-main-line">
                 <span className="account-email-text" title={maskAccountText(emailText)}>{maskAccountText(emailText)}</span>
                 {isCurrent && <span className="mini-tag current">{t('accounts.status.current')}</span>}
+                <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
+                  {chatProbeUi.label}
+                </span>
               </div>
               {(hasStatusError || isBanned) && (
                 <div className="account-sub-line">
@@ -981,6 +1064,14 @@ export function CursorAccountsPage() {
               </button>
               <button className="action-btn" onClick={() => handleRefresh(account.id)} disabled={refreshing === account.id} title={t('common.shared.refreshQuota', '刷新配额')}>
                 <RotateCw size={14} className={refreshing === account.id ? 'loading-spinner' : ''} />
+              </button>
+              <button
+                className="action-btn"
+                onClick={() => handleProbeChat(account.id)}
+                disabled={probingThis || probingChatBatch || isBanned}
+                title={t('cursor.chatProbe.action', '对话验活（真实 Agent CLI）')}
+              >
+                {probingThis ? <RefreshCw size={14} className="loading-spinner" /> : <MessageSquare size={14} />}
               </button>
               <button
                 className="action-btn"
@@ -1115,6 +1206,15 @@ export function CursorAccountsPage() {
           <button className="btn btn-primary icon-only" onClick={() => openAddModal('oauth')} title={t('common.shared.addAccount', '添加账号')} aria-label={t('common.shared.addAccount', '添加账号')}><Plus size={14} /></button>
           <button className="btn btn-secondary icon-only" onClick={handleRefreshAll} disabled={refreshingAll || accounts.length === 0} title={t('common.shared.refreshAll', '刷新全部')} aria-label={t('common.shared.refreshAll', '刷新全部')}>
             <RefreshCw size={14} className={refreshingAll ? 'loading-spinner' : ''} />
+          </button>
+          <button
+            className="btn btn-secondary icon-only"
+            onClick={handleProbeChatSelected}
+            disabled={probingChatBatch || selected.size === 0}
+            title={t('cursor.chatProbe.batch', '对话验活所选账号')}
+            aria-label={t('cursor.chatProbe.batch', '对话验活所选账号')}
+          >
+            <MessageSquare size={14} className={probingChatBatch ? 'loading-spinner' : ''} />
           </button>
           <button className="btn btn-secondary icon-only" onClick={togglePrivacyMode}
             title={privacyModeEnabled ? t('privacy.showSensitive', '显示邮箱') : t('privacy.hideSensitive', '隐藏邮箱')}

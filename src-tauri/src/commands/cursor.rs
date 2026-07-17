@@ -326,3 +326,57 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
         Ok(format!("切换完成: {}", account.email))
     }
 }
+
+#[tauri::command]
+pub async fn probe_cursor_account_chat(
+    app: AppHandle,
+    account_id: String,
+) -> Result<CursorAccount, String> {
+    let started_at = Instant::now();
+    logger::log_info(&format!(
+        "[Cursor Command] 对话验活开始: account_id={}",
+        account_id
+    ));
+    let account = tauri::async_runtime::spawn_blocking(move || {
+        crate::modules::cursor_chat_probe::probe_account_chat(&account_id)
+    })
+    .await
+    .map_err(|e| format!("对话验活任务失败: {}", e))??;
+
+    emit_cursor_accounts_changed(&app, &account.id, "chat_probe");
+    logger::log_info(&format!(
+        "[Cursor Command] 对话验活完成: account_id={}, email={}, outcome={:?}, elapsed={}ms",
+        account.id,
+        account.email,
+        account.chat_probe.as_ref().map(|p| p.outcome.as_str()),
+        started_at.elapsed().as_millis()
+    ));
+    Ok(account)
+}
+
+#[tauri::command]
+pub async fn probe_cursor_accounts_chat(
+    app: AppHandle,
+    account_ids: Vec<String>,
+) -> Result<Vec<CursorAccount>, String> {
+    let started_at = Instant::now();
+    logger::log_info(&format!(
+        "[Cursor Command] 批量对话验活开始: count={}",
+        account_ids.len()
+    ));
+    let accounts = tauri::async_runtime::spawn_blocking(move || {
+        crate::modules::cursor_chat_probe::probe_accounts_chat(&account_ids)
+    })
+    .await
+    .map_err(|e| format!("批量对话验活任务失败: {}", e))??;
+
+    for account in &accounts {
+        emit_cursor_accounts_changed(&app, &account.id, "chat_probe");
+    }
+    logger::log_info(&format!(
+        "[Cursor Command] 批量对话验活完成: count={}, elapsed={}ms",
+        accounts.len(),
+        started_at.elapsed().as_millis()
+    ));
+    Ok(accounts)
+}

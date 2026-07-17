@@ -7,6 +7,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [1.3.8] - 2026-07-17
+
+### 新增
+
+- **Cursor 真实对话验活**：用本机 Agent CLI、账号 JWT 写入隔离 `auth.json` 后发起最小 ask 对话；结果写入 `chat_probe`（`ok` / `rate_limited` / `auth_failed` / `network_error` 等）。前端仅在验活成功时显示「可对话」，限额与认证失败分开标注；Play 选号优先 `chat_ok` 池并排除已验活限额/认证失败账号。验收命令：`cargo run --bin cursor_chat_probe -- <account_id...>`。
+
+### 修复
+
+- **修复 FREE 套餐把 `breakdown.total` 误当作月额度上限并算出虚假「已用/总额」（如 17/59）的问题**：该字段是已发生用量合计，会随使用增长；Total Usage 下方不再用百分比 × breakdown.total 伪造分数。usage-summary 百分比仍只作消费统计，不代表 Agent 可对话。
+
 ## [1.3.7] - 2026-07-16
 
 ### 新增

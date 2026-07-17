@@ -1,0 +1,28 @@
+---
+description: Cockpit Tools 程序规划（alwaysApply）
+alwaysApply: true
+---
+
+# 程序规划
+
+## 目的
+
+自用 Cockpit fork：多平台账号管理；Cursor 侧以真实 Agent 对话验活判定「可对话」。
+
+## 计划纲领
+
+- 对话验活（Agent CLI）与 usage-summary 展示分离
+- 禁止 breakdown.total 伪造已用/总额
+- 功能改动须 bump 版本、写 CHANGELOG、push 新 fork 分支
+
+## 设计摘要
+
+- `cursor_chat_probe`：隔离认证目录调用 `agent -p`，持久化 `chat_probe`
+- UI：可对话 / 对话已限额 / 认证失败 / 网络失败 / 未验活
+- pick：优先 chat_ok，排除已验活限额与认证失败
+
+## 硬约束
+
+- 「可对话」= 该账号真实对话成功，禁止用百分比冒充
+- 覆盖安装须完整 tauri build，禁止仅 cargo debug exe
+- `.cursor/user-history-requirements.md` 须进 git 并 push

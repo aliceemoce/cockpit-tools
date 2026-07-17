@@ -285,6 +285,7 @@ pub fn write_ui_error_mark(account_id: &str, email: &str, error: &str) {
         quota_query_last_error: Some(error.to_string()),
         quota_query_last_error_at: None,
         usage_updated_at: None,
+        chat_probe: None,
         created_at: 0,
         last_used: 0,
     };

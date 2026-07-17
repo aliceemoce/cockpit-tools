@@ -7,6 +7,16 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.8] - 2026-07-17
+
+### Added
+
+- **Cursor real chat probe**: runs a minimal ask-mode Agent CLI turn with the account JWT in an isolated `auth.json`, persists `chat_probe` (`ok` / `rate_limited` / `auth_failed` / `network_error`, etc.), and only shows “chat usable” after a successful probe. Play rotation prefers the chat-ok pool and excludes probed rate-limited / auth-failed accounts.
+
+### Fixed
+
+- **Stop fabricating FREE plan “used / total” from `breakdown.total`** (e.g. 17/59): that field is cumulative usage, not a fixed monthly cap. usage-summary percents remain consumption stats only and do not mean Agent chat is available.
+
 ## [1.3.7] - 2026-07-16
 
 ### Added

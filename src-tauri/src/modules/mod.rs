@@ -35,6 +35,7 @@ pub mod codex_wakeup_scheduler;
 pub mod config;
 pub mod cursor_account;
 pub mod cursor_backup_token_embedded;
+pub mod cursor_chat_probe;
 pub mod cursor_import_backup_sync;
 pub mod cursor_instance;
 pub mod cursor_oauth;
