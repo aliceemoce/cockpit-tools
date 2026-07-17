@@ -50,8 +50,9 @@ import {
   hasCursorQuotaData,
   isCursorAccountBanned,
   isCursorQuotaPendingQuery,
+  resolveCursorQuotaAvailability,
+  resolveCursorQuotaAvailabilityUi,
   resolveCursorChatProbeUi,
-  getCursorChatProbeOutcome,
 } from '../types/cursor';
 import type { CursorAccount } from '../types/cursor';
 import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
@@ -208,11 +209,18 @@ export function CursorAccountsPage() {
     try {
       const updated = await cursorService.probeCursorAccountChat(accountId);
       const outcome = updated.chat_probe?.outcome || 'unknown_error';
+      const quotaOk = resolveCursorQuotaAvailability(updated) === 'usable';
       setMessage({
-        tone: outcome === 'ok' ? 'success' : 'error',
-        text: outcome === 'ok'
-          ? t('cursor.chatProbe.ok', '对话验活成功：可对话')
-          : t('cursor.chatProbe.failed', '对话验活结果：{{outcome}}', { outcome }),
+        tone: outcome === 'ok' && quotaOk ? 'success' : 'error',
+        text:
+          outcome === 'ok' && quotaOk
+            ? t('cursor.chatProbe.sampleOk', '抽样有回话，且月额度标准通过')
+            : outcome === 'ok' && !quotaOk
+              ? t(
+                  'cursor.chatProbe.sampleMismatch',
+                  '抽样有回话，但月额度未通过（不得标可用）',
+                )
+              : t('cursor.chatProbe.failed', '对话验活结果：{{outcome}}', { outcome }),
       });
       await store.fetchAccounts();
     } catch (error) {
@@ -231,13 +239,21 @@ export function CursorAccountsPage() {
     setProbingChatBatch(true);
     try {
       const updated = await cursorService.probeCursorAccountsChat(ids);
-      const okCount = updated.filter((account) => account.chat_probe?.outcome === 'ok').length;
+      const okCount = updated.filter(
+        (account) =>
+          account.chat_probe?.outcome === 'ok' &&
+          resolveCursorQuotaAvailability(account) === 'usable',
+      ).length;
       setMessage({
         tone: 'success',
-        text: t('cursor.chatProbe.batchDone', '已完成 {{total}} 个账号对话验活，可对话 {{ok}} 个', {
-          total: updated.length,
-          ok: okCount,
-        }),
+        text: t(
+          'cursor.chatProbe.batchDone',
+          '已完成 {{total}} 个账号抽样；月额度通过且有回话 {{ok}} 个',
+          {
+            total: updated.length,
+            ok: okCount,
+          },
+        ),
       });
       await store.fetchAccounts();
     } catch (error) {
@@ -551,19 +567,28 @@ export function CursorAccountsPage() {
       return currentFirstDiff;
     }
 
-    // 真实对话验活优先于 usage-summary：可对话在前，限额/认证失败沉底。
-    const chatRank = (account: CursorAccount) => {
-      const outcome = getCursorChatProbeOutcome(account);
-      if (outcome === 'ok') return 0;
-      if (!outcome) return 1;
-      if (outcome === 'network_error' || outcome === 'unknown_error' || outcome === 'agent_missing') {
-        return 2;
+    // 月额度标准优先：有月额度在前；无额度/用尽/查询失败沉底。CLI 抽样不得单独抬序。
+    const quotaRank = (account: CursorAccount) => {
+      switch (resolveCursorQuotaAvailability(account)) {
+        case 'usable':
+          return 0;
+        case 'pending':
+          return 1;
+        case 'no_data':
+          return 2;
+        case 'exhausted':
+          return 3;
+        case 'zero_plan':
+          return 4;
+        case 'query_failed':
+          return 5;
+        default:
+          return 6;
       }
-      return 3; // rate_limited / auth_failed
     };
-    const chatDiff = chatRank(a) - chatRank(b);
-    if (chatDiff !== 0) {
-      return chatDiff;
+    const quotaDiff = quotaRank(a) - quotaRank(b);
+    if (quotaDiff !== 0) {
+      return quotaDiff;
     }
 
     if (sortBy !== 'created_at') {
@@ -734,6 +759,7 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
       const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
+      const quotaAvailUi = resolveCursorQuotaAvailabilityUi(account);
       const chatProbeUi = resolveCursorChatProbeUi(account);
       const probingThis = probingChatId === account.id;
 
@@ -750,9 +776,14 @@ export function CursorAccountsPage() {
               {maskAccountText(emailText)}
             </span>
             {isCurrent && (<span className="current-tag">{t('accounts.status.current')}</span>)}
-            <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
-              {chatProbeUi.label}
+            <span className={`tier-badge ${quotaAvailUi.className}`} title={quotaAvailUi.title}>
+              {quotaAvailUi.label}
             </span>
+            {chatProbeUi && (
+              <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
+                {chatProbeUi.label}
+              </span>
+            )}
             {hasStatusError && (
               <span className="status-pill warning" title={errorTitle}>
                 <CircleAlert size={12} />
@@ -927,6 +958,7 @@ export function CursorAccountsPage() {
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
       const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
+      const quotaAvailUi = resolveCursorQuotaAvailabilityUi(account);
       const chatProbeUi = resolveCursorChatProbeUi(account);
       const probingThis = probingChatId === account.id;
 
@@ -938,9 +970,14 @@ export function CursorAccountsPage() {
               <div className="account-main-line">
                 <span className="account-email-text" title={maskAccountText(emailText)}>{maskAccountText(emailText)}</span>
                 {isCurrent && <span className="mini-tag current">{t('accounts.status.current')}</span>}
-                <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
-                  {chatProbeUi.label}
+                <span className={`tier-badge ${quotaAvailUi.className}`} title={quotaAvailUi.title}>
+                  {quotaAvailUi.label}
                 </span>
+                {chatProbeUi && (
+                  <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
+                    {chatProbeUi.label}
+                  </span>
+                )}
               </div>
               {(hasStatusError || isBanned) && (
                 <div className="account-sub-line">

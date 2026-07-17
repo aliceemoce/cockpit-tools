@@ -3589,16 +3589,13 @@ fn remaining_credits_sort_key(account: &CursorAccount) -> (i32, i64) {
 }
 
 /// 实例 Play / 多开启动：每次强制轮换（排除当前绑定），满额池均匀随机，否则好号按剩余额度加权随机。
-/// 优先使用真实对话验活为 ok 的账号；已验活为 rate_limited / auth_failed 的账号不进入候选。
+/// 按 usage-summary 剩余额度选号；不把 chat_probe=ok 单独抬成优先池（HR-20260717-003）。
 pub fn pick_cursor_rotation_account(
     exclude_ids: &HashSet<String>,
 ) -> Result<CursorRotationPick, String> {
     let mut full_pool: Vec<(CursorAccount, i32)> = Vec::new();
     let mut good_pool: Vec<(CursorAccount, i32)> = Vec::new();
-    let mut chat_ok_full_pool: Vec<(CursorAccount, i32)> = Vec::new();
-    let mut chat_ok_good_pool: Vec<(CursorAccount, i32)> = Vec::new();
     let mut excluded_exhausted = 0usize;
-    let mut excluded_chat_blocked = 0usize;
 
     for account in list_accounts() {
         if exclude_ids.contains(&account.id) {
@@ -3610,10 +3607,6 @@ pub fn pick_cursor_rotation_account(
         if !has_nirvana_switch_ready_tokens(&account) {
             continue;
         }
-        if crate::modules::cursor_chat_probe::is_chat_probe_blocked(&account) {
-            excluded_chat_blocked += 1;
-            continue;
-        }
         let Some(remaining) = cursor_overview_remaining_percent(&account) else {
             continue;
         };
@@ -3621,48 +3614,30 @@ pub fn pick_cursor_rotation_account(
             excluded_exhausted += 1;
             continue;
         }
-        let chat_ok = crate::modules::cursor_chat_probe::is_chat_probe_ok(&account);
         if remaining >= SWITCH_FULL_POOL_REMAINING_MIN {
-            full_pool.push((account.clone(), remaining));
-            if chat_ok {
-                chat_ok_full_pool.push((account, remaining));
-            }
+            full_pool.push((account, remaining));
         } else {
-            good_pool.push((account.clone(), remaining));
-            if chat_ok {
-                chat_ok_good_pool.push((account, remaining));
-            }
+            good_pool.push((account, remaining));
         }
     }
 
-    if excluded_exhausted > 0 || excluded_chat_blocked > 0 {
+    if excluded_exhausted > 0 {
         logger::log_info(&format!(
-            "[Cursor Switch] pick 排除: exhausted={} chat_blocked={}",
-            excluded_exhausted, excluded_chat_blocked
+            "[Cursor Switch] pick 排除: exhausted={}",
+            excluded_exhausted
         ));
     }
 
     let mut rng = rand::thread_rng();
 
-    let (use_pool_name, pool): (&str, &Vec<(CursorAccount, i32)>) =
-        if !chat_ok_full_pool.is_empty() {
-            ("chat_ok_full", &chat_ok_full_pool)
-        } else if !chat_ok_good_pool.is_empty() {
-            ("chat_ok_good", &chat_ok_good_pool)
-        } else if !full_pool.is_empty() {
-            ("full", &full_pool)
-        } else {
-            ("good", &good_pool)
-        };
+    let (use_pool_name, pool): (&str, &Vec<(CursorAccount, i32)>) = if !full_pool.is_empty() {
+        ("full", &full_pool)
+    } else {
+        ("good", &good_pool)
+    };
 
     if pool.is_empty() {
-        return Err("没有可用的 Cursor 轮换账号（含对话验活过滤后）".to_string());
-    }
-
-    if use_pool_name == "full" || use_pool_name == "good" {
-        logger::log_warn(
-            "[Cursor Switch] pick: 当前无 chat_probe=ok 账号，回退 usage-summary 剩余额度池；Play 前建议先批量对话验活",
-        );
+        return Err("没有可用的 Cursor 轮换账号".to_string());
     }
 
     if let Some((account, remaining)) = pool.choose(&mut rng).cloned() {
@@ -3681,8 +3656,6 @@ pub fn pick_cursor_rotation_account(
         return Ok(CursorRotationPick {
             account_id: account.id,
             pool: match use_pool_name {
-                "chat_ok_full" => "chat_ok_full",
-                "chat_ok_good" => "chat_ok_good",
                 "full" => "full",
                 _ => "good",
             },

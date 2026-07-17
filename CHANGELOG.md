@@ -7,6 +7,16 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.9] - 2026-07-17
+
+### Changed
+
+- **Cursor account list shows monthly-quota status badges** (`usable` / `zero` / `exhausted` / `query failed` / `pending`) instead of treating `chat_probe=ok` as “chat usable”. CLI sampling is secondary; accounts that reply without monthly quota show “sample reply ≠ usable”. Sorting and Play rotation follow usage-summary remaining quota.
+
+### Fixed
+
+- **Correct 1.3.8 product hard-standard drift**: a successful CLI ask alone is not usable; accounts with `breakdown.total=0` or exhausted plan must not be promoted by probe success.
+
 ## [1.3.8] - 2026-07-17
 
 ### Added

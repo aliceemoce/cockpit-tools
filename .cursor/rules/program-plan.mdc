@@ -11,18 +11,18 @@ alwaysApply: true
 
 ## 计划纲领
 
-- 对话验活（Agent CLI）与 usage-summary 展示分离
-- 禁止 breakdown.total 伪造已用/总额
+- 月额度标准（`breakdown.total>0` 且未满）与 CLI 抽样分离显示
+- 禁止 breakdown.total 伪造已用/总额；禁止把 CLI ask 成功单独标「可对话」
 - 功能改动须 bump 版本、写 CHANGELOG、push 新 fork 分支
 
 ## 设计摘要
 
-- `cursor_chat_probe`：隔离认证目录调用 `agent -p`，持久化 `chat_probe`
-- UI：可对话 / 对话已限额 / 认证失败 / 网络失败 / 未验活
-- pick：优先 chat_ok，排除已验活限额与认证失败
+- UI 角标：有月额度 / 无月额度 / 额度用尽 / 查询失败 / 未查询
+- `cursor_chat_probe`：抽样次要标注；无月额度时标「抽样回话≠可用」
+- pick：按 usage-summary 剩余额度，不优先 chat_ok
 
 ## 硬约束
 
-- 「可对话」= 该账号真实对话成功，禁止用百分比冒充
+- 可用候选 = 月额度标准；CLI 抽样不得单独抬成可用
 - 覆盖安装须完整 tauri build，禁止仅 cargo debug exe
 - `.cursor/user-history-requirements.md` 须进 git 并 push

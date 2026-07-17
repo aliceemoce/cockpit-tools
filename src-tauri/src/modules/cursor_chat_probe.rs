@@ -18,7 +18,9 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-const PROBE_PROMPT: &str = "Reply with exactly one word: pong";
+/// 开放式短答：验收要看真实回话内容，禁止固定回声词（如 pong）。
+const PROBE_PROMPT: &str =
+    "Answer in one short English sentence: name any color and any animal. Do not reply with only one word.";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(120);
 
 fn now_ms() -> i64 {

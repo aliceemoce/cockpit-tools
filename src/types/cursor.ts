@@ -579,30 +579,142 @@ export function getCursorChatProbeOutcome(account: CursorAccount): string | null
   return outcome || null;
 }
 
-export function isCursorChatUsable(account: CursorAccount): boolean {
-  return getCursorChatProbeOutcome(account) === 'ok';
+/**
+ * 月额度可用性（抽样标准 HR-20260717-003）：
+ * usable = breakdown.total>0 且 totalPercentUsed<100 且无查询失败。
+ * CLI ask 成功不得单独抬成 usable。
+ */
+export type CursorQuotaAvailability =
+  | 'usable'
+  | 'zero_plan'
+  | 'exhausted'
+  | 'query_failed'
+  | 'pending'
+  | 'no_data';
+
+export function resolveCursorQuotaAvailability(
+  account: CursorAccount,
+): CursorQuotaAvailability {
+  if ((account.quota_query_last_error || '').trim()) {
+    return 'query_failed';
+  }
+  if (!hasCursorQuotaData(account)) {
+    return 'pending';
+  }
+  const usage = getCursorUsage(account);
+  if (usage.planTotalQuota != null && usage.planTotalQuota === 0 && !usage.isUnlimited) {
+    return 'zero_plan';
+  }
+  const totalPct = usage.totalPercentUsed;
+  if (typeof totalPct === 'number' && Number.isFinite(totalPct) && totalPct >= 100) {
+    return 'exhausted';
+  }
+  if (
+    usage.planTotalQuota != null &&
+    usage.planTotalQuota > 0 &&
+    (totalPct == null || (typeof totalPct === 'number' && totalPct < 100))
+  ) {
+    return 'usable';
+  }
+  return 'no_data';
 }
 
-export function resolveCursorChatProbeUi(
+export function isCursorPlanQuotaUsable(account: CursorAccount): boolean {
+  return resolveCursorQuotaAvailability(account) === 'usable';
+}
+
+/** @deprecated 不得单独用 chat_probe=ok 当可用；请用 isCursorPlanQuotaUsable */
+export function isCursorChatUsable(account: CursorAccount): boolean {
+  return isCursorPlanQuotaUsable(account);
+}
+
+export function resolveCursorQuotaAvailabilityUi(
   account: CursorAccount,
 ): { label: string; className: string; title?: string } {
+  const usage = hasCursorQuotaData(account) ? getCursorUsage(account) : null;
+  const auto = usage?.autoPercentUsed;
+  const autoFull =
+    typeof auto === 'number' && Number.isFinite(auto) && auto >= 100
+      ? '；Auto+Composer 已满（与 Total 不是同一计数）'
+      : '';
+  switch (resolveCursorQuotaAvailability(account)) {
+    case 'usable':
+      return {
+        label: '有月额度',
+        className: 'quota-usable',
+        title: `breakdown.total>0 且未满 100%${autoFull}`,
+      };
+    case 'zero_plan':
+      return {
+        label: '无月额度',
+        className: 'quota-zero',
+        title: 'breakdown.total=0，不得标可用',
+      };
+    case 'exhausted':
+      return {
+        label: '额度用尽',
+        className: 'quota-exhausted',
+        title: 'totalPercentUsed≥100%',
+      };
+    case 'query_failed':
+      return {
+        label: '配额查询失败',
+        className: 'quota-query-failed',
+        title: account.quota_query_last_error || undefined,
+      };
+    case 'pending':
+      return {
+        label: '配额未查询',
+        className: 'quota-pending',
+        title: '尚无 usage-summary 数据',
+      };
+    default:
+      return {
+        label: '额度未知',
+        className: 'quota-unknown',
+        title: '无法按月额度标准归类',
+      };
+  }
+}
+
+/**
+ * 抽样 CLI 结果仅作次要标注；禁止在无月额度/用尽时显示「可对话」。
+ */
+export function resolveCursorChatProbeUi(
+  account: CursorAccount,
+): { label: string; className: string; title?: string } | null {
   const outcome = getCursorChatProbeOutcome(account);
+  if (!outcome) {
+    return null;
+  }
   const detail = account.chat_probe?.detail?.trim() || undefined;
+  const quotaOk = isCursorPlanQuotaUsable(account);
   switch (outcome) {
     case 'ok':
-      return { label: '可对话', className: 'chat-ok', title: detail };
+      if (!quotaOk) {
+        return {
+          label: '抽样回话≠可用',
+          className: 'chat-probe-mismatch',
+          title: detail || 'CLI 有回话但月额度标准未通过，不得标可用',
+        };
+      }
+      return {
+        label: '抽样有回话',
+        className: 'chat-probe-sample-ok',
+        title: detail || '仅抽样记录，usage-summary 仍须单独看',
+      };
     case 'rate_limited':
-      return { label: '对话已限额', className: 'chat-limited', title: detail };
+      return { label: '抽样已限额', className: 'chat-limited', title: detail };
     case 'auth_failed':
-      return { label: '对话认证失败', className: 'chat-auth-failed', title: detail };
+      return { label: '抽样认证失败', className: 'chat-auth-failed', title: detail };
     case 'network_error':
-      return { label: '对话网络失败', className: 'chat-network', title: detail };
+      return { label: '抽样网络失败', className: 'chat-network', title: detail };
     case 'agent_missing':
       return { label: '缺少 Agent CLI', className: 'chat-missing', title: detail };
     case 'unknown_error':
-      return { label: '对话验活失败', className: 'chat-unknown', title: detail };
+      return { label: '抽样失败', className: 'chat-unknown', title: detail };
     default:
-      return { label: '未对话验活', className: 'chat-unprobed', title: '须用 Agent CLI 真实对话后才能标为可对话' };
+      return null;
   }
 }
 

@@ -524,11 +524,47 @@
   letter-spacing: normal;
 }
 
-.ghcp-account-card .tier-badge.chat-ok,
-.ghcp-accounts-page .account-table .tier-badge.chat-ok {
+.ghcp-account-card .tier-badge.quota-usable,
+.ghcp-accounts-page .account-table .tier-badge.quota-usable {
   text-transform: none;
   background: color-mix(in srgb, #16a34a 18%, transparent);
   color: #15803d;
+}
+
+.ghcp-account-card .tier-badge.quota-zero,
+.ghcp-accounts-page .account-table .tier-badge.quota-zero,
+.ghcp-account-card .tier-badge.quota-exhausted,
+.ghcp-accounts-page .account-table .tier-badge.quota-exhausted,
+.ghcp-account-card .tier-badge.quota-query-failed,
+.ghcp-accounts-page .account-table .tier-badge.quota-query-failed {
+  text-transform: none;
+  background: color-mix(in srgb, #dc2626 16%, transparent);
+  color: #b91c1c;
+}
+
+.ghcp-account-card .tier-badge.quota-pending,
+.ghcp-accounts-page .account-table .tier-badge.quota-pending,
+.ghcp-account-card .tier-badge.quota-unknown,
+.ghcp-accounts-page .account-table .tier-badge.quota-unknown {
+  text-transform: none;
+  background: color-mix(in srgb, #64748b 14%, transparent);
+  color: #475569;
+}
+
+.ghcp-account-card .tier-badge.chat-ok,
+.ghcp-accounts-page .account-table .tier-badge.chat-ok,
+.ghcp-account-card .tier-badge.chat-probe-sample-ok,
+.ghcp-accounts-page .account-table .tier-badge.chat-probe-sample-ok {
+  text-transform: none;
+  background: color-mix(in srgb, #2563eb 16%, transparent);
+  color: #1d4ed8;
+}
+
+.ghcp-account-card .tier-badge.chat-probe-mismatch,
+.ghcp-accounts-page .account-table .tier-badge.chat-probe-mismatch {
+  text-transform: none;
+  background: color-mix(in srgb, #d97706 18%, transparent);
+  color: #b45309;
 }
 
 .ghcp-account-card .tier-badge.chat-limited,
