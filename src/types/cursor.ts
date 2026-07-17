@@ -572,6 +572,36 @@ export function getCursorChatProbeOutcome(account: CursorAccount): string | null
   return outcome || null;
 }
 
+/** 与卡片红绿条一致：100 - max(total/auto/api 已用%)。 */
+export function resolveCursorBarRemainingPercent(usage: CursorUsage): number | null {
+  const usedCandidates = [
+    usage.inlineSuggestionsUsedPercent,
+    usage.totalPercentUsed,
+    usage.autoPercentUsed,
+    usage.apiPercentUsed,
+  ].filter((value): value is number => value != null && Number.isFinite(value));
+  if (usedCandidates.length === 0) {
+    return null;
+  }
+  const maxUsed = Math.min(100, Math.max(0, Math.max(...usedCandidates)));
+  return 100 - maxUsed;
+}
+
+/** 列表「按剩余 Credits」排序：与卡片进度条同一套剩余%。 */
+export function resolveCursorSortRemainingPercent(account: CursorAccount): number | null {
+  if ((account.quota_query_last_error || '').trim()) {
+    return null;
+  }
+  if (!hasCursorQuotaData(account)) {
+    return null;
+  }
+  const probe = getCursorChatProbeOutcome(account);
+  if (probe === 'rate_limited') {
+    return 0;
+  }
+  return resolveCursorBarRemainingPercent(getCursorUsage(account));
+}
+
 /**
  * 额度可用性（对齐主仓库百分比尺度 + 本机磁盘核对）：
  * - 可靠指标：totalPercentUsed（服务端已算好）
@@ -622,9 +652,12 @@ export function resolveCursorQuotaAvailability(
     return 'usable';
   }
   const totalPct = usage.totalPercentUsed;
+  const apiPct = usage.apiPercentUsed;
   if (typeof totalPct === 'number' && Number.isFinite(totalPct) && totalPct >= 100) {
-    // 磁盘 totalPercentUsed 可能过期；未验活前不得标「额度用尽」
-    return 'needs_verify';
+    if (typeof apiPct === 'number' && Number.isFinite(apiPct)) {
+      return apiPct >= 100 ? 'exhausted' : 'usable';
+    }
+    return 'exhausted';
   }
   if (totalPct == null) {
     return 'no_data';
@@ -646,6 +679,7 @@ export function resolveCursorQuotaAvailabilityUi(
 ): { label: string; className: string; title?: string } {
   const usage = hasCursorQuotaData(account) ? getCursorUsage(account) : null;
   const auto = usage?.autoPercentUsed;
+  const api = usage?.apiPercentUsed;
   const total = usage?.totalPercentUsed;
   const autoFull =
     typeof auto === 'number' && Number.isFinite(auto) && auto >= 100
@@ -664,7 +698,9 @@ export function resolveCursorQuotaAvailabilityUi(
         title:
           chatAvail === 'can_chat'
             ? `Agent 验活有回话${totalHint}${autoFull}`
-            : `totalPercentUsed 未满 100%${totalHint}${autoFull}`,
+            : typeof total === 'number' && total >= 100 && typeof api === 'number' && api < 100
+              ? `Total 显示 100% 但 API 未满（${api}%），Agent 仍可对话${autoFull}`
+              : `totalPercentUsed 未满 100%${totalHint}${autoFull}`,
       };
     case 'exhausted':
       return {
@@ -673,13 +709,15 @@ export function resolveCursorQuotaAvailabilityUi(
         title:
           chatAvail === 'cannot_chat'
             ? `Agent 验活已限额${totalHint}`
-            : `totalPercentUsed≥100%${totalHint}`,
+            : typeof api === 'number' && api >= 100
+              ? `total 与 api 均已满 100%${totalHint}`
+              : `totalPercentUsed≥100%${totalHint}`,
       };
     case 'needs_verify':
       return {
-        label: '待验活',
-        className: 'quota-needs-verify',
-        title: `totalPercentUsed≥100%，须 Agent 验活后才能标额度用尽${totalHint}`,
+        label: '额度未知',
+        className: 'quota-unknown',
+        title: `缺少 totalPercentUsed${totalHint}`,
       };
     case 'query_failed':
       return {

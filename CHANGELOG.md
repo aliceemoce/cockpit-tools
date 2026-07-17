@@ -7,6 +7,17 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.12] - 2026-07-17
+
+### Fixed
+
+- **Cursor list sort matches progress bars**: “Credits” sort uses `100 - max(Total/Auto/API used%)`, same as card bars. Fixes all-red cards ranking above true full-quota accounts when only API was used for sort.
+- **Stale-first refresh scheduling**: restore per-account `usage_updated_at` ordering (do not collapse stale accounts to one priority bucket). Log `first_id` / `last_id` each batch. Keep batch **120** and wall clock **8 min**.
+
+### Changed
+
+- **Badges without extra corner labels**: no “pending verify / quota expired” badges; card footer shows **import time** (`created_at`) again. `total≥100` with `api<100` stays “remaining”; sort still follows bar remaining %.
+
 ## [1.3.11] - 2026-07-17
 
 ### Changed

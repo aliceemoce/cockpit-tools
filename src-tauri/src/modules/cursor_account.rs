@@ -3134,8 +3134,8 @@ fn recent_refresh_attempt_ts(account_id: &str) -> i64 {
         .unwrap_or(0)
 }
 
-/// 调度键越小越优先刷：从未成功拉过用量 / 用量很旧的在前；
-/// 刚失败或刚尝试过的用尝试时间做冷却，避免死号占满每一轮。
+/// 调度键越小越优先刷：从未成功拉过用量 / 用量最旧 timestamp 在前；
+/// 刚失败或刚尝试过的用尝试时间做冷却，避免死号占满每一轮（成功写盘则 usage_updated_at 变大，自然排到后面）。
 fn refresh_schedule_ts(account: &CursorAccount) -> i64 {
     let usage = account.usage_updated_at.unwrap_or(0);
     let err_at = account
@@ -3177,11 +3177,13 @@ pub async fn refresh_tokens_stale_first(
     }
 
     logger::log_info(&format!(
-        "[Cursor Refresh] 最旧优先刷新开始: active={}, this_round={}, max_count={:?}, max_duration_secs={:?}",
+        "[Cursor Refresh] 最旧优先刷新开始: active={}, this_round={}, max_count={:?}, max_duration_secs={:?}, first_id={:?}, last_id={:?}",
         total_active,
         active_accounts.len(),
         max_count,
-        max_duration.map(|d| d.as_secs())
+        max_duration.map(|d| d.as_secs()),
+        active_accounts.first().map(|a| a.id.as_str()),
+        active_accounts.last().map(|a| a.id.as_str()),
     ));
 
     let started = std::time::Instant::now();
@@ -3330,6 +3332,35 @@ fn average_quota_percentage(metrics: &[(String, i32)]) -> f64 {
 const FULL_QUOTA_REMAINING_THRESHOLD: f64 = 99.0;
 const SWITCH_FULL_POOL_REMAINING_MIN: i32 = 99;
 
+/// 与卡片进度条一致：max(total/auto/api 已用%)。验活 ok 且 total 已满时换号池看 api 剩余。
+fn cursor_switch_max_used_percent(account: &CursorAccount, usage: &CursorUsagePercent) -> Option<i32> {
+    if let Some(probe) = account.chat_probe.as_ref() {
+        if probe.outcome == "rate_limited" {
+            return Some(100);
+        }
+        if probe.outcome == "ok" {
+            let total = usage.total_used?;
+            if total >= 100 {
+                if let Some(api_used) = usage.api_used {
+                    return Some(api_used.clamp(0, 100));
+                }
+            }
+        }
+    }
+
+    let mut used_candidates = Vec::new();
+    if let Some(used) = usage.total_used {
+        used_candidates.push(used);
+    }
+    if let Some(used) = usage.auto_used {
+        used_candidates.push(used);
+    }
+    if let Some(used) = usage.api_used {
+        used_candidates.push(used);
+    }
+    used_candidates.into_iter().max()
+}
+
 /// 与账号总览 UI `resolveRemainingQuotaPercent` 对齐：100 - max(各维度已用%)。
 /// Agent 验活结果优先：ok 视为有剩余；rate_limited 视为用尽。
 pub fn cursor_switch_remaining_percent(account: &CursorAccount) -> Option<i32> {
@@ -3353,34 +3384,24 @@ fn cursor_switch_remaining_percent_from_usage(account: &CursorAccount) -> Option
         return None;
     }
     let usage = read_usage_percent(account);
-    let mut used_candidates = Vec::new();
-    if let Some(used) = usage.total_used {
-        used_candidates.push(used);
-    }
-    if let Some(used) = usage.auto_used {
-        used_candidates.push(used);
-    }
-    if let Some(used) = usage.api_used {
-        used_candidates.push(used);
-    }
-    if used_candidates.is_empty() {
-        return None;
-    }
-    let max_used = used_candidates
-        .into_iter()
-        .map(|value| value.clamp(0, 100))
-        .max()
-        .unwrap_or(0);
-    Some(100 - max_used)
+    let max_used = cursor_switch_max_used_percent(account, &usage)?;
+    Some(100 - max_used.clamp(0, 100))
 }
 
-/// Auto/Total/API 任一维度已用 100% → 不进自动换号池。
+/// total/auto/api 按 Agent 对话口径判断是否用尽（api 维度优先于过期 total）。
 pub fn is_cursor_quota_exhausted_for_switch(account: &CursorAccount) -> bool {
-    let usage = read_usage_percent(account);
-    [usage.total_used, usage.auto_used, usage.api_used]
-        .into_iter()
-        .flatten()
-        .any(|used| used >= 100)
+    if let Some(probe) = account.chat_probe.as_ref() {
+        if probe.outcome == "ok" {
+            return false;
+        }
+        if probe.outcome == "rate_limited" {
+            return true;
+        }
+    }
+    match cursor_switch_remaining_percent_from_usage(account) {
+        Some(remaining) => remaining <= 0,
+        None => has_quota_query_failed(account),
+    }
 }
 
 pub fn cursor_switch_usage_snapshot(account: &CursorAccount) -> (Option<i32>, Option<i32>, Option<i32>) {
@@ -3843,7 +3864,7 @@ mod cursor_overview_pick_tests {
             status_reason: None,
             quota_query_last_error: None,
             quota_query_last_error_at: None,
-            usage_updated_at: Some(1),
+            usage_updated_at: Some(super::now_ts()),
             chat_probe: None,
             created_at: 0,
             last_used: 0,
@@ -3894,6 +3915,19 @@ mod cursor_rotation_pick_tests {
     use crate::models::cursor::CursorAccount;
 
     fn account_with_usage(id: &str, total: i32, auto: i32) -> CursorAccount {
+        account_with_usage_dims(id, total, auto, None)
+    }
+
+    fn account_with_usage_dims(id: &str, total: i32, auto: i32, api: Option<i32>) -> CursorAccount {
+        let mut plan = serde_json::json!({
+            "totalPercentUsed": total,
+            "autoPercentUsed": auto
+        });
+        if let Some(api_used) = api {
+            plan.as_object_mut()
+                .expect("plan object")
+                .insert("apiPercentUsed".into(), serde_json::json!(api_used));
+        }
         CursorAccount {
             id: id.into(),
             email: format!("{id}@test.com"),
@@ -3908,17 +3942,14 @@ mod cursor_rotation_pick_tests {
             cursor_auth_raw: None,
             cursor_usage_raw: Some(serde_json::json!({
                 "individualUsage": {
-                    "plan": {
-                        "totalPercentUsed": total,
-                        "autoPercentUsed": auto
-                    }
+                    "plan": plan
                 }
             })),
             status: None,
             status_reason: None,
             quota_query_last_error: None,
             quota_query_last_error_at: None,
-            usage_updated_at: Some(1),
+            usage_updated_at: Some(super::now_ts()),
             chat_probe: None,
             created_at: 0,
             last_used: 0,
@@ -3928,6 +3959,35 @@ mod cursor_rotation_pick_tests {
     #[test]
     fn remaining_percent_matches_ui_max_used() {
         let account = account_with_usage("a", 79, 100);
+        assert_eq!(cursor_switch_remaining_percent(&account), Some(0));
+        assert!(is_cursor_quota_exhausted_for_switch(&account));
+    }
+
+    #[test]
+    fn total_full_but_api_open_counts_as_bar_exhausted() {
+        let account = account_with_usage_dims("chatable", 100, 100, Some(0));
+        assert_eq!(cursor_switch_remaining_percent(&account), Some(0));
+        assert!(is_cursor_quota_exhausted_for_switch(&account));
+    }
+
+    #[test]
+    fn total_full_api_open_with_probe_ok_uses_api_remaining() {
+        let mut account = account_with_usage_dims("probed", 100, 100, Some(0));
+        account.chat_probe = Some(crate::models::cursor::CursorChatProbe {
+            outcome: "ok".into(),
+            probed_at: 1,
+            detail: None,
+            duration_ms: None,
+            status_email: None,
+            request_id: None,
+        });
+        assert_eq!(cursor_switch_remaining_percent(&account), Some(100));
+        assert!(!is_cursor_quota_exhausted_for_switch(&account));
+    }
+
+    #[test]
+    fn total_and_api_full_counts_as_exhausted() {
+        let account = account_with_usage_dims("blocked", 100, 100, Some(100));
         assert_eq!(cursor_switch_remaining_percent(&account), Some(0));
         assert!(is_cursor_quota_exhausted_for_switch(&account));
     }

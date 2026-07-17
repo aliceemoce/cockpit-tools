@@ -53,6 +53,7 @@ import {
   resolveCursorQuotaAvailability,
   resolveCursorQuotaAvailabilityUi,
   resolveCursorChatProbeUi,
+  resolveCursorSortRemainingPercent,
 } from '../types/cursor';
 import type { CursorAccount } from '../types/cursor';
 import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
@@ -328,42 +329,11 @@ export function CursorAccountsPage() {
 
   // ─── Platform-specific: Quota ──────────────────────────────────────
 
-  /** sort-only RR (36786727); display stays 590/upstream */
-  const resolveRemainingQuotaPercent = useCallback((account: CursorAccount): number | null => {
-    if (account.quota_query_last_error?.trim()) {
-      return null;
-    }
-    const usage = getCursorUsage(account);
-    const ratioPct =
-      usage.planUsedCents != null &&
-      usage.planLimitCents != null &&
-      usage.planLimitCents > 0
-        ? (usage.planUsedCents / usage.planLimitCents) * 100
-        : null;
-    const usageDims = [
-      usage.autoPercentUsed,
-      usage.apiPercentUsed,
-      usage.totalPercentUsed,
-      usage.inlineSuggestionsUsedPercent,
-    ];
-    const updatedAt = account.usage_updated_at ?? 0;
-    const staleMs = 24 * 60 * 60 * 1000;
-    const isStale = updatedAt > 0 && Date.now() - updatedAt * 1000 > staleMs;
-    const allZeroOrNull = usageDims.every((value) => value == null || value === 0);
-    if (isStale && allZeroOrNull) {
-      return null;
-    }
-    const usedCandidates = [
-      usage.inlineSuggestionsUsedPercent ?? usage.totalPercentUsed ?? ratioPct,
-      usage.autoPercentUsed,
-      usage.apiPercentUsed,
-    ].filter((value): value is number => value != null && Number.isFinite(value));
-    if (usedCandidates.length === 0) {
-      return null;
-    }
-    const maxUsed = Math.min(100, Math.max(0, Math.max(...usedCandidates)));
-    return 100 - maxUsed;
-  }, []);
+  /** 与卡片进度条一致；过期数据沉底。 */
+  const resolveRemainingQuotaPercent = useCallback(
+    (account: CursorAccount): number | null => resolveCursorSortRemainingPercent(account),
+    [],
+  );
 
   const compareUsageUpdatedAt = useCallback((a: CursorAccount, b: CursorAccount): number => {
     const aUpdated = a.usage_updated_at ?? 0;
@@ -567,30 +537,7 @@ export function CursorAccountsPage() {
       return currentFirstDiff;
     }
 
-    // 能对话在前：验活 ok / total<100 → 有剩余；验活限额 → 额度用尽沉底。
-    const quotaRank = (account: CursorAccount) => {
-      switch (resolveCursorQuotaAvailability(account)) {
-        case 'usable':
-          return 0;
-        case 'pending':
-          return 1;
-        case 'no_data':
-          return 2;
-        case 'needs_verify':
-          return 3;
-        case 'exhausted':
-          return 4;
-        case 'query_failed':
-          return 5;
-        default:
-          return 6;
-      }
-    };
-    const quotaDiff = quotaRank(a) - quotaRank(b);
-    if (quotaDiff !== 0) {
-      return quotaDiff;
-    }
-
+    // 按剩余额度% 降序（与卡片红绿条一致）；同分再比可用性。
     if (sortBy !== 'created_at') {
       const aQuotaFailed = Boolean(a.quota_query_last_error?.trim());
       const bQuotaFailed = Boolean(b.quota_query_last_error?.trim());
@@ -632,6 +579,12 @@ export function CursorAccountsPage() {
     const diff = bValue - aValue;
     if (diff !== 0) {
       return sortDirection === 'desc' ? diff : -diff;
+    }
+    const tier = (account: CursorAccount) =>
+      resolveCursorQuotaAvailability(account) === 'usable' ? 0 : 1;
+    const tierDiff = tier(a) - tier(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
     }
     return compareUsageUpdatedAt(a, b);
   }, [compareUsageUpdatedAt, currentAccountId, resolveRemainingQuotaPercent, sortBy, sortDirection]);
