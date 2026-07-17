@@ -7,6 +7,12 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.10] - 2026-07-17
+
+### Fixed
+
+- **Stop treating `breakdown.total` as monthly capacity / “no quota”**: disk audit shows it grows with usage (FREE `total/pct` often implies ~200). `total==0` means unused so far. Align with upstream: trust `totalPercentUsed`; badges are “remaining / exhausted”; no longer force 100% or “monthly quota 0” when total is 0.
+
 ## [1.3.9] - 2026-07-17
 
 ### Changed

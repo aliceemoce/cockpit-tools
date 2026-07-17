@@ -214,11 +214,11 @@ export function CursorAccountsPage() {
         tone: outcome === 'ok' && quotaOk ? 'success' : 'error',
         text:
           outcome === 'ok' && quotaOk
-            ? t('cursor.chatProbe.sampleOk', '抽样有回话，且月额度标准通过')
+            ? t('cursor.chatProbe.sampleOk', '抽样有回话，且 Total Usage 未满')
             : outcome === 'ok' && !quotaOk
               ? t(
                   'cursor.chatProbe.sampleMismatch',
-                  '抽样有回话，但月额度未通过（不得标可用）',
+                  '抽样有回话，但 Total Usage 已满或不可用（不得标可用）',
                 )
               : t('cursor.chatProbe.failed', '对话验活结果：{{outcome}}', { outcome }),
       });
@@ -248,7 +248,7 @@ export function CursorAccountsPage() {
         tone: 'success',
         text: t(
           'cursor.chatProbe.batchDone',
-          '已完成 {{total}} 个账号抽样；月额度通过且有回话 {{ok}} 个',
+          '已完成 {{total}} 个账号抽样；Total 未满且有回话 {{ok}} 个',
           {
             total: updated.length,
             ok: okCount,
@@ -567,7 +567,7 @@ export function CursorAccountsPage() {
       return currentFirstDiff;
     }
 
-    // 月额度标准优先：有月额度在前；无额度/用尽/查询失败沉底。CLI 抽样不得单独抬序。
+    // 百分比尺度优先：有剩余在前；用尽/查询失败沉底。
     const quotaRank = (account: CursorAccount) => {
       switch (resolveCursorQuotaAvailability(account)) {
         case 'usable':
@@ -578,12 +578,10 @@ export function CursorAccountsPage() {
           return 2;
         case 'exhausted':
           return 3;
-        case 'zero_plan':
-          return 4;
         case 'query_failed':
-          return 5;
+          return 4;
         default:
-          return 6;
+          return 5;
       }
     };
     const quotaDiff = quotaRank(a) - quotaRank(b);

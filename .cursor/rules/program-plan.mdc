@@ -11,18 +11,18 @@ alwaysApply: true
 
 ## 计划纲领
 
-- 月额度标准（`breakdown.total>0` 且未满）与 CLI 抽样分离显示
-- 禁止 breakdown.total 伪造已用/总额；禁止把 CLI ask 成功单独标「可对话」
+- 额度尺度对齐主仓库：以 `totalPercentUsed` 为准；`breakdown.total` 是已用量不是上限
+- 禁止把 total==0 强制成无额度/100%；禁止假分数与 CLI 单独标可用
 - 功能改动须 bump 版本、写 CHANGELOG、push 新 fork 分支
 
 ## 设计摘要
 
-- UI 角标：有月额度 / 无月额度 / 额度用尽 / 查询失败 / 未查询
-- `cursor_chat_probe`：抽样次要标注；无月额度时标「抽样回话≠可用」
-- pick：按 usage-summary 剩余额度，不优先 chat_ok
+- UI 角标：有剩余 / 额度用尽 / 查询失败 / 未查询
+- `cursor_chat_probe`：抽样次要标注
+- pick：按 usage-summary 剩余百分比
 
 ## 硬约束
 
-- 可用候选 = 月额度标准；CLI 抽样不得单独抬成可用
+- 主仓库 = `jlcodes99/cockpit-tools`；本仓 = `aliceemoce/cockpit-tools`
 - 覆盖安装须完整 tauri build，禁止仅 cargo debug exe
 - `.cursor/user-history-requirements.md` 须进 git 并 push

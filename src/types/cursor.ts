@@ -317,7 +317,7 @@ export type CursorUsage = {
   planLimitCents?: number | null;
   /** 本月套餐内 included（breakdown.included）；FREE 常为 0，不能单独当零额度。*/
   planIncludedQuota?: number | null;
-  /** 本月可用总量（breakdown.total = included + bonus）。0 = 真正无月配额。*/
+  /** plan.breakdown.total：周期内已发生用量合计（随使用增长），不是固定上限。*/
   planTotalQuota?: number | null;
   totalPercentUsed?: number | null;
   autoPercentUsed?: number | null;
@@ -406,7 +406,8 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
   const planUsed = pickNumber(plan, 'used', 'totalSpend', 'total_spend');
   const planLimit = pickNumber(plan, 'limit');
 
-  // 读取 breakdown：FREE 号 included 常为 0，真实额度在 bonus/total
+  // 读取 breakdown：FREE 号 included 常为 0；bonus/total 是已用量侧字段，会随使用增长。
+  // 可靠「用了多少」看 totalPercentUsed；禁止把 breakdown.total 当固定上限。
   const breakdown = getPath(plan, 'breakdown');
   const planIncluded = pickNumber(breakdown, 'included');
   const planBonus = pickNumber(breakdown, 'bonus');
@@ -474,18 +475,10 @@ export function getCursorUsage(account: CursorAccount): CursorUsage {
     if (Number.isFinite(ts)) resetAt = Math.floor(ts / 1000);
   }
 
-  // 零月配额：breakdown.total==0（included+bonus 皆无）。
-  // 禁止用 included==0 判定——Cursor FREE 几乎都是 included=0、额度在 bonus。
-  const isZeroTotalPlan =
-    !isUnlimited &&
-    planTotalQuota != null &&
-    planTotalQuota === 0 &&
-    (odLimit == null || odLimit === 0) &&
-    odEnabled !== true;
-
-  const effectiveTotalPct = isZeroTotalPlan ? 100 : totalPct;
-  const effectiveAutoPct = isZeroTotalPlan ? 100 : autoPct;
-  const effectiveApiPct = isZeroTotalPlan ? 100 : apiPct;
+  // 与主仓库一致：直接使用接口百分比。breakdown.total==0 只表示尚未产生用量，不得强制显示 100%。
+  const effectiveTotalPct = totalPct;
+  const effectiveAutoPct = autoPct;
+  const effectiveApiPct = apiPct;
 
   const ratioPct =
     planUsed != null && planLimit != null && planLimit > 0
@@ -580,13 +573,13 @@ export function getCursorChatProbeOutcome(account: CursorAccount): string | null
 }
 
 /**
- * 月额度可用性（抽样标准 HR-20260717-003）：
- * usable = breakdown.total>0 且 totalPercentUsed<100 且无查询失败。
- * CLI ask 成功不得单独抬成 usable。
+ * 额度可用性（对齐主仓库百分比尺度 + 本机磁盘核对）：
+ * - 可靠指标：totalPercentUsed（服务端已算好）
+ * - breakdown.total 是已用量合计，会随使用增长；total==0 表示尚未用量，不是「无额度」
+ * usable = 有 usage 数据、无查询失败、且 totalPercentUsed 未满 100
  */
 export type CursorQuotaAvailability =
   | 'usable'
-  | 'zero_plan'
   | 'exhausted'
   | 'query_failed'
   | 'pending'
@@ -602,21 +595,18 @@ export function resolveCursorQuotaAvailability(
     return 'pending';
   }
   const usage = getCursorUsage(account);
-  if (usage.planTotalQuota != null && usage.planTotalQuota === 0 && !usage.isUnlimited) {
-    return 'zero_plan';
+  if (usage.isUnlimited) {
+    return 'usable';
   }
   const totalPct = usage.totalPercentUsed;
   if (typeof totalPct === 'number' && Number.isFinite(totalPct) && totalPct >= 100) {
     return 'exhausted';
   }
-  if (
-    usage.planTotalQuota != null &&
-    usage.planTotalQuota > 0 &&
-    (totalPct == null || (typeof totalPct === 'number' && totalPct < 100))
-  ) {
-    return 'usable';
+  // totalPercentUsed 缺失时仍有 usage_raw：按主仓库一样只展示已有字段，不判死号
+  if (totalPct == null) {
+    return 'no_data';
   }
-  return 'no_data';
+  return 'usable';
 }
 
 export function isCursorPlanQuotaUsable(account: CursorAccount): boolean {
@@ -633,28 +623,27 @@ export function resolveCursorQuotaAvailabilityUi(
 ): { label: string; className: string; title?: string } {
   const usage = hasCursorQuotaData(account) ? getCursorUsage(account) : null;
   const auto = usage?.autoPercentUsed;
+  const total = usage?.totalPercentUsed;
   const autoFull =
     typeof auto === 'number' && Number.isFinite(auto) && auto >= 100
       ? '；Auto+Composer 已满（与 Total 不是同一计数）'
       : '';
+  const totalHint =
+    typeof total === 'number' && Number.isFinite(total)
+      ? `；Total Usage ${total}%`
+      : '';
   switch (resolveCursorQuotaAvailability(account)) {
     case 'usable':
       return {
-        label: '有月额度',
+        label: '有剩余',
         className: 'quota-usable',
-        title: `breakdown.total>0 且未满 100%${autoFull}`,
-      };
-    case 'zero_plan':
-      return {
-        label: '无月额度',
-        className: 'quota-zero',
-        title: 'breakdown.total=0，不得标可用',
+        title: `totalPercentUsed 未满 100%${totalHint}${autoFull}`,
       };
     case 'exhausted':
       return {
         label: '额度用尽',
         className: 'quota-exhausted',
-        title: 'totalPercentUsed≥100%',
+        title: `totalPercentUsed≥100%${totalHint}`,
       };
     case 'query_failed':
       return {
@@ -672,13 +661,13 @@ export function resolveCursorQuotaAvailabilityUi(
       return {
         label: '额度未知',
         className: 'quota-unknown',
-        title: '无法按月额度标准归类',
+        title: '有 usage 数据但缺少 totalPercentUsed',
       };
   }
 }
 
 /**
- * 抽样 CLI 结果仅作次要标注；禁止在无月额度/用尽时显示「可对话」。
+ * 抽样 CLI 结果仅作次要标注；禁止在额度用尽时显示「可用」。
  */
 export function resolveCursorChatProbeUi(
   account: CursorAccount,

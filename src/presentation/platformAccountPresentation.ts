@@ -1674,17 +1674,7 @@ export function buildCursorAccountPresentation(
     });
   }
 
-  // 真零月配额（breakdown.total=0）时追加警示；有额度时 Total 行已显示「已用 / 上限」
-  if (usage.planTotalQuota != null && usage.planTotalQuota === 0 &&
-      !usage.isUnlimited && (usage.onDemandEnabled !== true)) {
-    quotaItems.push({
-      key: "monthly_quota",
-      label: t("cursor.quota.monthlyQuota", "月配额"),
-      percentage: 100,
-      quotaClass: "high",
-      valueText: "0",
-    });
-  }
+  // 不再把 breakdown.total==0 画成「月配额 0 / 用尽」——该字段是已用量，0 表示尚未使用。
 
   return {
     id: account.id,

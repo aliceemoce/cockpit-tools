@@ -3294,50 +3294,7 @@ fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {
         _ => None,
     };
 
-    // 读取 breakdown：FREE 号 included 常为 0，真实额度在 bonus/total
-    let breakdown = plan_value
-        .and_then(|v| v.as_object())
-        .and_then(|o| o.get("breakdown"));
-    let plan_included = pick_number(breakdown, &["included"]);
-    let plan_bonus = pick_number(breakdown, &["bonus"]);
-    let plan_total_from_breakdown = pick_number(breakdown, &["total"]);
-    let plan_total_quota = plan_total_from_breakdown.or_else(|| {
-        if plan_included.is_some() || plan_bonus.is_some() {
-            Some(plan_included.unwrap_or(0.0) + plan_bonus.unwrap_or(0.0))
-        } else {
-            None
-        }
-    });
-
-    // 零月配额：breakdown.total==0。禁止用 included==0——FREE 几乎都是 included=0。
-    let od_individual = raw_obj
-        .get("individualUsage")
-        .and_then(|v| v.as_object())
-        .and_then(|o| o.get("onDemand"));
-    let od_limit = pick_number(od_individual, &["limit"]);
-    let od_enabled = od_individual
-        .and_then(|v| v.as_object())
-        .and_then(|o| o.get("enabled"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let is_unlimited = raw_obj
-        .get("isUnlimited")
-        .or_else(|| raw_obj.get("is_unlimited"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let is_zero_total_plan = !is_unlimited
-        && matches!(plan_total_quota, Some(t) if t == 0.0)
-        && matches!(od_limit, None | Some(0.0))
-        && !od_enabled;
-
-    if is_zero_total_plan {
-        return CursorUsagePercent {
-            total_used: Some(100),
-            auto_used: Some(100),
-            api_used: Some(100),
-        };
-    }
-
+    // breakdown.total 是已用量合计，不是上限；与主仓库一致，只信 totalPercentUsed / used÷limit。
     CursorUsagePercent {
         total_used: total_direct.or(total_ratio).map(clamp_percent),
         auto_used: auto_direct.map(clamp_percent),
@@ -4078,14 +4035,16 @@ mod cursor_auth_token_tests {
     }
 
     #[test]
-    fn test_zero_quota_account_identification() {
-        // total=0 → 真正无月配额
+    fn test_zero_breakdown_total_keeps_server_percent() {
+        // breakdown.total==0 只表示尚未用量；须保留 totalPercentUsed=0，禁止强制 100
         let usage_json = serde_json::json!({
             "isUnlimited": false,
             "individualUsage": {
                 "plan": {
                     "limit": 0.0,
                     "totalPercentUsed": 0,
+                    "autoPercentUsed": 0,
+                    "apiPercentUsed": 0,
                     "breakdown": {
                         "included": 0.0,
                         "bonus": 0.0,
@@ -4121,9 +4080,9 @@ mod cursor_auth_token_tests {
             last_used: 0,
         };
         let usage = read_usage_percent(&account);
-        assert_eq!(usage.total_used, Some(100));
-        assert_eq!(usage.auto_used, Some(100));
-        assert_eq!(usage.api_used, Some(100));
+        assert_eq!(usage.total_used, Some(0));
+        assert_eq!(usage.auto_used, Some(0));
+        assert_eq!(usage.api_used, Some(0));
     }
 
     #[test]
