@@ -7,9 +7,54 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.13] - 2026-07-18
+
+### Changed
+
+- merge upstream **v1.3.8** into fork tip (ork-20260717-quota-sort-refresh / 1.3.12): keep Cursor watch, quota sort/refresh, and badge rules.
+
+## [1.3.12] - 2026-07-17
+
+### Fixed
+
+- **Cursor list sort matches progress bars**: “Credits” sort uses `100 - max(Total/Auto/API used%)`, same as card bars. Fixes all-red cards ranking above true full-quota accounts when only API was used for sort.
+- **Stale-first refresh scheduling**: restore per-account `usage_updated_at` ordering (do not collapse stale accounts to one priority bucket). Log `first_id` / `last_id` each batch. Keep batch **120** and wall clock **8 min**.
+
+### Changed
+
+- **Badges without extra corner labels**: no “pending verify / quota expired” badges; card footer shows **import time** (`created_at`) again. `total≥100` with `api<100` stays “remaining”; sort still follows bar remaining %.
+
+## [1.3.11] - 2026-07-17
+
+### Changed
+
+- **Cursor list sort/badges follow Agent chat probe**: `chat_probe=ok` → “remaining” at top; `rate_limited` → “exhausted” at bottom. Stale `totalPercentUsed≥100` without probe shows “pending verify” instead of falsely marking exhausted.
+
+## [1.3.10] - 2026-07-17
+
+### Fixed
+
+- **Stop treating `breakdown.total` as monthly capacity / “no quota”**: disk audit shows it grows with usage (FREE `total/pct` often implies ~200). `total==0` means unused so far. Align with upstream: trust `totalPercentUsed`; badges are “remaining / exhausted”; no longer force 100% or “monthly quota 0” when total is 0.
+
+## [1.3.9] - 2026-07-17
+
+### Changed
+
+- **Cursor account list shows monthly-quota status badges** (`usable` / `zero` / `exhausted` / `query failed` / `pending`) instead of treating `chat_probe=ok` as “chat usable”. CLI sampling is secondary; accounts that reply without monthly quota show “sample reply ≠ usable”. Sorting and Play rotation follow usage-summary remaining quota.
+
+### Fixed
+
+- **Correct 1.3.8 product hard-standard drift**: a successful CLI ask alone is not usable; accounts with `breakdown.total=0` or exhausted plan must not be promoted by probe success.
+
 ## [1.3.8] - 2026-07-17
 
 ### Added
+
+- **Cursor real chat probe**: runs a minimal ask-mode Agent CLI turn with the account JWT in an isolated `auth.json`, persists `chat_probe` (`ok` / `rate_limited` / `auth_failed` / `network_error`, etc.), and only shows “chat usable” after a successful probe. Play rotation prefers the chat-ok pool and excludes probed rate-limited / auth-failed accounts.
+
+### Fixed
+
+- **Stop fabricating FREE plan “used / total” from `breakdown.total`** (e.g. 17/59): that field is cumulative usage, not a fixed monthly cap. usage-summary percents remain consumption stats only and do not mean Agent chat is available.
 
 - **Existing Codex accounts can be added directly to Codex API Service (#1628)**: eligible accounts already imported into Cockpit can now be added from the card, list, or table view without leaving the current page; the action reuses the incremental account-pool flow and keeps the existing restrictions for Free accounts, pending authorization, and incompatible API keys. Thanks @Ac-spider.
 - **Kiro supports AWS IAM Identity Center sign-in**: the add-account dialog now supports AWS Builder ID and Enterprise device authorization; Enterprise sign-in accepts an AWS Region and IAM Identity Center Start URL, while successful accounts preserve their client-registration context and write the official AWS SSO cache files so token refresh and real Kiro account switching continue to work.
@@ -81,6 +126,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Fixed Cursor full quota refresh restarting from the account-index head every round**, which left many accounts with stale usage for days: auto-refresh now serial-walks the oldest usage_updated_at first (batch of 120, 8-minute wall clock cap per round); recently failed attempts cool down so dead tokens do not monopolize the queue. Manual refresh-all still covers everyone, also oldest-first. The 20s local watch still only syncs the current login.
+
 - **Fixed Windows close-to-tray destroying the main WebView so floating-card reopen only worked once**: after tray destroy, residual `main` handles are cleared and the window is rebuilt on the UI thread, navigation is deferred until remount, and the main HWND is focused correctly. Thanks @happyplum for #1595.
 - **Fixed tray Quit not actually exiting after the main window was destroyed to tray**: mark an explicit user exit before quit so `ExitRequested` no longer keeps the process alive for tray-only mode. See #1595 / #1600.
 - **Fixed Codex multi-instance create/copy not applying the selected bound account**: after the profile is initialized and before create returns, credentials are written for `bind_account_id` so the new instance does not keep the source account. Thanks @kin001 for #1604 / #1599.
@@ -102,6 +149,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Fixed Antigravity list/card layout forgetting after leaving the page**: view mode always persists, independent of the “remember filters” switch. See #1200.
 - **Portuguese (Brazil) locale keeps full key coverage with native strings** for the new filter/export/import UX keys (and existing parity checks). See #860.
 - **Main window size and position are remembered across restarts and tray reopen**: resize/move are saved; close-to-tray destroy and full quit also snapshot geometry; the next launch and tray recreate restore width/height (and position when available), respecting the existing min size. See #948 / #1132.
+
 
 ---
 ## [1.3.5] - 2026-07-16

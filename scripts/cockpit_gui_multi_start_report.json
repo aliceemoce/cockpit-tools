@@ -1,0 +1,105 @@
+{
+  "ok": true,
+  "cockpit_exe": "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\_release_staging\\Cockpit-rotation-pick-20260619-v2.exe",
+  "instance_id": "5cc582e1-7fa7-4d7a-aef2-db9bc5a9e29c",
+  "instance_name": "22",
+  "profile_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+  "via": "cockpit_gui_ui_invoke",
+  "cockpit_identity": {
+    "ok": true,
+    "expected_exe": "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\_release_staging\\Cockpit-rotation-pick-20260619-v2.exe",
+    "expected_exe_exists": true,
+    "expected_exe_sha256": "f17c961ff725d44c355578f7fb7ee3103fd35423d02086dfce018483d0de964a",
+    "processes": [
+      {
+        "pid": 17252,
+        "name": "Cockpit-rotation-pick-20260619-v2.exe",
+        "command_line": "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\_release_staging\\Cockpit-rotation-pick-20260619-v2.exe",
+        "exe_path": "C:\\Users\\aliceemoce\\dev\\cockpit-tools\\scripts\\_release_staging\\Cockpit-rotation-pick-20260619-v2.exe"
+      }
+    ],
+    "main_window": {
+      "hwnd": 2036586,
+      "visible": true,
+      "class_name": "Tauri Window",
+      "title": "Cockpit Tools",
+      "left": -32000,
+      "top": -32000,
+      "width": 1280,
+      "height": 800
+    },
+    "ui_markers_found": [
+      "Cursor",
+      "多开实例",
+      "账号管理"
+    ],
+    "errors": [],
+    "ui_names_sample": [
+      "Cockpit Tools",
+      "系统",
+      "最小化",
+      "最大化",
+      "关闭",
+      "Tauri + React + Typescript",
+      "Tauri + React + Typescript - Web 内容",
+      "无标题",
+      "还原",
+      "信息栏容器",
+      "标签页栏",
+      "应用栏",
+      "侧窗格",
+      "侧面板调整大小图柄(可拖动)",
+      "新建标签页",
+      "改为搜索",
+      "在应用中打开",
+      "应用程序可用。安装",
+      "显示翻译选项",
+      "缩放: 100%",
+      "允许此页面查看文件",
+      "已阻止第三方 Cookie",
+      "保存卡",
+      "查看虚拟卡号",
+      "添加虚拟卡",
+      "启用强制重新身份验证",
+      "更新此网站的自动配置文件切换首选项",
+      "立即购买，稍后支付",
+      "保存地址？",
+      "更多操作",
+      "对此标签页静音",
+      "协作者个人资料照片",
+      "关闭标签页",
+      "Chrome Legacy Window",
+      "在拆分屏幕中打开",
+      "日志",
+      "设置",
+      "切换到经典布局",
+      "实例已启动",
+      "仪表盘"
+    ]
+  },
+  "nav_instances": {
+    "ok": true,
+    "label": "多开实例"
+  },
+  "click_start": {
+    "ok": true,
+    "label": "启动"
+  },
+  "log_since": "2026-06-19T06:45:06+08:00",
+  "log_path": "C:\\Users\\aliceemoce\\.antigravity_cockpit\\logs\\app.log.2026-06-18",
+  "log_offset": 96893326,
+  "log_has_pick_pool_full": true,
+  "log_has_rotation": true,
+  "log_has_old_pick": false,
+  "log_has_persist_verify": true,
+  "log_has_switch_done": true,
+  "log_has_gui_launch": true,
+  "auth_after_launch": {
+    "cursorAuth/accessToken": 413,
+    "cursorAuth/refreshToken": 413,
+    "cursorAuth/cachedEmail": 26
+  },
+  "multi_main_pids": [
+    17028
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "ts": "2026-06-18T22:11:20.870128+00:00",
+  "instance_id": "5cc582e1-7fa7-4d7a-aef2-db9bc5a9e29c",
+  "profile_dir": "C:\\Users\\aliceemoce\\AppData\\Roaming\\.antigravity_cockpit\\instances\\cursor\\b6d767d2f8ed5d21",
+  "dual_launch_exit": 0,
+  "dual_launch_stderr_tail": "",
+  "log": {
+    "picked_account_ids": [
+      "cursor_45589"
+    ],
+    "rotation_events": 1,
+    "persist_verify": true,
+    "switch_done": true,
+    "launch_done": true,
+    "probe_pre_ok": true
+  },
+  "auth_after_launch": {
+    "cursorAuth/accessToken": 413,
+    "cursorAuth/refreshToken": 413,
+    "cursorAuth/cachedEmail": 26,
+    "cursor.accessToken": null
+  },
+  "has_cursor_auth": true
+}
