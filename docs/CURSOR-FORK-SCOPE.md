@@ -1,18 +1,18 @@
 # Cursor fork 范围说明（对照「你的版本」）
 
-## 当前安装状态（2026-07-15）
+## 当前安装状态（2026-07-18）
 
 | 项 | 值 |
 |----|-----|
 | 磁盘路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
-| SHA-256 | `3374C2853DE9A775686E0F6EADA85B8AEDCB46FC7E019622753F77FB64E2D690` |
-| 版本 | ProductVersion `1.3.2` |
-| 源码 | `sync-upstream-v1.3.2-20260715` @ `a6efd371`（merge `ebd0dca8`+`a84a97cb` / upstream v1.3.2） |
-| Release | `sync-upstream-v1.3.2-20260715`（exe + NSIS） |
-| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/7 |
-| 状态 | **能用**（正式版同步 + Cursor watch 保留 + UIA）；拼装 `1A0EC65E…` **不能用** |
+| SHA-256 | `646020F6982CF99368DBC56AB3DDD21FB9DC4BADA808550BF07789E26D4157FC` |
+| 版本 | ProductVersion `1.3.13` |
+| 源码 | `sync-upstream-v1.3.8-20260718` @ `1eaa1bec`（merge upstream v1.3.8 `fb291416` into fork tip 1.3.12） |
+| Release | `sync-upstream-v1.3.8-20260718`（exe） |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/11 |
+| 状态 | **能用**（正式版同步 + Cursor watch/配额 fork 保留 + UIA `ALL (2119)`）；拼装 `1A0EC65E…` **不能用** |
 
-> 合并前锚点：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`（`83E85D7F…`）。
+> 合并前锚点：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`（`83E85D7F…`）。上一正式同步：`sync-upstream-v1.3.2-20260715`（`3374C285…`）。
 
 ## 历史正式测试版（历史验收基线）
 
@@ -70,7 +70,15 @@
 
 ---
 
-## 主仓库 `jlcodes99/cockpit-tools` v0.26.5（对照用，2026-06-22 合并后）
+## 主仓库 `jlcodes99/cockpit-tools` v1.3.8（本轮同步基线，2026-07-18）
+
+| 项 | 值 |
+|----|-----|
+| 上游 tag | `v1.3.8` @ `fb291416` |
+| 集成分支 | `sync-upstream-v1.3.8-20260718` @ `1eaa1bec` |
+| 交付版本 | ProductVersion **1.3.13**（fork tip 1.3.12 + upstream 1.3.8） |
+
+## 主仓库 `jlcodes99/cockpit-tools` v0.26.5（历史对照，2026-06-22）
 
 | 项 | 值 |
 |----|-----|
@@ -91,7 +99,7 @@
 
 ## Agent 操作约束
 
-- 说**最新构建**时：默认 SHA `3374C285…` / v1.3.2（能用）；上一 1.3.0=`DEA43F62…`；拼装 `1A0EC65E…` 不能用；合并前锚点 `fork-20260705` @ `918980e9`。
+- 说**最新构建**时：默认 SHA `646020F6…` / v1.3.13（能用）；上一正式同步 1.3.2=`3374C285…`；拼装 `1A0EC65E…` 不能用；合并前锚点 `fork-20260705` @ `918980e9`。
 - 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
 - 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
 - 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。

@@ -907,3 +907,15 @@
   - `src/pages/CursorAccountsPage.tsx`：排序以剩余% 为主；恢复 `created_at` 左下角
   - `src-tauri/src/modules/cursor_account.rs`：换号剩余与 UI 对齐；`refresh_schedule_ts` 恢复真实 timestamp；日志 first/last id
 - **安装验收 exe**（debug 覆盖）：SHA 前缀 `10D7F15D…` @ `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`
+
+## 2026-07-18
+
+### HR-20260718-001
+- **原文摘要**：执行 Cockpit 主仓同步巡检与交付；只按正式 release/tag；合并前个人仓代码+exe 可追溯；PR=对照；构建+UIA；push+release；系统浏览器+UIA 网页复核；有改动则维护设计档案
+- **类型**：自动化巡检 / 交付
+- **要求**：
+  1. 仅当 `jlcodes99/cockpit-tools` 正式 release/tag 高于已记集成版本才继续
+  2. 普通 main 提交 / announcements 等不触发
+  3. 合并保留 fork（含 watch）；额度池合并 / scheduler batch / 会话过期分流不带回
+  4. 交付须含个人仓分支、PR 对照、exe release、文档最新构建记录
+- **本轮结果**：upstream **v1.3.8** > 已记 1.3.2；分支 `sync-upstream-v1.3.8-20260718`；PR #11；Release 同名；安装 SHA `646020F6…` / v1.3.13；UIA Cursor `ALL (2119)`

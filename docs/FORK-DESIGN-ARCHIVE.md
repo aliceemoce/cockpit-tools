@@ -1,6 +1,6 @@
 # Cockpit Tools Fork Persistent Design Archive
 
-**最后更新**: 2026-06-26  
+**最后更新**: 2026-07-18  
 **维护人**: 用户 + Codex/Cursor Agent  
 **性质**: 这个 fork 的长期功能设计档案，用来防止后续修改覆盖、回退或误解用户目标。
 
@@ -107,7 +107,7 @@
 
 **自然语言设计**: “发布新更新”指 release/tag/版本号变化，不是 `main` 有新提交。若没有正式版本更新，任务立即停止，不做动作。
 
-**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支（当前默认 `sync-upstream-v1.3.2-20260715` / 已记 **1.3.2**，上一项为 1.3.0 redo），保留 fork 功能（含 `sync_cursor_local_watch`）和 release 边界。
+**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支（当前默认 `sync-upstream-v1.3.8-20260718` / 已记 **upstream v1.3.8 → 交付 ProductVersion 1.3.13**；上一项正式同步为 1.3.2），保留 fork 功能（含 `sync_cursor_local_watch`）和 release 边界。
 
 **保留边界**: `announcements.json`、广告位开关、公告配置、普通 commit 不触发同步、构建、发布或文档改动。
 
@@ -362,3 +362,17 @@
 - **涉及文件/模块**: `provider_token_keeper.rs`、`useProviderAccountsPage.ts`、`cursor_account.rs`（secure load）、安装/Release/注册表/SCOPE/AGENTS。
 - **验证方式**: ProductVersion 1.3.2；UIA Cursor `ALL (1873)`/`配额未查询`/`FREE`；Edge UIA 锁 PR#7/Release/分支页；源码调用点含 `sync_cursor_local_watch`。
 - **风险**: updater 签名缺私钥导致 `tauri build` exit≠0，但 exe/NSIS 已产出；Play/多开 GUI 点验仍待单独立项。
+
+### 2026-07-18（upstream v1.3.8 正式版同步 · 交付 v1.3.13）
+
+- **触碰功能**: F-006、F-007、F-008；Cursor 常驻跟号（F-010）；配额排序/最旧优先刷新（fork tip 1.3.12 能力保留）。
+- **用户目标是否变化**: 否。
+- **本次目的**: 主仓正式发布 **v1.3.8**（`fb291416`）高于文档已记集成 **1.3.2**；在隔离分支合入并完成构建/UIA/个人仓 release/网页复核。
+- **实现手段**:
+  - 起点：fork tip `fork-20260717-quota-sort-refresh`（v1.3.12）+ 合并前 baseline draft release。
+  - 分支 `sync-upstream-v1.3.8-20260718` @ `1eaa1bec`；merge `22e8f6b4`（upstream `fb291416`）→ ProductVersion **1.3.13**。
+  - 对照 PR #11（base=`upstream-v1.3.8-base` strip workflows，head=同步分支）。
+  - Release `sync-upstream-v1.3.8-20260718` 资产 `cockpit-tools.exe` SHA **`646020F6…`**。
+- **涉及文件/模块**: 合并后树；`provider_token_keeper.rs` / `useProviderAccountsPage.ts` 调用点保留；规则/SCOPE/AGENTS/本档案最新构建记录。
+- **验证方式**: 安装 exe ProductVersion 1.3.13 + SHA `646020F6…`；PrintWindow 标题 `Cockpit Tools`、Cursor 页 **`ALL (2119)`**（磁盘 2119）；Edge UIA：分支 tab / PR#11 tab / Release 页 `cockpit-tools.exe` + digest `646020f6…`。
+- **风险**: WiX/`light.exe` bundle 失败，交付为 release exe 直拷（无 NSIS）；Play/多开 GUI 点验仍待单独立项；PR base 为 strip 的 `upstream-v1.3.8-base`（个人仓对照惯例），非 `origin/main` 旧 tip。

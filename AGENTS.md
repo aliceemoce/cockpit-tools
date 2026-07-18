@@ -8,8 +8,8 @@
 
 本 fork 相对 upstream 的**验收基线与能用/不能用特征**以 [`.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc`](.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc) 为准。
 
-- **当前最新构建（能用）**：安装 exe SHA `D12C81F3…`（ProductVersion **1.3.6**）；分支 `fork-20260716-cursor-stale-refresh` @ `f1c267d2`；Cursor 配额自动刷新改为最旧优先串行批次（每轮 120 / 8 分钟）
-- **上一可用 1.3.5 / 1.3.2**：1.3.5 为本轮覆盖前；1.3.2 SHA `3374C285…`（`sync-upstream-v1.3.2-20260715`）
+- **当前最新构建（能用）**：安装 exe SHA `646020F6…`（ProductVersion **1.3.13**）；分支 `sync-upstream-v1.3.8-20260718` @ `1eaa1bec`；upstream 基线 **v1.3.8**（`fb291416`）；保留 Cursor watch + 配额排序/最旧优先刷新
+- **上一可用 1.3.6 / 1.3.2**：1.3.6 SHA `D12C81F3…`（fork stale-refresh）；1.3.2 SHA `3374C285…`（`sync-upstream-v1.3.2-20260715`）
 - **上一可用 1.3.0**：SHA `DEA43F62…`；`sync-upstream-v1.3.0-20260714-redo`
 - **拼装拒收物**：SHA `1A0EC65E…` — **不能用**
 - **合并前锚点**：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`
@@ -36,9 +36,9 @@
 | 开发仓 | `C:\Users\aliceemoce\dev\cockpit-tools` |
 | Cursor 运行时账号 JSON | `%USERPROFILE%\.antigravity_cockpit\cursor_accounts\` |
 | **禁止当 Cursor 池** | `%USERPROFILE%\.antigravity_cockpit\data\cursor_accounts\` |
-| **本轮安装** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `3374C285…`，v1.3.2） |
-| Release | `sync-upstream-v1.3.2-20260715`（exe + NSIS setup） |
-| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/7 |
+| **本轮安装** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`（SHA `646020F6…`，v1.3.13） |
+| Release | `sync-upstream-v1.3.8-20260718`（exe） |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/11 |
 | 凭证镜像仓 | `C:\Users\aliceemoce\dev\cockpit-credentials` |
 
 ## 硬约束（Agent 必须遵守）
