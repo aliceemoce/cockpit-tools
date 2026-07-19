@@ -1249,6 +1249,7 @@ pub fn run() {
                     api.prevent_exit();
                     modules::logger::log_info("[Window] 主窗口已销毁，应用继续在托盘运行");
                 } else {
+                    modules::codex_app_injection::stop_all();
                     tauri::async_runtime::spawn(async {
                         modules::codex_local_access::shutdown_local_access_gateway_for_app_exit()
                             .await;
@@ -1256,6 +1257,7 @@ pub fn run() {
                 }
             }
             RunEvent::Exit => {
+                modules::codex_app_injection::stop_all();
                 tauri::async_runtime::spawn(async {
                     modules::codex_local_access::shutdown_local_access_gateway_for_app_exit().await;
                 });

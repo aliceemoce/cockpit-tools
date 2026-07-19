@@ -1181,6 +1181,7 @@ async fn codex_start_instance_internal(
             flow_started.elapsed().as_millis()
         ));
         let close_started = Instant::now();
+        modules::codex_app_injection::stop_for_profile(&default_dir);
         let fast_closed = if skip_default_bind_account_injection {
             modules::process::close_codex_default_fast_by_pid(default_settings.last_pid, 20)?
         } else {
@@ -1299,11 +1300,17 @@ async fn codex_start_instance_internal(
         }
 
         let extra_args = modules::process::parse_extra_args(&default_settings.extra_args);
+        let injection_enabled = modules::codex_app_injection::enabled_for_app()
+            && modules::codex_app_injection::supports_bind_account(
+                default_bind_account_id.as_deref(),
+            );
+        let injection_plan =
+            modules::codex_app_injection::build_launch_args(&extra_args, injection_enabled)?;
         let launch_started = Instant::now();
         let pid = if skip_default_bind_account_injection {
-            modules::process::start_codex_default_fast_after_close(&extra_args)?
+            modules::process::start_codex_default_fast_after_close(&injection_plan.args)?
         } else {
-            modules::process::start_codex_default(&extra_args)?
+            modules::process::start_codex_default(&injection_plan.args)?
         };
         modules::logger::log_info(&format!(
             "[Codex Start] default launch phase finished, pid={}, elapsed_ms={}, total_ms={}",
@@ -1313,6 +1320,12 @@ async fn codex_start_instance_internal(
         ));
         let finalize_started = Instant::now();
         let updated = modules::codex_instance::update_default_pid(Some(pid))?;
+        modules::codex_app_injection::start_for_profile(
+            DEFAULT_INSTANCE_ID.to_string(),
+            default_dir.clone(),
+            injection_plan.port,
+            default_bind_account_id.clone(),
+        );
         let running = modules::process::is_pid_running(pid);
         modules::logger::log_info(&format!(
             "[Codex Start] default finalize phase finished: elapsed_ms={}, total_ms={}",
@@ -1349,6 +1362,7 @@ async fn codex_start_instance_internal(
     ));
 
     let close_started = Instant::now();
+    modules::codex_app_injection::stop_for_profile(instance_dir);
     if let Some(pid) =
         modules::process::resolve_codex_pid(instance.last_pid, Some(&instance.user_data_dir))
     {
@@ -1450,8 +1464,13 @@ async fn codex_start_instance_internal(
 
     modules::process::ensure_codex_launch_path_configured()?;
     let extra_args = modules::process::parse_extra_args(&instance.extra_args);
+    let injection_enabled = modules::codex_app_injection::enabled_for_app()
+        && modules::codex_app_injection::supports_bind_account(instance.bind_account_id.as_deref());
+    let injection_plan =
+        modules::codex_app_injection::build_launch_args(&extra_args, injection_enabled)?;
     let launch_started = Instant::now();
-    let pid = modules::process::start_codex_with_args(&instance.user_data_dir, &extra_args)?;
+    let pid =
+        modules::process::start_codex_with_args(&instance.user_data_dir, &injection_plan.args)?;
     modules::logger::log_info(&format!(
         "[Codex Start] instance launch phase finished: instance_id={}, pid={}, elapsed_ms={}, total_ms={}",
         instance.id,
@@ -1461,6 +1480,12 @@ async fn codex_start_instance_internal(
     ));
     let finalize_started = Instant::now();
     let updated = modules::codex_instance::update_instance_after_start(&instance.id, pid)?;
+    modules::codex_app_injection::start_for_profile(
+        instance.id.clone(),
+        instance_dir.to_path_buf(),
+        injection_plan.port,
+        instance.bind_account_id.clone(),
+    );
     let running = modules::process::is_pid_running(pid);
     let initialized = is_profile_initialized(&updated.user_data_dir);
     modules::logger::log_info(&format!(
@@ -1490,6 +1515,7 @@ pub async fn codex_start_instance(instance_id: String) -> Result<CodexInstancePr
 pub async fn codex_stop_instance(instance_id: String) -> Result<CodexInstanceProfileView, String> {
     if instance_id == DEFAULT_INSTANCE_ID {
         let default_dir = modules::codex_instance::get_default_codex_home()?;
+        modules::codex_app_injection::stop_for_profile(&default_dir);
         modules::process::close_codex_default(20)?;
         modules::codex_local_access::stop_provider_gateways_for_profile(&default_dir).await;
         let updated = modules::codex_instance::update_default_pid(None)?;
@@ -1511,6 +1537,7 @@ pub async fn codex_stop_instance(instance_id: String) -> Result<CodexInstancePro
         .find(|item| item.id == instance_id)
         .ok_or("实例不存在")?;
 
+    modules::codex_app_injection::stop_for_profile(Path::new(&instance.user_data_dir));
     if let Some(pid) =
         modules::process::resolve_codex_pid(instance.last_pid, Some(&instance.user_data_dir))
     {
@@ -1534,11 +1561,13 @@ pub async fn codex_stop_instance(instance_id: String) -> Result<CodexInstancePro
 pub async fn codex_close_all_instances() -> Result<(), String> {
     let store = modules::codex_instance::load_instance_store()?;
     let default_home = modules::codex_instance::get_default_codex_home()?;
+    modules::codex_app_injection::stop_for_profile(&default_home);
     let mut target_homes: Vec<String> = Vec::new();
     target_homes.push(default_home.to_string_lossy().to_string());
     for instance in &store.instances {
         let home = instance.user_data_dir.trim();
         if !home.is_empty() {
+            modules::codex_app_injection::stop_for_profile(Path::new(home));
             target_homes.push(home.to_string());
         }
     }

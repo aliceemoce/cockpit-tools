@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,35 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
 )
+
+type responsesTerminalEventTestError struct {
+	event []byte
+}
+
+func (e responsesTerminalEventTestError) Error() string { return "server overloaded" }
+func (e responsesTerminalEventTestError) StatusCode() int {
+	return http.StatusServiceUnavailable
+}
+func (e responsesTerminalEventTestError) ResponsesStreamEvent() []byte {
+	return bytes.Clone(e.event)
+}
+
+func TestWriteStreamTerminalErrorForResponsesPreservesResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	event := []byte(`{"type":"response.failed","response":{"status":"failed","error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded"}}}`)
+
+	writeStreamTerminalErrorForFormat(c, responsesTerminalEventTestError{event: event}, sdktranslator.FormatOpenAIResponse)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "event: response.failed") {
+		t.Fatalf("expected response.failed event name, got %q", body)
+	}
+	if !strings.Contains(body, `"type":"response.failed"`) {
+		t.Fatalf("expected top-level response.failed type, got %q", body)
+	}
+}
 
 func TestResponsesSSEFramerBuffersPartialJSONAcrossChunks(t *testing.T) {
 	framer := newRelayStreamFramer(sdktranslator.FormatOpenAIResponse, "/v1/responses")
@@ -216,13 +246,12 @@ func TestCodexClientModelsResponsePreserves56Template(t *testing.T) {
 
 func TestCodexClientModelsResponseDoesNotInjectFastMode(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		spec     *apiKeySpec
-		wantFast bool
+		name string
+		spec *apiKeySpec
 	}{
-		{name: "plain API key", spec: &apiKeySpec{}, wantFast: false},
-		{name: "OAuth-bound API key", spec: &apiKeySpec{BoundOAuth: true}, wantFast: false},
-		{name: "provider gateway", spec: &apiKeySpec{ProviderGateway: &providerGatewaySpec{}}, wantFast: false},
+		{name: "plain API key", spec: &apiKeySpec{}},
+		{name: "OAuth-bound API key", spec: &apiKeySpec{BoundOAuth: true}},
+		{name: "provider gateway", spec: &apiKeySpec{ProviderGateway: &providerGatewaySpec{}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := buildCodexClientModelsResponse([]string{"gpt-5.6-sol", "custom-compat-model"}, test.spec)
@@ -244,8 +273,9 @@ func TestCodexClientModelsResponseDoesNotInjectFastMode(t *testing.T) {
 						hasFast = true
 					}
 				}
-				if hasFast != test.wantFast {
-					t.Fatalf("model %s Fast tier = %v, want %v: %#v", slug, hasFast, test.wantFast, model["service_tiers"])
+				wantFast := slug == "gpt-5.6-sol"
+				if hasFast != wantFast {
+					t.Fatalf("model %s Fast tier = %v, want %v: %#v", slug, hasFast, wantFast, model["service_tiers"])
 				}
 			}
 		})
@@ -266,6 +296,174 @@ func TestCodexClientModelsResponseEnablesWebsocketsWhenConfigured(t *testing.T) 
 	}
 	if got, ok := sol["prefer_websockets"].(bool); !ok || !got {
 		t.Fatalf("sol prefer_websockets = %#v, want true", sol["prefer_websockets"])
+	}
+}
+
+func TestBuildCockpitQuotaResponseAggregatesShortestWindowWithoutClamp(t *testing.T) {
+	hourlyPresent := true
+	weeklyPresent := true
+	hourlyMinutes := int64(300)
+	weeklyMinutes := int64(10080)
+	accounts := map[string]quotaPoolAccountState{
+		"team-1": {
+			Primary: &quotaPoolWindowState{Present: &weeklyPresent, RemainingPercent: intPtrForTest(100), WindowMinutes: &weeklyMinutes},
+		},
+		"plus-with-hourly": {
+			Primary:   &quotaPoolWindowState{Present: &hourlyPresent, RemainingPercent: intPtrForTest(80), WindowMinutes: &hourlyMinutes},
+			Secondary: &quotaPoolWindowState{Present: &weeklyPresent, RemainingPercent: intPtrForTest(40), WindowMinutes: &weeklyMinutes},
+		},
+	}
+	accountIDs := make([]string, 0, 16)
+	for index := 0; index < 15; index++ {
+		accountID := fmt.Sprintf("plus-%d", index+1)
+		remaining := 86
+		if index == 14 {
+			remaining = 83
+		}
+		accounts[accountID] = quotaPoolAccountState{
+			Primary: &quotaPoolWindowState{Present: &weeklyPresent, RemainingPercent: intPtrForTest(remaining), WindowMinutes: &weeklyMinutes},
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	accountIDs = append(accountIDs, "team-1")
+	state := quotaPoolStateFile{Accounts: accounts}
+	response := buildCockpitQuotaResponse(&apiKeySpec{AccountIDs: accountIDs}, state, time.Now())
+	if response.RemainingPercent == nil || *response.RemainingPercent != 1387 {
+		t.Fatalf("remaining percent = %#v, want 1387", response.RemainingPercent)
+	}
+	if response.WeeklyRemainingPercent == nil || *response.WeeklyRemainingPercent != 1387 {
+		t.Fatalf("weekly percent = %#v, want 1387", response.WeeklyRemainingPercent)
+	}
+	if response.FiveHourRemainingPercent != nil {
+		t.Fatalf("five-hour percent should be absent: %#v", response.FiveHourRemainingPercent)
+	}
+	if response.IncludedAccountCount != 16 || response.MissingAccountCount != 0 {
+		t.Fatalf("account counts = %d/%d, want 16/0", response.IncludedAccountCount, response.MissingAccountCount)
+	}
+	shortest := buildCockpitQuotaResponse(&apiKeySpec{AccountIDs: []string{"plus-with-hourly"}}, state, time.Now())
+	if shortest.RemainingPercent == nil || *shortest.RemainingPercent != 80 {
+		t.Fatalf("shortest window percent = %#v, want 80", shortest.RemainingPercent)
+	}
+	if shortest.WeeklyRemainingPercent == nil || *shortest.WeeklyRemainingPercent != 40 {
+		t.Fatalf("weekly percent = %#v, want 40", shortest.WeeklyRemainingPercent)
+	}
+	if shortest.FiveHourRemainingPercent == nil || *shortest.FiveHourRemainingPercent != 80 {
+		t.Fatalf("five-hour percent = %#v, want 80", shortest.FiveHourRemainingPercent)
+	}
+	emptyScope := buildCockpitQuotaResponse(&apiKeySpec{}, state, time.Now())
+	if emptyScope.RemainingPercent != nil || emptyScope.AccountCount != 0 {
+		t.Fatalf("empty API key scope must not expose the full quota pool: %#v", emptyScope)
+	}
+}
+
+func TestRelayServerCockpitQuotaRequiresKeyAndIsolatesAccountScopes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	statePath := filepath.Join(t.TempDir(), "quota-pool-state.json")
+	present := true
+	minutes := int64(300)
+	state := quotaPoolStateFile{Accounts: map[string]quotaPoolAccountState{
+		"account-a": {
+			Primary: &quotaPoolWindowState{Present: &present, RemainingPercent: intPtrForTest(80), WindowMinutes: &minutes},
+		},
+		"account-b": {
+			Primary: &quotaPoolWindowState{Present: &present, RemainingPercent: intPtrForTest(55), WindowMinutes: &minutes},
+		},
+	}}
+	content, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal quota state: %v", err)
+	}
+	if err := os.WriteFile(statePath, content, 0o600); err != nil {
+		t.Fatalf("write quota state: %v", err)
+	}
+
+	keyA := &apiKeySpec{ID: "key-a", Key: "client-a", Enabled: true, AccountIDs: []string{"account-a"}}
+	keyB := &apiKeySpec{ID: "key-b", Key: "client-b", Enabled: true, AccountIDs: []string{"account-b"}}
+	manifest := &manifest{apiKeyByValue: map[string]*apiKeySpec{
+		keyA.Key: keyA,
+		keyB.Key: keyB,
+	}}
+	router := (&relayServer{
+		runtime:            &fakeRuntime{},
+		cfg:                &config.Config{},
+		manifest:           manifest,
+		policy:             &requestPolicy{manifest: manifest},
+		quotaPoolStatePath: statePath,
+	}).router()
+
+	for _, key := range []string{"", "wrong-key"} {
+		req := httptest.NewRequest(http.MethodGet, cockpitQuotaPath, nil)
+		if key != "" {
+			req.Header.Set("Authorization", "Bearer "+key)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("key %q status = %d, want 401; body=%s", key, w.Code, w.Body.String())
+		}
+	}
+
+	for key, want := range map[string]int{"client-a": 80, "client-b": 55} {
+		req := httptest.NewRequest(http.MethodGet, cockpitQuotaPath, nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("key %q status = %d, want 200; body=%s", key, w.Code, w.Body.String())
+		}
+		var response cockpitQuotaResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode key %q response: %v", key, err)
+		}
+		if response.RemainingPercent == nil || *response.RemainingPercent != want || response.AccountCount != 1 {
+			t.Fatalf("key %q received another scope: %#v", key, response)
+		}
+	}
+}
+
+func TestRelayServerCockpitQuotaUpstreamFailureReturnsScopedEmptyState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusBadGateway)
+	}))
+	defer upstream.Close()
+
+	statePath := filepath.Join(t.TempDir(), "quota-pool-state.json")
+	if err := os.WriteFile(statePath, []byte(`{"accounts":{}}`), 0o600); err != nil {
+		t.Fatalf("write quota state: %v", err)
+	}
+	spec := &apiKeySpec{
+		ID:         "provider-key",
+		Key:        "client-key",
+		Enabled:    true,
+		AccountIDs: []string{"provider-account"},
+		ProviderGateway: &providerGatewaySpec{
+			BaseURL: upstream.URL,
+			APIKey:  "upstream-key",
+		},
+	}
+	manifest := &manifest{apiKeyByValue: map[string]*apiKeySpec{spec.Key: spec}}
+	router := (&relayServer{
+		runtime:            &fakeRuntime{},
+		cfg:                &config.Config{},
+		manifest:           manifest,
+		policy:             &requestPolicy{manifest: manifest},
+		quotaPoolStatePath: statePath,
+	}).router()
+
+	req := httptest.NewRequest(http.MethodGet, cockpitQuotaPath, nil)
+	req.Header.Set("Authorization", "Bearer client-key")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	var response cockpitQuotaResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.RemainingPercent != nil || response.AccountCount != 1 || response.MissingAccountCount != 1 {
+		t.Fatalf("upstream failure should keep local scoped empty state: %#v", response)
 	}
 }
 

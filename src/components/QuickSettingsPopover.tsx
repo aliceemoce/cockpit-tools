@@ -64,6 +64,7 @@ interface GeneralConfig {
   codex_auto_refresh_minutes: number;
   claude_auto_refresh_minutes: number;
   codex_sync_wsl: boolean;
+  codex_app_ui_injection_enabled?: boolean;
   codex_wsl_config_dir: string;
   ghcp_auto_refresh_minutes: number;
   windsurf_auto_refresh_minutes: number;
@@ -1964,6 +1965,36 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                   {t(
                     'settings.general.codexLocalAccessEntryVisibleDesc',
                     '仅控制 Codex 总览中的 API 服务入口显示，不会停止本地 API 服务；关闭后可在这里重新打开。',
+                  )}
+                </div>
+                <div className="qs-row" style={{ marginTop: 8 }}>
+                  <div className="qs-row-label">
+                    <span>
+                      {t(
+                        'settings.general.codexAppUiInjection',
+                        '显示 API 服务额度',
+                      )}
+                    </span>
+                  </div>
+                  <div className="qs-row-control">
+                    <label className="qs-switch">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(config.codex_app_ui_injection_enabled)}
+                        onChange={(event) =>
+                          saveConfig({
+                            codex_app_ui_injection_enabled: event.target.checked,
+                          })
+                        }
+                      />
+                      <span className="qs-switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+                <div className="qs-hint">
+                  {t(
+                    'settings.general.codexAppUiInjectionDesc',
+                    '重启 Codex 实例后，在输入框下方显示 Cockpit Tools API 服务的账号数、周额度和 5h 额度。需保持 Cockpit Tools 在后台运行；完全退出或网络不可用时，额度不会继续刷新。',
                   )}
                 </div>
                 {isWindows && (

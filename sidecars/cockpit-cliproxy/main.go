@@ -79,6 +79,7 @@ const ollamaBridgeVersion = "0.18.3"
 const maxImageUploadBytes int64 = 64 * 1024 * 1024
 const codexAlphaSearchPath = "/v1/alpha/search"
 const codexDirectAlphaSearchPath = "/backend-api/codex/alpha/search"
+const cockpitQuotaPath = "/v1/cockpit/quota"
 const defaultCodexAlphaSearchURL = "https://chatgpt.com/backend-api/codex/alpha/search"
 const maxCodexAlphaSearchRequestBytes = 16 << 20
 const maxCodexAlphaSearchResponseBytes = 32 << 20
@@ -3820,6 +3821,7 @@ type relayServer struct {
 	emitter            *eventEmitter
 	policy             *requestPolicy
 	responsesWebsocket gin.HandlerFunc
+	quotaPoolStatePath string
 }
 
 func (s *relayServer) router() *gin.Engine {
@@ -3828,6 +3830,7 @@ func (s *relayServer) router() *gin.Engine {
 	router.Use(corsMiddleware())
 	router.Use(s.policy.middleware())
 	router.GET("/v1/models", s.handleModels)
+	router.GET(cockpitQuotaPath, s.handleCockpitQuota)
 	router.POST("/v1/cockpit/auth/reset", s.handleResetAuthState)
 	// Codex Responses WebSocket upgrade uses GET /v1/responses (not POST/SSE).
 	router.GET("/v1/responses", s.handleResponsesWebsocket)
@@ -3855,6 +3858,187 @@ func (s *relayServer) router() *gin.Engine {
 		writeAPIError(c, http.StatusNotFound, "endpoint not supported", "not_found")
 	})
 	return router
+}
+
+type quotaPoolWindowState struct {
+	Present          *bool  `json:"present,omitempty"`
+	RemainingPercent *int   `json:"remainingPercent,omitempty"`
+	WindowMinutes    *int64 `json:"windowMinutes,omitempty"`
+	ResetAt          *int64 `json:"resetAt,omitempty"`
+}
+
+type quotaPoolAccountState struct {
+	Primary   *quotaPoolWindowState `json:"primary,omitempty"`
+	Secondary *quotaPoolWindowState `json:"secondary,omitempty"`
+	UpdatedAt *int64                `json:"updatedAt,omitempty"`
+}
+
+type quotaPoolStateFile struct {
+	Accounts map[string]quotaPoolAccountState `json:"accounts"`
+}
+
+type cockpitQuotaResponse struct {
+	Version                  int    `json:"version"`
+	Scope                    string `json:"scope"`
+	RemainingPercent         *int   `json:"remainingPercent,omitempty"`
+	WeeklyRemainingPercent   *int   `json:"weeklyRemainingPercent,omitempty"`
+	FiveHourRemainingPercent *int   `json:"fiveHourRemainingPercent,omitempty"`
+	AccountCount             int    `json:"accountCount"`
+	IncludedAccountCount     int    `json:"includedAccountCount"`
+	MissingAccountCount      int    `json:"missingAccountCount"`
+	UpdatedAt                int64  `json:"updatedAt,omitempty"`
+	Stale                    bool   `json:"stale"`
+}
+
+func readQuotaPoolState(path string) (quotaPoolStateFile, error) {
+	content, err := os.ReadFile(strings.TrimSpace(path))
+	if err != nil {
+		return quotaPoolStateFile{}, err
+	}
+	var state quotaPoolStateFile
+	if err := json.Unmarshal(content, &state); err != nil {
+		return quotaPoolStateFile{}, err
+	}
+	if state.Accounts == nil {
+		state.Accounts = make(map[string]quotaPoolAccountState)
+	}
+	return state, nil
+}
+
+func quotaWindowPresent(window *quotaPoolWindowState) bool {
+	return window != nil && (window.Present == nil || *window.Present)
+}
+
+func quotaWindowValue(window *quotaPoolWindowState) (int, int64, bool) {
+	if !quotaWindowPresent(window) || window.RemainingPercent == nil {
+		return 0, 0, false
+	}
+	minutes := int64(10080)
+	if window.WindowMinutes != nil && *window.WindowMinutes > 0 {
+		minutes = *window.WindowMinutes
+	}
+	return *window.RemainingPercent, minutes, true
+}
+
+func buildCockpitQuotaResponse(spec *apiKeySpec, state quotaPoolStateFile, now time.Time) cockpitQuotaResponse {
+	accountIDs := make([]string, 0)
+	if spec != nil {
+		accountIDs = normalizeStringList(spec.AccountIDs)
+	}
+	result := cockpitQuotaResponse{
+		Version:      1,
+		Scope:        "api_key_account_pool",
+		AccountCount: len(accountIDs),
+	}
+	total := 0
+	hasValue := false
+	weeklyTotal := 0
+	fiveHourTotal := 0
+	hasWeekly := false
+	hasFiveHour := false
+	for _, accountID := range accountIDs {
+		item, ok := state.Accounts[accountID]
+		if !ok {
+			result.MissingAccountCount++
+			continue
+		}
+		primaryValue, primaryMinutes, primaryOK := quotaWindowValue(item.Primary)
+		secondaryValue, secondaryMinutes, secondaryOK := quotaWindowValue(item.Secondary)
+		value, ok := 0, false
+		switch {
+		case primaryOK && secondaryOK && primaryMinutes <= secondaryMinutes:
+			value, ok = primaryValue, true
+		case primaryOK && secondaryOK:
+			value, ok = secondaryValue, true
+		case primaryOK:
+			value, ok = primaryValue, true
+		case secondaryOK:
+			value, ok = secondaryValue, true
+		}
+		if !ok {
+			result.MissingAccountCount++
+			continue
+		}
+		total += value
+		hasValue = true
+		if primaryOK && primaryMinutes >= 5*24*60 {
+			weeklyTotal += primaryValue
+			hasWeekly = true
+		}
+		if secondaryOK && secondaryMinutes >= 5*24*60 {
+			weeklyTotal += secondaryValue
+			hasWeekly = true
+		}
+		if primaryOK && primaryMinutes > 0 && primaryMinutes <= 6*60 {
+			fiveHourTotal += primaryValue
+			hasFiveHour = true
+		}
+		if secondaryOK && secondaryMinutes > 0 && secondaryMinutes <= 6*60 {
+			fiveHourTotal += secondaryValue
+			hasFiveHour = true
+		}
+		result.IncludedAccountCount++
+		if item.UpdatedAt != nil {
+			if *item.UpdatedAt > result.UpdatedAt {
+				result.UpdatedAt = *item.UpdatedAt
+			}
+			if now.Unix()-*item.UpdatedAt > 15*60 {
+				result.Stale = true
+			}
+		}
+	}
+	if hasValue {
+		result.RemainingPercent = &total
+	}
+	if hasWeekly {
+		result.WeeklyRemainingPercent = &weeklyTotal
+	}
+	if hasFiveHour {
+		result.FiveHourRemainingPercent = &fiveHourTotal
+	}
+	return result
+}
+
+func (s *relayServer) handleCockpitQuota(c *gin.Context) {
+	spec, ok := s.requireAPIKey(c)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(s.quotaPoolStatePath) == "" {
+		c.JSON(http.StatusOK, cockpitQuotaResponse{Version: 1, Scope: "api_key_account_pool"})
+		return
+	}
+	state, err := readQuotaPoolState(s.quotaPoolStatePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			c.JSON(http.StatusOK, cockpitQuotaResponse{Version: 1, Scope: "api_key_account_pool"})
+			return
+		}
+		writeAPIError(c, http.StatusServiceUnavailable, "quota state unavailable", "quota_state_unavailable")
+		return
+	}
+	response := buildCockpitQuotaResponse(spec, state, time.Now())
+	if response.RemainingPercent == nil && spec != nil && spec.ProviderGateway != nil {
+		upstreamURL, urlErr := providerGatewayURL(spec.ProviderGateway.BaseURL, cockpitQuotaPath)
+		if urlErr == nil {
+			request, requestErr := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, upstreamURL, nil)
+			if requestErr == nil {
+				request.Header.Set("Authorization", "Bearer "+spec.ProviderGateway.APIKey)
+				client := &http.Client{Timeout: 2 * time.Second}
+				if upstream, doErr := client.Do(request); doErr == nil {
+					defer upstream.Body.Close()
+					if upstream.StatusCode == http.StatusOK {
+						var upstreamResponse cockpitQuotaResponse
+						if json.NewDecoder(upstream.Body).Decode(&upstreamResponse) == nil {
+							c.JSON(http.StatusOK, upstreamResponse)
+							return
+						}
+					}
+				}
+			}
+		}
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 type resetAuthStateRequest struct {
@@ -5236,7 +5420,7 @@ func (s *relayServer) writeProviderGatewayChatStream(c *gin.Context, body io.Rea
 	}
 	if err := scanner.Err(); err != nil {
 		s.emitExecutorDiagnostic(c, "provider_gateway_stream_scan_failed", model, "provider_gateway_chat_stream", startedAt, err.Error())
-		writeStreamTerminalError(c, err)
+		writeStreamTerminalErrorForFormat(c, err, sdktranslator.FormatOpenAIResponse)
 		flusher.Flush()
 		return
 	}
@@ -5314,7 +5498,7 @@ func (s *relayServer) writeProviderGatewayTranslatedChatStream(c *gin.Context, b
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		writeStreamTerminalError(c, err)
+		writeStreamTerminalErrorForFormat(c, err, targetFormat)
 		flusher.Flush()
 	}
 }
@@ -5482,7 +5666,7 @@ func (s *relayServer) handleStream(c *gin.Context, body []byte, model string, so
 	if err != nil {
 		s.emitExecutorDiagnostic(c, "executor_failed", model, "execute_stream", startedAt, err.Error())
 		if immediateSSE {
-			writeStreamTerminalError(c, err)
+			writeStreamTerminalErrorForFormat(c, err, sourceFormat)
 			immediateFlusher.Flush()
 			return
 		}
@@ -5492,7 +5676,7 @@ func (s *relayServer) handleStream(c *gin.Context, body []byte, model string, so
 	if result == nil || result.Chunks == nil {
 		s.emitExecutorDiagnostic(c, "executor_failed", model, "execute_stream", startedAt, "upstream stream is unavailable")
 		if immediateSSE {
-			writeStreamTerminalError(c, relayStatusError{status: http.StatusBadGateway, message: "upstream stream is unavailable"})
+			writeStreamTerminalErrorForFormat(c, relayStatusError{status: http.StatusBadGateway, message: "upstream stream is unavailable"}, sourceFormat)
 			immediateFlusher.Flush()
 		} else {
 			writeAPIError(c, http.StatusBadGateway, "upstream stream is unavailable", "bad_gateway")
@@ -5538,7 +5722,7 @@ func (s *relayServer) handleStream(c *gin.Context, body []byte, model string, so
 			endReason = "stream_idle_timeout"
 			err := relayTimeoutError{phase: "stream_idle", timeout: timeouts.idle}
 			s.emitExecutorDiagnostic(c, "stream_idle_timeout", model, "stream_loop", startedAt, err.Error())
-			writeStreamTerminalError(c, err)
+			writeStreamTerminalErrorForFormat(c, err, sourceFormat)
 			flusher.Flush()
 			return
 		case <-c.Request.Context().Done():
@@ -5576,7 +5760,7 @@ func (s *relayServer) handleStream(c *gin.Context, body []byte, model string, so
 			if chunk.Err != nil {
 				endReason = "stream_error"
 				s.emitExecutorDiagnostic(c, "stream_error", model, "stream_loop", startedAt, chunk.Err.Error())
-				writeStreamTerminalError(c, chunk.Err)
+				writeStreamTerminalErrorForFormat(c, chunk.Err, sourceFormat)
 				flusher.Flush()
 				return
 			}
@@ -7092,6 +7276,19 @@ func writeStreamTerminalError(c *gin.Context, err error) {
 	_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(payload))
 }
 
+func writeStreamTerminalErrorForFormat(c *gin.Context, err error, sourceFormat sdktranslator.Format) {
+	if c == nil {
+		return
+	}
+	if !sourceFormatEqual(sourceFormat, sdktranslator.FormatOpenAIResponse) {
+		writeStreamTerminalError(c, err)
+		return
+	}
+	status := statusCodeFromError(err)
+	eventName, payload := sdkhandlers.BuildOpenAIResponsesStreamTerminalEvent(status, err, 0)
+	_, _ = fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventName, string(payload))
+}
+
 type relayStreamFrameMode int
 
 const (
@@ -7528,6 +7725,7 @@ func main() {
 	configPath := flag.String("config", "", "CLIProxyAPI config file")
 	manifestPath := flag.String("manifest", "", "Cockpit sidecar manifest file")
 	quotaReserveStatePath := flag.String("quota-reserve-state", "", "Cockpit OAuth quota reserve state file")
+	quotaPoolStatePath := flag.String("quota-pool-state", "", "Cockpit account-pool quota state file")
 	parentPID := flag.Int("parent-pid", 0, "Cockpit Tools parent process id")
 	flag.Parse()
 
@@ -7610,6 +7808,7 @@ func main() {
 		emitter:            emitter,
 		policy:             policy,
 		responsesWebsocket: responsesHandler.ResponsesWebsocket,
+		quotaPoolStatePath: *quotaPoolStatePath,
 	}
 	if err := runRelayHTTPServer(ctx, cfg, relay.router(), emitter); err != nil && !errors.Is(err, context.Canceled) {
 		emitter.emit(map[string]any{"type": "error", "message": err.Error()})

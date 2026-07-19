@@ -1027,6 +1027,11 @@
       "codexPathReset": "重置默认",
       "codexSyncWsl": "同步 Codex 到 WSL",
       "codexSyncWslDesc": "切换默认 Codex 账号后，同时把 auth.json 和 config.toml 写入 WSL 的 Codex 配置目录。",
+      "codexAppUiInjection": "显示 API 服务额度",
+      "codexAppUiInjectionDesc": "重启 Codex 实例后，在输入框下方显示 Cockpit Tools API 服务的账号数、周额度和 5h 额度。需保持 Cockpit Tools 在后台运行；完全退出或网络不可用时，额度不会继续刷新。",
+      "codexAppUiInjectionPoolLabel": "账号",
+      "codexAppUiInjectionWeeklyLabel": "周",
+      "codexAppUiInjectionFiveHourLabel": "5h",
       "codexWslConfigDir": "WSL Codex 目录",
       "codexWslConfigDirDesc": "填写 WSL 中的 .codex 目录，支持 \\\\wsl.localhost\\ 形式。",
       "codexWslConfigDirPlaceholder": "例如：\\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -4987,6 +4992,8 @@
       "resetUnknown": "订阅重置：--",
       "statusUnknown": "状态：--",
       "statusNormal": "状态：正常",
+      "statusSynced": "状态：已同步",
+      "statusSyncedPending": "状态：已同步，剩余额待确认",
       "statusExhaustedFree": "状态：用量已耗尽，建议升级方案",
       "statusExhaustedPro": "状态：用量已耗尽，建议升级方案或开启超额自动扣费",
       "bonusUsed": "Bonus：+{{amount}}",
@@ -4998,7 +5005,20 @@
       "payAsYouGoLabel": "超额自动扣费",
       "payAsYouGoConsuming": "超额自动扣费：消耗中",
       "payAsYouGoEnabled": "超额自动扣费：已开启",
-      "payAsYouGoEmpty": "超额自动扣费：--"
+      "payAsYouGoEmpty": "超额自动扣费：--",
+      "fastAvailable": "速通可用 {{times}}",
+      "fastTimes": "{{count}} 次",
+      "fastUnlimited": "无限次",
+      "fastPerMonth": "快请求/月：{{count}}",
+      "fastChannelPerMonth": "快通道: {{count}}/月",
+      "fastChannelStatus": "快通道: {{status}}",
+      "freeRemainingUnknown": "免费剩余：--",
+      "timesRemainingUnknown": "剩余次数：--",
+      "soloParallel": "权益包: Solo 并发 {{count}}"
+    },
+    "token": {
+      "jsonOnlyDesc": "粘贴完整 Trae CN 账号 JSON。暂不支持裸 Token，避免导入后无法稳定识别账号或写入不可用登录态。",
+      "jsonOnlyPlaceholder": "粘贴完整 Trae CN JSON..."
     },
     "flowNotice": {
       "title": "Trae 账号接入说明（点击展开/收起）",

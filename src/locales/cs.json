@@ -650,6 +650,11 @@
       "codexPathReset": "Obnovit výchozí",
       "codexSyncWsl": "Synchronizovat Codex do WSL",
       "codexSyncWslDesc": "Po přepnutí výchozího účtu Codex se auth.json a config.toml zapíší také do adresáře Codex ve WSL.",
+      "codexAppUiInjection": "Kvóta API služby",
+      "codexAppUiInjectionDesc": "Po restartování instance Codex zobrazí pod kompozitorem počet účtů API služby Cockpit Tools a kvóty za týden a 5 hodin. Cockpit Tools musí běžet na pozadí; po úplném ukončení nebo bez sítě se údaje neobnovují.",
+      "codexAppUiInjectionPoolLabel": "Účty",
+      "codexAppUiInjectionWeeklyLabel": "Týden",
+      "codexAppUiInjectionFiveHourLabel": "5 h",
       "codexWslConfigDir": "Adresář Codex ve WSL",
       "codexWslConfigDirDesc": "Zadejte adresář .codex ve WSL. Cesty \\\\wsl.localhost\\ jsou podporované.",
       "codexWslConfigDirPlaceholder": "Příklad: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -1907,7 +1912,10 @@
       "testConnectFailed": "Nelze se připojit k {{url}}. Ověřte, že API služba běží, port se nezměnil a nic ho neblokuje.",
       "testAuthFailed": "Služba je dosažitelná, ale ověření selhalo: {{detail}}. Zkontrolujte klíč API služby nebo stav přihlášení účtu.",
       "testServiceUnavailable": "Služba je dosažitelná, ale momentálně není dostupná: {{detail}}. Zkontrolujte, zda je služba zapnutá, kolekce účtů není prázdná a účty jsou použitelné.",
-      "gatewayErrors": {"authUnavailable": "Momentálně není k dispozici žádný účet pro směrování. Účet může být v čekací lhůtě, bez ověření nebo omezený kvótou. Zkontrolujte jeho stav v API službě Cockpit Tools.", "authNotFound": "V kolekci účtů není nastaven žádný použitelný účet. Přidejte nebo aktivujte účet v API službě Cockpit Tools."},
+      "gatewayErrors": {
+        "authUnavailable": "Momentálně není k dispozici žádný účet pro směrování. Účet může být v čekací lhůtě, bez ověření nebo omezený kvótou. Zkontrolujte jeho stav v API službě Cockpit Tools.",
+        "authNotFound": "V kolekci účtů není nastaven žádný použitelný účet. Přidejte nebo aktivujte účet v API službě Cockpit Tools."
+      },
       "testRateLimited": "Služba je dosažitelná, ale upstream je omezen nebo kvóta vyčerpána: {{detail}}.",
       "testHttpFailed": "Služba je dosažitelná, ale požadavek vrátil HTTP {{status}}: {{detail}}.",
       "activateAction": "Spustit API službu",
@@ -4666,7 +4674,18 @@
       "payAsYouGoConsuming": "Prubezne uctovani: cerpa se",
       "payAsYouGoEnabled": "Prubezne uctovani: zapnuto",
       "payAsYouGoEmpty": "Prubezne uctovani: --",
-      "payAsYouGoLabel": "Pouziti na vyzadani"
+      "payAsYouGoLabel": "Pouziti na vyzadani",
+      "statusSynced": "Stav: sync",
+      "statusSyncedPending": "Stav: sync, zbytek nejasný",
+      "fastAvailable": "Rychlé: {{times}}",
+      "fastTimes": "{{count}}×",
+      "fastUnlimited": "Neomezeně",
+      "fastPerMonth": "Rychlé/měs: {{count}}",
+      "fastChannelPerMonth": "Express: {{count}}/měs",
+      "fastChannelStatus": "Rychlý kanál: {{status}}",
+      "freeRemainingUnknown": "Free zbývá: --",
+      "timesRemainingUnknown": "Zbývá: --",
+      "soloParallel": "Balíček: Solo ×{{count}}"
     },
     "flowNotice": {
       "title": "Prirucka k uctu Trae (kliknutim rozbalit/sbalit)",
@@ -4678,6 +4697,10 @@
       "permissionWithPlatform": "Rozsah oprávnění: čte a zapisuje pole přihlášení v místním storage.json {{platform}} pro import účtů, injekci přepnutí účtu a zobrazení plánu. Všechna data se zpracovávají pouze místně.",
       "networkGlobal": "Rozsah sítě: OAuth přihlášení, obnova tokenů a dotazy plánu {{platform}} volají oficiální API trae.ai / traeapi.us. Místní soubory účtů ani surový obsah úložiště se nenahrávají třetím stranám.",
       "networkCn": "Rozsah sítě: OAuth přihlášení, obnova tokenů a dotazy plánu {{platform}} volají oficiální API trae.cn / trae.com.cn. Místní soubory účtů ani surový obsah úložiště se nenahrávají třetím stranám."
+    },
+    "token": {
+      "jsonOnlyDesc": "Vložte úplné JSON účtu Trae CN. Holý token není podporován.",
+      "jsonOnlyPlaceholder": "Úplné Trae CN JSON..."
     }
   },
   "codebuddyCn": {

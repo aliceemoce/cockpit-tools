@@ -140,6 +140,7 @@ interface GeneralConfig {
   codex_auto_refresh_minutes: number;
   claude_auto_refresh_minutes: number;
   codex_sync_wsl: boolean;
+  codex_app_ui_injection_enabled?: boolean;
   codex_wsl_config_dir: string;
   ghcp_auto_refresh_minutes: number;
   windsurf_auto_refresh_minutes: number;
@@ -480,6 +481,7 @@ export function SettingsPage() {
   const [codexAutoRefresh, setCodexAutoRefresh] = useState('10');
   const [claudeAutoRefresh, setClaudeAutoRefresh] = useState('10');
   const [codexSyncWsl, setCodexSyncWsl] = useState(false);
+  const [codexAppUiInjectionEnabled, setCodexAppUiInjectionEnabled] = useState(true);
   const [codexWslConfigDir, setCodexWslConfigDir] = useState('');
   const [ghcpAutoRefresh, setGhcpAutoRefresh] = useState('10');
   const [windsurfAutoRefresh, setWindsurfAutoRefresh] = useState('10');
@@ -1014,6 +1016,7 @@ export function SettingsPage() {
       codex_auto_refresh_minutes: codexAutoRefreshNum,
       claude_auto_refresh_minutes: claudeAutoRefreshNum,
       codex_sync_wsl: codexSyncWsl,
+      codex_app_ui_injection_enabled: codexAppUiInjectionEnabled,
       codex_wsl_config_dir: codexWslConfigDir,
       ghcp_auto_refresh_minutes: ghcpAutoRefreshNum,
       windsurf_auto_refresh_minutes: windsurfAutoRefreshNum,
@@ -1223,6 +1226,7 @@ export function SettingsPage() {
     codexAutoRefresh,
     claudeAutoRefresh,
     codexSyncWsl,
+    codexAppUiInjectionEnabled,
     codexWslConfigDir,
     ghcpAutoRefresh,
     windsurfAutoRefresh,
@@ -1574,6 +1578,7 @@ export function SettingsPage() {
       setCodexAutoRefresh(String(config.codex_auto_refresh_minutes ?? 10));
       setClaudeAutoRefresh(String(config.claude_auto_refresh_minutes ?? 10));
       setCodexSyncWsl(Boolean(config.codex_sync_wsl ?? false));
+      setCodexAppUiInjectionEnabled(Boolean(config.codex_app_ui_injection_enabled ?? false));
       setCodexWslConfigDir(config.codex_wsl_config_dir || '');
       setGhcpAutoRefresh(String(config.ghcp_auto_refresh_minutes ?? 10));
       setWindsurfAutoRefresh(String(config.windsurf_auto_refresh_minutes ?? 10));
@@ -4381,6 +4386,23 @@ export function SettingsPage() {
                   )}
                 </>
               )}
+
+              <div className="settings-row">
+                <div className="row-label">
+                  <div className="row-title">{t('settings.general.codexAppUiInjection')}</div>
+                  <div className="row-desc">{t('settings.general.codexAppUiInjectionDesc')}</div>
+                </div>
+                <div className="row-control">
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={codexAppUiInjectionEnabled}
+                      onChange={(event) => setCodexAppUiInjectionEnabled(event.target.checked)}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+              </div>
 
               <CodexSshSyncSettingsControl variant="settings" />
 

@@ -7,45 +7,76 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+
+## [1.3.14] - 2026-07-19
+
+### Changed
+
+- merge upstream **v1.3.10** into fork sync tip (**1.3.13** / upstream v1.3.8): keep Cursor watch, quota sort/refresh, rotation pick, and release boundaries.
+
 ## [1.3.13] - 2026-07-18
 
 ### Changed
 
-- merge upstream **v1.3.8** into fork tip (ork-20260717-quota-sort-refresh / 1.3.12): keep Cursor watch, quota sort/refresh, and badge rules.
+- merge upstream **v1.3.8** into fork tip (fork-20260717-quota-sort-refresh / 1.3.12): keep Cursor watch, quota sort/refresh, and badge rules.
 
 ## [1.3.12] - 2026-07-17
 
 ### Fixed
 
-- **Cursor list sort matches progress bars**: “Credits” sort uses `100 - max(Total/Auto/API used%)`, same as card bars. Fixes all-red cards ranking above true full-quota accounts when only API was used for sort.
-- **Stale-first refresh scheduling**: restore per-account `usage_updated_at` ordering (do not collapse stale accounts to one priority bucket). Log `first_id` / `last_id` each batch. Keep batch **120** and wall clock **8 min**.
+- **Cursor list sort matches progress bars**: “Credits” sort uses 100 - max(Total/Auto/API used%), same as card bars. Fixes all-red cards ranking above true full-quota accounts when only API was used for sort.
+- **Stale-first refresh scheduling**: restore per-account usage_updated_at ordering (do not collapse stale accounts to one priority bucket). Log irst_id / last_id each batch. Keep batch **120** and wall clock **8 min**.
 
 ### Changed
 
-- **Badges without extra corner labels**: no “pending verify / quota expired” badges; card footer shows **import time** (`created_at`) again. `total≥100` with `api<100` stays “remaining”; sort still follows bar remaining %.
+- **Badges without extra corner labels**: no “pending verify / quota expired” badges; card footer shows **import time** (created_at) again. 	otal≥100 with pi<100 stays “remaining”; sort still follows bar remaining %.
 
 ## [1.3.11] - 2026-07-17
 
 ### Changed
 
-- **Cursor list sort/badges follow Agent chat probe**: `chat_probe=ok` → “remaining” at top; `rate_limited` → “exhausted” at bottom. Stale `totalPercentUsed≥100` without probe shows “pending verify” instead of falsely marking exhausted.
-
-## [1.3.10] - 2026-07-17
+- **Cursor list sort/badges follow Agent chat probe**: chat_probe=ok → “remaining” at top; 
+ate_limited → “exhausted” at bottom. Stale 	otalPercentUsed≥100 without probe shows “pending verify” instead of falsely marking exhausted.
 
 ### Fixed
 
-- **Stop treating `breakdown.total` as monthly capacity / “no quota”**: disk audit shows it grows with usage (FREE `total/pct` often implies ~200). `total==0` means unused so far. Align with upstream: trust `totalPercentUsed`; badges are “remaining / exhausted”; no longer force 100% or “monthly quota 0” when total is 0.
+- **Stop treating reakdown.total as monthly capacity / “no quota”** (fork-local 2026-07-17): disk audit shows it grows with usage (FREE 	otal/pct often implies ~200). 	otal==0 means unused so far. Align with upstream: trust 	otalPercentUsed; badges are “remaining / exhausted”; no longer force 100% or “monthly quota 0” when total is 0.
+
+## [1.3.10] - 2026-07-19
+
+### Added
+
+- **Codex API Service can show account count and quotas in the ChatGPT client**: the feature is enabled by default; after restarting the corresponding Codex instance, the API Service account count together with 5-hour and weekly quota appears below the composer and follows window and composer layout changes. Users who do not need the feature or encounter display issues can turn it off in Settings.
+- **Codex Token / JSON input shows per-account progress for bulk imports**: JSON arrays, Sub2API account arrays, newline-delimited JSON, and token lines are imported sequentially while the status area and import button show real progress such as 1/10 and 2/10; single-account objects remain intact, and partial failures preserve successful imports while reporting the failed count and reasons.
+
+### Changed
+
+- **Codex account deletion now provides fast, immediate feedback**: an account disappears from the UI as soon as it is removed from local persistent storage, while API Service pool cleanup and gateway synchronization continue in the background instead of blocking the delete action.
+
+### Fixed
+
+- **Fixed Codex accounts remaining temporarily visible after Windows batch deletion**: the account list now reconciles with the local account store as batch progress advances and when a job is paused, completed, or manually cleared; deleting every account is allowed to synchronize an empty list, and deletion events refresh the floating card window, so a failed switch is no longer required before stale accounts disappear.
+- **Fixed the Add Note button in the Codex authorization dialog losing its project styling**: note actions rendered inside the portal now use the same pill-button styling as the accounts page instead of falling back to the browser-native button appearance.
+
+---
 
 ## [1.3.9] - 2026-07-17
 
 ### Changed
 
-- **Cursor account list shows monthly-quota status badges** (`usable` / `zero` / `exhausted` / `query failed` / `pending`) instead of treating `chat_probe=ok` as “chat usable”. CLI sampling is secondary; accounts that reply without monthly quota show “sample reply ≠ usable”. Sorting and Play rotation follow usage-summary remaining quota.
+- **Cursor account list shows monthly-quota status badges** (usable / zero / exhausted / query failed / pending) instead of treating chat_probe=ok as “chat usable”. CLI sampling is secondary; accounts that reply without monthly quota show “sample reply ≠ usable”. Sorting and Play rotation follow usage-summary remaining quota.
+- **Trae CN / TRAE SOLO CN quota and plan logic aligned with official v2 and community work (#1281)**: CN account refresh prefers pay v2 (ide_user_pay_status / ide_user_ent_usage) and falls back with user_current_entitlement_list; recognizes CN product types such as CNExpress(100) and Pro+ Pack(5); shows fast-request remaining counts and Solo pack concurrency, uses “synced, remaining pending” when data exists but remaining quota cannot be derived, and avoids guessing free remaining; the CN add-account flow documents full JSON only (no raw token). Thanks @sqmw ([#1281](https://github.com/jlcodes99/cockpit-tools/pull/1281)).
 
 ### Fixed
 
-- **Correct 1.3.8 product hard-standard drift**: a successful CLI ask alone is not usable; accounts with `breakdown.total=0` or exhausted plan must not be promoted by probe success.
+- **Correct 1.3.8 product hard-standard drift**: a successful CLI ask alone is not usable; accounts with reakdown.total=0 or exhausted plan must not be promoted by probe success.
+- **Fixed Windows current-user NSIS updates unexpectedly requesting administrator privileges (#1642)**: when Tauri cannot identify the installer bundle type, the updater now selects NSIS for writable user-level installations and keeps the conservative MSI fallback for protected directories; explicit NSIS/MSI metadata remains authoritative, so genuine system-level MSI installations keep their existing update behavior. Thanks @xdd666t ([#1642](https://github.com/jlcodes99/cockpit-tools/pull/1642)).
+- **Fixed Codex Responses Lite dropping namespaced collaboration tools (#1647)**: namespace tool definitions are now preserved across top-level 	ools, nested input[].additional_tools, payload overrides, and namespace 	ool_choice; derived GPT sessions can again use spawn_agent, wait_agent, send_message, ollowup_task, interrupt_agent, and list_agents, while Sol / Terra / Luna shorthand in spawn requests is normalized to the exact GPT-5.6 model IDs. ([#1647](https://github.com/jlcodes99/cockpit-tools/issues/1647))
+- **Fixed expired or stale Codex accounts sometimes remaining visible after deletion (#1646)**: removing an account no longer waits for API Service gateway restart or fails solely because pool reconciliation is unavailable; pool references are persisted first, gateway reconciliation continues in the background, and local deletion proceeds so the account disappears immediately without requiring another valid account to be added. ([#1646](https://github.com/jlcodes99/cockpit-tools/issues/1646))
+- **Fixed HTTP 200 Responses streams treating upstream overloads as non-retryable 400 errors (#1651)**: server_is_overloaded / service_unavailable_error now trigger short credential cooldown and safe account failover before any output is sent, while model_at_capacity is treated as a retryable capacity limit; terminal Responses errors preserve a valid 
+esponse.failed SSE event so Codex reports the real upstream failure instead of a generic disconnected stream. ([#1651](https://github.com/jlcodes99/cockpit-tools/issues/1651))
 
+---
 ## [1.3.8] - 2026-07-17
 
 ### Added
