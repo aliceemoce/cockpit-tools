@@ -18,18 +18,19 @@ alwaysApply: true
 
 ---
 
-## 2. 当前已核实特征（2026-07-18，upstream v1.3.8 同步 → 交付 1.3.13 — 能用）
+## 2. 当前已核实特征（2026-07-19，upstream v1.3.10 同步 → 交付 1.3.14 — 能用）
 
 ### 能用
 
 | 项 | 证据 |
 |----|------|
-| **当前最新安装/运行构建** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`646020F6…`**，ProductVersion **1.3.13**；分支 `sync-upstream-v1.3.8-20260718` @ `1eaa1bec`；upstream **v1.3.8**（`fb291416`）；UIA：`Cockpit Tools` Cursor **`ALL (2119)`**（磁盘 2119）；Release 同名含 exe |
+| **当前最新安装/运行构建** | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` SHA **`65A51E85…`**，ProductVersion **1.3.14**；分支 `sync-upstream-v1.3.10-20260719` @ `57a1ae4a`；upstream **v1.3.10**（`b331b093`）；UIA：`Cockpit Tools` Cursor **`ALL (2129)`**（磁盘 2129）；Release 同名含 exe |
+| **上一可用 1.3.13** | SHA **`646020F6…`**；分支 `sync-upstream-v1.3.8-20260718` @ `b2d3d3aa`；upstream v1.3.8 |
 | **上一可用 1.3.6** | SHA **`D12C81F3…`**；最旧优先串行刷新（每轮 120 / 8 分钟） |
 | **历史可用 1.3.2** | SHA **`3374C285…`**；分支 `sync-upstream-v1.3.2-20260715` @ `a6efd371`；含 `sync_cursor_local_watch` + `accounts:changed` listen；PR #7 |
 | **上一可用 1.3.0 redo** | SHA **`DEA43F62…`**；分支 `sync-upstream-v1.3.0-20260714-redo`；Release 同名 |
-| **合并前可用源码锚点** | `origin/fork-20260705` @ **`918980e9`** |
-| **合并前 exe 资产** | Draft release `fork-20260705-baseline`（exe SHA **`83E85D7F…`**）；本轮另有 draft `fork-20260717-quota-sort-refresh-baseline` |
+| **合并前可用源码锚点** | `origin/sync-upstream-v1.3.8-20260718` @ **`b2d3d3aa`**（更早 `fork-20260705` @ `918980e9`） |
+| **合并前 exe 资产** | Release `sync-upstream-v1.3.8-20260718`（exe SHA **`646020F6…`**）；Draft `fork-20260705-baseline`（`83E85D7F…`） |
 | **历史 Cursor 验收包** | `%USERPROFILE%\Desktop\Cockpit-nirvana-token-test.exe` SHA **`F5256511…`** |
 | 默认实例切号 | `close_cursor(仅默认 profile)`，**不全杀**其它 Cursor |
 | 多开 + 默认 **可同时存在** | 默认 `close_cursor`；多开 `close_cursor_profile_strict` |
@@ -57,9 +58,9 @@ alwaysApply: true
 - **邮箱去重**（`e9d5182f` 口径；HR-20260626-004）
 - upstream 同步必须 **真用** 允许的 fork tip + 正式 tag tip；禁止第三套拼装
 - **常驻自动刷新**：`sync_cursor_local_watch` + `accounts:changed` listen（合并后须保留调用点）
-- 提到**当前最新构建**默认 SHA `646020F6…` / 分支 `sync-upstream-v1.3.8-20260718`
+- 提到**当前最新构建**默认 SHA `65A51E85…` / 分支 `sync-upstream-v1.3.10-20260719`
 - 提到**历史桌面验收包**默认 `Cockpit-nirvana-token-test.exe`（`F5256511…`）
-- 提到**合并前 fork 锚点**默认 `fork-20260705` @ `918980e9`
+- 提到**合并前 fork 锚点**默认 `sync-upstream-v1.3.8-20260718` @ `b2d3d3aa`（更早 `fork-20260705` @ `918980e9`）
 
 ### 不需要
 
