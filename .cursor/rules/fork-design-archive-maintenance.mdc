@@ -1,0 +1,15 @@
+---
+description: fork 持久功能设计档案维护协议
+alwaysApply: true
+---
+
+# Fork 持久功能设计档案维护协议
+
+1. `docs/FORK-DESIGN-ARCHIVE.md` 是这个 fork 的长期功能设计档案，不是普通项目介绍；它按功能记录用户目的、自然语言设计、代码设计、保留边界、验证方式和增量记录。
+2. 任何手动 fork、自动化任务、代码修改、文档修改开始前，先读取 `docs/FORK-DESIGN-ARCHIVE.md`。
+3. 任何上述工作只要实际修改了内容，完成后必须按触碰功能增量维护 `docs/FORK-DESIGN-ARCHIVE.md`；无改动巡检不用重写档案。
+4. 自然语言设计只描述用户目标、边界与验收含义，不把实现手段伪装成目标，也不能被实现手段反向改成另一个需求。
+5. 代码设计记录实现手段、模块分工、依赖选择、验证方式与变更原因，可随实现演进更新。
+6. 默认追加或最小范围修订；只有用户目标真的变化，才允许显著改写自然语言设计部分。
+7. 设计实现优先参考 upstream、官方文档、成熟库或 MCP 可访问的原作者做法，不自造术语或私有“语言”。
+8. `.cursor/rules/` 是 Cursor 侧规则镜像；`.codex/rules/fork-design-archive-maintenance.md` 是 Codex 侧规则镜像。Codex 仍必须依赖 `AGENTS.md`、自动化 prompt 和实际读取本档案来执行同一约束，不能假设镜像目录自动生效。

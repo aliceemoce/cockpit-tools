@@ -33,6 +33,10 @@ import {
 import { getZedAccountDisplayEmail } from '../types/zed';
 import * as traeService from '../services/traeService';
 import {
+  CURSOR_AUTO_REFRESH_BATCH_SIZE,
+  refreshAllCursorTokens as refreshCursorTokensStaleBatch,
+} from '../services/cursorService';
+import {
   loadCurrentAccountRefreshMinutesMap,
   getAccountRefreshMinutes,
   type CurrentAccountRefreshPlatform,
@@ -227,7 +231,7 @@ export function useAutoRefresh() {
   const refreshAllKiroTokens = useKiroAccountStore((state) => state.refreshAllTokens);
   const fetchCurrentKiroAccountId = useKiroAccountStore((state) => state.fetchCurrentAccountId);
   const refreshKiroToken = useKiroAccountStore((state) => state.refreshToken);
-  const refreshAllCursorTokens = useCursorAccountStore((state) => state.refreshAllTokens);
+  const fetchCursorAccounts = useCursorAccountStore((state) => state.fetchAccounts);
   const fetchCurrentCursorAccountId = useCursorAccountStore((state) => state.fetchCurrentAccountId);
   const refreshCursorToken = useCursorAccountStore((state) => state.refreshToken);
   const refreshAllGrokTokens = useGrokAccountStore((state) => state.refreshAllTokens);
@@ -589,7 +593,9 @@ export function useAutoRefresh() {
               fullRefreshingRef: cursorRefreshingRef,
               currentRefreshingRef: cursorCurrentRefreshingRef,
               runFullRefresh: async () => {
-                await refreshAllCursorTokens();
+                // 每轮只刷最旧一批（串行），下一轮继续挑最旧；避免每 10 分钟从头扫完全库扫不完。
+                await refreshCursorTokensStaleBatch(CURSOR_AUTO_REFRESH_BATCH_SIZE);
+                await fetchCursorAccounts();
               },
               runCurrentRefresh: async () => {
                 await runProviderCurrentRefresh(fetchCurrentCursorAccountId, refreshCursorToken);
@@ -901,7 +907,7 @@ export function useAutoRefresh() {
     refreshAllCodebuddyCnTokens,
     refreshAllCodebuddyTokens,
     refreshAllClaudeQuotas,
-    refreshAllCursorTokens,
+    fetchCursorAccounts,
     refreshAllGrokTokens,
     refreshAllGhcpTokens,
     refreshAllKiroTokens,

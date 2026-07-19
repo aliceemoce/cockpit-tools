@@ -1731,10 +1731,19 @@ pub async fn refresh_account_async(account_id: &str) -> Result<CursorAccount, St
 
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<CursorAccount, String>)>, String> {
     let accounts = list_accounts();
-    let active_accounts: Vec<CursorAccount> = accounts
+    let mut active_accounts: Vec<CursorAccount> = accounts
         .into_iter()
         .filter(|account| !is_banned_account(account))
         .collect();
+
+    // 与 GUI 侧对齐：最旧优先串行，避免索引从头扫导致旧号长期不更新。
+    active_accounts.sort_by(|left, right| {
+        let left_ts = left.usage_updated_at.unwrap_or(0);
+        let right_ts = right.usage_updated_at.unwrap_or(0);
+        left_ts
+            .cmp(&right_ts)
+            .then_with(|| left.id.cmp(&right.id))
+    });
 
     let mut results = Vec::with_capacity(active_accounts.len());
     for account in active_accounts {

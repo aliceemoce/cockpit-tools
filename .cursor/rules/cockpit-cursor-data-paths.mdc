@@ -1,0 +1,46 @@
+---
+description: Cockpit Cursor 账号磁盘路径（禁止用错目录当运行时池）
+alwaysApply: true
+---
+
+# Cockpit Cursor 数据路径（硬口径）
+
+Agent 统计 Cursor 运行时账号、对比桌面监控导出、核对导入结果时**必须**用下列路径；用错路径视为验收无效。
+
+## 正确（运行时）
+
+| 用途 | 路径 |
+|------|------|
+| **账号 JSON 目录（主）** | `%USERPROFILE%\.antigravity_cockpit\cursor_accounts\` |
+| **账号索引** | `%USERPROFILE%\.antigravity_cockpit\cursor_accounts.json` |
+| **当前号指针** | `%USERPROFILE%\.antigravity_cockpit\provider_current_accounts.json` |
+| **本机导入备份（Cockpit 触发）** | `%USERPROFILE%\.antigravity_cockpit\cursor_local_import_backups\` |
+
+## 错误（禁止当 Cockpit 运行时池）
+
+| 路径 | 原因 |
+|------|------|
+| `%USERPROFILE%\.antigravity_cockpit\data\cursor_accounts\` | 非 Cursor 运行时主目录；与 `cursor_account.rs` 的 `get_data_dir()/cursor_accounts` 不一致，邮箱计数会系统性偏差 |
+
+## 桌面监控（独立工具，不写 Cockpit）
+
+| 用途 | 路径 |
+|------|------|
+| 脚本与导出 | `%USERPROFILE%\Desktop\CursorRunningAccounts\` |
+| 每邮箱 | `...\{邮箱}\{邮箱}.json` |
+
+## 远端自动上传（仅 Cockpit 本机导入链）
+
+- 仓库：`aliceemoce/cockpit-credentials`
+- 目录：`cursor-import-backups/`（`cursor_import_backup_sync.rs`）
+- **桌面监控 JSON 不会自动上传**；须经 Cockpit `upsert`/`record_import_backup` 或等价导入链
+
+## 核对命令示例
+
+```powershell
+# 运行时邮箱数（正确目录）
+(Get-ChildItem "$env:USERPROFILE\.antigravity_cockpit\cursor_accounts\*.json").Count
+
+# 禁止用这个当 Cockpit 池
+# Get-ChildItem "$env:USERPROFILE\.antigravity_cockpit\data\cursor_accounts\*.json"
+```
