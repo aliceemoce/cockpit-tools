@@ -1,6 +1,6 @@
 [package]
 name = "cockpit-tools"
-version = "1.3.14"
+version = "1.3.15"
 description = "Cockpit Tools"
 authors = ["jlcodes"]
 license = "CC-BY-NC-SA-4.0"
@@ -58,6 +58,8 @@ thiserror = "2"
 anyhow = "1.0"
 sha2 = "0.10"
 ring = "0.17"
+ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
+crypto_box = { version = "0.9.1", features = ["seal", "std"] }
 rsa = "0.9"
 serde_urlencoded = "0.7"
 url = "2.5"
