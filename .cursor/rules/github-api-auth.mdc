@@ -1,0 +1,6 @@
+---
+description: GitHub API 须用已认证 MCP/gh，禁止未认证 api.github.com
+alwaysApply: true
+---
+
+GitHub 数据一律用已认证的 user-github MCP 或 `gh` CLI，禁止 WebFetch/fetch 未认证访问 api.github.com（仓库、提交等）。

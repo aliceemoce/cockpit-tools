@@ -75,10 +75,10 @@ import {
   formatCursorUsageDollars,
   getCursorAccountDisplayEmail,
   getCursorOnDemandSummary,
-  getCursorPlanDisplayName,
-  getCursorPlanBadgeClass,
   getCursorUsage,
+  formatCursorPlanQuotaText,
   isCursorAccountBanned,
+  resolveCursorPlanUiBadge,
 } from "../types/cursor";
 import {
   formatGrokQuotaUsedTotal,
@@ -1581,7 +1581,13 @@ export function buildCursorAccountPresentation(
   account: CursorAccount,
   t: Translate,
 ): CursorAccountPresentation {
-  const planLabel = getCursorPlanDisplayName(account);
+  const pendingBadgeLabel = t(
+    "common.shared.quota.pendingQueryBadge",
+    "配额未查询",
+  );
+  const planUi = resolveCursorPlanUiBadge(account, pendingBadgeLabel);
+  const planLabel = planUi?.label ?? "";
+  const planClass = planUi?.className ?? "";
   const usage = getCursorUsage(account);
   const ratioPercent =
     usage.planUsedCents != null &&
@@ -1597,6 +1603,7 @@ export function buildCursorAccountPresentation(
   const quotaItems: UnifiedQuotaMetric[] = [];
 
   if (totalPercent != null) {
+    const planQuotaText = formatCursorPlanQuotaText(usage);
     quotaItems.push({
       key: "total",
       label: "Total Usage",
@@ -1604,9 +1611,14 @@ export function buildCursorAccountPresentation(
       quotaClass: getCursorUsageQuotaClass(totalPercent),
       valueText: `${totalPercent}%`,
       resetAt: usage.allowanceResetAt,
-      resetText: usage.allowanceResetAt
-        ? formatCodexResetTime(usage.allowanceResetAt, t)
-        : "",
+      resetText: [
+        planQuotaText,
+        usage.allowanceResetAt
+          ? formatCodexResetTime(usage.allowanceResetAt, t)
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
     });
   }
 
@@ -1662,11 +1674,13 @@ export function buildCursorAccountPresentation(
     });
   }
 
+  // 不再把 breakdown.total==0 画成「月配额 0 / 用尽」——该字段是已用量，0 表示尚未使用。
+
   return {
     id: account.id,
     displayName: getCursorAccountDisplayEmail(account),
     planLabel,
-    planClass: getCursorPlanBadgeClass(account.membership_type, account),
+    planClass,
     isBanned: isCursorAccountBanned(account),
     quotaItems,
   };

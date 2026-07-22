@@ -182,7 +182,9 @@
         "weekly": "Mensagens de chat",
         "resetAt": "Reinicia: {{time}}",
         "expiresAt": "Expira em: {{time}}",
-        "leftPercent": "{{value}}% restante"
+        "leftPercent": "{{value}}% restante",
+        "pendingQueryBadge": "Cota não consultada",
+        "pendingQuery": "Cota pendente"
       },
       "subtitle": "Monitore em tempo real o status de cota de todas as contas.",
       "time": {
