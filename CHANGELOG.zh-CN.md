@@ -1,12 +1,23 @@
 # 更新日志
 
-简体中文 · [English](CHANGELOG.md)
+[English](CHANGELOG.md) · 简体中文
 
-本文件记录 Cockpit Tools 的所有重要变更。
+Cockpit Tools 的所有重要变更都会记录在此文件中。
 
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
+格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [1.3.16] - 2026-07-25
+
+### Changed
+
+- 将 upstream **v1.3.14** 合入 fork 同步 tip（**1.3.15** / upstream v1.3.13）：保留 Cursor watch、配额排序/最旧优先刷新、强制轮换与 release 边界。
+
+### Upstream highlights (v1.3.14)
+
+- Web Session 确认导入后可自动注册为 Agent Identity，并进入 Codex API 服务账号池（仅 API 服务）。
+- 修复开启「同步模型目录到 Codex」的自定义 Responses API Key 无法加入 Codex API 服务的问题。
+
 ## [1.3.15] - 2026-07-22
 
 ### 变更
@@ -44,47 +55,56 @@
 - **修复多开实例页面重复进入或操作后闪回加载状态的问题**：实例列表现在优先显示已加载或本地缓存的数据，后台刷新完成后静默替换；仅在首次没有任何可展示数据时显示加载状态。
 - **停用 Codex API 服务时会恢复受管 Codex profile 文件**：Cockpit Tools 仅移除 `config.toml` 中由 API 服务写入的字段，恢复接管前的 `auth.json`，删除注入的 profile 文件和模型缓存，同时保留用户其他设置与其他网关备份；仍绑定 API 服务的实例启动时也不会再静默重新启用已停用的服务。
 
+## [1.3.14] - 2026-07-22
 
-## [1.3.14] - 2026-07-19
+### 新增
 
-### 变更
-
-- 将 upstream **v1.3.10** 合入 fork sync tip（**1.3.13** / upstream v1.3.8）：保留 Cursor 跟号、配额排序/顺延刷新、轮换选号与 release 边界。
-
-## [1.3.13] - 2026-07-18
-
-### 变更
-
-- 将 upstream **v1.3.8** 合入 fork tip（fork-20260717-quota-sort-refresh / 1.3.12）：保留 Cursor 跟号、配额排序/顺延刷新与角标规则。
-
-## [1.3.12] - 2026-07-17
+- **支持将 Web Session 自动注册为 Agent Identity**：确认导入后会自动加入 Codex API 服务账号池，并支持跨设备导出与导入；此类账号仅限 API 服务使用，不支持普通切号、客户端或 CLI 启动及 OAuth 绑定。
 
 ### 修复
 
-- **Cursor 列表排序与卡片红绿条一致**：「按剩余 Credits」使用 100 - max(Total/Auto/API 已用%)，与进度条同一公式。修复全红卡因只看 API 而排到真满额 0%/0% 号前面的问题。
-- **顺延刷新调度**：恢复按各账号真实 usage_updated_at 排序（禁止把大量过期号压成同一优先级导致每轮固定同一批 120 个）。每轮日志输出 irst_id / last_id。批量保持 **120**、墙钟 **8 分钟**。
+- **修复开启“同步模型目录到 Codex”的自定义 Responses API Key 无法加入 Codex API 服务的问题**：模型目录同步继续只影响单账号切号与实例专属网关，不再改变 API 服务账号池准入；Chat Completions 账号仍保持实例专属网关隔离。
 
-### 变更
-
-- **去掉多余角标**：不再使用「待验活 / 额度过期」；卡片左下角恢复 **导入时间**（created_at）。	otal≥100 且 pi<100 仍标「有剩余」；排序按红绿条剩余%。
-
-## [1.3.11] - 2026-07-17
-
-### 变更
-
-- **Cursor 列表排序与徽标对齐 Agent 真实对话验活**：chat_probe=ok →「有剩余」并排前；
-ate_limited →「额度用尽」并排后。磁盘 	otalPercentUsed≥100 但未验活者标「待验活」，不再误标额度用尽（实测 8 个中有 5 个仍能对话）。
+## [1.3.13] - 2026-07-22
 
 ### 修复
 
-- **纠正本仓把 reakdown.total 误当「月额度上限 / 无额度」的尺度错误**（fork 本地 2026-07-17）：磁盘核对显示该字段随使用增长（FREE 上 	otal/pct 常推出约 200 的隐含上限），	otal==0 表示尚未用量。与主仓库一致，以 	otalPercentUsed 为准；角标改为「有剩余 / 额度用尽」；不再把 	otal==0 强制显示 100% 或「月配额 0」。
+- **修复 K12 Agent Identity 账号无法使用 Codex 官方直连唤醒的问题**：唤醒请求现在会动态生成 `AgentAssertion`；task 缺失或失效时自动注册、持久化并安全重试一次，普通 OAuth 账号的唤醒行为保持不变。
 
+## [1.3.12] - 2026-07-22
+
+### 修复
+
+- **修复同一 K12 workspace 下的多个 Agent Identity 用户互相覆盖的问题**：账号现在按 ChatGPT account 与 user 的组合身份区分；同一用户重新导入仍会更新原账号并保留已有资料，旧版已保存的账号继续沿用原标识。
+
+## [1.3.11] - 2026-07-22
+
+### 新增
+
+- **Codex 账号与 API 服务支持新版 Agent Identity 认证**：可导入官方 `auth.json`、JSON/JSONL 及 Sub2API 备份中的 Agent Identity 账号，兼容 Sub2API 使用的 PKCS#8 v1 Ed25519 私钥，按 ChatGPT account 区分 Team 并切换到官方 Codex；额度、主动重置、HTTP、Responses 流式、Compact、图片和 WebSocket 请求均会动态生成 `AgentAssertion`，缺少或失效的 task 会自动注册、持久化并恢复，不影响现有 OAuth、Access Token、PAT 与 API Key 账号。
+- **ChatGPT 客户端中的 Codex API 服务额度浮层支持手动刷新与账号池健康信息**：账号与额度标签旁新增紧凑的刷新按钮，点击后刷新 API 服务账号池；刷新期间图标原位旋转，完成后更新账号数、5h 额度、周额度，以及可用、异常、冷却和套餐分组信息，空账号池会立即显示账号数与额度均为 0。
+- **Codex CLI 启动弹框支持快速预览与启动选项**：账号页和实例页可选择最近工作目录、Terminal.app、iTerm2、PowerShell、pwsh、Windows Terminal 或 cmd，并快速生成对应命令；复制或终端执行时才准备实例运行环境，同时会跳过无法实际启动的旧版或损坏 CLI 路径，并继续选择其他可用 CLI，包括官方客户端内置 Codex。
+- **CodeBuddy 与 WorkBuddy 新增“切号共享本地会话”开关**：开关默认关闭；开启后，切换本机账号时会在真实本地会话目录和数据库中合并会话与恢复状态，并在操作前创建本地备份，内容不会上传。
+
+### 变更
+
+- **Codex API 服务支持配置会话亲和与过期时间**：可在 60～86400 秒范围内设置会话亲和 TTL，账号池会按会话键在有效期内保持账号绑定。
+- **Codex API 服务网关准备与账号刷新改为可观测的后台流程**：页面显示启动准备和账号刷新进度；OAuth 凭据刷新在网关可用后后台执行，避免启动过程被整个账号池阻塞。
+- **自定义 Codex Responses 模型目录支持官方展示模型映射**：同步到 Codex 客户端时使用可识别的官方模型展示名，实际请求仍路由到配置的上游模型。
+
+### 修复
+
+- **修复 Windows 重启时偶发 PowerShell `0xc0000142` 弹窗的问题**：Cockpit Tools 会提前监听系统关机通知，在 Windows 结束会话前暂停后台注入并禁止再创建 PowerShell 等后台子进程；若关机被取消则恢复正常运行，同时不改变开机自启动设置。
+- **修复多开实例页面重复进入或操作后闪回加载状态的问题**：实例列表现在优先显示已加载或本地缓存的数据，后台刷新完成后静默替换；仅在首次没有任何可展示数据时显示加载状态。
+- **停用 Codex API 服务时会恢复受管 Codex profile 文件**：Cockpit Tools 仅移除 `config.toml` 中由 API 服务写入的字段，恢复接管前的 `auth.json`，删除注入的 profile 文件和模型缓存，同时保留用户其他设置与其他网关备份；仍绑定 API 服务的实例启动时也不会再静默重新启用已停用的服务。
+
+---
 ## [1.3.10] - 2026-07-19
 
 ### 新增
 
 - **Codex API 服务支持在 ChatGPT 客户端显示账号数量与额度**：功能默认开启，重启对应 Codex 实例后，会在输入框下方显示 API 服务账号数量、5h 额度和周额度，并随窗口与输入区布局实时调整位置。无需此功能或遇到显示异常时，可在设置中手动关闭。
-- **Codex Token / JSON 输入框批量导入显示逐账号进度**：JSON 数组、Sub2API 账号数组、逐行 JSON 或 Token 会按账号依次导入，状态区与导入按钮实时显示 1/10、2/10 等真实进度；单账号对象保持原样处理，部分失败时会保留已成功导入的账号并列出失败数量与原因。
+- **Codex Token / JSON 输入框批量导入显示逐账号进度**：JSON 数组、Sub2API 账号数组、逐行 JSON 或 Token 会按账号依次导入，状态区与导入按钮实时显示 `1/10`、`2/10` 等真实进度；单账号对象保持原样处理，部分失败时会保留已成功导入的账号并列出失败数量与原因。
 
 ### 变更
 
@@ -96,33 +116,23 @@ ate_limited →「额度用尽」并排后。磁盘 	otalPercentUsed≥100 但�
 - **修复 Codex 授权弹框“加备注”按钮丢失项目样式的问题**：Portal 弹框中的备注操作重新使用与账号页一致的胶囊按钮样式，不再显示为浏览器原生按钮。
 
 ---
-
 ## [1.3.9] - 2026-07-17
 
 ### 变更
 
-- **Cursor 账号列表按月额度标准显示**：角标改为「有月额度 / 无月额度 / 额度用尽 / 配额查询失败 / 配额未查询」；不再把 chat_probe=ok 单独标成「可对话」。CLI 抽样仅作次要标注，且在无月额度时显示「抽样回话≠可用」。列表排序与 Play 选号均以 usage-summary 月额度为准。
-- **Trae CN / TRAE SOLO CN 配额与套餐逻辑对齐官方 v2 与社区方案（#1281）**：CN 账号刷新优先调用 pay v2（ide_user_pay_status / ide_user_ent_usage），并补充 user_current_entitlement_list 兜底；识别 CNExpress(100)、Pro+ Pack(5) 等 CN 产品类型；展示速通可用次数与 Solo 权益并发，有数据但算不出剩余时显示「已同步，剩余额待确认」，不猜测免费剩余；CN 添加账号页明确仅支持完整 JSON、不鼓励裸 Token。感谢 @sqmw（[#1281](https://github.com/jlcodes99/cockpit-tools/pull/1281)）。
+- **Trae CN / TRAE SOLO CN 配额与套餐逻辑对齐官方 v2 与社区方案（#1281）**：CN 账号刷新优先调用 pay v2（`ide_user_pay_status` / `ide_user_ent_usage`），并补充 `user_current_entitlement_list` 兜底；识别 `CNExpress(100)`、`Pro+ Pack(5)` 等 CN 产品类型；展示速通可用次数与 Solo 权益并发，有数据但算不出剩余时显示「已同步，剩余额待确认」，不猜测免费剩余；CN 添加账号页明确仅支持完整 JSON、不鼓励裸 Token。感谢 @sqmw（[#1281](https://github.com/jlcodes99/cockpit-tools/pull/1281)）。
 
 ### 修复
 
-- **纠正 1.3.8 把对话验活做成产品硬标准的偏差**：抽样有回话 ≠ 可用；reakdown.total=0 或已用尽的账号不得因 CLI ask 成功被抬到可用池。
 - **修复 Windows 当前用户级 NSIS 更新意外申请管理员权限的问题（#1642）**：Tauri 无法识别安装包类型时，更新器会对可写的用户级安装选择 NSIS，并对受保护目录继续保守回退 MSI；已明确识别的 NSIS/MSI 类型仍具有最高优先级，真正的系统级 MSI 安装保持原有更新行为。感谢 @xdd666t（[#1642](https://github.com/jlcodes99/cockpit-tools/pull/1642)）。
-- **修复 Codex Responses Lite 丢失带命名空间的协作工具问题（#1647）**：现在会保留顶层 	ools、嵌套 input[].additional_tools、payload override 以及 namespace 	ool_choice 中的命名空间工具定义；派生 GPT 会话可再次使用 spawn_agent、wait_agent、send_message、ollowup_task、interrupt_agent 和 list_agents，并将派生请求中的 Sol / Terra / Luna 简写规范化为准确的 GPT-5.6 模型 ID。（[#1647](https://github.com/jlcodes99/cockpit-tools/issues/1647)）
+- **修复 Codex Responses Lite 丢失带命名空间的协作工具问题（#1647）**：现在会保留顶层 `tools`、嵌套 `input[].additional_tools`、payload override 以及 namespace `tool_choice` 中的命名空间工具定义；派生 GPT 会话可再次使用 `spawn_agent`、`wait_agent`、`send_message`、`followup_task`、`interrupt_agent` 和 `list_agents`，并将派生请求中的 Sol / Terra / Luna 简写规范化为准确的 GPT-5.6 模型 ID。（[#1647](https://github.com/jlcodes99/cockpit-tools/issues/1647)）
 - **修复过期或残留的 Codex 账号删除后仍显示的问题（#1646）**：删除账号不再同步等待 API 服务网关重启，也不会仅因账号池同步暂时不可用而失败；账号池引用会先持久化清理，网关随后在后台同步，本地账号继续删除，因此无需再添加一个正常账号才能让问题账号消失。（[#1646](https://github.com/jlcodes99/cockpit-tools/issues/1646)）
-- **修复 HTTP 200 Responses 流内过载被当作不可重试 400 的问题（#1651）**：server_is_overloaded / service_unavailable_error 现在会让当前凭据短暂冷却，并仅在尚未输出内容时安全切换账号；model_at_capacity 会按可重试容量限制处理；最终失败时保留合法的 
-esponse.failed SSE 事件，使 Codex 展示真实上游错误，不再误报流提前断开。（[#1651](https://github.com/jlcodes99/cockpit-tools/issues/1651)）
+- **修复 HTTP 200 Responses 流内过载被当作不可重试 `400` 的问题（#1651）**：`server_is_overloaded` / `service_unavailable_error` 现在会让当前凭据短暂冷却，并仅在尚未输出内容时安全切换账号；`model_at_capacity` 会按可重试容量限制处理；最终失败时保留合法的 `response.failed` SSE 事件，使 Codex 展示真实上游错误，不再误报流提前断开。（[#1651](https://github.com/jlcodes99/cockpit-tools/issues/1651)）
 
 ---
 ## [1.3.8] - 2026-07-17
 
 ### 新增
-
-- **Cursor 真实对话验活**：用本机 Agent CLI、账号 JWT 写入隔离 `auth.json` 后发起最小 ask 对话；结果写入 `chat_probe`（`ok` / `rate_limited` / `auth_failed` / `network_error` 等）。前端仅在验活成功时显示「可对话」，限额与认证失败分开标注；Play 选号优先 `chat_ok` 池并排除已验活限额/认证失败账号。验收命令：`cargo run --bin cursor_chat_probe -- <account_id...>`。
-
-### 修复
-
-- **修复 FREE 套餐把 `breakdown.total` 误当作月额度上限并算出虚假「已用/总额」（如 17/59）的问题**：该字段是已发生用量合计，会随使用增长；Total Usage 下方不再用百分比 × breakdown.total 伪造分数。usage-summary 百分比仍只作消费统计，不代表 Agent 可对话。
 
 - **已有 Codex 账号可直接加入 Codex API 服务（#1628）**：已导入 Cockpit 的符合条件账号，现在可在卡片、列表或表格视图中直接加入 API 服务，无需离开当前页面；操作复用增量加入账号池流程，并继续遵守 Free 账号、待授权账号和不兼容 API Key 的限制。感谢 @Ac-spider。
 - **Kiro 支持 AWS IAM Identity Center 登录**：添加账号弹框新增 AWS Builder ID 与企业账号设备授权；企业账号可填写 AWS Region 和 IAM Identity Center Start URL，授权成功后会保留客户端注册上下文并写入官方 AWS SSO 缓存文件，保证 Token 刷新与 Kiro 真实切号继续可用。
@@ -194,8 +204,6 @@ esponse.failed SSE 事件，使 Codex 展示真实上游错误，不再误报流
 
 ### 修复
 
-- **修复 Cursor 全量配额刷新每轮按索引从头扫导致大量账号额度长期不更新的问题**：自动刷新改为按 usage_updated_at 最旧优先串行，每轮最多刷 120 个并有 8 分钟墙钟上限；失败/刚尝试过的号会冷却，避免死号占满队列。手动「刷新全部」仍可全量，同样最旧优先。跟号 20 秒逻辑不变（只对齐当前登录号）。
-
 - **修复 Windows 关闭到托盘销毁主 WebView 后，悬浮卡再次打开主窗口可能只成功一次的问题**：托盘销毁后强制清理残留 `main` 句柄并在主线程重建窗口，延迟导航到 remount，正确聚焦主 HWND。感谢 @happyplum（#1595）。
 - **修复主窗口已销毁到托盘后，托盘菜单「退出」可能无法真正退出进程的问题**：退出前标记用户主动退出，避免 `ExitRequested` 仍按托盘保活拦截。见 #1595 / #1600。
 - **修复 Codex 多开「复制/创建实例」后未应用所选绑定账号的问题**：profile 初始化完成后、创建返回前会按 `bind_account_id` 写入目标目录凭据，避免仍沿用源实例账号。感谢 @kin001（#1604，#1599）。
@@ -217,7 +225,6 @@ esponse.failed SSE 事件，使 Codex 展示真实上游错误，不再误报流
 - **修复 Antigravity 列表/卡片布局离开页面后丢失的问题**：视图模式始终持久化，不再依赖「筛选记忆」开关。见 #1200。
 - **葡萄牙语（巴西）语言包继续保持 key 完整，并为新增筛选/导出/导入文案提供本地化**。见 #860。
 - **主窗口尺寸与位置会在重启和托盘重新打开后保持**：拖拽缩放会写入本地状态；关闭到托盘销毁 WebView 与退出前也会快照；下次启动或托盘恢复主窗口时还原宽高（有记录时含位置），并继续遵守最小尺寸限制。见 #948 / #1132。
-
 
 ---
 ## [1.3.5] - 2026-07-16
