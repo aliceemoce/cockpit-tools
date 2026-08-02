@@ -390,3 +390,12 @@
 - **涉及文件/模块**: 合并后树（Codex/Trae/cliproxy 上游变更）；`provider_token_keeper.rs` / `useProviderAccountsPage.ts` 调用点保留；规则/SCOPE/AGENTS/本档案最新构建记录。
 - **验证方式**: 安装 exe ProductVersion 1.3.14 + SHA `65A51E85…`；PrintWindow 标题 `Cockpit Tools`、Cursor 页 **`ALL (2129)`**（磁盘 2129）；Edge UIA：分支 / PR#12 / Release 页 exe。
 - **风险**: WiX/`light.exe` bundle 失败，交付为 release exe 直拷；Play/多开 GUI 点验仍待单独立项。
+
+### 2026-08-02：upstream v1.3.15 正式版同步 → 交付 1.3.17
+
+- **上游 tag**：`v1.3.15` @ `939d5d72`
+- **同步分支**：`sync-upstream-v1.3.15-20260802` @ `c744cc6b`
+- **预合并 tip**：本地 `sync-upstream-v1.3.14-20260725`（交付 1.3.16，此前未 push）
+- **Release**：`sync-upstream-v1.3.15-20260802`；exe SHA-256 `42814DE79D929B88CFE4E6FF2852BE86B19A7E41B52F79C03198B63DEA166607`；ProductVersion **1.3.17**
+- **已记集成基线**：upstream **v1.3.15** / 交付 **1.3.17**
+

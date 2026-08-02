@@ -4,6 +4,8 @@ import {
   canAddCodexAccountToLocalAccess,
   getCodexLocalAccessAccountIneligibleReason,
   isCodexLocalAccessEligibleAccount,
+  isCodexOAuthBindingEligibleAccount,
+  resolveImportedCodexAccountIdsForLocalAccess,
 } from "./codexLocalAccessAccounts.ts";
 import type { CodexAccount } from "../types/codex.ts";
 
@@ -68,4 +70,75 @@ test("direct add follows the API service free-account restriction", () => {
 
   assert.equal(canAddCodexAccountToLocalAccess(free, new Set(), true), false);
   assert.equal(canAddCodexAccountToLocalAccess(free, new Set(), false), true);
+});
+
+test("Agent Identity imports are forced into API service without enabling global sync", () => {
+  const regular = account({ id: "regular" });
+  const agentIdentity = account({
+    id: "agent-identity",
+    agent_identity: {
+      agent_runtime_id: "runtime",
+      agent_private_key: "private-key",
+      account_id: "account",
+      chatgpt_user_id: "user",
+    },
+  });
+
+  assert.deepEqual(
+    resolveImportedCodexAccountIdsForLocalAccess(
+      [regular, agentIdentity],
+      false,
+      true,
+    ),
+    ["agent-identity"],
+  );
+  assert.deepEqual(
+    resolveImportedCodexAccountIdsForLocalAccess(
+      [regular, agentIdentity],
+      false,
+      false,
+    ),
+    [],
+  );
+});
+
+test("Web Session imports never join API service even when sync-all is enabled", () => {
+  const regular = account({ id: "regular" });
+  const webSession = account({
+    id: "web-session",
+    token_source_mode: "chatgpt_web_session",
+    tokens: {
+      id_token: "id",
+      access_token: "access",
+    },
+  });
+
+  assert.equal(
+    getCodexLocalAccessAccountIneligibleReason(webSession, false),
+    "web_session_quota_only",
+  );
+  assert.equal(isCodexOAuthBindingEligibleAccount(webSession), false);
+  assert.deepEqual(
+    resolveImportedCodexAccountIdsForLocalAccess(
+      [regular, webSession],
+      true,
+      false,
+    ),
+    ["regular"],
+  );
+});
+
+test("Agent Identity remains eligible when regular free accounts are restricted", () => {
+  const agentIdentity = account({
+    plan_type: "free",
+    agent_identity: {
+      agent_runtime_id: "runtime",
+      agent_private_key: "private-key",
+      account_id: "account",
+      chatgpt_user_id: "user",
+    },
+  });
+
+  assert.equal(getCodexLocalAccessAccountIneligibleReason(agentIdentity, true), null);
+  assert.equal(isCodexOAuthBindingEligibleAccount(agentIdentity), false);
 });

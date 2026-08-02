@@ -15,6 +15,7 @@ use crate::models::codex_local_access::{
     CodexLocalAccessStats, CodexLocalAccessStatsWindow, CodexLocalAccessTestFailure,
     CodexLocalAccessTestResult, CodexLocalAccessTimeoutPreset, CodexLocalAccessTimeouts,
     CodexLocalAccessUsageEvent, CodexLocalAccessUsageEventPage, CodexLocalAccessUsageStats,
+    CodexTokenBreakdown,
 };
 use crate::modules::atomic_write::{write_string_atomic, write_string_atomic_if_hash_matches};
 use crate::modules::{
@@ -485,6 +486,7 @@ struct UsageCapture {
     total_tokens: u64,
     cached_tokens: u64,
     reasoning_tokens: u64,
+    token_breakdown: Option<CodexTokenBreakdown>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1421,8 +1423,17 @@ fn validate_local_access_bound_oauth_account(
         .ok_or_else(|| "请选择要绑定的 OAuth 账号".to_string())?;
     let oauth_account = codex_account::load_account(&bound_id)
         .ok_or_else(|| format!("绑定的 OAuth 账号不存在: {}", bound_id))?;
+    validate_loaded_local_access_bound_oauth_account(oauth_account)
+}
+
+fn validate_loaded_local_access_bound_oauth_account(
+    oauth_account: CodexAccount,
+) -> Result<CodexAccount, String> {
     if oauth_account.is_api_key_auth() {
         return Err("API 服务只能绑定 OAuth 账号，不能绑定 API Key 账号".to_string());
+    }
+    if oauth_account.is_agent_identity_auth() {
+        return Err("Agent Identity 账号仅用于 API 服务，不能作为 OAuth 绑定账号".to_string());
     }
     if !codex_account::account_has_refresh_token(&oauth_account) {
         return Err("API 服务只能绑定带 refresh_token 的 OAuth 账号".to_string());
@@ -4227,6 +4238,36 @@ fn service_tier_from_request_body(body: &[u8]) -> Option<String> {
     })
 }
 
+fn normalize_proxy_reasoning_effort(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "none" | "minimal" | "min" => Some("minimal"),
+        "low" => Some("low"),
+        "medium" | "med" | "default" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" | "x-high" | "extra_high" | "extrahigh" => Some("xhigh"),
+        _ => None,
+    }
+}
+
+fn reasoning_effort_from_request_body(body: &[u8]) -> Option<String> {
+    let value = parse_request_body_json(body)?;
+    if let Some(effort) = value
+        .get("reasoning_effort")
+        .and_then(Value::as_str)
+        .and_then(normalize_proxy_reasoning_effort)
+    {
+        return Some(effort.to_string());
+    }
+    if let Some(effort) = value
+        .pointer("/reasoning/effort")
+        .and_then(Value::as_str)
+        .and_then(normalize_proxy_reasoning_effort)
+    {
+        return Some(effort.to_string());
+    }
+    None
+}
+
 fn api_service_default_service_tier() -> Result<Option<&'static str>, String> {
     crate::modules::codex_speed::get_api_service_app_speed_config()
         .map(|config| codex_app_speed_service_tier(&config.speed))
@@ -5267,7 +5308,8 @@ fn normalize_custom_routing_rule(
         weight: rule
             .weight
             .clamp(CUSTOM_ROUTING_WEIGHT_MIN, CUSTOM_ROUTING_WEIGHT_MAX),
-        is_backup: rule.is_backup,
+        is_backup: rule.is_backup && !rule.is_preferred,
+        is_preferred: rule.is_preferred,
     })
 }
 
@@ -5384,7 +5426,163 @@ fn merge_collection_and_account_excluded_models(
     normalize_model_rule_list(rules)
 }
 
-fn custom_rule_map(rules: &[CodexLocalAccessCustomRoutingRule]) -> HashMap<&str, (i32, u32, bool)> {
+fn normalize_quota_limit_name_to_model_pattern(limit_name: &str) -> Option<String> {
+    let trimmed = limit_name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase().replace(' ', "-"))
+}
+
+fn metered_features_in_quota_raw(raw: &Value) -> HashSet<String> {
+    let mut features = HashSet::new();
+    let Some(limits) = raw.get("additional_rate_limits").and_then(Value::as_array) else {
+        return features;
+    };
+    for entry in limits {
+        let Some(feature) = entry
+            .get("metered_feature")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        features.insert(feature.to_ascii_lowercase());
+    }
+    features
+}
+
+fn quota_disallowed_model_patterns(account: &CodexAccount) -> Vec<String> {
+    let Some(raw) = account
+        .quota
+        .as_ref()
+        .and_then(|quota| quota.raw_data.as_ref())
+    else {
+        return Vec::new();
+    };
+    let Some(limits) = raw.get("additional_rate_limits").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut patterns = Vec::new();
+    for entry in limits {
+        let allowed = entry
+            .get("rate_limit")
+            .and_then(|value| value.get("allowed"))
+            .and_then(Value::as_bool);
+        if allowed != Some(false) {
+            continue;
+        }
+        let Some(limit_name) = entry.get("limit_name").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(pattern) = normalize_quota_limit_name_to_model_pattern(limit_name) {
+            patterns.push(pattern);
+        }
+    }
+    patterns
+}
+
+fn metered_feature_model_patterns_for_pool(
+    collection: &CodexLocalAccessCollection,
+    account_overrides: &HashMap<String, CodexAccount>,
+) -> HashMap<String, String> {
+    let persisted_accounts = codex_account::list_accounts_checked().ok();
+    let mut patterns = HashMap::new();
+    for account_id in effective_sidecar_account_ids(collection) {
+        let account = account_overrides.get(&account_id).or_else(|| {
+            persisted_accounts
+                .as_ref()
+                .and_then(|accounts| accounts.iter().find(|account| account.id == account_id))
+        });
+        let Some(raw) = account
+            .and_then(|account| account.quota.as_ref())
+            .and_then(|quota| quota.raw_data.as_ref())
+        else {
+            continue;
+        };
+        let Some(limits) = raw.get("additional_rate_limits").and_then(Value::as_array) else {
+            continue;
+        };
+        for entry in limits {
+            let feature = entry
+                .get("metered_feature")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase);
+            let limit_name = entry.get("limit_name").and_then(Value::as_str);
+            if let (Some(feature), Some(limit_name)) = (feature, limit_name) {
+                if let Some(pattern) = normalize_quota_limit_name_to_model_pattern(limit_name) {
+                    patterns.entry(feature).or_insert(pattern);
+                }
+            }
+        }
+    }
+    patterns
+}
+
+fn implicit_metered_feature_exclusions(
+    account: &CodexAccount,
+    feature_patterns: &HashMap<String, String>,
+) -> Vec<String> {
+    if feature_patterns.is_empty() {
+        return Vec::new();
+    }
+    let Some(raw) = account
+        .quota
+        .as_ref()
+        .and_then(|quota| quota.raw_data.as_ref())
+    else {
+        return Vec::new();
+    };
+    let present = metered_features_in_quota_raw(raw);
+    feature_patterns
+        .iter()
+        .filter_map(|(feature, pattern)| {
+            if present.contains(feature) {
+                None
+            } else {
+                Some(pattern.clone())
+            }
+        })
+        .collect()
+}
+
+fn sidecar_excluded_models_for_account(
+    account: &CodexAccount,
+    collection: &CodexLocalAccessCollection,
+    metered_feature_patterns: &HashMap<String, String>,
+) -> Vec<String> {
+    let mut excluded = merge_collection_and_account_excluded_models(collection, &account.id);
+    excluded.extend(quota_disallowed_model_patterns(account));
+    excluded.extend(implicit_metered_feature_exclusions(
+        account,
+        metered_feature_patterns,
+    ));
+    normalize_model_rule_list(excluded)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum AccountUsagePriority {
+    Lowest,
+    Normal,
+    Highest,
+}
+
+fn account_usage_priority(
+    rule: Option<&CodexLocalAccessCustomRoutingRule>,
+) -> AccountUsagePriority {
+    match rule {
+        Some(rule) if rule.is_preferred => AccountUsagePriority::Highest,
+        Some(rule) if rule.is_backup => AccountUsagePriority::Lowest,
+        _ => AccountUsagePriority::Normal,
+    }
+}
+
+fn custom_rule_map(
+    rules: &[CodexLocalAccessCustomRoutingRule],
+) -> HashMap<&str, (i32, u32, AccountUsagePriority)> {
     rules
         .iter()
         .map(|rule| {
@@ -5395,7 +5593,7 @@ fn custom_rule_map(rules: &[CodexLocalAccessCustomRoutingRule]) -> HashMap<&str,
                         .clamp(CUSTOM_ROUTING_PRIORITY_MIN, CUSTOM_ROUTING_PRIORITY_MAX),
                     rule.weight
                         .clamp(CUSTOM_ROUTING_WEIGHT_MIN, CUSTOM_ROUTING_WEIGHT_MAX),
-                    rule.is_backup,
+                    account_usage_priority(Some(rule)),
                 ),
             )
         })
@@ -5404,7 +5602,7 @@ fn custom_rule_map(rules: &[CodexLocalAccessCustomRoutingRule]) -> HashMap<&str,
 
 fn weighted_group_order(
     group: &[String],
-    weights: &HashMap<&str, (i32, u32, bool)>,
+    weights: &HashMap<&str, (i32, u32, AccountUsagePriority)>,
     start: usize,
 ) -> Vec<String> {
     if group.len() <= 1 {
@@ -5447,33 +5645,56 @@ fn apply_custom_routing_strategy(
     start: usize,
 ) -> Vec<String> {
     let rule_map = custom_rule_map(rules);
-    let mut priority_groups: Vec<(bool, i32, Vec<String>)> = Vec::new();
+    let mut priority_groups: Vec<(AccountUsagePriority, i32, Vec<String>)> = Vec::new();
 
     for account_id in account_ids {
-        let (priority, is_backup) = rule_map
+        let (priority, usage_priority) = rule_map
             .get(account_id.as_str())
-            .map(|(priority, _, is_backup)| (*priority, *is_backup))
-            .unwrap_or((CUSTOM_ROUTING_PRIORITY_MIN, false));
+            .map(|(priority, _, usage_priority)| (*priority, *usage_priority))
+            .unwrap_or((CUSTOM_ROUTING_PRIORITY_MIN, AccountUsagePriority::Normal));
         if let Some((_, _, group)) =
             priority_groups
                 .iter_mut()
-                .find(|(group_is_backup, group_priority, _)| {
-                    *group_is_backup == is_backup && *group_priority == priority
+                .find(|(group_usage_priority, group_priority, _)| {
+                    *group_usage_priority == usage_priority && *group_priority == priority
                 })
         {
             group.push(account_id.clone());
         } else {
-            priority_groups.push((is_backup, priority, vec![account_id.clone()]));
+            priority_groups.push((usage_priority, priority, vec![account_id.clone()]));
         }
     }
 
-    priority_groups.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| right.1.cmp(&left.1)));
+    priority_groups.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
 
     let mut ordered = Vec::with_capacity(account_ids.len());
     for (_, _, group) in priority_groups {
         ordered.extend(weighted_group_order(&group, &rule_map, start));
     }
     ordered
+}
+
+fn apply_account_usage_priority(
+    account_ids: Vec<String>,
+    rules: &[CodexLocalAccessCustomRoutingRule],
+) -> Vec<String> {
+    let rules_by_account_id = rules
+        .iter()
+        .map(|rule| (rule.account_id.as_str(), rule))
+        .collect::<HashMap<_, _>>();
+    let mut highest = Vec::new();
+    let mut normal = Vec::new();
+    let mut lowest = Vec::new();
+    for account_id in account_ids {
+        match account_usage_priority(rules_by_account_id.get(account_id.as_str()).copied()) {
+            AccountUsagePriority::Highest => highest.push(account_id),
+            AccountUsagePriority::Normal => normal.push(account_id),
+            AccountUsagePriority::Lowest => lowest.push(account_id),
+        }
+    }
+    highest.extend(normal);
+    highest.extend(lowest);
+    highest
 }
 
 fn apply_routing_strategy(
@@ -5485,11 +5706,11 @@ fn apply_routing_strategy(
     if strategy == CodexLocalAccessRoutingStrategy::Random {
         let mut shuffled = account_ids.to_vec();
         shuffled.shuffle(&mut rand::thread_rng());
-        return shuffled;
+        return apply_account_usage_priority(shuffled, custom_rules);
     }
 
     if strategy == CodexLocalAccessRoutingStrategy::SingleAccount {
-        return account_ids.to_vec();
+        return apply_account_usage_priority(account_ids.to_vec(), custom_rules);
     }
 
     if strategy == CodexLocalAccessRoutingStrategy::Custom {
@@ -5504,10 +5725,11 @@ fn apply_routing_strategy(
     let mut candidates = build_routing_candidates(account_ids);
     candidates
         .sort_by(|left, right| compare_routing_candidates(left, right, strategy, &original_index));
-    candidates
+    let ordered = candidates
         .into_iter()
         .map(|candidate| candidate.account_id)
-        .collect()
+        .collect();
+    apply_account_usage_priority(ordered, custom_rules)
 }
 
 fn effective_routing_strategy(
@@ -5570,32 +5792,30 @@ fn prioritize_account_ids(
 fn pin_account_to_front_for_strategy(
     account_ids: Vec<String>,
     priority_account_ids: &[String],
-    strategy: CodexLocalAccessRoutingStrategy,
+    _strategy: CodexLocalAccessRoutingStrategy,
     custom_rules: &[CodexLocalAccessCustomRoutingRule],
 ) -> Vec<String> {
-    if strategy != CodexLocalAccessRoutingStrategy::Custom {
-        return prioritize_account_ids(account_ids, priority_account_ids);
-    }
-
-    let rule_map = custom_rule_map(custom_rules);
-    let mut regular = Vec::with_capacity(account_ids.len());
-    let mut backup = Vec::new();
+    let rules_by_account_id = custom_rules
+        .iter()
+        .map(|rule| (rule.account_id.as_str(), rule))
+        .collect::<HashMap<_, _>>();
+    let mut highest = Vec::new();
+    let mut normal = Vec::with_capacity(account_ids.len());
+    let mut lowest = Vec::new();
     for account_id in account_ids {
-        if rule_map
-            .get(account_id.as_str())
-            .map(|(_, _, is_backup)| *is_backup)
-            .unwrap_or(false)
-        {
-            backup.push(account_id);
-        } else {
-            regular.push(account_id);
+        match account_usage_priority(rules_by_account_id.get(account_id.as_str()).copied()) {
+            AccountUsagePriority::Highest => highest.push(account_id),
+            AccountUsagePriority::Normal => normal.push(account_id),
+            AccountUsagePriority::Lowest => lowest.push(account_id),
         }
     }
 
-    regular = prioritize_account_ids(regular, priority_account_ids);
-    backup = prioritize_account_ids(backup, priority_account_ids);
-    regular.extend(backup);
-    regular
+    highest = prioritize_account_ids(highest, priority_account_ids);
+    normal = prioritize_account_ids(normal, priority_account_ids);
+    lowest = prioritize_account_ids(lowest, priority_account_ids);
+    highest.extend(normal);
+    highest.extend(lowest);
+    highest
 }
 
 fn format_retry_after_duration(wait: Duration) -> String {
@@ -6557,6 +6777,42 @@ fn calculate_usage_cost_usd(
     let (Some(usage), Some(pricing)) = (usage, pricing) else {
         return 0.0;
     };
+    if let Some(breakdown) = usage.token_breakdown.as_ref() {
+        if breakdown.schema_version == 2
+            && breakdown.input.total_tokens
+                == breakdown
+                    .input
+                    .uncached_tokens
+                    .saturating_add(breakdown.input.cache_read_tokens)
+                    .saturating_add(breakdown.input.cache_write_tokens)
+            && breakdown.output.total_tokens
+                == breakdown
+                    .output
+                    .non_reasoning_tokens
+                    .saturating_add(breakdown.output.reasoning_tokens)
+            && breakdown.total_tokens
+                == breakdown
+                    .input
+                    .total_tokens
+                    .saturating_add(breakdown.output.total_tokens)
+                    .saturating_add(breakdown.unclassified_tokens)
+            && breakdown.quality == "complete"
+        {
+            let cached_input_price = pricing
+                .cached_input_usd_per_million
+                .unwrap_or(pricing.input_usd_per_million);
+            let cost = (breakdown.input.uncached_tokens as f64 * pricing.input_usd_per_million
+                + breakdown.input.cache_read_tokens as f64 * cached_input_price
+                + breakdown.input.cache_write_tokens as f64 * pricing.input_usd_per_million
+                + breakdown.output.total_tokens as f64 * pricing.output_usd_per_million)
+                / 1_000_000.0;
+            return if cost.is_finite() && cost > 0.0 {
+                cost
+            } else {
+                0.0
+            };
+        }
+    }
     calculate_usage_cost_usd_from_tokens(
         usage.input_tokens,
         usage.output_tokens,
@@ -6755,6 +7011,7 @@ fn create_request_logs_table(
             total_tokens INTEGER NOT NULL DEFAULT 0,
             cached_tokens INTEGER NOT NULL DEFAULT 0,
             reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+            token_breakdown_json TEXT NOT NULL DEFAULT '',
             estimated_cost_usd REAL NOT NULL DEFAULT 0,
             model_pricing_version INTEGER NOT NULL DEFAULT 1,
             input_usd_per_million REAL NOT NULL DEFAULT 0,
@@ -6807,6 +7064,11 @@ fn open_local_access_logs_db_once(
             "service_tier TEXT NOT NULL DEFAULT ''",
         )?;
     }
+    ensure_request_logs_column(
+        &conn,
+        "reasoning_effort",
+        "reasoning_effort TEXT NOT NULL DEFAULT ''",
+    )?;
     ensure_request_logs_column(&conn, "success", "success INTEGER NOT NULL DEFAULT 0")?;
     ensure_request_logs_column(&conn, "http_status", "http_status INTEGER")?;
     ensure_request_logs_column(
@@ -6844,6 +7106,11 @@ fn open_local_access_logs_db_once(
         &conn,
         "reasoning_tokens",
         "reasoning_tokens INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_request_logs_column(
+        &conn,
+        "token_breakdown_json",
+        "token_breakdown_json TEXT NOT NULL DEFAULT ''",
     )?;
     ensure_request_logs_column(
         &conn,
@@ -7031,18 +7298,111 @@ fn open_local_access_logs_db_for_write(
     open_local_access_logs_db_with_schema_for_write(true)
 }
 
+fn serialize_token_breakdown_for_db(breakdown: Option<&CodexTokenBreakdown>) -> String {
+    breakdown
+        .and_then(|value| serde_json::to_string(value).ok())
+        .unwrap_or_default()
+}
+
+fn deserialize_token_breakdown_from_db(raw: &str) -> Option<CodexTokenBreakdown> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    serde_json::from_str(raw).ok()
+}
+
 fn insert_local_access_usage_event(
     conn: &Connection,
     event: &CodexLocalAccessUsageEvent,
 ) -> Result<(), String> {
     let has_service_tier_column = request_logs_has_service_tier_column(conn)
         .map_err(|e| format!("检查 API 服务日志 service_tier 列失败: {}", e))?;
+    let has_reasoning_effort_column = request_logs_has_column(conn, "reasoning_effort")
+        .map_err(|e| format!("检查 API 服务日志 reasoning_effort 列失败: {}", e))?;
     let service_tier = event
         .service_tier
         .as_deref()
         .and_then(normalize_proxy_service_tier)
         .unwrap_or_default();
-    if has_service_tier_column {
+    let reasoning_effort = event
+        .reasoning_effort
+        .as_deref()
+        .and_then(normalize_proxy_reasoning_effort)
+        .unwrap_or_default();
+    let token_breakdown_json = serialize_token_breakdown_for_db(event.token_breakdown.as_ref());
+    if has_service_tier_column && has_reasoning_effort_column {
+        conn.execute(
+            r#"
+            INSERT OR IGNORE INTO request_logs (
+                event_key,
+                timestamp,
+                request_id,
+                account_id,
+                email,
+                api_key_id,
+                api_key_label,
+                client_instance_id,
+                model_id,
+                gateway_mode,
+                request_kind,
+                service_tier,
+                reasoning_effort,
+                success,
+                http_status,
+                error_category,
+                error_message,
+                latency_ms,
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                cached_tokens,
+                reasoning_tokens,
+                token_breakdown_json,
+                estimated_cost_usd,
+                model_pricing_version,
+                input_usd_per_million,
+                output_usd_per_million,
+                cached_input_usd_per_million
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)
+            "#,
+            params![
+                local_access_log_event_key(event),
+                event.timestamp,
+                event.request_id.trim(),
+                event.account_id.trim(),
+                event.email.trim(),
+                event.api_key_id.trim(),
+                event.api_key_label.trim(),
+                event.client_instance_id.trim(),
+                event.model_id.trim(),
+                event
+                    .gateway_mode
+                    .map(gateway_mode_to_db_value)
+                    .unwrap_or_default(),
+                request_kind_to_db_value(event.request_kind),
+                service_tier,
+                reasoning_effort,
+                bool_to_db_value(event.success),
+                event.http_status.map(|value| value as i64),
+                event.error_category.trim(),
+                event.error_message.trim(),
+                event.latency_ms as i64,
+                event.input_tokens as i64,
+                event.output_tokens as i64,
+                event.total_tokens as i64,
+                event.cached_tokens as i64,
+                event.reasoning_tokens as i64,
+                token_breakdown_json,
+                event.estimated_cost_usd,
+                event.model_pricing_version as i64,
+                event.input_usd_per_million,
+                event.output_usd_per_million,
+                event.cached_input_usd_per_million,
+            ],
+        )
+        .map_err(|e| format!("写入 API 服务请求日志失败: {}", e))?;
+    } else if has_service_tier_column {
         conn.execute(
             r#"
             INSERT OR IGNORE INTO request_logs (
@@ -7068,12 +7428,13 @@ fn insert_local_access_usage_event(
                 total_tokens,
                 cached_tokens,
                 reasoning_tokens,
+                token_breakdown_json,
                 estimated_cost_usd,
                 model_pricing_version,
                 input_usd_per_million,
                 output_usd_per_million,
                 cached_input_usd_per_million
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)
             "#,
             params![
                 local_access_log_event_key(event),
@@ -7101,6 +7462,7 @@ fn insert_local_access_usage_event(
                 event.total_tokens as i64,
                 event.cached_tokens as i64,
                 event.reasoning_tokens as i64,
+                token_breakdown_json,
                 event.estimated_cost_usd,
                 event.model_pricing_version as i64,
                 event.input_usd_per_million,
@@ -7134,12 +7496,13 @@ fn insert_local_access_usage_event(
                 total_tokens,
                 cached_tokens,
                 reasoning_tokens,
+                token_breakdown_json,
                 estimated_cost_usd,
                 model_pricing_version,
                 input_usd_per_million,
                 output_usd_per_million,
                 cached_input_usd_per_million
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)
             "#,
             params![
                 local_access_log_event_key(event),
@@ -7166,6 +7529,7 @@ fn insert_local_access_usage_event(
                 event.total_tokens as i64,
                 event.cached_tokens as i64,
                 event.reasoning_tokens as i64,
+                token_breakdown_json,
                 event.estimated_cost_usd,
                 event.model_pricing_version as i64,
                 event.input_usd_per_million,
@@ -7297,6 +7661,7 @@ fn read_request_log_reprice_rows_for_model(
             total_tokens,
             cached_tokens,
             reasoning_tokens,
+            token_breakdown_json,
             estimated_cost_usd,
             model_pricing_version,
             input_usd_per_million,
@@ -7327,6 +7692,7 @@ fn read_request_log_reprice_rows_for_model(
                     let value: i64 = row.get(name)?;
                     Ok(value.max(0) as u64)
                 };
+                let token_breakdown_json: String = row.get("token_breakdown_json")?;
                 Ok(RequestLogRepriceRow {
                     id: row.get("id")?,
                     event_key: row.get("event_key")?,
@@ -7340,6 +7706,7 @@ fn read_request_log_reprice_rows_for_model(
                         total_tokens: read_u64("total_tokens")?,
                         cached_tokens: read_u64("cached_tokens")?,
                         reasoning_tokens: read_u64("reasoning_tokens")?,
+                        token_breakdown: deserialize_token_breakdown_from_db(&token_breakdown_json),
                     },
                     previous_cost_usd: row.get("estimated_cost_usd")?,
                     previous_model_pricing_version: read_u64("model_pricing_version")?,
@@ -7909,9 +8276,11 @@ fn clear_local_access_usage_events_db() -> Result<(), String> {
 fn usage_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexLocalAccessUsageEvent> {
     let request_kind: String = row.get("request_kind")?;
     let service_tier: String = row.get("service_tier")?;
+    let reasoning_effort: String = row.get::<_, String>("reasoning_effort").unwrap_or_default();
     let success: i64 = row.get("success")?;
     let http_status: Option<i64> = row.get("http_status")?;
     let gateway_mode: String = row.get("gateway_mode")?;
+    let token_breakdown_json: String = row.get("token_breakdown_json")?;
     let read_u64 = |name: &str| -> rusqlite::Result<u64> {
         let value: i64 = row.get(name)?;
         Ok(value.max(0) as u64)
@@ -7930,6 +8299,8 @@ fn usage_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexLocalA
         gateway_mode: gateway_mode_from_db_value(gateway_mode.as_str()),
         request_kind: request_kind_from_db_value(request_kind.as_str()),
         service_tier: normalize_proxy_service_tier(service_tier.as_str()).map(str::to_string),
+        reasoning_effort: normalize_proxy_reasoning_effort(reasoning_effort.as_str())
+            .map(str::to_string),
         success: success != 0,
         http_status: http_status.and_then(|value| u16::try_from(value).ok()),
         error_category: row.get("error_category")?,
@@ -7940,6 +8311,7 @@ fn usage_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexLocalA
         total_tokens: read_u64("total_tokens")?,
         cached_tokens: read_u64("cached_tokens")?,
         reasoning_tokens: read_u64("reasoning_tokens")?,
+        token_breakdown: deserialize_token_breakdown_from_db(&token_breakdown_json),
         estimated_cost_usd: row.get("estimated_cost_usd")?,
         model_pricing_version: read_u64("model_pricing_version")?,
         input_usd_per_million: row.get("input_usd_per_million")?,
@@ -7959,6 +8331,13 @@ fn load_local_access_usage_events_since(
     } else {
         "'' AS service_tier"
     };
+    let reasoning_effort_select = if request_logs_has_column(&conn, "reasoning_effort")
+        .map_err(|e| format!("检查 API 服务日志 reasoning_effort 列失败: {}", e))?
+    {
+        "reasoning_effort"
+    } else {
+        "'' AS reasoning_effort"
+    };
     let load_sql = format!(
         r#"
             SELECT
@@ -7973,6 +8352,7 @@ fn load_local_access_usage_events_since(
                 gateway_mode,
                 request_kind,
                 {service_tier_select},
+                {reasoning_effort_select},
                 success,
                 http_status,
                 error_category,
@@ -7983,6 +8363,7 @@ fn load_local_access_usage_events_since(
                 total_tokens,
                 cached_tokens,
                 reasoning_tokens,
+                token_breakdown_json,
                 estimated_cost_usd,
                 model_pricing_version,
                 input_usd_per_million,
@@ -8174,6 +8555,17 @@ fn query_local_access_usage_events_blocking(
             return Ok(empty_usage_event_page(page, page_size));
         }
     };
+    let reasoning_effort_select = match request_logs_has_column(&conn, "reasoning_effort") {
+        Ok(true) => "reasoning_effort",
+        Ok(false) => "'' AS reasoning_effort",
+        Err(error) => {
+            logger::log_codex_api_warn(&format!(
+                "检查 API 服务日志 reasoning_effort 列失败，本次返回空日志列表: {}",
+                error
+            ));
+            return Ok(empty_usage_event_page(page, page_size));
+        }
+    };
     let list_sql = format!(
         r#"
         SELECT
@@ -8188,6 +8580,7 @@ fn query_local_access_usage_events_blocking(
             gateway_mode,
             request_kind,
             {service_tier_select},
+            {reasoning_effort_select},
             success,
             http_status,
             error_category,
@@ -8198,6 +8591,7 @@ fn query_local_access_usage_events_blocking(
             total_tokens,
             cached_tokens,
             reasoning_tokens,
+            token_breakdown_json,
             estimated_cost_usd,
             model_pricing_version,
             input_usd_per_million,
@@ -8301,11 +8695,18 @@ fn query_local_access_stats_window_blocking(
     } else {
         "'' AS service_tier"
     };
+    let reasoning_effort_select = if request_logs_has_column(&conn, "reasoning_effort")
+        .map_err(|e| format!("检查 API 服务日志 reasoning_effort 列失败: {}", e))?
+    {
+        "reasoning_effort"
+    } else {
+        "'' AS reasoning_effort"
+    };
     let sql = format!(
         r#"SELECT timestamp, request_id, account_id, email, api_key_id, api_key_label,
-                  client_instance_id, model_id, gateway_mode, request_kind, {service_tier_select}, success,
+                  client_instance_id, model_id, gateway_mode, request_kind, {service_tier_select}, {reasoning_effort_select}, success,
                   http_status, error_category, error_message, latency_ms, input_tokens,
-                  output_tokens, total_tokens, cached_tokens, reasoning_tokens,
+                  output_tokens, total_tokens, cached_tokens, reasoning_tokens, token_breakdown_json,
                   estimated_cost_usd, model_pricing_version, input_usd_per_million,
                   output_usd_per_million, cached_input_usd_per_million
            FROM request_logs
@@ -8351,6 +8752,7 @@ fn apply_usage_event_to_stats(
         total_tokens: event.total_tokens,
         cached_tokens: event.cached_tokens,
         reasoning_tokens: event.reasoning_tokens,
+        token_breakdown: event.token_breakdown.clone(),
     };
     apply_usage_stats(
         &mut stats.totals,
@@ -8444,6 +8846,7 @@ fn append_usage_event(
     gateway_mode: Option<CodexLocalAccessGatewayMode>,
     request_kind: CodexLocalAccessRequestKind,
     service_tier: Option<&str>,
+    reasoning_effort: Option<&str>,
     success: bool,
     http_status: Option<u16>,
     error_category: Option<&str>,
@@ -8469,6 +8872,9 @@ fn append_usage_event(
         service_tier: service_tier
             .and_then(normalize_proxy_service_tier)
             .map(str::to_string),
+        reasoning_effort: reasoning_effort
+            .and_then(normalize_proxy_reasoning_effort)
+            .map(str::to_string),
         success,
         http_status,
         error_category: error_category.unwrap_or_default().trim().to_string(),
@@ -8479,6 +8885,7 @@ fn append_usage_event(
         total_tokens: usage.total_tokens,
         cached_tokens: usage.cached_tokens,
         reasoning_tokens: usage.reasoning_tokens,
+        token_breakdown: usage.token_breakdown.clone(),
         estimated_cost_usd,
         model_pricing_version: model_pricing_version.max(DEFAULT_MODEL_PRICING_VERSION),
         input_usd_per_million: pricing
@@ -8503,6 +8910,7 @@ fn apply_usage_event_to_window(
         total_tokens: event.total_tokens,
         cached_tokens: event.cached_tokens,
         reasoning_tokens: event.reasoning_tokens,
+        token_breakdown: event.token_breakdown.clone(),
     };
     apply_usage_stats(
         &mut window.totals,
@@ -9211,13 +9619,24 @@ fn restore_config_toml_from_takeover_backup(
         crate::modules::codex_config_format::read_codex_config_doc_from_str(current_config)
             .map_err(|e| format!("解析当前 Codex config.toml 失败: {}", e))?
     };
-    let backup_doc = match backup_config.filter(|content| !content.trim().is_empty()) {
+    let mut backup_doc = match backup_config.filter(|content| !content.trim().is_empty()) {
         Some(content) => Some(
             crate::modules::codex_config_format::read_codex_config_doc_from_str(content)
                 .map_err(|e| format!("解析 Codex API 服务接管备份 config.toml 失败: {}", e))?,
         ),
         None => None,
     };
+    if backup_doc
+        .as_ref()
+        .and_then(|doc| doc.get("model_catalog_json"))
+        .and_then(|item| item.as_str())
+        .map(str::trim)
+        == Some(CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE)
+    {
+        if let Some(doc) = backup_doc.as_mut() {
+            let _ = doc.remove("model_catalog_json");
+        }
+    }
 
     let current_selected_local_access = current_doc
         .get("model_provider")
@@ -9768,6 +10187,8 @@ struct SidecarUsageDetails {
     cached_tokens: i64,
     #[serde(default)]
     total_tokens: i64,
+    #[serde(default)]
+    token_breakdown: Option<CodexTokenBreakdown>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -10302,6 +10723,171 @@ fn effective_sidecar_account_ids(collection: &CodexLocalAccessCollection) -> Vec
     account_ids
 }
 
+/// 池内某一类额度窗口的汇总（按真实窗口时长归类，避免把周窗误标成 5h）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ApiServicePoolWindowSum {
+    /// 稳定 key：如 "5h" / "weekly" / "2d"
+    pub key: String,
+    /// 展示用英文标签，上层再做本地化（Weekly → 周）。
+    pub label: String,
+    pub percentage: i32,
+    pub window_minutes: i64,
+}
+
+/// 菜单栏 / 托盘菜单：API 服务账号池额度摘要。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ApiServiceMenuBarQuota {
+    /// 各窗口合计中的较小值；用于菜单栏单数字展示与配色。
+    pub remaining_percent: Option<i32>,
+    /// 按窗口时长归类后的汇总行（与悬浮卡 / API 服务页一致）。
+    pub windows: Vec<ApiServicePoolWindowSum>,
+    /// 池内 OAuth 账号数量（参与汇总的账号）。
+    pub account_count: usize,
+}
+
+fn api_service_window_bucket(window_minutes: Option<i64>, fallback: &str) -> (String, String, i64) {
+    const HOUR_MINUTES: i64 = 60;
+    const DAY_MINUTES: i64 = 24 * HOUR_MINUTES;
+    const WEEK_MINUTES: i64 = 7 * DAY_MINUTES;
+
+    let minutes = window_minutes
+        .filter(|value| *value > 0)
+        .unwrap_or_else(|| {
+            if fallback.eq_ignore_ascii_case("weekly") {
+                WEEK_MINUTES
+            } else {
+                5 * HOUR_MINUTES
+            }
+        });
+
+    let (key, label) = if minutes >= WEEK_MINUTES - 1 {
+        let weeks = (minutes + WEEK_MINUTES - 1) / WEEK_MINUTES;
+        if weeks <= 1 {
+            ("weekly".to_string(), "Weekly".to_string())
+        } else {
+            (format!("{weeks}week"), format!("{weeks} Week"))
+        }
+    } else if minutes >= DAY_MINUTES - 1 {
+        let days = (minutes + DAY_MINUTES - 1) / DAY_MINUTES;
+        (format!("{days}d"), format!("{days}d"))
+    } else if minutes >= HOUR_MINUTES {
+        let hours = (minutes + HOUR_MINUTES - 1) / HOUR_MINUTES;
+        (format!("{hours}h"), format!("{hours}h"))
+    } else {
+        (format!("{minutes}m"), format!("{minutes}m"))
+    };
+
+    (key, label, minutes)
+}
+
+fn add_api_service_window_sum(
+    windows: &mut Vec<ApiServicePoolWindowSum>,
+    window_minutes: Option<i64>,
+    fallback: &str,
+    percentage: i32,
+) {
+    let (key, label, minutes) = api_service_window_bucket(window_minutes, fallback);
+    let value = percentage.clamp(0, 100);
+    if let Some(existing) = windows.iter_mut().find(|item| item.key == key) {
+        existing.percentage = existing.percentage.saturating_add(value);
+        existing.window_minutes = existing.window_minutes.min(minutes);
+        return;
+    }
+    windows.push(ApiServicePoolWindowSum {
+        key,
+        label,
+        percentage: value,
+        window_minutes: minutes,
+    });
+}
+
+/// 读取本地 API 服务集合，按真实窗口时长汇总池内 OAuth 账号剩余百分比。
+pub(crate) fn menu_bar_api_service_quota() -> ApiServiceMenuBarQuota {
+    let Ok(Some(collection)) = load_collection_from_disk() else {
+        return ApiServiceMenuBarQuota {
+            remaining_percent: None,
+            windows: Vec::new(),
+            account_count: 0,
+        };
+    };
+
+    let mut windows: Vec<ApiServicePoolWindowSum> = Vec::new();
+    let mut account_count = 0usize;
+
+    for account_id in effective_sidecar_account_ids(&collection) {
+        let Some(account) = codex_account::load_account(&account_id) else {
+            continue;
+        };
+        // 池汇总仅计 OAuth 类窗口额度；API Key 账号走单独额度模型。
+        if account.is_api_key_auth() {
+            continue;
+        }
+        account_count += 1;
+        let Some(quota) = account.quota.as_ref() else {
+            continue;
+        };
+        let has_presence_flags =
+            quota.hourly_window_present.is_some() || quota.weekly_window_present.is_some();
+        // 与前端 getCodexQuotaWindows 一致：按 present 决定是否纳入，标签看 window_minutes。
+        if !has_presence_flags || quota.hourly_window_present == Some(true) {
+            add_api_service_window_sum(
+                &mut windows,
+                quota.hourly_window_minutes,
+                "5h",
+                quota.hourly_percentage,
+            );
+        }
+        if !has_presence_flags || quota.weekly_window_present == Some(true) {
+            add_api_service_window_sum(
+                &mut windows,
+                quota.weekly_window_minutes,
+                "Weekly",
+                quota.weekly_percentage,
+            );
+        }
+    }
+
+    windows.sort_by(|left, right| {
+        left.window_minutes
+            .cmp(&right.window_minutes)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+
+    let remaining_percent = windows.iter().map(|item| item.percentage).min();
+
+    ApiServiceMenuBarQuota {
+        remaining_percent,
+        windows,
+        account_count,
+    }
+}
+
+/// 池内可刷新额度的 OAuth 账号 ID（用于托盘菜单刷新 API 服务额度）。
+pub(crate) fn api_service_refreshable_account_ids() -> Vec<String> {
+    let Ok(Some(collection)) = load_collection_from_disk() else {
+        return Vec::new();
+    };
+    effective_sidecar_account_ids(&collection)
+        .into_iter()
+        .filter(|account_id| {
+            codex_account::load_account(account_id)
+                .map(|account| {
+                    !account.is_api_key_auth()
+                        && crate::modules::codex_quota::supports_quota_refresh(&account)
+                })
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// 是否存在 API 服务集合（有账号即可在托盘中展示 API 服务卡片）。
+pub(crate) fn api_service_collection_has_accounts() -> bool {
+    let Ok(Some(collection)) = load_collection_from_disk() else {
+        return false;
+    };
+    !effective_sidecar_account_ids(&collection).is_empty()
+}
+
 fn remove_account_refs_from_collection(
     collection: &mut CodexLocalAccessCollection,
     remove_ids: &HashSet<String>,
@@ -10445,13 +11031,30 @@ fn sidecar_auth_json_for_account(
     collection: &CodexLocalAccessCollection,
     proxy_url: Option<&str>,
 ) -> Value {
+    let metered_feature_patterns =
+        metered_feature_model_patterns_for_pool(collection, &HashMap::new());
+    sidecar_auth_json_for_account_with_metered_feature_patterns(
+        account,
+        collection,
+        proxy_url,
+        &metered_feature_patterns,
+    )
+}
+
+fn sidecar_auth_json_for_account_with_metered_feature_patterns(
+    account: &CodexAccount,
+    collection: &CodexLocalAccessCollection,
+    proxy_url: Option<&str>,
+    metered_feature_patterns: &HashMap<String, String>,
+) -> Value {
     let account_id = account
         .account_id
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or(account.id.as_str());
-    let excluded_models = merge_collection_and_account_excluded_models(collection, &account.id);
+    let excluded_models =
+        sidecar_excluded_models_for_account(account, collection, metered_feature_patterns);
     if let Some(identity) = account.agent_identity.as_ref() {
         let mut value = json!({
             "type": "codex",
@@ -10997,6 +11600,22 @@ fn sidecar_codex_key_config_value(
     collection: &CodexLocalAccessCollection,
     proxy_url: Option<&str>,
 ) -> Option<Value> {
+    let metered_feature_patterns =
+        metered_feature_model_patterns_for_pool(collection, &HashMap::new());
+    sidecar_codex_key_config_value_with_metered_feature_patterns(
+        account,
+        collection,
+        proxy_url,
+        &metered_feature_patterns,
+    )
+}
+
+fn sidecar_codex_key_config_value_with_metered_feature_patterns(
+    account: &CodexAccount,
+    collection: &CodexLocalAccessCollection,
+    proxy_url: Option<&str>,
+    metered_feature_patterns: &HashMap<String, String>,
+) -> Option<Value> {
     let api_key = account.openai_api_key.as_deref()?.trim();
     if api_key.is_empty() {
         return None;
@@ -11009,7 +11628,8 @@ fn sidecar_codex_key_config_value(
         ));
         return None;
     };
-    let excluded_models = merge_collection_and_account_excluded_models(collection, &account.id);
+    let excluded_models =
+        sidecar_excluded_models_for_account(account, collection, metered_feature_patterns);
     let mut value = json!({
         "api-key": api_key,
         "base-url": base_url,
@@ -11363,6 +11983,8 @@ fn prepare_sidecar_launch_config_in_dir_sync(
     let mut manifest_accounts = Vec::new();
     let mut codex_keys = Vec::new();
     let mut expected_auth_files = HashSet::new();
+    let metered_feature_patterns =
+        metered_feature_model_patterns_for_pool(collection, &account_overrides);
     for (index, account_id) in effective_sidecar_account_ids(collection)
         .into_iter()
         .enumerate()
@@ -11405,9 +12027,12 @@ fn prepare_sidecar_launch_config_in_dir_sync(
         }
 
         if account.is_api_key_auth() {
-            if let Some(config_value) =
-                sidecar_codex_key_config_value(&account, collection, effective_proxy_url_ref)
-            {
+            if let Some(config_value) = sidecar_codex_key_config_value_with_metered_feature_patterns(
+                &account,
+                collection,
+                effective_proxy_url_ref,
+                &metered_feature_patterns,
+            ) {
                 codex_keys.push(config_value);
                 manifest_accounts.push(sidecar_account_manifest_value(&account, None, collection));
             } else {
@@ -11423,8 +12048,12 @@ fn prepare_sidecar_launch_config_in_dir_sync(
         let auth_path = auths_dir.join(&file_name);
         expected_auth_files.insert(file_name.clone());
         adopt_sidecar_agent_identity_task(&mut account, &auth_path)?;
-        let auth_json =
-            sidecar_auth_json_for_account(&account, collection, effective_proxy_url_ref);
+        let auth_json = sidecar_auth_json_for_account_with_metered_feature_patterns(
+            &account,
+            collection,
+            effective_proxy_url_ref,
+            &metered_feature_patterns,
+        );
         let auth_content = serde_json::to_string_pretty(&auth_json)
             .map_err(|e| format!("序列化 sidecar Codex OAuth 认证失败: {}", e))?;
         write_string_atomic_if_changed(&auth_path, &auth_content)?;
@@ -11454,6 +12083,7 @@ fn prepare_sidecar_launch_config_in_dir_sync(
             "priority": rule.priority,
             "weight": rule.weight,
             "isBackup": rule.is_backup,
+            "isPreferred": rule.is_preferred,
         })).collect::<Vec<_>>(),
         "accountModelRules": collection.account_model_rules.iter().map(|rule| json!({
             "accountId": rule.account_id.clone(),
@@ -11499,6 +12129,10 @@ fn prepare_sidecar_launch_config_in_dir_sync(
     config.insert("request-log".to_string(), json!(false));
     config.insert("logging-to-file".to_string(), json!(false));
     config.insert("commercial-mode".to_string(), json!(true));
+    config.insert(
+        "codex".to_string(),
+        json!({ "optimize-multi-agent-v2": true }),
+    );
     config.insert("ws-auth".to_string(), json!(true));
     config.insert("disable-auth-auto-refresh".to_string(), json!(true));
     // 不写 disable-image-generation：默认允许生图（绑定 OAuth 与改前一致；纯 API Key 也靠正常注入/上游能力）。
@@ -11615,6 +12249,7 @@ fn sidecar_usage_capture(details: &SidecarUsageDetails) -> Option<UsageCapture> 
         total_tokens: usage_i64_to_u64(details.total_tokens),
         cached_tokens: usage_i64_to_u64(details.cached_tokens),
         reasoning_tokens: usage_i64_to_u64(details.reasoning_tokens),
+        token_breakdown: details.token_breakdown.clone(),
     };
     if usage.input_tokens == 0
         && usage.output_tokens == 0
@@ -11973,6 +12608,7 @@ async fn record_sidecar_usage_event(event: SidecarUsageEvent) {
             http_status: event.status,
             error_message: event.error_message.as_deref(),
             service_tier: event.service_tier.as_deref(),
+            reasoning_effort: None,
         },
     )
     .await
@@ -14058,10 +14694,17 @@ fn local_access_ineligible_reason(
     {
         return Some("pending_oauth");
     }
-    if account_requires_provider_gateway(account) {
+    // ChatGPT Web Session 仅支持查额，禁止加入 API 服务。
+    if account.is_web_session_auth() {
+        return Some("web_session_quota_only");
+    }
+    if is_chat_completions_api_key_account(account) {
         return Some("chat_completions_api_key");
     }
-    if restrict_free_accounts && is_free_plan_type(account.plan_type.as_deref()) {
+    if restrict_free_accounts
+        && !account.is_agent_identity_auth()
+        && is_free_plan_type(account.plan_type.as_deref())
+    {
         return Some("free_restricted");
     }
     None
@@ -14447,7 +15090,9 @@ fn sanitize_collection_with_accounts(
     let valid_bound_oauth_account_ids: HashSet<String> = accounts
         .iter()
         .filter(|account| {
-            !account.is_api_key_auth() && codex_account::account_has_refresh_token(account)
+            !account.is_api_key_auth()
+                && !account.is_agent_identity_auth()
+                && codex_account::account_has_refresh_token(account)
         })
         .map(|account| account.id.clone())
         .collect();
@@ -15372,7 +16017,11 @@ fn apply_usage_stats(
     {
         target.stream_incomplete_count = target.stream_incomplete_count.saturating_add(1);
     }
-    target.total_latency_ms = target.total_latency_ms.saturating_add(latency_ms);
+    // Average latency should only reflect successful requests. Including
+    // transport/auth failures (often 0ms) pulls the average down misleadingly.
+    if success {
+        target.total_latency_ms = target.total_latency_ms.saturating_add(latency_ms);
+    }
     match request_kind {
         CodexLocalAccessRequestKind::Text => {
             target.text_request_count = target.text_request_count.saturating_add(1);
@@ -15665,6 +16314,7 @@ struct RequestStatsMeta<'a> {
     http_status: Option<u16>,
     error_message: Option<&'a str>,
     service_tier: Option<&'a str>,
+    reasoning_effort: Option<&'a str>,
 }
 
 async fn record_request_stats_with_meta(
@@ -15759,6 +16409,7 @@ async fn record_request_stats_with_meta(
             gateway_mode,
             request_kind,
             meta.service_tier,
+            meta.reasoning_effort,
             success,
             meta.http_status,
             error_category,
@@ -16387,11 +17038,13 @@ fn account_uses_synced_model_shell_gateway(account: &CodexAccount) -> bool {
     provider_model_slots_need_upstream_rewrite(&provider_gateway_model_slots(&models))
 }
 
+fn is_chat_completions_api_key_account(account: &CodexAccount) -> bool {
+    account.is_api_key_auth()
+        && provider_gateway_wire_api_for_account(account) == "chat_completions"
+}
+
 pub fn account_requires_provider_gateway(account: &CodexAccount) -> bool {
-    if !account.is_api_key_auth() {
-        return false;
-    }
-    if provider_gateway_wire_api_for_account(account) == "chat_completions" {
+    if is_chat_completions_api_key_account(account) {
         return true;
     }
     account_uses_synced_model_shell_gateway(account)
@@ -18803,28 +19456,53 @@ fn append_eligible_local_access_account_ids(
     )
 }
 
-fn apply_backup_account_ids(
+fn apply_account_usage_priority_ids(
     collection: &mut CodexLocalAccessCollection,
-    backup_account_ids: &[String],
+    backup_account_ids: Option<&[String]>,
+    preferred_account_ids: Option<&[String]>,
 ) {
     let account_set: HashSet<&str> = collection.account_ids.iter().map(String::as_str).collect();
-    let backup_set: HashSet<&str> = backup_account_ids
-        .iter()
-        .map(|id| id.trim())
-        .filter(|id| !id.is_empty() && account_set.contains(*id))
-        .collect();
+    let normalize_ids = |account_ids: &[String]| {
+        account_ids
+            .iter()
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty() && account_set.contains(id.as_str()))
+            .collect::<HashSet<String>>()
+    };
+    let backup_set = backup_account_ids.map(normalize_ids);
+    let preferred_set = preferred_account_ids.map(normalize_ids);
 
     let mut seen = HashSet::new();
     for rule in &mut collection.custom_routing_rules {
         if !account_set.contains(rule.account_id.as_str()) {
             continue;
         }
-        rule.is_backup = backup_set.contains(rule.account_id.as_str());
+        if let Some(backup_set) = backup_set.as_ref() {
+            rule.is_backup = backup_set.contains(rule.account_id.as_str());
+            if rule.is_backup {
+                rule.is_preferred = false;
+            }
+        }
+        if let Some(preferred_set) = preferred_set.as_ref() {
+            rule.is_preferred = preferred_set.contains(rule.account_id.as_str());
+            if rule.is_preferred {
+                rule.is_backup = false;
+            }
+        }
         seen.insert(rule.account_id.clone());
     }
 
     for account_id in &collection.account_ids {
-        if !backup_set.contains(account_id.as_str()) || seen.contains(account_id) {
+        if seen.contains(account_id) {
+            continue;
+        }
+        let is_backup = backup_set
+            .as_ref()
+            .is_some_and(|ids| ids.contains(account_id.as_str()));
+        let is_preferred = preferred_set
+            .as_ref()
+            .is_some_and(|ids| ids.contains(account_id.as_str()));
+        if !is_backup && !is_preferred {
             continue;
         }
         collection
@@ -18833,7 +19511,8 @@ fn apply_backup_account_ids(
                 account_id: account_id.clone(),
                 priority: CUSTOM_ROUTING_PRIORITY_MIN,
                 weight: CUSTOM_ROUTING_WEIGHT_MIN,
-                is_backup: true,
+                is_backup: is_backup && !is_preferred,
+                is_preferred,
             });
         seen.insert(account_id.clone());
     }
@@ -18848,6 +19527,7 @@ pub async fn save_local_access_accounts(
     account_ids: Vec<String>,
     restrict_free_accounts: bool,
     backup_account_ids: Option<Vec<String>>,
+    preferred_account_ids: Option<Vec<String>>,
     session_affinity: Option<bool>,
     session_affinity_ttl_ms: Option<i64>,
 ) -> Result<CodexLocalAccessState, String> {
@@ -18891,9 +19571,13 @@ pub async fn save_local_access_accounts(
     }
     collection.updated_at = now_ms();
     let (mut changed, _) = sanitize_collection_with_accounts(&mut collection, &accounts)?;
-    if let Some(backup_ids) = backup_account_ids {
+    if backup_account_ids.is_some() || preferred_account_ids.is_some() {
         let before = collection.custom_routing_rules.clone();
-        apply_backup_account_ids(&mut collection, &backup_ids);
+        apply_account_usage_priority_ids(
+            &mut collection,
+            backup_account_ids.as_deref(),
+            preferred_account_ids.as_deref(),
+        );
         if collection.custom_routing_rules != before {
             changed = true;
         }
@@ -20341,6 +21025,7 @@ fn extract_usage_capture(value: &Value) -> Option<UsageCapture> {
         },
         cached_tokens,
         reasoning_tokens,
+        token_breakdown: None,
     })
 }
 
@@ -22289,6 +22974,322 @@ async fn send_upstream_request_with_authorization_url(
     Err("请求 Codex 上游失败: 未知错误".to_string())
 }
 
+const MAX_OPENAI_RESPONSES_REJECTED_FIELD_RETRIES: usize = 6;
+
+struct OpenAIResponsesRejectedFieldRetryState {
+    attempts: usize,
+    seen_body_hashes: HashSet<[u8; 32]>,
+}
+
+impl OpenAIResponsesRejectedFieldRetryState {
+    fn new(initial_body: &[u8]) -> Self {
+        let mut state = Self {
+            attempts: 0,
+            seen_body_hashes: HashSet::with_capacity(
+                MAX_OPENAI_RESPONSES_REJECTED_FIELD_RETRIES + 1,
+            ),
+        };
+        state.remember(initial_body);
+        state
+    }
+
+    fn allow(&mut self, next_body: &[u8]) -> bool {
+        if next_body.is_empty() || self.attempts >= MAX_OPENAI_RESPONSES_REJECTED_FIELD_RETRIES {
+            return false;
+        }
+        let body_hash: [u8; 32] = Sha256::digest(next_body).into();
+        if !self.seen_body_hashes.insert(body_hash) {
+            return false;
+        }
+        self.attempts += 1;
+        true
+    }
+
+    fn remember(&mut self, body: &[u8]) {
+        if !body.is_empty() {
+            self.seen_body_hashes.insert(Sha256::digest(body).into());
+        }
+    }
+}
+
+fn normalize_openai_responses_rejected_field_retry_body(
+    status: StatusCode,
+    body: &[u8],
+    response_body: &[u8],
+) -> Result<Option<(Vec<u8>, &'static str)>, String> {
+    if status != StatusCode::BAD_REQUEST || body.is_empty() || response_body.is_empty() {
+        return Ok(None);
+    }
+    let response: Value = match serde_json::from_slice(response_body) {
+        Ok(response) => response,
+        Err(_) => return Ok(None),
+    };
+    let code = response
+        .pointer("/error/code")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let message = response
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if code != "unknown_parameter"
+        && code != "unsupported_parameter"
+        && !message.contains("unknown parameter")
+        && !message.contains("unsupported parameter")
+    {
+        return Ok(None);
+    }
+    let mut param = response
+        .pointer("/error/param")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if param.is_empty() {
+        let pattern = regex::Regex::new(
+            r#"(?i)(?:unknown|unsupported)[ _-]+parameter\s*(?::|=|is)?\s*[\"']?(max_output_tokens|input\[\d+\]\.namespace)(?:[\"']|\b)"#,
+        )
+        .map_err(|error| format!("编译 Responses 拒绝字段匹配规则失败: {error}"))?;
+        param = pattern
+            .captures(&message)
+            .and_then(|captures| captures.get(1))
+            .map(|value| value.as_str().trim().to_ascii_lowercase())
+            .unwrap_or_default();
+    }
+
+    let mut request: Value = serde_json::from_slice(body)
+        .map_err(|error| format!("解析 Responses 拒绝字段重试请求失败: {error}"))?;
+    if param == "max_output_tokens" {
+        let Some(object) = request.as_object_mut() else {
+            return Ok(None);
+        };
+        if object.remove("max_output_tokens").is_none() {
+            return Ok(None);
+        }
+        return serde_json::to_vec(&request)
+            .map(|body| Some((body, "max_output_tokens parameter rejection")))
+            .map_err(|error| format!("序列化 Responses 拒绝字段重试请求失败: {error}"));
+    }
+
+    let namespace_pattern = regex::Regex::new(r"(?i)^input\[(\d+)\]\.namespace$")
+        .map_err(|error| format!("编译 Responses namespace 匹配规则失败: {error}"))?;
+    let Some(index) = namespace_pattern
+        .captures(&param)
+        .and_then(|captures| captures.get(1))
+        .and_then(|value| value.as_str().parse::<usize>().ok())
+    else {
+        return Ok(None);
+    };
+    let Some(item) = request
+        .get_mut("input")
+        .and_then(Value::as_array_mut)
+        .and_then(|input| input.get_mut(index))
+        .and_then(Value::as_object_mut)
+    else {
+        return Ok(None);
+    };
+    let item_type = item
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if !matches!(
+        item_type.as_str(),
+        "function_call" | "tool_call" | "custom_tool_call" | "mcp_tool_call"
+    ) || item.remove("namespace").is_none()
+    {
+        return Ok(None);
+    }
+    serde_json::to_vec(&request)
+        .map(|body| Some((body, "indexed namespace parameter rejection")))
+        .map_err(|error| format!("序列化 Responses namespace 重试请求失败: {error}"))
+}
+
+#[cfg(test)]
+mod openai_responses_rejected_field_retry_tests {
+    use super::*;
+
+    #[test]
+    fn retries_only_explicit_max_output_tokens_rejection() {
+        let body = br#"{"max_output_tokens":128,"input":[]}"#;
+        let explicit = br#"{"error":{"code":"unknown_parameter","param":"max_output_tokens","message":"Unknown parameter"}}"#;
+        let (retry, reason) = normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            body,
+            explicit,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(reason, "max_output_tokens parameter rejection");
+        assert!(serde_json::from_slice::<Value>(&retry)
+            .unwrap()
+            .get("max_output_tokens")
+            .is_none());
+
+        let ambiguous = br#"{"error":{"message":"invalid max_output_tokens"}}"#;
+        assert!(normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            body,
+            ambiguous,
+        )
+        .unwrap()
+        .is_none());
+    }
+
+    #[test]
+    fn rejects_ambiguous_rejected_field_errors() {
+        let cases: &[(&[u8], &[u8])] = &[
+            (
+                br#"{"input":[{"type":"message","namespace":"keep"}]}"#,
+                br#"{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"input[0].namespace"}}"#,
+            ),
+            (
+                br#"{"max_output_tokens":4096}"#,
+                br#"{"error":{"code":"invalid_request_error","message":"max_output_tokens must be positive","param":"max_output_tokens"}}"#,
+            ),
+            (
+                br#"{"input":[{"type":"function_call","namespace":"keep","arguments":"{}"}]}"#,
+                br#"{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"tools"}}"#,
+            ),
+            (
+                br#"{"max_output_tokens":4096,"input":[{"type":"message","content":{"max_output_tokens":"keep"}}]}"#,
+                br#"{"error":{"code":"unknown_parameter","message":"Unknown parameter: input[0].content.max_output_tokens","param":"input[0].content.max_output_tokens"}}"#,
+            ),
+        ];
+
+        for (body, response_body) in cases {
+            assert!(normalize_openai_responses_rejected_field_retry_body(
+                StatusCode::BAD_REQUEST,
+                body,
+                response_body,
+            )
+            .unwrap()
+            .is_none());
+        }
+    }
+
+    #[test]
+    fn finds_rejected_namespace_path_in_message() {
+        let body = br#"{"input":[{"type":"function_call","namespace":"keep","arguments":"{}"},{"type":"function_call","namespace":"remove","arguments":"{}"}]}"#;
+        let response = br#"{"error":{"code":"unknown_parameter","message":"input[0] was accepted; Unknown parameter: 'input[1].namespace'."}}"#;
+        let (retry, _) = normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            body,
+            response,
+        )
+        .unwrap()
+        .unwrap();
+        let retry: Value = serde_json::from_slice(&retry).unwrap();
+        assert_eq!(
+            retry.pointer("/input/0/namespace").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert!(retry.pointer("/input/1/namespace").is_none());
+    }
+
+    #[test]
+    fn binds_rejected_namespace_path_to_rejection_phrase() {
+        let body = br#"{"input":[{"type":"function_call","namespace":"keep","arguments":"{}"},{"type":"function_call","namespace":"remove","arguments":"{}"}]}"#;
+        let response = br#"{"error":{"code":"unknown_parameter","message":"input[0].namespace is supported; Unknown parameter: input[1].namespace."}}"#;
+        let (retry, _) = normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            body,
+            response,
+        )
+        .unwrap()
+        .unwrap();
+        let retry: Value = serde_json::from_slice(&retry).unwrap();
+        assert_eq!(
+            retry.pointer("/input/0/namespace").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert!(retry.pointer("/input/1/namespace").is_none());
+    }
+
+    #[test]
+    fn does_not_treat_max_output_tokens_suggestion_as_rejection() {
+        let body = br#"{"max_tokens":4096,"max_output_tokens":2048}"#;
+        let response = br#"{"error":{"code":"unknown_parameter","message":"Unknown parameter: max_tokens. Use max_output_tokens instead."}}"#;
+        assert!(normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            body,
+            response,
+        )
+        .unwrap()
+        .is_none());
+    }
+
+    #[test]
+    fn composes_distinct_rejected_field_retries() {
+        let initial = br#"{"max_output_tokens":2048,"input":[{"type":"function_call","namespace":"keep","arguments":"{}"},{"type":"custom_tool_call","namespace":"remove","input":"{}"}]}"#;
+        let namespace_response = br#"{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[1].namespace'.","param":"input[1].namespace"}}"#;
+        let max_tokens_response = br#"{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: max_output_tokens","param":"max_output_tokens"}}"#;
+        let mut state = OpenAIResponsesRejectedFieldRetryState::new(initial);
+
+        let (without_namespace, _) = normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            initial,
+            namespace_response,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(state.allow(&without_namespace));
+        let first_retry: Value = serde_json::from_slice(&without_namespace).unwrap();
+        assert!(first_retry.pointer("/input/1/namespace").is_none());
+        assert_eq!(
+            first_retry.get("max_output_tokens").and_then(Value::as_u64),
+            Some(2048)
+        );
+
+        let (without_both, _) = normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            &without_namespace,
+            max_tokens_response,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(state.allow(&without_both));
+        let second_retry: Value = serde_json::from_slice(&without_both).unwrap();
+        assert!(second_retry.pointer("/input/1/namespace").is_none());
+        assert!(second_retry.get("max_output_tokens").is_none());
+    }
+
+    #[test]
+    fn removes_only_rejected_tool_call_namespace() {
+        let body = br#"{"input":[{"type":"function_call","namespace":"collaboration"},{"type":"message","namespace":"keep"}]}"#;
+        let response = br#"{"error":{"code":"unsupported_parameter","param":"input[0].namespace","message":"Unsupported parameter"}}"#;
+        let (retry, _) = normalize_openai_responses_rejected_field_retry_body(
+            StatusCode::BAD_REQUEST,
+            body,
+            response,
+        )
+        .unwrap()
+        .unwrap();
+        let retry: Value = serde_json::from_slice(&retry).unwrap();
+        assert!(retry.pointer("/input/0/namespace").is_none());
+        assert_eq!(
+            retry.pointer("/input/1/namespace").and_then(Value::as_str),
+            Some("keep")
+        );
+    }
+
+    #[test]
+    fn retry_state_rejects_duplicate_and_seventh_mutation() {
+        let initial = br#"{"input":[]}"#;
+        let mut state = OpenAIResponsesRejectedFieldRetryState::new(initial);
+        assert!(!state.allow(initial));
+        for attempt in 0..MAX_OPENAI_RESPONSES_REJECTED_FIELD_RETRIES {
+            assert!(state.allow(format!(r#"{{"attempt":{attempt}}}"#).as_bytes()));
+        }
+        assert!(!state.allow(br#"{"attempt":99}"#));
+    }
+}
+
 async fn proxy_request_with_account_pool(
     request: &ParsedRequest,
     collection: &CodexLocalAccessCollection,
@@ -22487,6 +23488,9 @@ async fn proxy_request_with_account_pool(
             );
 
             let mut single_account_status_retry_attempt = 0usize;
+            let mut upstream_request_body = request.body.clone();
+            let mut rejected_field_retry_state = is_responses_request(&request.target)
+                .then(|| OpenAIResponsesRejectedFieldRetryState::new(&upstream_request_body));
             loop {
                 let upstream_send_started_at = Instant::now();
                 legacy_debug_log(
@@ -22505,7 +23509,7 @@ async fn proxy_request_with_account_pool(
                     &request.method,
                     &upstream_target,
                     &request.headers,
-                    &request.body,
+                    &upstream_request_body,
                     &account,
                     collection.upstream_proxy_url.as_deref(),
                     upstream_connect_timeout,
@@ -22641,7 +23645,7 @@ async fn proxy_request_with_account_pool(
                                 &request.method,
                                 &upstream_target,
                                 &request.headers,
-                                &request.body,
+                                &upstream_request_body,
                                 &account,
                                 collection.upstream_proxy_url.as_deref(),
                                 upstream_connect_timeout,
@@ -22733,6 +23737,34 @@ async fn proxy_request_with_account_pool(
 
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
+                if let Some(state) = rejected_field_retry_state.as_mut() {
+                    if let Some((next_body, reason)) =
+                        normalize_openai_responses_rejected_field_retry_body(
+                            status,
+                            &upstream_request_body,
+                            body.as_bytes(),
+                        )
+                        .map_err(|message| ProxyDispatchError {
+                            status: StatusCode::BAD_REQUEST.as_u16(),
+                            message,
+                            account_id: Some(account.id.clone()),
+                            account_email: Some(account.email.clone()),
+                            error_category: Some("bad_request".to_string()),
+                        })?
+                    {
+                        if state.allow(&next_body) {
+                            legacy_debug_log(
+                                collection.debug_logs,
+                                format!(
+                                    "responses_rejected_field_retry account_id={} attempt={} reason={}",
+                                    account.id, state.attempts, reason
+                                ),
+                            );
+                            upstream_request_body = next_body;
+                            continue;
+                        }
+                    }
+                }
                 let category = classify_upstream_error_category(status, &body);
                 let message = if category == Some("image_generation_not_enabled") {
                     friendly_image_generation_capability_error(&account.email)
@@ -24113,6 +25145,7 @@ async fn handle_websocket_connection(
         api_key_label: resolved_api_key.label.clone(),
     };
     let stats_service_tier = service_tier_from_request_body(&parsed.body);
+    let stats_reasoning_effort = reasoning_effort_from_request_body(&parsed.body);
     let routing_hint = build_request_routing_hint(&parsed);
 
     match proxy_websocket_with_account_pool(
@@ -24184,6 +25217,7 @@ async fn handle_websocket_connection(
                     bridge_result.capture.usage,
                     RequestStatsMeta {
                         service_tier: stats_service_tier.as_deref(),
+                        reasoning_effort: stats_reasoning_effort.as_deref(),
                         ..RequestStatsMeta::default()
                     },
                 )
@@ -24225,6 +25259,7 @@ async fn handle_websocket_connection(
                 bridge_result.capture.usage,
                 RequestStatsMeta {
                     service_tier: stats_service_tier.as_deref(),
+                    reasoning_effort: stats_reasoning_effort.as_deref(),
                     ..RequestStatsMeta::default()
                 },
             )
@@ -24262,6 +25297,7 @@ async fn handle_websocket_connection(
                 None,
                 RequestStatsMeta {
                     service_tier: stats_service_tier.as_deref(),
+                    reasoning_effort: stats_reasoning_effort.as_deref(),
                     ..RequestStatsMeta::default()
                 },
             )
@@ -24519,6 +25555,7 @@ async fn handle_connection(
         )
         .await?;
         let stats_service_tier = service_tier_from_request_body(&parsed.body);
+        let stats_reasoning_effort = reasoning_effort_from_request_body(&parsed.body);
         if let Err(err) = record_request_stats_with_meta(
             None,
             None,
@@ -24532,6 +25569,7 @@ async fn handle_connection(
             None,
             RequestStatsMeta {
                 service_tier: stats_service_tier.as_deref(),
+                reasoning_effort: stats_reasoning_effort.as_deref(),
                 ..RequestStatsMeta::default()
             },
         )
@@ -24568,6 +25606,7 @@ async fn handle_connection(
         )
         .await?;
         let stats_service_tier = service_tier_from_request_body(&parsed.body);
+        let stats_reasoning_effort = reasoning_effort_from_request_body(&parsed.body);
         if let Err(stats_err) = record_request_stats_with_meta(
             None,
             None,
@@ -24581,6 +25620,7 @@ async fn handle_connection(
             None,
             RequestStatsMeta {
                 service_tier: stats_service_tier.as_deref(),
+                reasoning_effort: stats_reasoning_effort.as_deref(),
                 ..RequestStatsMeta::default()
             },
         )
@@ -24649,6 +25689,7 @@ async fn handle_connection(
     let stats_context =
         build_request_stats_context(&prepared_request, &response_adapter, &resolved_api_key);
     let stats_service_tier = service_tier_from_request_body(&prepared_request.body);
+    let stats_reasoning_effort = reasoning_effort_from_request_body(&prepared_request.body);
     legacy_debug_log(
         collection.debug_logs,
         format!(
@@ -24721,6 +25762,7 @@ async fn handle_connection(
                             None,
                             RequestStatsMeta {
                                 service_tier: stats_service_tier.as_deref(),
+                                reasoning_effort: stats_reasoning_effort.as_deref(),
                                 ..RequestStatsMeta::default()
                             },
                         )
@@ -24760,6 +25802,7 @@ async fn handle_connection(
                 response_capture.usage,
                 RequestStatsMeta {
                     service_tier: stats_service_tier.as_deref(),
+                    reasoning_effort: stats_reasoning_effort.as_deref(),
                     ..RequestStatsMeta::default()
                 },
             )
@@ -24838,6 +25881,7 @@ async fn handle_connection(
                 None,
                 RequestStatsMeta {
                     service_tier: stats_service_tier.as_deref(),
+                    reasoning_effort: stats_reasoning_effort.as_deref(),
                     ..RequestStatsMeta::default()
                 },
             )
@@ -25023,12 +26067,13 @@ mod tests {
 
     use super::{
         account_model_rule_blocks_model, account_requires_bound_oauth_local_gateway,
-        account_requires_provider_gateway, account_upstream_base_url, align_codex_prompt_cache,
-        api_key_inherits_account_pool, api_key_priority_account_ids,
-        append_eligible_local_access_account_ids, append_usage_event, apply_codex_official_headers,
-        apply_routing_strategy, backup_current_profile_model_before_provider_gateway,
-        bound_oauth_quota_refresh_failures, bound_oauth_quota_reserve_blocks_account,
-        bridge_websocket_streams, build_account_scoped_upstream_body, build_base_url_with_host,
+        account_requires_provider_gateway, account_upstream_base_url, account_usage_priority,
+        align_codex_prompt_cache, api_key_inherits_account_pool, api_key_priority_account_ids,
+        append_eligible_local_access_account_ids, append_usage_event,
+        apply_account_usage_priority_ids, apply_codex_official_headers, apply_routing_strategy,
+        backup_current_profile_model_before_provider_gateway, bound_oauth_quota_refresh_failures,
+        bound_oauth_quota_reserve_blocks_account, bridge_websocket_streams,
+        build_account_scoped_upstream_body, build_base_url_with_host,
         build_chat_completion_payload, build_chat_completion_stream_body,
         build_codex_client_models_response, build_collection_base_url, build_images_api_payload,
         build_local_access_api_key, build_local_models_response,
@@ -25067,7 +26112,7 @@ mod tests {
         read_http_request, read_request_log_reprice_batch, recompute_time_windows,
         recover_invalid_stats_file, remove_account_refs_from_collection,
         remove_codex_local_access_config, reprice_request_logs_for_collection,
-        request_image_generation_mode, request_ordered_account_ids,
+        request_image_generation_mode, request_logs_has_column, request_ordered_account_ids,
         resolve_effective_model_pricing, resolve_plan_rank, resolve_sidecar_upstream_base_url,
         resolve_sidecar_upstream_base_url_with, resolve_supported_model_alias,
         resolve_upstream_target, restore_config_toml_from_takeover_backup,
@@ -25084,18 +26129,20 @@ mod tests {
         sidecar_payload_default_service_tier, sidecar_quota_reserve_snapshot_value,
         sidecar_routing_strategy_value, sidecar_stable_id, supported_codex_model_ids,
         system_proxy_target_scheme, system_proxy_value_url,
-        tool_declares_image_generation_capability, validate_api_key_account_scope_update,
-        validate_client_model_visible, visible_codex_model_ids_for_api_key,
+        tool_declares_image_generation_capability, usage_event_from_row,
+        validate_api_key_account_scope_update, validate_client_model_visible,
+        validate_loaded_local_access_bound_oauth_account, visible_codex_model_ids_for_api_key,
         visible_codex_model_ids_for_api_key_with_accounts, websocket_accept_value,
         websocket_connect_error_from_http_response, windows_proxy_url_from_server,
         windows_reg_dword_enabled, windows_reg_query_map,
         write_local_access_profile_model_override, write_local_access_profile_takeover,
         write_provider_gateway_model_catalog, write_string_atomic, write_string_atomic_if_changed,
-        CodexLocalAccessCollection, CodexLocalAccessGatewayMode, CodexLocalAccessScope,
-        CodexModelProviderGatewayChatTestRequest, GatewayResponseAdapter, ParsedRequest,
-        ResolvedLocalApiKey, ResponseUsageCollector, RoutingCandidate, SidecarUsageDetails,
-        SidecarUsageEvent, UsageCapture, BOUND_OAUTH_QUOTA_RESERVE_MAX_SNAPSHOT_AGE_SECONDS,
-        CODEX_AUTO_REVIEW_MODEL_ID, CODEX_IMAGEGEN_ACTOR_HEADER, CODEX_IMAGE_MODEL_ID,
+        AccountUsagePriority, CodexLocalAccessCollection, CodexLocalAccessGatewayMode,
+        CodexLocalAccessScope, CodexModelProviderGatewayChatTestRequest, GatewayResponseAdapter,
+        ParsedRequest, ResolvedLocalApiKey, ResponseUsageCollector, RoutingCandidate,
+        SidecarUsageDetails, SidecarUsageEvent, UsageCapture,
+        BOUND_OAUTH_QUOTA_RESERVE_MAX_SNAPSHOT_AGE_SECONDS, CODEX_AUTO_REVIEW_MODEL_ID,
+        CODEX_IMAGEGEN_ACTOR_HEADER, CODEX_IMAGE_MODEL_ID,
         CODEX_LOCAL_ACCESS_DISABLE_HOSTED_IMAGE_GENERATION_HEADER,
         CODEX_LOCAL_ACCESS_DISABLE_HOSTED_IMAGE_GENERATION_HEADER_VALUE,
         CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE, CODEX_PROFILE_AUTH_FILE, CODEX_PROFILE_CONFIG_FILE,
@@ -25118,7 +26165,7 @@ mod tests {
         CodexLocalAccessImageGenerationMode, CodexLocalAccessProviderGateway,
         CodexLocalAccessQuotaReserve, CodexLocalAccessRequestKind, CodexLocalAccessRoutingStrategy,
         CodexLocalAccessStats, CodexLocalAccessStatsWindow, CodexLocalAccessTimeouts,
-        CodexLocalAccessUsageEvent,
+        CodexLocalAccessUsageEvent, CodexTokenBreakdown,
     };
     use crate::models::{
         DefaultInstanceSettings, InstanceLaunchMode, InstanceProfile, InstanceStore,
@@ -25126,6 +26173,7 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use rand::rngs::OsRng;
     use reqwest::StatusCode;
+    use rusqlite::Connection;
     use serde_json::{json, Value};
     use std::{
         collections::{HashMap, HashSet},
@@ -25998,7 +27046,8 @@ HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings
     }
 
     #[test]
-    fn responses_sync_catalog_with_custom_models_requires_provider_gateway() {
+    fn responses_sync_catalog_with_custom_models_requires_instance_gateway_but_remains_local_access_eligible(
+    ) {
         let mut account = CodexAccount::new_api_key(
             "local-account-id".to_string(),
             "relay@example.com".to_string(),
@@ -26013,6 +27062,20 @@ HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings
         account.api_sync_model_catalog_to_codex = true;
 
         assert!(account_requires_provider_gateway(&account));
+        assert!(is_local_access_eligible_account(&account, true));
+        assert_eq!(local_access_ineligible_reason(&account, true), None);
+
+        let account_id = account.id.clone();
+        let (next_ids, synced_ids, added_ids, skipped) = append_eligible_local_access_account_ids(
+            &[],
+            vec![account_id.clone()],
+            &[account],
+            true,
+        );
+        assert_eq!(next_ids, vec![account_id.clone()]);
+        assert_eq!(synced_ids, vec![account_id.clone()]);
+        assert_eq!(added_ids, vec![account_id]);
+        assert!(skipped.is_empty());
     }
 
     #[test]
@@ -26280,12 +27343,14 @@ wire_api = "responses"
                 priority: 10,
                 weight: 2,
                 is_backup: false,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "account-c".to_string(),
                 priority: 5,
                 weight: 1,
                 is_backup: false,
+                is_preferred: false,
             },
         ];
         collection.account_model_rules = vec![CodexLocalAccessAccountModelRule {
@@ -26839,6 +27904,87 @@ wire_api = "responses"
         );
     }
 
+    #[test]
+    fn scoped_api_key_pool_discovers_spark_entitlement_from_effective_accounts() {
+        let mut plus = test_account_with_plan("plus");
+        plus.id = "scoped-plus".to_string();
+        plus.quota = Some(CodexQuota {
+            hourly_percentage: 100,
+            hourly_reset_time: None,
+            hourly_window_minutes: Some(300),
+            hourly_window_present: Some(true),
+            weekly_percentage: 100,
+            weekly_reset_time: None,
+            weekly_window_minutes: Some(10_080),
+            weekly_window_present: Some(true),
+            reset_credits_available: None,
+            reset_credits: Vec::new(),
+            reset_credits_next_expires_at: None,
+            raw_data: Some(json!({ "additional_rate_limits": [] })),
+        });
+
+        let mut pro = test_account_with_plan("pro");
+        pro.id = "scoped-pro".to_string();
+        pro.quota = Some(CodexQuota {
+            hourly_percentage: 100,
+            hourly_reset_time: None,
+            hourly_window_minutes: Some(300),
+            hourly_window_present: Some(true),
+            weekly_percentage: 100,
+            weekly_reset_time: None,
+            weekly_window_minutes: Some(10_080),
+            weekly_window_present: Some(true),
+            reset_credits_available: None,
+            reset_credits: Vec::new(),
+            reset_credits_next_expires_at: None,
+            raw_data: Some(json!({
+                "additional_rate_limits": [{
+                    "limit_name": "GPT-5.3-Codex-Spark",
+                    "metered_feature": "codex_spark",
+                    "rate_limit": { "allowed": true }
+                }]
+            })),
+        });
+
+        let mut collection = test_local_access_collection(Vec::new());
+        collection.api_key.clear();
+        let mut api_key = build_local_access_api_key(Some("Scoped Spark"));
+        api_key.key = "scoped-spark-key".to_string();
+        api_key.inherit_account_pool = Some(false);
+        api_key.account_ids = vec![plus.id.clone(), pro.id.clone()];
+        collection.api_keys = vec![api_key];
+
+        let dir = make_temp_dir("codex-scoped-spark-entitlement");
+        let overrides = HashMap::from([(plus.id.clone(), plus.clone()), (pro.id.clone(), pro)]);
+        super::prepare_sidecar_launch_config_in_dir_sync(
+            &collection,
+            dir.clone(),
+            HashMap::new(),
+            None,
+            overrides,
+            None,
+        )
+        .expect("prepare scoped sidecar config");
+
+        let auth_path = sidecar_auths_dir(&dir).join(sidecar_auth_file_name(&plus.id));
+        let auth: Value =
+            serde_json::from_str(&fs::read_to_string(auth_path).expect("read scoped Plus auth"))
+                .expect("parse scoped Plus auth");
+        let excluded = auth
+            .get("excluded_models")
+            .and_then(Value::as_array)
+            .expect("excluded_models should be an array");
+        assert!(
+            excluded
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|model| model.eq_ignore_ascii_case("gpt-5.3-codex-spark")),
+            "Plus account should exclude Spark discovered from its scoped Pro peer"
+        );
+
+        fs::remove_dir_all(dir).expect("cleanup scoped sidecar config");
+    }
+
     fn make_temp_dir(prefix: &str) -> PathBuf {
         for _ in 0..10 {
             let dir = std::env::temp_dir().join(format!(
@@ -26954,6 +28100,54 @@ wire_api = "responses"
                 .collect::<Vec<_>>(),
             vec![("pending", "pending_oauth")]
         );
+    }
+
+    #[test]
+    fn free_agent_identity_remains_eligible_for_local_access_pool() {
+        let mut account = test_account_with_plan("free");
+        account.tokens.access_token.clear();
+        account.agent_identity = Some(CodexAgentIdentity {
+            agent_runtime_id: "runtime-free-agent".to_string(),
+            agent_private_key: "private-key".to_string(),
+            task_id: Some("task-free-agent".to_string()),
+            account_id: "account-free-agent".to_string(),
+            chatgpt_user_id: "user-free-agent".to_string(),
+            email: Some("free-agent@example.com".to_string()),
+            plan_type: Some("free".to_string()),
+            chatgpt_account_is_fedramp: false,
+        });
+
+        assert!(is_local_access_eligible_account(&account, true));
+        let (_, synced_ids, added_ids, skipped) = append_eligible_local_access_account_ids(
+            &[],
+            vec![account.id.clone()],
+            &[account.clone()],
+            true,
+        );
+        assert_eq!(synced_ids, vec![account.id.clone()]);
+        assert_eq!(added_ids, vec![account.id]);
+        assert!(skipped.is_empty());
+    }
+
+    #[test]
+    fn agent_identity_cannot_be_used_as_local_access_oauth_binding() {
+        let mut account = test_account_with_plan("plus");
+        account.tokens.refresh_token = Some("refresh-token".to_string());
+        account.agent_identity = Some(CodexAgentIdentity {
+            agent_runtime_id: "runtime-oauth-binding".to_string(),
+            agent_private_key: "private-key".to_string(),
+            task_id: Some("task-oauth-binding".to_string()),
+            account_id: "account-oauth-binding".to_string(),
+            chatgpt_user_id: "user-oauth-binding".to_string(),
+            email: Some("agent-oauth-binding@example.com".to_string()),
+            plan_type: Some("plus".to_string()),
+            chatgpt_account_is_fedramp: false,
+        });
+
+        let error = validate_loaded_local_access_bound_oauth_account(account)
+            .expect_err("Agent Identity must not be accepted as an OAuth binding");
+
+        assert!(error.contains("不能作为 OAuth 绑定账号"));
     }
 
     fn make_test_jwt(payload: Value) -> String {
@@ -27729,6 +28923,7 @@ wire_api = "responses"
             total_tokens: 3_000,
             cached_tokens: 400,
             reasoning_tokens: 0,
+            token_breakdown: None,
         };
         let pricing = model_pricing(
             "gpt-5.4",
@@ -27765,6 +28960,7 @@ wire_api = "responses"
             Some("gpt-5.4"),
             Some(CodexLocalAccessGatewayMode::Sidecar),
             CodexLocalAccessRequestKind::Text,
+            None,
             None,
             false,
             Some(502),
@@ -27803,6 +28999,104 @@ wire_api = "responses"
         assert_eq!(loaded.1, long_error);
         assert!(loaded.1.contains("tail-marker"));
         assert_eq!(loaded.2, 7);
+
+        drop(conn);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn request_log_db_persists_canonical_token_breakdown() {
+        let dir = make_temp_dir("codex-local-access-token-breakdown");
+        let db_path = dir.join("request_logs.sqlite");
+        let conn = open_local_access_logs_db_once(&db_path, true).expect("open logs db");
+        let mut breakdown = CodexTokenBreakdown::default();
+        breakdown.schema_version = 2;
+        breakdown.quality = "complete".to_string();
+        breakdown.total_tokens = 1_200;
+        breakdown.input.total_tokens = 1_000;
+        breakdown.input.uncached_tokens = 600;
+        breakdown.input.cache_read_tokens = 300;
+        breakdown.input.cache_write_tokens = 100;
+        breakdown.output.total_tokens = 200;
+        breakdown.output.non_reasoning_tokens = 150;
+        breakdown.output.reasoning_tokens = 50;
+        let usage = UsageCapture {
+            input_tokens: 1_000,
+            output_tokens: 200,
+            total_tokens: 1_200,
+            cached_tokens: 300,
+            reasoning_tokens: 50,
+            token_breakdown: Some(breakdown.clone()),
+        };
+        let mut events = Vec::new();
+        let event = append_usage_event(
+            &mut events,
+            1_700_000_000_000,
+            Some("req-token-breakdown"),
+            Some("acc-1"),
+            Some("user@example.com"),
+            Some("key-1"),
+            Some("Production Key"),
+            None,
+            Some("gpt-5.4"),
+            Some(CodexLocalAccessGatewayMode::Sidecar),
+            CodexLocalAccessRequestKind::Text,
+            None,
+            None,
+            true,
+            Some(200),
+            None,
+            None,
+            42,
+            Some(&usage),
+            None,
+            2,
+            0.0,
+        );
+        insert_local_access_usage_event(&conn, &event).expect("insert request log");
+
+        let loaded = conn
+            .query_row(
+                "SELECT * FROM request_logs WHERE request_id = ?1",
+                ["req-token-breakdown"],
+                usage_event_from_row,
+            )
+            .expect("read request log");
+        let loaded_breakdown = loaded.token_breakdown.expect("token breakdown");
+        assert_eq!(loaded_breakdown.schema_version, breakdown.schema_version);
+        assert_eq!(loaded_breakdown.quality, breakdown.quality);
+        assert_eq!(loaded_breakdown.total_tokens, breakdown.total_tokens);
+        assert_eq!(
+            loaded_breakdown.input.cache_read_tokens,
+            breakdown.input.cache_read_tokens
+        );
+        assert_eq!(
+            loaded_breakdown.input.cache_write_tokens,
+            breakdown.input.cache_write_tokens
+        );
+        assert_eq!(
+            loaded_breakdown.output.reasoning_tokens,
+            breakdown.output.reasoning_tokens
+        );
+
+        drop(conn);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn request_log_db_adds_token_breakdown_to_existing_schema() {
+        let dir = make_temp_dir("codex-local-access-token-breakdown-migration");
+        let db_path = dir.join("request_logs.sqlite");
+        let conn = Connection::open(&db_path).expect("open legacy logs db");
+        conn.execute_batch(
+            "CREATE TABLE request_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_key TEXT NOT NULL DEFAULT '', timestamp INTEGER NOT NULL DEFAULT 0)",
+        )
+        .expect("create legacy request logs table");
+        drop(conn);
+
+        let conn = open_local_access_logs_db_once(&db_path, true).expect("migrate logs db");
+        assert!(request_logs_has_column(&conn, "token_breakdown_json")
+            .expect("inspect token breakdown column"));
 
         drop(conn);
         let _ = fs::remove_dir_all(dir);
@@ -27848,12 +29142,23 @@ wire_api = "responses"
         let db_path = dir.join("request_logs.sqlite");
         let mut conn = open_local_access_logs_db_once(&db_path, true).expect("open logs db");
         let mut events = Vec::new();
+        let mut breakdown = CodexTokenBreakdown::default();
+        breakdown.schema_version = 2;
+        breakdown.quality = "complete".to_string();
+        breakdown.total_tokens = 1_500_000;
+        breakdown.input.total_tokens = 1_000_000;
+        breakdown.input.uncached_tokens = 700_000;
+        breakdown.input.cache_read_tokens = 200_000;
+        breakdown.input.cache_write_tokens = 100_000;
+        breakdown.output.total_tokens = 500_000;
+        breakdown.output.non_reasoning_tokens = 500_000;
         let usage = UsageCapture {
             input_tokens: 1_000_000,
             output_tokens: 500_000,
             total_tokens: 1_500_000,
-            cached_tokens: 200_000,
+            cached_tokens: 400_000,
             reasoning_tokens: 0,
+            token_breakdown: Some(breakdown),
         };
         let event = append_usage_event(
             &mut events,
@@ -27867,6 +29172,7 @@ wire_api = "responses"
             Some("custom-model"),
             Some(CodexLocalAccessGatewayMode::Sidecar),
             CodexLocalAccessRequestKind::Text,
+            None,
             None,
             true,
             Some(200),
@@ -27948,6 +29254,7 @@ wire_api = "responses"
             total_tokens: 1_500,
             cached_tokens: 200,
             reasoning_tokens: 0,
+            token_breakdown: None,
         };
         for (request_id, timestamp, pricing_version) in [
             ("req-stale", 1_700_000_000_000, 7),
@@ -27965,6 +29272,7 @@ wire_api = "responses"
                 Some("gpt-5.4"),
                 Some(CodexLocalAccessGatewayMode::Sidecar),
                 CodexLocalAccessRequestKind::Text,
+                None,
                 None,
                 true,
                 Some(200),
@@ -28010,6 +29318,7 @@ wire_api = "responses"
             total_tokens: 272_001,
             cached_tokens: 0,
             reasoning_tokens: 0,
+            token_breakdown: None,
         };
         let long_usage = UsageCapture {
             input_tokens: 272_001,
@@ -28073,6 +29382,7 @@ wire_api = "responses"
             total_tokens: 150,
             cached_tokens: 20,
             reasoning_tokens: 0,
+            token_breakdown: None,
         };
 
         let flex =
@@ -28112,6 +29422,7 @@ wire_api = "responses"
             total_tokens: 304_000,
             cached_tokens: 0,
             reasoning_tokens: 0,
+            token_breakdown: None,
         };
         let pricing = resolve_effective_model_pricing(None, Some("gpt-5.4"), Some(&usage), None)
             .expect("pricing");
@@ -28328,6 +29639,37 @@ wire_api = "responses"
                 .and_then(|value| value.as_str()),
             Some("keep-current")
         );
+    }
+
+    #[test]
+    fn takeover_backup_restore_drops_stale_local_access_catalog() {
+        let current = r#"model_provider = "codex_local_access"
+model_catalog_json = "cockpit-local-access-model-catalog.json"
+
+[model_providers.codex_local_access]
+name = "Codex API Service"
+base_url = "http://localhost:14998/v1"
+wire_api = "responses"
+requires_openai_auth = false
+experimental_bearer_token = "agt_codex_test"
+"#;
+        let stale_backup = r#"model_provider = "openai"
+model_catalog_json = "cockpit-local-access-model-catalog.json"
+model_context_window = 1000000
+"#;
+
+        let output = restore_config_toml_from_takeover_backup(Some(current), Some(stale_backup))
+            .expect("restore config")
+            .expect("restored content");
+        let parsed = output
+            .parse::<toml_edit::Document>()
+            .expect("parse restored toml");
+
+        assert_eq!(
+            parsed.get("model_provider").and_then(|item| item.as_str()),
+            Some("openai")
+        );
+        assert!(parsed.get("model_catalog_json").is_none());
     }
 
     #[test]
@@ -29087,18 +30429,21 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
                 priority: 10,
                 weight: 1,
                 is_backup: false,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "acc-high-a".to_string(),
                 priority: 40,
                 weight: 1,
                 is_backup: false,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "acc-high-b".to_string(),
                 priority: 40,
                 weight: 1,
                 is_backup: false,
+                is_preferred: false,
             },
         ];
 
@@ -29121,12 +30466,14 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
                 priority: 100,
                 weight: 1,
                 is_backup: true,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "regular".to_string(),
                 priority: 0,
                 weight: 1,
                 is_backup: false,
+                is_preferred: false,
             },
         ];
 
@@ -29144,6 +30491,113 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
         );
 
         assert_eq!(affinity_ordered, vec!["regular", "backup"]);
+    }
+
+    #[test]
+    fn usage_priority_wraps_every_routing_strategy_and_affinity() {
+        let account_ids = vec![
+            "lowest".to_string(),
+            "normal".to_string(),
+            "highest".to_string(),
+        ];
+        let rules = vec![
+            CodexLocalAccessCustomRoutingRule {
+                account_id: "lowest".to_string(),
+                priority: 100,
+                weight: 1,
+                is_backup: true,
+                is_preferred: false,
+            },
+            CodexLocalAccessCustomRoutingRule {
+                account_id: "normal".to_string(),
+                priority: 50,
+                weight: 1,
+                is_backup: false,
+                is_preferred: false,
+            },
+            CodexLocalAccessCustomRoutingRule {
+                account_id: "highest".to_string(),
+                priority: 0,
+                weight: 1,
+                is_backup: false,
+                is_preferred: true,
+            },
+        ];
+
+        for strategy in [
+            CodexLocalAccessRoutingStrategy::Auto,
+            CodexLocalAccessRoutingStrategy::Random,
+            CodexLocalAccessRoutingStrategy::SingleAccount,
+            CodexLocalAccessRoutingStrategy::Custom,
+        ] {
+            let ordered = apply_routing_strategy(&account_ids, strategy, &rules, 0);
+            assert_eq!(ordered.first().map(String::as_str), Some("highest"));
+            assert_eq!(ordered.last().map(String::as_str), Some("lowest"));
+
+            let affinity_ordered = pin_account_to_front_for_strategy(
+                ordered,
+                &["lowest".to_string()],
+                strategy,
+                &rules,
+            );
+            assert_eq!(affinity_ordered, vec!["highest", "normal", "lowest"]);
+        }
+    }
+
+    #[test]
+    fn account_usage_priority_ids_are_exclusive_and_preserve_unspecified_tier() {
+        let mut collection = test_local_access_collection(vec![
+            "lowest".to_string(),
+            "normal".to_string(),
+            "highest".to_string(),
+        ]);
+
+        apply_account_usage_priority_ids(
+            &mut collection,
+            Some(&["lowest".to_string()]),
+            Some(&["highest".to_string()]),
+        );
+
+        let rules = collection
+            .custom_routing_rules
+            .iter()
+            .map(|rule| {
+                (
+                    rule.account_id.as_str(),
+                    (rule.is_backup, rule.is_preferred),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        assert_eq!(rules.get("lowest"), Some(&(true, false)));
+        assert_eq!(rules.get("highest"), Some(&(false, true)));
+        assert!(!rules.contains_key("normal"));
+
+        apply_account_usage_priority_ids(&mut collection, Some(&[]), None);
+        let highest = collection
+            .custom_routing_rules
+            .iter()
+            .find(|rule| rule.account_id == "highest")
+            .expect("highest rule");
+        assert!(!highest.is_backup);
+        assert!(highest.is_preferred);
+    }
+
+    #[test]
+    fn legacy_backup_rule_defaults_to_lowest_without_preferred_field() {
+        let rule = serde_json::from_value::<CodexLocalAccessCustomRoutingRule>(serde_json::json!({
+            "accountId": "legacy-backup",
+            "priority": 10,
+            "weight": 1,
+            "isBackup": true
+        }))
+        .expect("legacy custom routing rule");
+
+        assert!(rule.is_backup);
+        assert!(!rule.is_preferred);
+        assert_eq!(
+            account_usage_priority(Some(&rule)),
+            AccountUsagePriority::Lowest
+        );
     }
 
     #[test]
@@ -29224,12 +30678,14 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
                 priority: 20,
                 weight: 3,
                 is_backup: false,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "acc-light".to_string(),
                 priority: 20,
                 weight: 1,
                 is_backup: false,
+                is_preferred: false,
             },
         ];
 
@@ -29269,24 +30725,28 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
                 priority: 120,
                 weight: 0,
                 is_backup: true,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "acc-a".to_string(),
                 priority: 20,
                 weight: 10,
                 is_backup: false,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "acc-removed".to_string(),
                 priority: 30,
                 weight: 5,
                 is_backup: false,
+                is_preferred: false,
             },
             CodexLocalAccessCustomRoutingRule {
                 account_id: "acc-b".to_string(),
                 priority: -5,
                 weight: 500,
                 is_backup: false,
+                is_preferred: false,
             },
         ];
 
@@ -29300,12 +30760,14 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
                     priority: 100,
                     weight: 1,
                     is_backup: true,
+                    is_preferred: false,
                 },
                 CodexLocalAccessCustomRoutingRule {
                     account_id: "acc-b".to_string(),
                     priority: 0,
                     weight: 100,
                     is_backup: false,
+                    is_preferred: false,
                 },
             ]
         );
@@ -31651,6 +33113,12 @@ data: {"error":{"code":"server_error","type":"upstream","message":"stream aborte
                 .and_then(|streaming| streaming.get("bootstrap-retries")),
             Some(&json!(2))
         );
+        assert_eq!(
+            config
+                .get("codex")
+                .and_then(|codex| codex.get("optimize-multi-agent-v2")),
+            Some(&json!(true))
+        );
 
         fs::remove_dir_all(&dir).expect("cleanup temp dir");
     }
@@ -32132,6 +33600,35 @@ data: {"error":{"code":"server_error","type":"upstream","message":"stream aborte
         assert!(collection.account_ids.is_empty());
         assert_eq!(collection.api_keys.len(), 1);
         assert_eq!(collection.api_keys[0].account_ids, vec![account_id]);
+    }
+
+    #[test]
+    fn sanitize_collection_removes_agent_identity_oauth_binding() {
+        let mut agent_identity = test_account_with_plan("plus");
+        agent_identity.id = "agent-identity-binding".to_string();
+        agent_identity.tokens.refresh_token = Some("refresh-token".to_string());
+        agent_identity.agent_identity = Some(CodexAgentIdentity {
+            agent_runtime_id: "runtime-binding".to_string(),
+            agent_private_key: "private-key".to_string(),
+            task_id: Some("task-binding".to_string()),
+            account_id: "account-binding".to_string(),
+            chatgpt_user_id: "user-binding".to_string(),
+            email: Some("agent-binding@example.com".to_string()),
+            plan_type: Some("plus".to_string()),
+            chatgpt_account_is_fedramp: false,
+        });
+
+        let mut collection = test_local_access_collection(vec![agent_identity.id.clone()]);
+        collection.bound_oauth_account_id = Some(agent_identity.id.clone());
+
+        let (changed, valid_account_ids) =
+            sanitize_collection_with_accounts(&mut collection, &[agent_identity.clone()])
+                .expect("collection should sanitize");
+
+        assert!(changed);
+        assert!(collection.bound_oauth_account_id.is_none());
+        assert!(valid_account_ids.contains(&agent_identity.id));
+        assert!(collection.account_ids.contains(&agent_identity.id));
     }
 
     #[test]

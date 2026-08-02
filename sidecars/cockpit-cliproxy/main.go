@@ -92,12 +92,18 @@ var (
 	imageStreamIdleTimeout = 60 * time.Second
 )
 
+type accountModelRule struct {
+	AccountID      string   `json:"accountId"`
+	ExcludedModels []string `json:"excludedModels"`
+}
+
 type manifest struct {
 	APIKeys                    []apiKeySpec        `json:"apiKeys"`
 	Accounts                   []accountSpec       `json:"accounts"`
 	ModelIDs                   []string            `json:"modelIds"`
 	ModelAliases               []modelAliasSpec    `json:"modelAliases"`
 	ExcludedModels             []string            `json:"excludedModels"`
+	AccountModelRules          []accountModelRule  `json:"accountModelRules"`
 	RoutingStrategy            string              `json:"routingStrategy"`
 	CustomRoutingRules         []customRoutingRule `json:"customRoutingRules"`
 	ImmediateSSEResponse       bool                `json:"immediateSseResponse"`
@@ -286,10 +292,11 @@ type modelAliasSpec struct {
 }
 
 type customRoutingRule struct {
-	AccountID string `json:"accountId"`
-	Priority  int    `json:"priority"`
-	Weight    int    `json:"weight"`
-	IsBackup  bool   `json:"isBackup"`
+	AccountID   string `json:"accountId"`
+	Priority    int    `json:"priority"`
+	Weight      int    `json:"weight"`
+	IsBackup    bool   `json:"isBackup"`
+	IsPreferred bool   `json:"isPreferred"`
 }
 
 type usagePayload struct {
@@ -383,11 +390,12 @@ func (e relayStatusError) StatusCode() int {
 }
 
 type usageDetails struct {
-	InputTokens     int64 `json:"inputTokens,omitempty"`
-	OutputTokens    int64 `json:"outputTokens,omitempty"`
-	ReasoningTokens int64 `json:"reasoningTokens,omitempty"`
-	CachedTokens    int64 `json:"cachedTokens,omitempty"`
-	TotalTokens     int64 `json:"totalTokens,omitempty"`
+	InputTokens     int64                    `json:"inputTokens,omitempty"`
+	OutputTokens    int64                    `json:"outputTokens,omitempty"`
+	ReasoningTokens int64                    `json:"reasoningTokens,omitempty"`
+	CachedTokens    int64                    `json:"cachedTokens,omitempty"`
+	TotalTokens     int64                    `json:"totalTokens,omitempty"`
+	TokenBreakdown  coreusage.TokenBreakdown `json:"tokenBreakdown,omitempty"`
 }
 
 type usageFinalizeInput struct {
@@ -744,6 +752,10 @@ func loadManifest(path string) (*manifest, error) {
 	}
 	m.ModelIDs = normalizeStringList(m.ModelIDs)
 	m.ExcludedModels = normalizeStringList(m.ExcludedModels)
+	for index := range m.AccountModelRules {
+		m.AccountModelRules[index].AccountID = strings.TrimSpace(m.AccountModelRules[index].AccountID)
+		m.AccountModelRules[index].ExcludedModels = normalizeStringList(m.AccountModelRules[index].ExcludedModels)
+	}
 	return &m, nil
 }
 
@@ -1921,6 +1933,13 @@ type imageRequestSelector struct {
 	fallback      coreauth.Selector
 }
 
+// modelExclusionSelector filters account-level model exclusions before wrappers
+// such as session affinity can reuse a cached account binding.
+type modelExclusionSelector struct {
+	manifest *manifest
+	fallback coreauth.Selector
+}
+
 func (s *imageRequestSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*coreauth.Auth) (*coreauth.Auth, error) {
 	requestKind, _ := ctx.Value(requestKindContextKey).(string)
 	if isImageRequestKind(requestKind) && s.imageFallback != nil {
@@ -1933,6 +1952,35 @@ func (s *imageRequestSelector) Pick(ctx context.Context, provider, model string,
 }
 
 func (s *imageRequestSelector) Stop() {
+	if stoppable, ok := s.fallback.(coreauth.StoppableSelector); ok {
+		stoppable.Stop()
+	}
+}
+
+func (s *modelExclusionSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*coreauth.Auth) (*coreauth.Auth, error) {
+	if s == nil || s.fallback == nil {
+		return nil, fmt.Errorf("model exclusion selector is not initialized")
+	}
+	if strings.TrimSpace(model) == "" {
+		return s.fallback.Pick(ctx, provider, model, opts, auths)
+	}
+	filtered := make([]*coreauth.Auth, 0, len(auths))
+	for _, auth := range auths {
+		if authModelExcluded(s.manifest, auth, model) {
+			continue
+		}
+		filtered = append(filtered, auth)
+	}
+	if len(filtered) == 0 {
+		return nil, noAuthAvailableError(nil)
+	}
+	return s.fallback.Pick(ctx, provider, model, opts, filtered)
+}
+
+func (s *modelExclusionSelector) Stop() {
+	if s == nil || s.fallback == nil {
+		return
+	}
 	if stoppable, ok := s.fallback.(coreauth.StoppableSelector); ok {
 		stoppable.Stop()
 	}
@@ -2130,42 +2178,59 @@ func (s *backupAccountSelector) Pick(ctx context.Context, provider, model string
 	if s == nil || s.fallback == nil {
 		return nil, fmt.Errorf("backup account selector is not initialized")
 	}
-	if s.manifest == nil || !strings.EqualFold(strings.TrimSpace(s.manifest.RoutingStrategy), "custom") {
+	if s.manifest == nil {
 		return s.fallback.Pick(ctx, provider, model, opts, auths)
 	}
 
 	now := time.Now()
+	preferred := make([]*coreauth.Auth, 0)
 	regular := make([]*coreauth.Auth, 0, len(auths))
 	backup := make([]*coreauth.Auth, 0)
+	preferredAvailable := false
 	regularAvailable := false
 	for _, auth := range auths {
-		if s.isBackupAuth(auth) {
+		switch s.authUsagePriority(auth) {
+		case 1:
+			preferred = append(preferred, auth)
+			if authAvailable(auth, model, now) {
+				preferredAvailable = true
+			}
+		case -1:
 			backup = append(backup, auth)
-			continue
-		}
-		regular = append(regular, auth)
-		if authAvailable(auth, model, now) {
-			regularAvailable = true
+		default:
+			regular = append(regular, auth)
+			if authAvailable(auth, model, now) {
+				regularAvailable = true
+			}
 		}
 	}
 
+	if preferredAvailable {
+		return s.fallback.Pick(ctx, provider, model, opts, preferred)
+	}
 	if regularAvailable || len(backup) == 0 {
 		return s.fallback.Pick(ctx, provider, model, opts, regular)
 	}
 	return s.fallback.Pick(ctx, provider, model, opts, backup)
 }
 
-func (s *backupAccountSelector) isBackupAuth(auth *coreauth.Auth) bool {
+func (s *backupAccountSelector) authUsagePriority(auth *coreauth.Auth) int {
 	account := accountForAuthInManifest(s.manifest, auth)
 	if account == nil {
-		return false
+		return 0
 	}
 	for _, rule := range s.manifest.CustomRoutingRules {
 		if rule.AccountID == account.ID {
-			return rule.IsBackup
+			if rule.IsPreferred {
+				return 1
+			}
+			if rule.IsBackup {
+				return -1
+			}
+			return 0
 		}
 	}
-	return false
+	return 0
 }
 
 func (s *backupAccountSelector) Stop() {
@@ -2186,6 +2251,9 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 	quotaReserveReasons := make([]string, 0)
 	for _, auth := range auths {
 		if !authAvailable(auth, model, now) {
+			continue
+		}
+		if authModelExcluded(s.manifest, auth, model) {
 			continue
 		}
 		if reason := quotaReserveBlockReasonWithState(s.accountForAuth(auth), s.quota, now); reason != "" {
@@ -2828,6 +2896,7 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 			ReasoningTokens: record.Detail.ReasoningTokens,
 			CachedTokens:    record.Detail.CachedTokens,
 			TotalTokens:     record.Detail.TotalTokens,
+			TokenBreakdown:  record.Detail.TokenBreakdown,
 		},
 		RequestedAtMS: record.RequestedAt.UnixMilli(),
 	})
@@ -3054,6 +3123,7 @@ func buildCoreAuthSelector(cfg *config.Config, selector coreauth.Selector, m *ma
 	if m != nil {
 		selector = &backupAccountSelector{manifest: m, fallback: selector}
 		selector = &quotaReserveSelector{manifest: m, fallback: selector, quota: quota}
+		selector = &modelExclusionSelector{manifest: m, fallback: selector}
 	}
 	return selector
 }
@@ -3507,6 +3577,9 @@ func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*co
 	if proxyURL := firstMetadataString(metadata, "proxy_url", "proxy-url"); proxyURL != "" {
 		auth.ProxyURL = proxyURL
 	}
+	if excluded := extractExcludedModelsFromMetadataMap(metadata); len(excluded) > 0 {
+		auth.Attributes["excluded_models"] = strings.Join(excluded, ",")
+	}
 	coreauth.ApplyCustomHeadersFromMetadata(auth)
 	return auth, nil
 }
@@ -3706,7 +3779,7 @@ func registerManifestModelsForAuth(manager *coreauth.Manager, m *manifest, auth 
 	if manager == nil || m == nil || auth == nil || strings.TrimSpace(auth.ID) == "" {
 		return
 	}
-	models := manifestRegistryModels(m)
+	models := filterRegistryModelsByExcluded(manifestRegistryModels(m), excludedModelsForAuth(m, auth))
 	if len(models) == 0 {
 		cliproxy.GlobalModelRegistry().UnregisterClient(auth.ID)
 		manager.RefreshSchedulerEntry(auth.ID)
@@ -3715,6 +3788,117 @@ func registerManifestModelsForAuth(manager *coreauth.Manager, m *manifest, auth 
 	cliproxy.GlobalModelRegistry().RegisterClient(auth.ID, "codex", models)
 	manager.ReconcileRegistryModelStates(context.Background(), auth.ID)
 	manager.RefreshSchedulerEntry(auth.ID)
+}
+
+func excludedModelsForAuth(m *manifest, auth *coreauth.Auth) []string {
+	seen := make(map[string]struct{})
+	add := func(items []string) {
+		for _, item := range items {
+			trimmed := strings.TrimSpace(item)
+			if trimmed == "" {
+				continue
+			}
+			key := strings.ToLower(trimmed)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+	}
+	if m != nil {
+		add(m.ExcludedModels)
+		if account := accountForAuthInManifest(m, auth); account != nil {
+			add(accountExcludedModelsFromManifest(m, account.ID))
+		}
+	}
+	if auth != nil {
+		add(extractExcludedModelsFromMetadataMap(auth.Metadata))
+		if auth.Attributes != nil {
+			if value := strings.TrimSpace(auth.Attributes["excluded_models"]); value != "" {
+				add(strings.Split(value, ","))
+			}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for item := range seen {
+		out = append(out, item)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func accountExcludedModelsFromManifest(m *manifest, accountID string) []string {
+	if m == nil || strings.TrimSpace(accountID) == "" {
+		return nil
+	}
+	for _, rule := range m.AccountModelRules {
+		if strings.TrimSpace(rule.AccountID) == accountID {
+			return append([]string(nil), rule.ExcludedModels...)
+		}
+	}
+	return nil
+}
+
+func extractExcludedModelsFromMetadataMap(metadata map[string]any) []string {
+	if metadata == nil {
+		return nil
+	}
+	raw, ok := metadata["excluded_models"]
+	if !ok {
+		raw, ok = metadata["excluded-models"]
+	}
+	if !ok || raw == nil {
+		return nil
+	}
+	switch values := raw.(type) {
+	case string:
+		return strings.Split(values, ",")
+	case []string:
+		return append([]string(nil), values...)
+	case []any:
+		out := make([]string, 0, len(values))
+		for _, item := range values {
+			if value, ok := item.(string); ok {
+				out = append(out, value)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func filterRegistryModelsByExcluded(models []*cliproxy.ModelInfo, excluded []string) []*cliproxy.ModelInfo {
+	if len(models) == 0 || len(excluded) == 0 {
+		return models
+	}
+	filtered := make([]*cliproxy.ModelInfo, 0, len(models))
+	for _, model := range models {
+		if model == nil || strings.TrimSpace(model.ID) == "" || modelMatchesAnyRule(model.ID, excluded) {
+			continue
+		}
+		filtered = append(filtered, model)
+	}
+	return filtered
+}
+
+func authModelExcluded(m *manifest, auth *coreauth.Auth, model string) bool {
+	model = strings.TrimSpace(model)
+	if model == "" || auth == nil {
+		return false
+	}
+	excluded := excludedModelsForAuth(m, auth)
+	if len(excluded) == 0 {
+		return false
+	}
+	if modelMatchesAnyRule(model, excluded) {
+		return true
+	}
+	canonical := resolveSupportedModelAlias(m, model)
+	return canonical != "" && modelMatchesAnyRule(canonical, excluded)
 }
 
 func manifestRegistryModels(m *manifest) []*cliproxy.ModelInfo {

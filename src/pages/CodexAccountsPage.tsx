@@ -101,6 +101,7 @@ import {
   formatCodexResetTimeAbsolute,
   isCodexApiKeyAccount,
   isCodexAgentIdentityAccount,
+  isCodexWebSessionAccount,
   isCodexChatCompletionsApiKeyAccount,
   isCodexNewApiAccount,
   isCodexPendingOAuthAccount,
@@ -114,6 +115,8 @@ import {
 import {
   canAddCodexAccountToLocalAccess,
   filterCodexLocalAccessAccountIds,
+  isCodexOAuthBindingEligibleAccount,
+  resolveImportedCodexAccountIdsForLocalAccess,
 } from "../utils/codexLocalAccessAccounts";
 import {
   extractCodexQuotaErrorCode,
@@ -127,6 +130,7 @@ import {
   readCodexImportSyncApiService,
   writeCodexImportSyncApiService,
 } from "../utils/codexImportPreferences";
+import { recoverCodexBatchImportStartFromPreview } from "../utils/codexBatchImportQueue";
 import {
   CODEX_OPEN_ADD_ACCOUNT_EVENT,
   type CodexOpenAddAccountDetail,
@@ -161,6 +165,7 @@ import { QuickSettingsPopover } from "../components/QuickSettingsPopover";
 import { useProviderAccountsPage } from "../hooks/useProviderAccountsPage";
 import { usePlatformRuntimeSupport } from "../hooks/usePlatformRuntimeSupport";
 import { useEscClose } from "../hooks/useEscClose";
+import { useEnterConfirm } from "../hooks/useEnterConfirm";
 import { useLaunchTerminalOptions } from "../hooks/useLaunchTerminalOptions";
 import {
   MultiSelectFilterDropdown,
@@ -197,7 +202,10 @@ import {
   isCodexAdditionalQuotaVisibleByDefault,
   isCodexCodeReviewQuotaVisibleByDefault,
 } from "../utils/codexPreferences";
-import { splitCodexImportPayloads } from "../utils/codexJsonImportProgress";
+import {
+  findCodexWebSessionImports,
+  splitCodexImportPayloads,
+} from "../utils/codexJsonImportProgress";
 import { emitAccountsChanged } from "../utils/accountSyncEvents";
 import {
   CODEX_OVERVIEW_FILTER_FIELDS,
@@ -263,6 +271,7 @@ import {
 import {
   isModelProviderUsageUnavailableError,
   listModelProviderModels,
+  resolveNewApiQuotaSnapshot,
 } from "../services/modelProviderUsageService";
 import { useSponsorStore } from "../stores/useSponsorStore";
 import type { Sponsor } from "../types/sponsor";
@@ -276,6 +285,7 @@ import {
 import {
   buildCodexExportContent,
   buildCodexExportFileNameBase,
+  hasCodexExportAgentIdentity,
   hasCodexExportSensitiveNotes,
   type CodexExportFormat,
 } from "../utils/codexExportFormats";
@@ -377,6 +387,8 @@ function inferCodexAccountProviderMode(
 }
 const CODEX_OVERVIEW_LAYOUT_MODE_KEY =
   "agtools.codex.accounts.overview_layout_mode";
+const CODEX_HIDE_RELAY_QUOTA_LEGACY_KEY =
+  "agtools.codex.accounts.hide_relay_quota.v1";
 const CODEX_LOCAL_ACCESS_EXPANDED_KEY =
   "agtools.codex.local_access_entry_expanded.v1";
 const CODEX_LOCAL_ACCESS_ADDRESS_KIND_KEY =
@@ -712,6 +724,7 @@ function resolveApiKeyUsageMode(
 
 interface CodexOverviewGeneralConfig {
   codex_local_access_entry_visible?: boolean;
+  codex_hide_relay_quota?: boolean;
 }
 
 function normalizeCodexOverviewLayoutMode(
@@ -1281,6 +1294,7 @@ export function CodexAccountsPage() {
       }
       return "grid";
     });
+  const [hideRelayQuota, setHideRelayQuota] = useState(false);
   const [
     localAccessGatewayGuideDismissed,
     setLocalAccessGatewayGuideDismissed,
@@ -1370,6 +1384,8 @@ export function CodexAccountsPage() {
   }, []);
 
   // Use the common hook WITHOUT oauthService since Codex uses Tauri event-based OAuth
+  // Codex batch-delete confirm is wired after confirmCodexDelete is defined.
+  // Built-in Enter confirm is disabled here so it cannot call generic confirmDelete.
   const page = useProviderAccountsPage<CodexAccount>({
     platformKey: "Codex",
     oauthLogPrefix: "CodexOAuth",
@@ -1402,6 +1418,7 @@ export function CodexAccountsPage() {
     // Prefer custom sort whenever the dedicated flag is set (#1123).
     defaultSortBy: readCodexCustomSortActive() ? "custom" : undefined,
     onExternalImportCompleted: handleExternalImportedAccounts,
+    disableEnterConfirmDelete: true,
   });
 
   const {
@@ -1500,8 +1517,9 @@ export function CodexAccountsPage() {
   );
 
   const syncImportedAccountsToApiService = useCallback(
-    async (accountIds: string[]) => {
-      if (!syncImportedToApiService || accountIds.length === 0) return null;
+    async (accountIds: string[], force = false) => {
+      if ((!syncImportedToApiService && !force) || accountIds.length === 0)
+        return null;
       const result =
         await codexLocalAccessService.appendCodexLocalAccessAccounts(
           accountIds,
@@ -1548,6 +1566,10 @@ export function CodexAccountsPage() {
   const [tokenImportProgress, setTokenImportProgress] = useState<{
     current: number;
     total: number;
+  } | null>(null);
+  const [pendingWebSessionImport, setPendingWebSessionImport] = useState<{
+    content: string;
+    accountLabels: string[];
   } | null>(null);
   const [batchDeleteJob, setBatchDeleteJob] =
     useState<CodexBatchDeleteJobStatus | null>(null);
@@ -1842,6 +1864,7 @@ export function CodexAccountsPage() {
       }
       setPendingOAuthFieldErrors({});
       setPendingOAuthNoteModalOpen(false);
+      setPendingWebSessionImport(null);
       openAddModal(tab);
     },
     [activeGroupId, openAddModal, resolveValidCodexGroupId],
@@ -1856,6 +1879,7 @@ export function CodexAccountsPage() {
     setPendingOAuthNoteForm(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
     setPendingOAuthFieldErrors({});
     setPendingOAuthNoteModalOpen(false);
+    setPendingWebSessionImport(null);
     closeAddModal();
   }, [closeAddModal, importing]);
 
@@ -2000,6 +2024,33 @@ export function CodexAccountsPage() {
     }
   }, []);
 
+  const reloadHideRelayQuota = useCallback(async () => {
+    try {
+      const config =
+        await invoke<CodexOverviewGeneralConfig>("get_general_config");
+      let hide = config.codex_hide_relay_quota ?? false;
+      // One-time migrate toolbar preference from localStorage into user config.
+      try {
+        const legacy = localStorage.getItem(CODEX_HIDE_RELAY_QUOTA_LEGACY_KEY);
+        if (legacy === "1" && !hide) {
+          hide = true;
+          await invoke("patch_general_config", {
+            updates: { codex_hide_relay_quota: true },
+          });
+          window.dispatchEvent(new Event("config-updated"));
+        }
+        if (legacy !== null) {
+          localStorage.removeItem(CODEX_HIDE_RELAY_QUOTA_LEGACY_KEY);
+        }
+      } catch {
+        // ignore migration failures
+      }
+      setHideRelayQuota(hide);
+    } catch (error) {
+      console.error("Failed to load codex hide-relay-quota preference:", error);
+    }
+  }, []);
+
   const reloadLocalAccessLaunchCurrent = useCallback(async () => {
     try {
       const instances = await codexInstanceService.listInstances();
@@ -2059,6 +2110,10 @@ export function CodexAccountsPage() {
   }, [reloadLocalAccessEntryVisibility]);
 
   useEffect(() => {
+    void reloadHideRelayQuota();
+  }, [reloadHideRelayQuota]);
+
+  useEffect(() => {
     void reloadLocalAccessLaunchCurrent();
   }, [reloadLocalAccessLaunchCurrent]);
 
@@ -2076,13 +2131,18 @@ export function CodexAccountsPage() {
   useEffect(() => {
     const handleConfigUpdated = () => {
       void reloadLocalAccessEntryVisibility();
+      void reloadHideRelayQuota();
       void reloadLocalAccessLaunchCurrent();
     };
     window.addEventListener("config-updated", handleConfigUpdated);
     return () => {
       window.removeEventListener("config-updated", handleConfigUpdated);
     };
-  }, [reloadLocalAccessEntryVisibility, reloadLocalAccessLaunchCurrent]);
+  }, [
+    reloadLocalAccessEntryVisibility,
+    reloadHideRelayQuota,
+    reloadLocalAccessLaunchCurrent,
+  ]);
 
   useEffect(() => {
     const handleLocalAccessUpdated = () => {
@@ -2135,6 +2195,10 @@ export function CodexAccountsPage() {
     setFormattedSavingExportDocumentId(null);
     clearExportModalError();
   }, [clearExportModalError, exportFormat, showExportModal]);
+
+  const exportHasAgentIdentity = useMemo(() => {
+    return hasCodexExportAgentIdentity(exportJsonContent);
+  }, [exportJsonContent]);
 
   const formattedExportContent = useMemo(() => {
     const exportFormatSupportsSensitiveNotes = exportFormat !== "sub2api";
@@ -3686,12 +3750,9 @@ export function CodexAccountsPage() {
     () => accounts.filter((account) => !isCodexApiKeyAccount(account)),
     [accounts],
   );
-  const isOAuthBindingEligibleAccount = useCallback((account: CodexAccount) => {
-    return Boolean(account.tokens.refresh_token?.trim());
-  }, []);
   const oauthBindingEligibleAccounts = useMemo(
-    () => oauthAccounts.filter(isOAuthBindingEligibleAccount),
-    [isOAuthBindingEligibleAccount, oauthAccounts],
+    () => oauthAccounts.filter(isCodexOAuthBindingEligibleAccount),
+    [oauthAccounts],
   );
   const oauthBindingAccount = useMemo(
     () =>
@@ -4845,7 +4906,7 @@ export function CodexAccountsPage() {
       setOauthBindingTargetKind("api_key_account");
       setOauthBindingAccountId(account.id);
       setOauthBindingSelectedAccountId(
-        boundAccount && isOAuthBindingEligibleAccount(boundAccount)
+        boundAccount && isCodexOAuthBindingEligibleAccount(boundAccount)
           ? boundAccount.id
           : "",
       );
@@ -4858,7 +4919,6 @@ export function CodexAccountsPage() {
       setOauthBindingError(null);
     },
     [
-      isOAuthBindingEligibleAccount,
       resolveBoundOAuthAccount,
       setOauthBindingError,
     ],
@@ -4886,7 +4946,7 @@ export function CodexAccountsPage() {
       setOauthBindingAccountId(null);
       setOauthBindingSelectedAccountId(
         boundLocalAccessOAuthAccount &&
-          isOAuthBindingEligibleAccount(boundLocalAccessOAuthAccount)
+          isCodexOAuthBindingEligibleAccount(boundLocalAccessOAuthAccount)
           ? boundLocalAccessOAuthAccount.id
           : "",
       );
@@ -4900,7 +4960,6 @@ export function CodexAccountsPage() {
     },
     [
       boundLocalAccessOAuthAccount,
-      isOAuthBindingEligibleAccount,
       localAccessCollection?.boundOauthQuotaReserve,
       setOauthBindingError,
     ],
@@ -5097,7 +5156,45 @@ export function CodexAccountsPage() {
     ],
   );
 
+  const getCodexSwitchOrLaunchBlockedReason = useCallback(
+    (account?: CodexAccount | null): string | null => {
+      if (isCodexAgentIdentityAccount(account)) {
+        return t(
+          "codex.agentIdentityRegistration.apiOnlyActionError",
+          "Agent Identity 账号仅支持 API 服务，无法作为普通账号切换或启动。",
+        );
+      }
+      if (isCodexWebSessionAccount(account)) {
+        return t(
+          "codex.webSessionImport.actionBlocked",
+          "Web Session 账号仅支持查看额度，无法切换或启动。",
+        );
+      }
+      return null;
+    },
+    [t],
+  );
+
   const handleSwitch = async (accountId: string) => {
+    const account = codexAccountsRef.current.find((item) => item.id === accountId);
+    const blockedReason = getCodexSwitchOrLaunchBlockedReason(account);
+    if (blockedReason) {
+      setMessage({
+        text: blockedReason,
+        tone: "error",
+      });
+      return;
+    }
+    if (isCodexWebSessionAccount(account)) {
+      setMessage({
+        text: t(
+          "codex.webSessionImport.actionBlocked",
+          "Web Session 账号仅支持查看额度，无法切换或启动。",
+        ),
+        tone: "error",
+      });
+      return;
+    }
     try {
       await executeCodexAccountSwitch(accountId);
     } catch (e) {
@@ -5123,7 +5220,25 @@ export function CodexAccountsPage() {
       );
       return;
     }
-    if (!isOAuthBindingEligibleAccount(selectedOAuthBindingAccount)) {
+    if (isCodexAgentIdentityAccount(selectedOAuthBindingAccount)) {
+      setOauthBindingError(
+        t(
+          "codex.agentIdentityRegistration.oauthBindingUnsupported",
+          "Agent Identity 账号仅用于 API 服务，不能作为 OAuth 绑定账号。",
+        ),
+      );
+      return;
+    }
+    if (isCodexWebSessionAccount(selectedOAuthBindingAccount)) {
+      setOauthBindingError(
+        t(
+          "codex.webSessionImport.oauthBindingUnsupported",
+          "Web Session 账号仅支持查看额度，不能作为 OAuth 绑定账号。",
+        ),
+      );
+      return;
+    }
+    if (!isCodexOAuthBindingEligibleAccount(selectedOAuthBindingAccount)) {
       setOauthBindingError(
         t(
           "codex.api.oauthBinding.validationSubscriptionRequired",
@@ -5179,7 +5294,6 @@ export function CodexAccountsPage() {
     oauthBindingAutoSwitch,
     oauthBindingQuotaReserve,
     oauthBindingTargetKind,
-    isOAuthBindingEligibleAccount,
     selectedOAuthBindingAccount,
     setMessage,
     setOauthBindingError,
@@ -5460,6 +5574,24 @@ export function CodexAccountsPage() {
   };
 
   const handleLaunchCodexCli = (account: CodexAccount) => {
+    const blockedReason = getCodexSwitchOrLaunchBlockedReason(account);
+    if (blockedReason) {
+      setMessage({
+        text: blockedReason,
+        tone: "error",
+      });
+      return;
+    }
+    if (isCodexWebSessionAccount(account)) {
+      setMessage({
+        text: t(
+          "codex.webSessionImport.actionBlocked",
+          "Web Session 账号仅支持查看额度，无法切换或启动。",
+        ),
+        tone: "error",
+      });
+      return;
+    }
     const presentation = buildCodexAccountPresentation(account, t);
     openCodexCliLaunchModal(
       "account",
@@ -5892,6 +6024,28 @@ export function CodexAccountsPage() {
         );
       } catch {
         // ignore storage failures
+      }
+      // The backend starts scanning before this invoke resolves. A fast scan can
+      // therefore emit its terminal event while the listener still filters on
+      // __pending__. Re-read the now-addressable session to recover that event.
+      try {
+        const recoveredPreview =
+          await codexService.getCodexBatchImportPreview(started.sessionId);
+        const recovery = recoverCodexBatchImportStartFromPreview(
+          batchImportSessionIdRef.current,
+          started.sessionId,
+          recoveredPreview,
+          batchImportSelectedIds,
+        );
+        if (recovery) {
+          setBatchImportPreview(recovery.preview);
+          setBatchImportCheckQuota(recovery.preview.checkQuota);
+          setBatchImportSelectedIds(recovery.selectedIds);
+          setBatchImportBusy(false);
+        }
+      } catch {
+        // If this read fails, only later listener events follow their normal path;
+        // it cannot recover terminal or error events that were already missed.
       }
     } catch (e) {
       cleanupBatchImportListeners();
@@ -6827,8 +6981,8 @@ export function CodexAccountsPage() {
     }
   };
 
-  const handleTokenImport = async () => {
-    const trimmed = tokenInput.trim();
+  const performTokenImport = async (rawContent: string) => {
+    const trimmed = rawContent.trim();
     if (!trimmed) {
       page.setAddStatus("error");
       page.setAddMessage(
@@ -6860,9 +7014,7 @@ export function CodexAccountsPage() {
           }),
         );
         try {
-          imported.push(
-            ...(await codexService.importCodexFromJson(payloads[index])),
-          );
+          imported.push(...(await codexService.importCodexFromJson(payloads[index])));
         } catch (error) {
           failures.push(
             `${current}: ${String(error).replace(/^Error:\s*/, "")}`,
@@ -6893,8 +7045,14 @@ export function CodexAccountsPage() {
         });
       }
       try {
+        const accountIdsToSync = resolveImportedCodexAccountIdsForLocalAccess(
+          imported,
+          syncImportedToApiService,
+          false,
+        );
         const syncResult = await syncImportedAccountsToApiService(
-          imported.map((account) => account.id),
+          accountIdsToSync,
+          false,
         );
         if (failures.length > 0) {
           page.setAddStatus("error");
@@ -6944,6 +7102,28 @@ export function CodexAccountsPage() {
       setImporting(false);
       setTokenImportProgress(null);
     }
+  };
+
+  const handleTokenImport = async () => {
+    const trimmed = tokenInput.trim();
+    if (!trimmed) {
+      page.setAddStatus("error");
+      page.setAddMessage(
+        t("common.shared.token.empty", "请输入 Token 或 JSON"),
+      );
+      return;
+    }
+    const webSessions = findCodexWebSessionImports(trimmed);
+    if (webSessions.length > 0) {
+      page.setAddStatus("idle");
+      page.setAddMessage("");
+      setPendingWebSessionImport({
+        content: trimmed,
+        accountLabels: webSessions.map((item) => item.label),
+      });
+      return;
+    }
+    await performTokenImport(trimmed);
   };
 
   const clearInlineRename = useCallback(() => {
@@ -7420,17 +7600,8 @@ export function CodexAccountsPage() {
   const formatApiKeyUsagePercent = useCallback(
     (summary?: CodexModelProviderUsageSummary): number => {
       if (summary?.mode === "new_api") {
-        const granted = Number(
-          summary.details?.find((item) => item.key === "totalGranted")?.value,
-        );
-        const available = Number(
-          summary.details?.find((item) => item.key === "totalAvailable")?.value,
-        );
-        if (
-          Number.isFinite(granted) &&
-          Number.isFinite(available) &&
-          granted > 0
-        ) {
+        const { granted, available } = resolveNewApiQuotaSnapshot(summary);
+        if (granted != null && available != null && granted > 0) {
           return Math.max(
             0,
             Math.min(100, Math.round(((granted - available) / granted) * 100)),
@@ -7620,19 +7791,19 @@ export function CodexAccountsPage() {
       const isSub2ApiUsage = usageMode === "sub2api";
       const usedPercent = formatApiKeyUsagePercent(summary);
       if (variant === "card" && summary && isNewApiUsage) {
-        const grantedRaw = Number(
-          findApiKeyUsageDetail(summary, "totalGranted")?.value ?? NaN,
+        const quota = resolveNewApiQuotaSnapshot(summary);
+        const grantedText = formatApiKeyUsageMoney(quota.granted, summary.unit);
+        const availableText = formatApiKeyUsageMoney(
+          quota.available,
+          summary.unit,
         );
-        const availableRaw = Number(
-          findApiKeyUsageDetail(summary, "totalAvailable")?.value ?? NaN,
-        );
-        const grantedText = Number.isFinite(grantedRaw)
-          ? formatApiKeyUsageMoney(grantedRaw, summary.unit)
-          : formatApiKeyUsageDetailByKey(summary, "totalGranted");
-        const availableText = Number.isFinite(availableRaw)
-          ? formatApiKeyUsageMoney(availableRaw, summary.unit)
-          : formatApiKeyUsageDetailByKey(summary, "totalAvailable");
-        const expiresText = formatApiKeyUsageDetailByKey(summary, "expiresAt");
+        const expiresText =
+          quota.expiresAt != null
+            ? formatApiKeyUsageDetailValue({
+                key: "expiresAt",
+                value: String(quota.expiresAt),
+              })
+            : "-";
         const unlimitedText = t("codex.newApi.quota.unlimited", "不限量");
         const quotaValueText =
           summary.quotaUnlimited === true
@@ -8837,6 +9008,7 @@ export function CodexAccountsPage() {
       options?: {
         restrictFreeAccounts?: boolean;
         backupAccountIds?: string[];
+        preferredAccountIds?: string[];
         sessionAffinity?: boolean;
         sessionAffinityTtlMs?: number;
       },
@@ -8864,11 +9036,15 @@ export function CodexAccountsPage() {
         const backupAccountIds = (options?.backupAccountIds ?? []).filter((id) =>
           filteredAccountIdSet.has(id),
         );
+        const preferredAccountIds = (
+          options?.preferredAccountIds ?? []
+        ).filter((id) => filteredAccountIdSet.has(id));
         const nextState =
           await codexLocalAccessService.saveCodexLocalAccessAccounts(
             filteredAccountIds,
             restrictFreeAccounts,
             backupAccountIds,
+            preferredAccountIds,
             options?.sessionAffinity,
             options?.sessionAffinityTtlMs,
           );
@@ -10057,6 +10233,20 @@ export function CodexAccountsPage() {
     t,
   ]);
 
+  useEscClose(Boolean(deleteConfirm) && !batchDeleteBusy, () => {
+    setDeleteConfirm(null);
+  });
+  useEnterConfirm(Boolean(deleteConfirm) && !batchDeleteBusy, () => {
+    void confirmCodexDelete();
+  });
+  useEscClose(Boolean(groupDeleteConfirm) && !deletingGroup, () => {
+    setGroupDeleteConfirm(null);
+    setGroupDeleteError(null);
+  });
+  useEnterConfirm(Boolean(groupDeleteConfirm) && !deletingGroup, () => {
+    void confirmDeleteGroup();
+  });
+
   const handlePauseBatchDelete = useCallback(async () => {
     if (!batchDeleteJob?.jobId || batchDeleteBusy) return;
     setBatchDeleteBusy(true);
@@ -10380,6 +10570,8 @@ export function CodexAccountsPage() {
       const isSelected = selected.has(account.id);
       const isApiKeyAccount = isCodexApiKeyAccount(account);
       const isAgentIdentityAccount = isCodexAgentIdentityAccount(account);
+      const switchOrLaunchBlockedReason =
+        getCodexSwitchOrLaunchBlockedReason(account);
       const isChatCompletionsApiKey =
         isCodexChatCompletionsApiKeyAccount(account);
       const compactQuotaItems = resolveCompactQuotaItems(presentation);
@@ -10475,8 +10667,8 @@ export function CodexAccountsPage() {
           <button
             className={`codex-compact-switch-btn ${!isCurrent ? "success" : ""}`}
             onClick={() => handleSwitch(account.id)}
-            disabled={!!switching}
-            title={t("codex.switch", "切换")}
+            disabled={!!switching || Boolean(switchOrLaunchBlockedReason)}
+            title={switchOrLaunchBlockedReason || t("codex.switch", "切换")}
           >
             {switching === account.id ? (
               <RefreshCw size={14} className="loading-spinner" />
@@ -10494,6 +10686,8 @@ export function CodexAccountsPage() {
       const meta = resolveAccountMeta(account);
       const isCurrent = overviewCurrentAccountId === account.id;
       const isApiKeyAccount = isCodexApiKeyAccount(account);
+      const switchOrLaunchBlockedReason =
+        getCodexSwitchOrLaunchBlockedReason(account);
       const isPendingOAuthAccount = isPendingOAuthCodexAccount(account);
       const isNewApiAccount = isCodexNewApiAccount(account);
       const isChatCompletionsApiKey =
@@ -10557,7 +10751,10 @@ export function CodexAccountsPage() {
         apiKeyUsageMap[account.id]?.summary,
       );
       const showApiKeyUsagePanel =
-        isApiKeyAccount && !isNewApiAccount && !isChatCompletionsApiKey;
+        isApiKeyAccount &&
+        !isNewApiAccount &&
+        !isChatCompletionsApiKey &&
+        !hideRelayQuota;
       const isSub2ApiUsageAccount =
         showApiKeyUsagePanel &&
         (apiKeyUsageMode === "sub2api" ||
@@ -10569,7 +10766,9 @@ export function CodexAccountsPage() {
           apiKeyUsageProvider?.integrationType === "new_api" ||
           apiKeyUsageProvider?.integrationType === "sub2api");
       const shouldRenderQuotaSection =
-        showApiKeyUsagePanel || !isApiKeyAccount || isNewApiAccount;
+        (!hideRelayQuota && showApiKeyUsagePanel) ||
+        !isApiKeyAccount ||
+        (isNewApiAccount && !hideRelayQuota);
       const displayPlanClass = isSponsorApiKeyAccount
         ? "sponsor-api"
         : isQuotaAwareApiKeyAccount
@@ -10578,9 +10777,10 @@ export function CodexAccountsPage() {
       const displayPlanLabel = isSponsorApiKeyAccount
         ? apiProviderName
         : presentation.planLabel;
-      const cockpitApiAccountBalanceText = isNewApiAccount
-        ? resolveCockpitApiAccountBalanceText(account)
-        : null;
+      const cockpitApiAccountBalanceText =
+        isNewApiAccount && !hideRelayQuota
+          ? resolveCockpitApiAccountBalanceText(account)
+          : null;
       const accountTags = (account.tags || [])
         .map((tag) => tag.trim())
         .filter(Boolean);
@@ -10900,8 +11100,14 @@ export function CodexAccountsPage() {
                 <button
                   className="card-action-btn"
                   onClick={() => void handleLaunchCodexCli(account)}
-                  disabled={cliLaunchingAccountId === account.id}
-                  title={t("codex.cli.quickLaunch", "CLI 快速启动")}
+                  disabled={
+                    cliLaunchingAccountId === account.id ||
+                    Boolean(switchOrLaunchBlockedReason)
+                  }
+                  title={
+                    switchOrLaunchBlockedReason ||
+                    t("codex.cli.quickLaunch", "CLI 快速启动")
+                  }
                 >
                   {cliLaunchingAccountId === account.id ? (
                     <RefreshCw size={14} className="loading-spinner" />
@@ -10950,8 +11156,10 @@ export function CodexAccountsPage() {
                 <button
                   className={`card-action-btn ${!isCurrent ? "success" : ""}`}
                   onClick={() => handleSwitch(account.id)}
-                  disabled={!!switching}
-                  title={t("codex.switch", "切换")}
+                  disabled={!!switching || Boolean(switchOrLaunchBlockedReason)}
+                  title={
+                    switchOrLaunchBlockedReason || t("codex.switch", "切换")
+                  }
                 >
                   {switching === account.id ? (
                     <RefreshCw size={14} className="loading-spinner" />
@@ -11886,6 +12094,8 @@ export function CodexAccountsPage() {
       const meta = resolveAccountMeta(account);
       const isCurrent = overviewCurrentAccountId === account.id;
       const isApiKeyAccount = isCodexApiKeyAccount(account);
+      const switchOrLaunchBlockedReason =
+        getCodexSwitchOrLaunchBlockedReason(account);
       const isPendingOAuthAccount = isPendingOAuthCodexAccount(account);
       const isNewApiAccount = isCodexNewApiAccount(account);
       const isChatCompletionsApiKey =
@@ -11948,7 +12158,10 @@ export function CodexAccountsPage() {
         apiKeyUsageMap[account.id]?.summary,
       );
       const showApiKeyUsagePanel =
-        isApiKeyAccount && !isNewApiAccount && !isChatCompletionsApiKey;
+        isApiKeyAccount &&
+        !isNewApiAccount &&
+        !isChatCompletionsApiKey &&
+        !hideRelayQuota;
       const isSub2ApiUsageAccount =
         showApiKeyUsagePanel &&
         (apiKeyUsageMode === "sub2api" ||
@@ -11967,9 +12180,10 @@ export function CodexAccountsPage() {
       const displayPlanLabel = isSponsorApiKeyAccount
         ? apiProviderName
         : presentation.planLabel;
-      const cockpitApiAccountBalanceText = isNewApiAccount
-        ? resolveCockpitApiAccountBalanceText(account)
-        : null;
+      const cockpitApiAccountBalanceText =
+        isNewApiAccount && !hideRelayQuota
+          ? resolveCockpitApiAccountBalanceText(account)
+          : null;
       const isInLocalAccess = localAccessAccountIdSet.has(account.id);
       const subscriptionInfo = resolveSubscriptionPresentation(account);
       const showSubscriptionRefreshAction =
@@ -12263,8 +12477,14 @@ export function CodexAccountsPage() {
               <button
                 className="action-btn"
                 onClick={() => void handleLaunchCodexCli(account)}
-                disabled={cliLaunchingAccountId === account.id}
-                title={t("codex.cli.quickLaunch", "CLI 快速启动")}
+                disabled={
+                  cliLaunchingAccountId === account.id ||
+                  Boolean(switchOrLaunchBlockedReason)
+                }
+                title={
+                  switchOrLaunchBlockedReason ||
+                  t("codex.cli.quickLaunch", "CLI 快速启动")
+                }
               >
                 {cliLaunchingAccountId === account.id ? (
                   <RefreshCw size={14} className="loading-spinner" />
@@ -12314,8 +12534,10 @@ export function CodexAccountsPage() {
               <button
                 className={`action-btn ${!isCurrent ? "success" : ""}`}
                 onClick={() => handleSwitch(account.id)}
-                disabled={!!switching}
-                title={t("codex.switch", "切换")}
+                disabled={!!switching || Boolean(switchOrLaunchBlockedReason)}
+                title={
+                  switchOrLaunchBlockedReason || t("codex.switch", "切换")
+                }
               >
                 {switching === account.id ? (
                   <RefreshCw size={14} className="loading-spinner" />
@@ -12598,6 +12820,7 @@ export function CodexAccountsPage() {
     const baseUrl =
       provider?.baseUrl.trim() || (account.api_base_url || "").trim() || "-";
     const usedPercent = formatApiKeyUsagePercent(summary);
+    const newApiQuota = resolveNewApiQuotaSnapshot(summary);
     const summaryDetails =
       usageMode === "new_api"
         ? [
@@ -12607,14 +12830,10 @@ export function CodexAccountsPage() {
                 "codex.modelProviders.usage.fields.totalGranted",
                 "授予额度",
               ),
-              value: (() => {
-                const raw = Number(
-                  findApiKeyUsageDetail(summary, "totalGranted")?.value ?? NaN,
-                );
-                return Number.isFinite(raw)
-                  ? formatApiKeyUsageMoney(raw, summary?.unit)
-                  : formatApiKeyUsageDetailByKey(summary, "totalGranted");
-              })(),
+              value: formatApiKeyUsageMoney(
+                newApiQuota.granted,
+                summary?.unit,
+              ),
             },
             {
               key: "totalAvailable",
@@ -12622,15 +12841,10 @@ export function CodexAccountsPage() {
                 "codex.modelProviders.usage.fields.totalAvailable",
                 "可用额度",
               ),
-              value: (() => {
-                const raw = Number(
-                  findApiKeyUsageDetail(summary, "totalAvailable")?.value ??
-                    NaN,
-                );
-                return Number.isFinite(raw)
-                  ? formatApiKeyUsageMoney(raw, summary?.unit)
-                  : formatApiKeyUsageDetailByKey(summary, "totalAvailable");
-              })(),
+              value: formatApiKeyUsageMoney(
+                newApiQuota.available,
+                summary?.unit,
+              ),
             },
             {
               key: "expiresAt",
@@ -12638,7 +12852,13 @@ export function CodexAccountsPage() {
                 "codex.modelProviders.usage.fields.expiresAt",
                 "过期时间",
               ),
-              value: formatApiKeyUsageDetailByKey(summary, "expiresAt"),
+              value:
+                newApiQuota.expiresAt != null
+                  ? formatApiKeyUsageDetailValue({
+                      key: "expiresAt",
+                      value: String(newApiQuota.expiresAt),
+                    })
+                  : "-",
             },
           ]
         : usageMode === "sub2api"
@@ -16084,7 +16304,7 @@ export function CodexAccountsPage() {
                                     oauthBindingSelectedAccountId ===
                                     account.id;
                                   const eligible =
-                                    isOAuthBindingEligibleAccount(account);
+                                    isCodexOAuthBindingEligibleAccount(account);
                                   const rowDisabled =
                                     oauthBindingSaving || !eligible;
                                   const emailText = maskAccountText(
@@ -16102,10 +16322,20 @@ export function CodexAccountsPage() {
                                       title={
                                         eligible
                                           ? emailText
-                                          : t(
-                                              "codex.api.oauthBinding.validationSubscriptionRequired",
-                                              "只能绑定带 refresh_token 的 OAuth 账号",
-                                            )
+                                          : isCodexAgentIdentityAccount(account)
+                                            ? t(
+                                                "codex.agentIdentityRegistration.oauthBindingUnsupported",
+                                                "Agent Identity 账号仅用于 API 服务，不能作为 OAuth 绑定账号。",
+                                              )
+                                            : isCodexWebSessionAccount(account)
+                                              ? t(
+                                                  "codex.webSessionImport.oauthBindingUnsupported",
+                                                  "Web Session 账号仅支持查看额度，不能作为 OAuth 绑定账号。",
+                                                )
+                                              : t(
+                                                  "codex.api.oauthBinding.validationSubscriptionRequired",
+                                                  "只能绑定带 refresh_token 的 OAuth 账号",
+                                                )
                                       }
                                       onClick={(event) => {
                                         if (rowDisabled) {
@@ -17054,11 +17284,31 @@ export function CodexAccountsPage() {
                     value={exportFormat}
                     options={exportFormatOptions}
                     ariaLabel={t("codex.exportFormat.label", "导出格式")}
-                    onChange={(value) =>
-                      setExportFormat(value as CodexExportFormat)
-                    }
+                    onChange={(value) => {
+                      if (value === "cpa" && exportHasAgentIdentity) {
+                        reportExportModalError(
+                          t(
+                            "codex.exportFormat.agentIdentityCpaUnsupported",
+                            "Agent Identity 账号不支持 cpa 格式，请使用 Cockpit Tools 或 sub2api 格式导出。",
+                          ),
+                        );
+                        return;
+                      }
+                      setExportFormat(value as CodexExportFormat);
+                    }}
                   />
                 </div>
+                {exportHasAgentIdentity ? (
+                  <div className="export-json-sensitive-notice">
+                    <Info size={14} />
+                    <span>
+                      {t(
+                        "codex.exportFormat.agentIdentityPrivateKeyNotice",
+                        "导出内容包含 Agent Identity 私钥，可用于在其他设备恢复账号。请像密码一样妥善保管。",
+                      )}
+                    </span>
+                  </div>
+                ) : null}
                 {exportCanIncludeSensitiveNotes ? (
                   <label
                     className="export-json-sensitive-toggle"
@@ -17261,6 +17511,95 @@ export function CodexAccountsPage() {
                     {localAccessHideSubmitting
                       ? t("common.processing", "处理中...")
                       : t("common.confirm", "确认")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {pendingWebSessionImport && (
+            <div className="modal-overlay codex-local-access-hide-confirm-overlay codex-local-access-risk-notice-overlay">
+              <div
+                className="modal codex-local-access-hide-confirm-modal codex-local-access-risk-notice-modal"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="modal-header">
+                  <h2>
+                    <CircleAlert size={18} />
+                    {t(
+                      "codex.webSessionImport.noticeTitle",
+                      "Web Session 导入须知",
+                    )}
+                  </h2>
+                  <button
+                    className="modal-close"
+                    onClick={() => setPendingWebSessionImport(null)}
+                    aria-label={t("common.close", "关闭")}
+                  >
+                    <X />
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <p className="codex-local-access-hide-confirm-desc">
+                    {t(
+                      "codex.webSessionImport.noticeMessage",
+                      "检测到 {{count}} 个 Web Session 账号。此格式不支持实际使用，仅支持查看额度。",
+                      { count: pendingWebSessionImport.accountLabels.length },
+                    )}
+                  </p>
+                  <div className="codex-local-access-hide-confirm-points codex-local-access-risk-notice-points">
+                    {pendingWebSessionImport.accountLabels.map(
+                      (accountLabel, index) => (
+                        <div
+                          className="codex-local-access-hide-confirm-point"
+                          key={`${accountLabel}-${index}`}
+                        >
+                          <span className="codex-local-access-hide-confirm-dot" />
+                          <span>{maskAccountText(accountLabel)}</span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                  <div className="codex-local-access-hide-confirm-points codex-local-access-risk-notice-points">
+                    <div className="codex-local-access-hide-confirm-point">
+                      <span className="codex-local-access-hide-confirm-dot" />
+                      <span>
+                        {t(
+                          "codex.webSessionImport.noticeQuotaOnly",
+                          "仅支持查看额度，不能启动官方客户端或 CLI，也不能切号。",
+                        )}
+                      </span>
+                    </div>
+                    <div className="codex-local-access-hide-confirm-point">
+                      <span className="codex-local-access-hide-confirm-dot" />
+                      <span>
+                        {t(
+                          "codex.webSessionImport.noticeNoApi",
+                          "不能加入 Codex API 服务账号池，也不能作为 OAuth 绑定账号。",
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setPendingWebSessionImport(null)}
+                  >
+                    {t("common.cancel", "取消")}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      const pending = pendingWebSessionImport;
+                      setPendingWebSessionImport(null);
+                      void performTokenImport(pending.content);
+                    }}
+                  >
+                    {t(
+                      "codex.webSessionImport.noticeConfirm",
+                      "已知晓，继续导入",
+                    )}
                   </button>
                 </div>
               </div>
@@ -18299,12 +18638,14 @@ export function CodexAccountsPage() {
               accountIds,
               restrictFreeAccounts,
               backupAccountIds,
+              preferredAccountIds,
               sessionAffinity,
               sessionAffinityTtlMs,
             }) =>
               handleSaveLocalAccessAccounts(accountIds, {
                 restrictFreeAccounts,
                 backupAccountIds,
+                preferredAccountIds,
                 sessionAffinity,
                 sessionAffinityTtlMs,
               })

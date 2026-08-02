@@ -1,7 +1,9 @@
 import {
   isCodexApiKeyAccount,
+  isCodexAgentIdentityAccount,
   isCodexExplicitFreePlanType,
   isCodexPendingOAuthAccount,
+  isCodexWebSessionAccount,
   type CodexAccount,
 } from '../types/codex.ts';
 
@@ -42,7 +44,8 @@ const CHAT_COMPLETIONS_PROVIDER_HOSTS = [
 export type CodexLocalAccessAccountIneligibleReason =
   | "chat_completions_api_key"
   | "free_restricted"
-  | "pending_oauth";
+  | "pending_oauth"
+  | "web_session_quota_only";
 
 export function isCodexChatCompletionsApiKeyAccount(account: CodexAccount): boolean {
   if (!isCodexApiKeyAccount(account)) {
@@ -80,10 +83,18 @@ export function getCodexLocalAccessAccountIneligibleReason(
   if (isCodexPendingOAuthAccount(account)) {
     return "pending_oauth";
   }
+  // ChatGPT Web Session: quota view only, never join API service.
+  if (isCodexWebSessionAccount(account)) {
+    return "web_session_quota_only";
+  }
   if (isCodexChatCompletionsApiKeyAccount(account)) {
     return "chat_completions_api_key";
   }
-  if (restrictFreeAccounts && isCodexExplicitFreePlanType(account.plan_type)) {
+  if (
+    restrictFreeAccounts &&
+    !isCodexAgentIdentityAccount(account) &&
+    isCodexExplicitFreePlanType(account.plan_type)
+  ) {
     return "free_restricted";
   }
   return null;
@@ -107,6 +118,17 @@ export function canAddCodexAccountToLocalAccess(
   return (
     !currentAccountIds.has(account.id) &&
     isCodexLocalAccessEligibleAccount(account, restrictFreeAccounts)
+  );
+}
+
+export function isCodexOAuthBindingEligibleAccount(
+  account: CodexAccount,
+): boolean {
+  return (
+    !isCodexApiKeyAccount(account) &&
+    !isCodexAgentIdentityAccount(account) &&
+    !isCodexWebSessionAccount(account) &&
+    Boolean(account.tokens.refresh_token?.trim())
   );
 }
 
@@ -147,4 +169,21 @@ export function resolveCodexLocalAccessInitialAccountIds(
     accounts,
     restrictFreeAccounts,
   );
+}
+
+export function resolveImportedCodexAccountIdsForLocalAccess(
+  accounts: CodexAccount[],
+  syncAllImportedAccounts: boolean,
+  forceAgentIdentityAccounts: boolean,
+): string[] {
+  const eligible = accounts.filter((account) => !isCodexWebSessionAccount(account));
+  if (syncAllImportedAccounts) {
+    return eligible.map((account) => account.id);
+  }
+  if (!forceAgentIdentityAccounts) {
+    return [];
+  }
+  return eligible
+    .filter(isCodexAgentIdentityAccount)
+    .map((account) => account.id);
 }

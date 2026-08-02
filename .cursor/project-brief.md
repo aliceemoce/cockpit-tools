@@ -1,5 +1,4 @@
-# »á»°¿ìÕÕ ¡ª 2026-07-19
-- Ñ²¼ì£ºupstream **v1.3.10** > ÒÑ¼Ç¼¯³É 1.3.8 ¡ú ÒÑ½»¸¶Í¬²½
-- ÄÜÓÃ£º°²×° SHA `65A51E85¡­` / ProductVersion **1.3.14** / ·ÖÖ§ `sync-upstream-v1.3.10-20260719` @ `54bb6fc6`
-- ¶ÔÕÕ PR #12£»Release `sync-upstream-v1.3.10-20260719`£¨exe SHA Í¬°²×°£©
-- fork watch ±£Áô£»UIA Cursor `ALL (2129)`£¨´ÅÅÌ 2129£©
+ï»¿# project-brief
+- å·¡æ£€ï¼šupstream **v1.3.15** > å·²è®°åŸºçº¿ v1.3.13 â†’ å·²äº¤ä»˜åŒæ­¥
+- å®‰è£…ï¼šexe SHA `42814DE7â€¦` / ProductVersion **1.3.17** / åˆ†æ”¯ `sync-upstream-v1.3.15-20260802` @ `c744cc6b`
+- å¯¹ç…§ï¼šRelease `sync-upstream-v1.3.15-20260802`
