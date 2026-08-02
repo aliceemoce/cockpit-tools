@@ -51,3 +51,8 @@ target/
 docs/plugin-architecture-proposal.md
 .aitasks
 .qoder/
+
+.cursor-probe-runtime/
+.reposynapse/
+@AutomationLog.txt
+
