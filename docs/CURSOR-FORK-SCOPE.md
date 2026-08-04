@@ -1,18 +1,18 @@
 # Cursor fork 范围说明（对照「你的版本」）
 
-## 当前安装状态（2026-07-19）
+## 当前安装状态（2026-08-04）
 
 | 项 | 值 |
 |----|-----|
 | 磁盘路径 | `%LocalAppData%\Cockpit Tools\cockpit-tools.exe` |
-| SHA-256 | `65A51E859EE5DB7866C8DBF570D22184FB6E52B55277690DA1D8A394A0CBB27B` |
-| 版本 | ProductVersion `1.3.14` |
-| 源码 | `sync-upstream-v1.3.10-20260719` @ `57a1ae4a`（merge upstream v1.3.10 `b331b093` into fork tip 1.3.13） |
-| Release | `sync-upstream-v1.3.10-20260719`（exe） |
-| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/12 |
-| 状态 | **能用**（正式版同步 + Cursor watch/配额 fork 保留 + UIA `ALL (2129)`）；拼装 `1A0EC65E…` **不能用** |
+| SHA-256 | `67E971E27C42FE11F09D86324D606D7D39FC70532309BFE02AE70384BC0A761D` |
+| 版本 | ProductVersion `1.3.18` |
+| 源码 | `sync-upstream-v1.3.16-20260804` @ `94e4bb99`（merge upstream v1.3.16 `e1ef55ce` into fork tip 1.3.17） |
+| Release | `sync-upstream-v1.3.16-20260804`（exe） |
+| 对照 PR | （创建后回填） |
+| 状态 | **能用**（正式版同步 + Cursor watch/配额 fork 保留 + UIA `ALL (2604)`）；拼装 `1A0EC65E…` / 坏包 `C5540DFC…` **不能用** |
 
-> 合并前锚点：`sync-upstream-v1.3.8-20260718` @ `b2d3d3aa`（exe SHA `646020F6…`）。更早：`fork-20260705` @ `918980e9`。
+> 合并前锚点：`sync-upstream-v1.3.15-20260802` @ `612fe2db`（exe SHA `42814DE7…`）。更早：`fork-20260705` @ `918980e9`。
 
 ## 历史正式测试版（历史验收基线）
 
@@ -70,7 +70,23 @@
 
 ---
 
-## 主仓库 `jlcodes99/cockpit-tools` v1.3.10（本轮同步基线，2026-07-19）
+## 主仓库 `jlcodes99/cockpit-tools` v1.3.16（本轮同步基线，2026-08-04）
+
+| 项 | 值 |
+|----|-----|
+| 上游 tag | `v1.3.16` @ `e1ef55ce` |
+| 集成分支 | `sync-upstream-v1.3.16-20260804` @ `94e4bb99` |
+| 交付版本 | ProductVersion **1.3.18**（fork tip 1.3.17 + upstream 1.3.16） |
+
+## 主仓库 `jlcodes99/cockpit-tools` v1.3.15（历史同步，2026-08-02）
+
+| 项 | 值 |
+|----|-----|
+| 上游 tag | `v1.3.15` |
+| 集成分支 | `sync-upstream-v1.3.15-20260802` @ `612fe2db` |
+| 交付版本 | ProductVersion **1.3.17** |
+
+## 主仓库 `jlcodes99/cockpit-tools` v1.3.10（历史同步，2026-07-19）
 
 | 项 | 值 |
 |----|-----|
@@ -107,7 +123,7 @@
 
 ## Agent 操作约束
 
-- 说**最新构建**时：默认 SHA `65A51E85…` / v1.3.14（能用）；上一正式同步 1.3.13=`646020F6…`；拼装 `1A0EC65E…` 不能用；合并前锚点 `sync-upstream-v1.3.8-20260718` @ `b2d3d3aa`。
+- 说**最新构建**时：默认 SHA `67E971E2…` / v1.3.18（能用）；上一正式同步 1.3.17=`42814DE7…`；拼装 `1A0EC65E…` 不能用；合并前锚点 `sync-upstream-v1.3.15-20260802` @ `612fe2db`。
 - 说**历史桌面验收包 / nirvana-token 基线**时，默认指 `Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）；二者不要混为一谈。
 - 改 Cursor 账号逻辑前：先对照本文件与 `user-history-requirements.md`；**不得**把 scope 对照表当作用户需求源。
 - 文档以 **历史要求 + 设计档案** 为全版目标；本文件仅标注 nirvana 桌面包对照与用户已裁决项。

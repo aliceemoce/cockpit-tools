@@ -944,3 +944,16 @@
   4. 保留 fork（含 watch）；额度池合并 / scheduler batch / 会话过期分流不带回
   5. 交付须含个人仓分支、PR 对照、exe release、文档最新构建记录
 - **本轮结果（2026-07-19）**：upstream **v1.3.10**（含 v1.3.9）> 已记 **v1.3.8** → 已交付；分支 sync-upstream-v1.3.10-20260719 @ 59d3baab；merge 5d15a88f；PR #12；Release 同名 exe SHA 65A51E85… / ProductVersion **1.3.14**；UIA Cursor ALL (2129)；Edge 复核分支/PR/Release 资产 digest 一致
+
+## 2026-08-04
+
+### HR-20260804-001
+- **原文摘要**：执行 Cockpit 主仓同步巡检与交付；只按正式 release/tag；合并前个人仓代码+exe 可追溯；PR=对照；构建+UIA；push+release；系统浏览器+UIA 网页复核；有改动则维护设计档案；无新版本则停止且不重写设计档案
+- **类型**：自动化巡检 / 交付
+- **要求**：
+  1. 仅当 jlcodes99/cockpit-tools 正式 release/tag 高于已记集成版本才继续
+  2. 普通 main 提交 / announcements 等不触发
+  3. 合并起点为规则记录的最新可用分支（已更新为 sync-upstream-v1.3.15-20260802，非旧 integrate-v0.26.5）
+  4. 保留 fork（含 watch/邮箱去重）；额度池合并 / scheduler batch / 会话过期分流不带回
+  5. 交付须含个人仓分支、PR 对照、exe release、文档最新构建记录
+- **本轮结果（2026-08-04）**：upstream **v1.3.16** > 已记 **v1.3.15** → 已交付；分支 sync-upstream-v1.3.16-20260804 @ 94e4bb99；merge parents 612fe2db+e1ef55ce；安装 SHA 67E971E2… / ProductVersion **1.3.18**；UIA Cursor ALL (2604)

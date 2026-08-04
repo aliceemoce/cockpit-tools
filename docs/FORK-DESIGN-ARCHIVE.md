@@ -1,6 +1,6 @@
 # Cockpit Tools Fork Persistent Design Archive
 
-**最后更新**: 2026-07-19  
+**最后更新**: 2026-08-04  
 **维护人**: 用户 + Codex/Cursor Agent  
 **性质**: 这个 fork 的长期功能设计档案，用来防止后续修改覆盖、回退或误解用户目标。
 
@@ -107,7 +107,7 @@
 
 **自然语言设计**: “发布新更新”指 release/tag/版本号变化，不是 `main` 有新提交。若没有正式版本更新，任务立即停止，不做动作。
 
-**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支（当前默认 `sync-upstream-v1.3.10-20260719` / 已记 **upstream v1.3.10 → 交付 ProductVersion 1.3.14**；上一项正式同步为 v1.3.8→1.3.13），保留 fork 功能（含 `sync_cursor_local_watch`）和 release 边界。
+**代码设计**: 定时任务检查 upstream latest release、最新 tag 和版本字段；只有版本高于已记录集成版本才进入合并流程。合并起点使用本地最新可用分支（当前默认 `sync-upstream-v1.3.16-20260804` / 已记 **upstream v1.3.16 → 交付 ProductVersion 1.3.18**；上一项正式同步为 v1.3.15→1.3.17），保留 fork 功能（含 `sync_cursor_local_watch`）和 release 边界。
 
 **保留边界**: `announcements.json`、广告位开关、公告配置、普通 commit 不触发同步、构建、发布或文档改动。
 
@@ -398,4 +398,18 @@
 - **预合并 tip**：本地 `sync-upstream-v1.3.14-20260725`（交付 1.3.16，此前未 push）
 - **Release**：`sync-upstream-v1.3.15-20260802`；exe SHA-256 `42814DE79D929B88CFE4E6FF2852BE86B19A7E41B52F79C03198B63DEA166607`；ProductVersion **1.3.17**
 - **已记集成基线**：upstream **v1.3.15** / 交付 **1.3.17**
+
+### 2026-08-04（upstream v1.3.16 正式版同步 · 交付 v1.3.18）
+
+- **触碰功能**: F-006、F-007、F-008、F-010、F-011；Cursor watch / 轮换调用点保留。
+- **用户目标是否变化**: 否。
+- **本次目的**: 主仓正式发布 **v1.3.16**（`e1ef55ce`）高于已记集成 **v1.3.15**；隔离合并并完成构建/UIA/个人仓 release/网页复核。
+- **实现手段**:
+  - 合并前：`origin/sync-upstream-v1.3.15-20260802` @ `612fe2db` + Release exe SHA `42814DE7…` 已在个人仓。
+  - 分支 `sync-upstream-v1.3.16-20260804`；merge `94e4bb99` parents=`612fe2db`+`e1ef55ce` → ProductVersion **1.3.18**。
+  - 对照 PR：base=`upstream-v1.3.16-base`（upstream tip strip workflows；OAuth 无法直接推含 workflow 的 `upstream/main` 镜像），head=同步分支。
+  - Release `sync-upstream-v1.3.16-20260804` 资产 `cockpit-tools-1.3.18.exe` SHA **`67E971E2…`**。
+- **涉及文件/模块**: Codex/cliproxy/Windows NSIS 快捷方式等上游变更；`provider_token_keeper.rs` / `useProviderAccountsPage.ts` / `pick_cursor_rotation_account` 调用点保留；规则/SCOPE/AGENTS/本档案最新构建记录。
+- **验证方式**: 安装 exe ProductVersion 1.3.18 + SHA `67E971E2…`；PrintWindow 标题 `Cockpit Tools`、Cursor 页 **`ALL (2604)`**（磁盘 2604）；系统浏览器+UIA 复核分支 / PR / Release 资产。
+- **风险**: Tauri updater 签名缺私钥（exit 1）但 MSI/NSIS/exe 已产出，交付为 release exe 直拷；Play/多开 GUI 点验仍待单独立项；本机 UIA MCP catalog 空时用 `uiautomation`+PrintWindow（已锁定 hwnd）。
 

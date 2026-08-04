@@ -7,13 +7,25 @@ alwaysApply: true
 
 ## 目的
 
-自用 Cockpit fork：多平台账号管理；Cursor 侧以真实 Agent 对话验活判定「可对话」。
+自用 Cockpit fork：多平台账号管理；Cursor 侧以真实 Agent 对话验活判定「可对话」。在主仓正式版本更新时同步上游并保留 fork 切号/跟号能力。
+
+## 用户原话来源
+
+- 本轮：主仓同步巡检只按正式 release/tag；合并前个人仓代码+exe 可追溯；PR=对照；构建+UIA；push+release；系统浏览器+UIA 网页复核；有改动维护设计档案。
 
 ## 计划纲领
 
 - 额度尺度对齐主仓库：以 `totalPercentUsed` 为准；`breakdown.total` 是已用量不是上限
 - 禁止把 total==0 强制成无额度/100%；禁止假分数与 CLI 单独标可用
 - 功能改动须 bump 版本、写 CHANGELOG、push 新 fork 分支
+- **当前权威任务（2026-08-04）**：同步主仓正式版 **v1.3.16** → 交付 **1.3.18**（分支 `sync-upstream-v1.3.16-20260804`）
+
+## 要做成的能力
+
+- 保留 Cursor 本地跟号（`sync_cursor_local_watch` + `accounts:changed`）
+- 默认实例切号不全杀；多开 profile 隔离；强制轮换选号
+- transient 失败不误写失效；邮箱去重（用户要）
+- 正式版同步交付链：合并前/后代码与 exe 均可在个人 GitHub 追溯
 
 ## 设计摘要
 
@@ -26,3 +38,4 @@ alwaysApply: true
 - 主仓库 = `jlcodes99/cockpit-tools`；本仓 = `aliceemoce/cockpit-tools`
 - 覆盖安装须完整 tauri build，禁止仅 cargo debug exe
 - `.cursor/user-history-requirements.md` 须进 git 并 push
+- 额度池合并 / scheduler/batch / 会话过期分流不纳入 release

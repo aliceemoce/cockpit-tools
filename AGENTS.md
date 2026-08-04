@@ -8,12 +8,12 @@
 
 本 fork 相对 upstream 的**验收基线与能用/不能用特征**以 [`.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc`](.cursor/rules/cockpit-feature-registry-and-rule-evolution.mdc) 为准。
 
-- **当前最新构建（能用）**：安装 exe SHA 242E71FE…（ProductVersion **1.3.16**）；分支 sync-upstream-v1.3.14-20260725 @ e6a8f771；upstream 基线 **v1.3.14**（6c3e11af）；保留 Cursor watch + 配额排序/最旧优先刷新
+- **当前最新构建（能用）**：安装 exe SHA **67E971E2…**（ProductVersion **1.3.18**）；Release `sync-upstream-v1.3.16-20260804`；upstream 基线 **v1.3.16**（`e1ef55ce`）；2026-08-04 UIA：标题 `Cockpit Tools`，Cursor **`ALL (2604)`**（磁盘 2604，非 localhost 错误页）
+- **上一可用 1.3.17**：安装 exe SHA **42814DE7…**；分支 `sync-upstream-v1.3.15-20260802`；upstream **v1.3.15**
+- **上一可用 1.3.16**：安装 exe SHA 242E71FE…；分支 sync-upstream-v1.3.14-20260725 @ e6a8f771；upstream 基线 **v1.3.14**
 - **上一可用 1.3.13 / v1.3.8 同步**：SHA `646020F6…`；分支 `sync-upstream-v1.3.8-20260718` @ `b2d3d3aa`
-- **上一可用 1.3.6 / 1.3.2**：1.3.6 SHA `D12C81F3…`（fork stale-refresh）；1.3.2 SHA `3374C285…`（`sync-upstream-v1.3.2-20260715`）
-- **上一可用 1.3.0**：SHA `DEA43F62…`；`sync-upstream-v1.3.0-20260714-redo`
-- **拼装拒收物**：SHA `1A0EC65E…` — **不能用**
-- **合并前锚点**：`fork-20260705` @ `918980e9`；Draft `fork-20260705-baseline`
+- **拼装拒收物**：SHA `1A0EC65E…` — **不能用**；坏包 `C5540DFC…`（1.3.17 debug/localhost:1455）— **不能用**
+- **合并前锚点**：`sync-upstream-v1.3.15-20260802` @ `612fe2db`（更早 `fork-20260705` @ `918980e9`）
 - **历史桌面验收包**：`Cockpit-nirvana-token-test.exe`（SHA `F5256511…`）
 - **硬禁**：整棵换 `src/` 冒充同步；debug 当基线；第三套拼装 UI；计划勾选冒充用户要求完成
 
@@ -37,8 +37,8 @@
 | 开发仓 | `C:\Users\aliceemoce\dev\cockpit-tools` |
 | Cursor 运行时账号 JSON | `%USERPROFILE%\.antigravity_cockpit\cursor_accounts\` |
 | **禁止当 Cursor 池** | `%USERPROFILE%\.antigravity_cockpit\data\cursor_accounts\` |
-| **本轮安装** | %LocalAppData%\Cockpit Tools\cockpit-tools.exe（SHA 242E71FE…，v1.3.16） |
-| Release | sync-upstream-v1.3.14-20260725（exe） |
+| **本轮安装** | %LocalAppData%\Cockpit Tools\cockpit-tools.exe（SHA 67E971E2…，v1.3.18） |
+| Release | sync-upstream-v1.3.16-20260804（exe） |
 | 对照 PR | （创建后回填） |
 | 凭证镜像仓 | `C:\Users\aliceemoce\dev\cockpit-credentials` |
 
