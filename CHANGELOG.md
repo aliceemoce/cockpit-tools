@@ -7,6 +7,49 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.18] - 2026-08-04
+
+### Changed
+
+- **Fork sync**: merged upstream formal release **v1.3.16** into fork tip 1.3.17; kept Cursor local watch (`sync_cursor_local_watch` / `accounts:changed`), rotation pick, email-dedup release boundary, and default-instance non-global kill.
+
+## [1.3.16] - 2026-08-02
+
+### Added
+
+- **Codex `at-*` personal-access-token accounts can set a ChatGPT Workspace ID**: Token / JSON imports recognize `account_id`, camelCase fields, and `ChatGPT-Account-Id` in headers / custom headers; the account-note dialog can view, copy, and edit the Team / Workspace UUID, then persist it and synchronize it to the API Service sidecar. When no real workspace ID is available, Cockpit no longer substitutes its local account ID as the upstream account ID.
+- **Codex sub2api export supports API Key and access-token-only accounts**: API Key accounts use native sub2api `apikey` credentials; access-token-only accounts carry the real token expiry and enable automatic pause on expiry; OAuth exports include the official client ID, user and organization identity, login provider, access-token and subscription expiry, with default concurrency 3 and priority 50.
+
+### Changed
+
+- **Codex API Service transparently aligns with the latest Responses compatibility strategy**: official Codex OAuth preserves namespaces on function, custom-tool, generic-tool, and MCP call items, while API Key, custom-upstream, and Compact requests remove incompatible namespaces; missing, `null`, or blank instructions use the corresponding model's official base instructions; GPT-5.6 Sol / Terra / Luna use Responses Lite only when every route is official Codex, while custom or mixed providers use full Responses to retain tools such as `web.run`.
+
+### Fixed
+
+- **Fixed expired encrypted reasoning or compaction content terminating Codex conversations**: HTTP, streaming HTTP, Compact, and downstream WebSocket paths remove stale `encrypted_content` before any output, preserve reusable history, and retry safely once; the same error cannot loop indefinitely, and large integer request fields retain exact precision.
+- **Fixed `response.failed` rate limits being reported as HTTP 400**: events whose `error.code` or `error.type` contains `rate_limit` now map to HTTP 429 so API Service can apply its existing retry or account-switch policy.
+- **Fixed tool-result arrays, images, and namespace tools being lost when converting Responses to Anthropic**: text and image results become Anthropic content blocks, empty arrays receive an explicit result, top-level and `additional_tools` definitions are merged, and custom tool calls, tool-use/result pairing, plus streaming and non-streaming namespace restoration remain consistent.
+- **Fixed tool-output images being dropped when converting Responses to Chat Completions**: data image URLs and nested `input_image` / `image_url` parts move into attributed user multimodal messages while preserving tool-call order, reply adjacency, and the original JSON semantics of media-free outputs.
+- **Fixed Codex Team / Workspace accounts sometimes showing the personal Free subscription**: subscription parsing now matches organization ID first, then falls back through account ID, the default account, and a paid plan so multi-workspace responses select the correct record.
+- **Fixed sub2api reimports showing Access Token lifetime as subscription validity**: imports now read subscription time only from `subscription_expires_at` / `subscription_active_until` and no longer treat generic account or credential `expires_at` fields as the Plus / Team subscription expiry.
+- **Fixed failed Codex export conversion silently falling back to Cockpit Tools format**: when selected accounts use an unsupported type or incomplete credentials, the export dialog now shows an explicit error and keeps the selected format instead of generating a mismatched file.
+- **Fixed Claude Desktop Gateway model-mapping inputs sometimes losing focus or resetting while edited**: mapping rows now use stable identities, so changing the upstream model, desktop model, or 1M-support toggle no longer causes React to rebuild the active row.
+- **Fixed desktop and Start Menu shortcuts both disappearing when Windows updates from `1.3.15`**: update mode preserves existing shortcuts and repairs only the exact `1.3.15` upgrade state where both are missing; normal manual installs still remove historical product-name shortcuts without restoring a single shortcut the user intentionally deleted.
+
+## [1.3.15] - 2026-07-29
+
+### Added
+
+- **Grok CLI supports third-party API Key endpoints**: when adding an account, users can choose official xAI or an OpenAI-compatible third-party endpoint and configure its Base URL, model ID, and API key; API-key accounts use an isolated `GROK_HOME`, do not overwrite the official OAuth login, and inject the key only into the corresponding CLI process.
+- **CodeBuddy CN adds optional local-session sharing when switching accounts**: the switch is off by default; when enabled, account switches merge local session content and restore databases, create a local backup before changes, and do not upload session content.
+- **Codex model-provider one-click test supports choosing the model first**: pick a model from selected providers’ catalogs, enter a custom model ID, or keep auto discovery instead of always testing a fixed preferred model. ([#1729](https://github.com/jlcodes99/cockpit-tools/issues/1729))
+- **Codex API Service request logs show reasoning effort and service tier**: when the request carries `reasoning.effort` / `reasoning_effort` or `service_tier`, the log list shows those values so users can verify what was actually called. ([#1690](https://github.com/jlcodes99/cockpit-tools/issues/1690))
+- **Codex can hide relay-station quota**: a setting in Settings and the Codex quick-settings popover hides mid-relay / New API style balance panels to reduce clutter; the preference is stored in user config. ([#1692](https://github.com/jlcodes99/cockpit-tools/issues/1692))
+- **Editing a Codex model provider with many API keys supports searching the existing-key list**. ([#1750](https://github.com/jlcodes99/cockpit-tools/issues/1750))
+- **WorkBuddy supports configurable auto check-in**: off by default; users can set per-account random check-in windows and log retention, and saved accounts are never checked in while the feature is disabled.
+- **macOS menu bar can show live quota**: off by default; users can pick the monitored platform and optionally show an account-prefix badge.
+- **MFA vault supports Google Authenticator migration QR batch import**: `otpauth-migration://` payloads can be scanned and saved into local MFA records in bulk.
+- **Claude quota display can switch between used % and remaining %**: used percentage remains the default; enabling remaining % only changes presentation while auto-switch and alert thresholds still use the used ratio.
 ## [1.3.16] - 2026-07-25
 
 ### Changed
