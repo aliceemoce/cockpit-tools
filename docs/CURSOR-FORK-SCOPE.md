@@ -9,7 +9,7 @@
 | 版本 | ProductVersion `1.3.18` |
 | 源码 | `sync-upstream-v1.3.16-20260804` @ `94e4bb99`（merge upstream v1.3.16 `e1ef55ce` into fork tip 1.3.17） |
 | Release | `sync-upstream-v1.3.16-20260804`（exe） |
-| 对照 PR | （创建后回填） |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/15 |
 | 状态 | **能用**（正式版同步 + Cursor watch/配额 fork 保留 + UIA `ALL (2604)`）；拼装 `1A0EC65E…` / 坏包 `C5540DFC…` **不能用** |
 
 > 合并前锚点：`sync-upstream-v1.3.15-20260802` @ `612fe2db`（exe SHA `42814DE7…`）。更早：`fork-20260705` @ `918980e9`。

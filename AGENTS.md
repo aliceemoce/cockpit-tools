@@ -39,7 +39,7 @@
 | **禁止当 Cursor 池** | `%USERPROFILE%\.antigravity_cockpit\data\cursor_accounts\` |
 | **本轮安装** | %LocalAppData%\Cockpit Tools\cockpit-tools.exe（SHA 67E971E2…，v1.3.18） |
 | Release | sync-upstream-v1.3.16-20260804（exe） |
-| 对照 PR | （创建后回填） |
+| 对照 PR | https://github.com/aliceemoce/cockpit-tools/pull/15 |
 | 凭证镜像仓 | `C:\Users\aliceemoce\dev\cockpit-credentials` |
 
 ## 硬约束（Agent 必须遵守）
