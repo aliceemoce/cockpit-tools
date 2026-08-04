@@ -187,7 +187,9 @@
         "weekly": "週配額",
         "resetAt": "重置: {{time}}",
         "expiresAt": "到期時間：{{time}}",
-        "leftPercent": "剩餘 {{value}}%"
+        "leftPercent": "剩餘 {{value}}%",
+        "pendingQueryBadge": "配額未查詢",
+        "pendingQuery": "待查詢配額"
       },
       "subtitle": "管理您的 GitHub Copilot 帳號",
       "time": {

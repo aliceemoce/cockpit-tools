@@ -2148,7 +2148,11 @@ export function DashboardPage({
     onEditTags?: () => void;
   }) => {
     const resolvedSublineText = sublineText || presentation.sublineText || '';
-    const shouldShowPlan = Boolean(presentation.planLabel) && presentation.planLabel !== 'UNKNOWN';
+    const planNormalized = (presentation.planLabel || '').trim().toUpperCase();
+    const shouldShowPlan =
+      Boolean(presentation.planLabel) &&
+      planNormalized !== 'UNKNOWN' &&
+      presentation.planClass !== 'unknown';
 
     return (
       <div className="account-mini-card">
@@ -2213,6 +2217,11 @@ export function DashboardPage({
     const presentation = buildAntigravityAccountPresentation(account, agDisplayGroups, t);
     const quotaDisplayItems = presentation.quotaItems.slice(0, 4);
 
+    const shouldShowAgPlan =
+      Boolean(presentation.planLabel) &&
+      presentation.planLabel.toUpperCase() !== 'UNKNOWN' &&
+      presentation.planClass !== 'unknown';
+
     return (
       <div className="account-mini-card">
         <div className="account-mini-header">
@@ -2220,7 +2229,9 @@ export function DashboardPage({
             <span className="account-email" title={maskAccountText(presentation.displayName)}>
               {maskAccountText(presentation.displayName)}
             </span>
-            <span className={`tier-badge ${presentation.planClass}`}>{presentation.planLabel}</span>
+            {shouldShowAgPlan && (
+              <span className={`tier-badge ${presentation.planClass}`}>{presentation.planLabel}</span>
+            )}
           </div>
         </div>
 

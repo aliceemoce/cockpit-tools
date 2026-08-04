@@ -1,12 +1,23 @@
+﻿
+## 1.3.17 — 2026-08-02 (fork sync)
+
+- 合并上游正式版 v1.3.15（自本地同步 tip v1.3.16 / upstream v1.3.14）
+- 交付版本号 1.3.17
 # 更新日志
 
-简体中文 · [English](CHANGELOG.md)
+[English](CHANGELOG.md) · 简体中文
 
-本文件记录 Cockpit Tools 的所有重要变更。
+Cockpit Tools 的所有重要变更都会记录在此文件中。
 
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
+格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [1.3.18] - 2026-08-04
+
+### 变更
+
+- **Fork 同步**：将主仓正式版 **v1.3.16** 合入 fork tip 1.3.17；保留 Cursor 本地跟号（`sync_cursor_local_watch` / `accounts:changed`）、强制轮换选号、邮箱去重 release 边界、默认实例不全杀。
+
 ## [1.3.16] - 2026-08-02
 
 ### 新增
@@ -31,51 +42,59 @@
 - **修复 Windows 从 `1.3.15` 更新时桌面与开始菜单快捷方式可能同时消失的问题**：更新模式保留现有快捷方式，仅针对 `1.3.15` 两个快捷方式均缺失的升级状态自动恢复；普通手动安装仍清理历史产品名快捷方式，不会恢复用户主动删除的单个快捷方式。
 
 ## [1.3.15] - 2026-07-29
-
-### 新增
-
-- **Grok CLI 支持第三方 API Key 接口**：添加账号时可选择 xAI 官方或 OpenAI 兼容第三方接口，并配置 Base URL、模型 ID 与 API Key；API Key 账号使用独立 `GROK_HOME`，不会覆盖官方 OAuth 登录，密钥只注入对应的 CLI 进程。
-- **CodeBuddy CN 新增可选的切号共享本地会话能力**：开关默认关闭；开启后切换本机账号时会合并本地会话正文与恢复数据库，修改前创建本地备份，内容不会上传。
-- **Codex 模型供应商一键测试支持先选模型再测**：可从已选供应商的模型目录中选择、手动输入模型 ID，或保持自动探测，不再固定只用优先模型测试。([#1729](https://github.com/jlcodes99/cockpit-tools/issues/1729))
-- **Codex API 服务请求日志可展示思考强度与服务等级**：请求带有 `reasoning.effort` / `reasoning_effort` 或 `service_tier` 时，日志列表会显示对应值，便于核对实际调用参数。([#1690](https://github.com/jlcodes99/cockpit-tools/issues/1690))
-- **Codex 可隐藏中转站额度**：在设置与 Codex 快捷设置中提供开关，可隐藏中转 / New API 类额度面板，减轻列表重叠与视觉干扰；偏好写入用户配置。([#1692](https://github.com/jlcodes99/cockpit-tools/issues/1692))
-- **编辑 Codex 模型供应商时，已有 API Key 较多可搜索定位**。([#1750](https://github.com/jlcodes99/cockpit-tools/issues/1750))
-- **WorkBuddy 支持可配置自动签到**：默认关闭；可按账号设置随机签到时间段与日志保留，不会在未开启时对已有账号发起签到。
-- **macOS 菜单栏可显示实时额度**：默认关闭；可在设置中选择监控平台，并可选显示账号标识前缀。
-- **MFA 速查支持 Google Authenticator 迁移二维码批量导入**：可扫描 `otpauth-migration://` 迁移码并批量写入本地 MFA 记录。
-- **Claude 额度展示可切换「已用% / 剩余%」**：默认仍为已用百分比；开启后仅改变 UI 展示，自动切号与预警阈值仍按已用比例计算。
+## [1.3.17] - 2026-08-02
 
 ### 变更
 
-- **ChatGPT Web Session 导入改为仅支持查看额度**：不再自动注册为 Agent Identity，也不再加入 Codex API 服务账号池；导入后可查看额度，但不能切号、启动官方客户端或 CLI，也不能加入 API 服务或作为 OAuth 绑定账号。
-- **Codex API 服务透明对齐官方 Multi-Agent V2 请求逻辑**：仅对 Codex Desktop 与 `codex-tui` 请求生效；网关按上游模型目录更新 `spawn_agent` 描述、规范化加密 agent 消息、为非 Codex 上游协议完成转换，并在响应中恢复 collaboration namespace，不新增用户操作流程或设置项。
-- **Codex API 用量统计升级为 canonical token accounting v2**：输入缓存读写、未缓存输入、普通输出与推理输出使用互斥桶统计；矛盾或无法分类的上游数据明确标记为 `inconsistent` / `unclassified`，避免缓存和推理 token 重复计数。
-- **Codex API 服务账号成员支持明确设置“最高 / 正常 / 最低”三级使用优先级**：三级优先级统一作用于所有调度策略与会话亲和；最高优先使用，正常账号继续遵循所选调度规则，最低仅在更高优先级账号不可用时使用。旧版备用账号配置继续兼容并视为最低优先级。
-- **Codex API 服务主页面的调度选项补齐会话亲和及过期时间设置**：可直接启用或关闭会话亲和，并配置与成员管理弹框一致的 60～86400 秒 TTL。
-- **Responses 中转类 API Key 切号改为走内置 OpenAI provider + `openai_base_url`**：与官方直连投影方式对齐，避免误用 local-access provider 标识。
-- **CI 构建矩阵与正式发布工作流加速**：preflight 拆分为可并行步骤，并优化缓存与矩阵调度。
+- Fork 同步：合入主仓正式版 **v1.3.15**，交付 ProductVersion 1.3.17，保留 Cursor 跟号。
+
+## [1.3.16] - 2026-07-25
+
+### Changed
+
+- 将 upstream **v1.3.14** 合入 fork 同步 tip（**1.3.15** / upstream v1.3.13）：保留 Cursor watch、配额排序/最旧优先刷新、强制轮换与 release 边界。
+
+### Upstream highlights (v1.3.14)
+
+- Web Session 确认导入后可自动注册为 Agent Identity，并进入 Codex API 服务账号池（仅 API 服务）。
+- 修复开启「同步模型目录到 Codex」的自定义 Responses API Key 无法加入 Codex API 服务的问题。
+
+## [1.3.15] - 2026-07-22
+
+### 变更
+
+- 将 upstream **v1.3.13**（含 upstream v1.3.11–v1.3.13）合入 fork sync tip **1.3.14** / upstream v1.3.10：保留 Cursor 跟号、配额排序/顺延刷新、轮换选号与 release 边界。
+
+### 上游要点（v1.3.11–v1.3.13）
 
 ### 修复
 
-- **修复 Codex API 服务平均延迟把失败或 0ms 通讯错误也算进均值的问题**：平均延迟仅统计成功请求。([#1657](https://github.com/jlcodes99/cockpit-tools/issues/1657))
-- **修复 Windows NSIS 重装/更新时桌面快捷方式重复堆积的问题**：安装前会清理 Cockpit Tools 已知的历史桌面与开始菜单快捷方式，再创建当前版本快捷方式。([#1656](https://github.com/jlcodes99/cockpit-tools/issues/1656))
-- **修复 Codex 自动压缩上下文后，xAI 等严格校验的 Chat Completions 服务商返回 HTTP 400 的问题**：Responses→Chat Completions 转换在没有有效工具时会移除 `tool_choice`，避免客户端进入无限重连。([#1727](https://github.com/jlcodes99/cockpit-tools/issues/1727))
-- **修复导入 ChatGPT Web Session 时因 Agent Identity runtime 注册返回 HTTP 403 导致导入失败的问题**：此类格式不再发起 runtime 注册，按仅查额账号导入。
-- **修复 Windows Desktop 会话路径含 `\\?\\` 前缀时工作目录规范化异常的问题**。
-- **修复自定义图标写入 localStorage 配额失败时可能撑坏布局的问题**。
-- **修复 Windows CLI 快速启动在 `system` 终端下弹出裸 PowerShell 的问题**：检测到 Windows Terminal 时优先通过 `wt` 启动，未安装时保持原有回退。
-- **修复 Codex API 服务页等处硬编码中文 fallback 的问题**：补齐对应 i18n 键与默认文案。
-- **修复 Codex Responses 在 HTTP 与 WebSocket 切换、上游 1009 关闭或失败 tool turn 后可能丢失上下文或污染后续请求的问题**：增量请求只复用原 WebSocket 与原账号，无法安全续接时要求完整重放；1009 不再触发账号轮转，失败 turn 不再写入全局 tool cache。
-- **修复第三方 Responses 上游明确拒绝 `input[N].namespace` 或 `max_output_tokens` 时请求直接失败的问题**：仅在 400 且上游明确返回 unknown/unsupported parameter 时删除被拒字段并安全重试，保留最多 6 次、请求体去重及工具项类型校验。
-- **修复 Codex Responses 输入项 ID 超出 64 字符导致上游拒绝的问题**：超长 ID 按 Unicode 字符确定性缩短并避免冲突；携带加密内容的超长 reasoning 项按官方兼容规则移除。
-- **修复 Codex API 服务混合套餐账号池可能将 Spark 请求路由到无权限账号的问题**：网关根据账号额度中的模型权限生成账号级排除规则，并在会话亲和及其他调度规则前过滤不支持的账号；OAuth 与限定账号范围的 API Key 池均会只把 Spark 请求发送给真正可用的账号。感谢 @kin001（[#1759](https://github.com/jlcodes99/cockpit-tools/pull/1759)）。
-- **修复 Codex 切号会重置 Memories 等官方 `[features]` 设置的问题**：启动前清理现在会完整保留官方 features 表，仅继续修复 Cockpit 管理的配置格式。感谢 @we1jia（[#1734](https://github.com/jlcodes99/cockpit-tools/pull/1734)）。
-- **修复 Cockpit 重启而受管 Codex 实例仍在运行时额度浮层无法恢复的问题**：启动后会在后台识别已经运行的默认实例与多开实例，恢复其真实 CDP 端口及 profile 专属注入，不阻塞主窗口显示。
-- **修复 Codex profile 切回内置 OpenAI 模式后仍残留 API 服务模型目录的问题**：只清理 Cockpit 预留的目录及接管备份，保留用户自定义目录，后续切号或 API Key 模型目录同步不再复用过期模型。感谢 @kin001（[#1718](https://github.com/jlcodes99/cockpit-tools/pull/1718)）。
-- **修复 New API 供应商仅返回 Token 分配或计费字段时账号不显示额度的问题**：账号页、首页与供应商页面统一兼容 `quotaLimit`、`quotaRemaining` 和 `accessUntil` 备用字段。感谢 @kin001（[#1712](https://github.com/jlcodes99/cockpit-tools/pull/1712)）。
-- **修复二进制或无效 UTF-8 rollout 文件导致 Codex 启动或会话可见性修复失败的问题**：修复流程现在只处理普通 `rollout-*.jsonl` 文件，遇到不可读条目会记录诊断并跳过，不再中断启动。感谢 @kin001（[#1710](https://github.com/jlcodes99/cockpit-tools/pull/1710)）。
-- **修复 xAI 图片生成与编辑请求遗漏用量统计的问题**：成功请求、上游失败、限流和请求构造失败都会写入用量事件，并记录实际请求模型。感谢 @Ac-spider（[#1629](https://github.com/jlcodes99/cockpit-tools/pull/1629)）。
-- **修复 Codex 批量导入过快完成时可能一直停留在准备状态的问题**：扫描先于前端取得会话 ID 完成时，会立即恢复已持久化的最终预览，不改变导入协议或凭据格式。感谢 @HUF457（[#1716](https://github.com/jlcodes99/cockpit-tools/pull/1716)）。
+- **修复 K12 Agent Identity 账号无法使用 Codex 官方直连唤醒的问题**：唤醒请求现在会动态生成 `AgentAssertion`；task 缺失或失效时自动注册、持久化并安全重试一次，普通 OAuth 账号的唤醒行为保持不变。
+
+
+### 修复
+
+- **修复同一 K12 workspace 下的多个 Agent Identity 用户互相覆盖的问题**：账号现在按 ChatGPT account 与 user 的组合身份区分；同一用户重新导入仍会更新原账号并保留已有资料，旧版已保存的账号继续沿用原标识。
+
+
+### 新增
+
+- **Codex 账号与 API 服务支持新版 Agent Identity 认证**：可导入官方 `auth.json`、JSON/JSONL 及 Sub2API 备份中的 Agent Identity 账号，兼容 Sub2API 使用的 PKCS#8 v1 Ed25519 私钥，按 ChatGPT account 区分 Team 并切换到官方 Codex；额度、主动重置、HTTP、Responses 流式、Compact、图片和 WebSocket 请求均会动态生成 `AgentAssertion`，缺少或失效的 task 会自动注册、持久化并恢复，不影响现有 OAuth、Access Token、PAT 与 API Key 账号。
+- **ChatGPT 客户端中的 Codex API 服务额度浮层支持手动刷新与账号池健康信息**：账号与额度标签旁新增紧凑的刷新按钮，点击后刷新 API 服务账号池；刷新期间图标原位旋转，完成后更新账号数、5h 额度、周额度，以及可用、异常、冷却和套餐分组信息，空账号池会立即显示账号数与额度均为 0。
+- **Codex CLI 启动弹框支持快速预览与启动选项**：账号页和实例页可选择最近工作目录、Terminal.app、iTerm2、PowerShell、pwsh、Windows Terminal 或 cmd，并快速生成对应命令；复制或终端执行时才准备实例运行环境，同时会跳过无法实际启动的旧版或损坏 CLI 路径，并继续选择其他可用 CLI，包括官方客户端内置 Codex。
+- **CodeBuddy 与 WorkBuddy 新增“切号共享本地会话”开关**：开关默认关闭；开启后，切换本机账号时会在真实本地会话目录和数据库中合并会话与恢复状态，并在操作前创建本地备份，内容不会上传。
+
+### 变更
+
+- **Codex API 服务支持配置会话亲和与过期时间**：可在 60～86400 秒范围内设置会话亲和 TTL，账号池会按会话键在有效期内保持账号绑定。
+- **Codex API 服务网关准备与账号刷新改为可观测的后台流程**：页面显示启动准备和账号刷新进度；OAuth 凭据刷新在网关可用后后台执行，避免启动过程被整个账号池阻塞。
+- **自定义 Codex Responses 模型目录支持官方展示模型映射**：同步到 Codex 客户端时使用可识别的官方模型展示名，实际请求仍路由到配置的上游模型。
+
+### 修复
+
+- **修复 Windows 重启时偶发 PowerShell `0xc0000142` 弹窗的问题**：Cockpit Tools 会提前监听系统关机通知，在 Windows 结束会话前暂停后台注入并禁止再创建 PowerShell 等后台子进程；若关机被取消则恢复正常运行，同时不改变开机自启动设置。
+- **修复多开实例页面重复进入或操作后闪回加载状态的问题**：实例列表现在优先显示已加载或本地缓存的数据，后台刷新完成后静默替换；仅在首次没有任何可展示数据时显示加载状态。
+- **停用 Codex API 服务时会恢复受管 Codex profile 文件**：Cockpit Tools 仅移除 `config.toml` 中由 API 服务写入的字段，恢复接管前的 `auth.json`，删除注入的 profile 文件和模型缓存，同时保留用户其他设置与其他网关备份；仍绑定 API 服务的实例启动时也不会再静默重新启用已停用的服务。
 
 ## [1.3.14] - 2026-07-22
 
@@ -3011,3 +3030,4 @@
 - 使用 SQLite 数据库进行本地数据持久化。
 - 使用系统钥匙串安全存储凭证。
 - 跨平台支持（当前以 macOS 为主，Windows/Linux 计划中）。
+

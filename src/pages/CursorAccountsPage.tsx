@@ -23,6 +23,7 @@ import {
   Eye,
   EyeOff,
   Lock,
+  MessageSquare,
   BookOpen,
 } from 'lucide-react';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
@@ -32,7 +33,6 @@ import { ExportJsonModal } from '../components/ExportJsonModal';
 import { ModalErrorMessage } from '../components/ModalErrorMessage';
 import { MfaQuickCodeSelect } from '../components/MfaQuickCodeSelect';
 import { PaginationControls } from '../components/PaginationControls';
-import { AccountSelectionToolbar } from '../components/AccountSelectionToolbar';
 import { QuickSettingsPopover } from '../components/QuickSettingsPopover';
 import { MultiSelectFilterDropdown, type MultiSelectFilterOption } from '../components/MultiSelectFilterDropdown';
 import { SingleSelectFilterDropdown } from '../components/SingleSelectFilterDropdown';
@@ -41,11 +41,19 @@ import {
   getCursorPlanDisplayName,
   getCursorPlanBadgeClass,
   getCursorAccountDisplayEmail,
+  getCursorAccountQuotaPoolId,
+  countCursorUniqueEmails,
   getCursorOnDemandSummary,
   getCursorUsage,
   formatCursorUsageDollars,
+  formatCursorPlanQuotaText,
   hasCursorQuotaData,
   isCursorAccountBanned,
+  isCursorQuotaPendingQuery,
+  resolveCursorQuotaAvailability,
+  resolveCursorQuotaAvailabilityUi,
+  resolveCursorChatProbeUi,
+  resolveCursorSortRemainingPercent,
 } from '../types/cursor';
 import type { CursorAccount } from '../types/cursor';
 import { compareCurrentAccountFirst } from '../utils/currentAccountSort';
@@ -85,6 +93,7 @@ const CURSOR_KNOWN_PLAN_FILTERS = [
   'ULTRA',
 ] as const;
 const CURSOR_TOKEN_SINGLE_EXAMPLE = `eyJhbGciOiJIUzI1NiIs...`;
+const CURSOR_TOKEN_DASHED_EXAMPLE = `glaring-menisci-5o@icloud.com----auth0|user_xxx----eyJaccess...----eyJrefresh...`;
 const CURSOR_TOKEN_BATCH_EXAMPLE = `[
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"a@example.com"},
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"b@example.com"}
@@ -159,6 +168,7 @@ export function CursorAccountsPage() {
       injectToVSCode: cursorService.injectCursorAccount,
     },
     getDisplayEmail: (account) => getCursorAccountDisplayEmail(account),
+    defaultSortBy: 'credits',
   });
 
   const {
@@ -191,6 +201,68 @@ export function CursorAccountsPage() {
     currentAccountId,
     formatDate, normalizeTag,
   } = page;
+
+  const [probingChatId, setProbingChatId] = useState<string | null>(null);
+  const [probingChatBatch, setProbingChatBatch] = useState(false);
+
+  const handleProbeChat = useCallback(async (accountId: string) => {
+    setProbingChatId(accountId);
+    try {
+      const updated = await cursorService.probeCursorAccountChat(accountId);
+      const outcome = updated.chat_probe?.outcome || 'unknown_error';
+      const quotaOk = resolveCursorQuotaAvailability(updated) === 'usable';
+      setMessage({
+        tone: outcome === 'ok' && quotaOk ? 'success' : 'error',
+        text:
+          outcome === 'ok' && quotaOk
+            ? t('cursor.chatProbe.sampleOk', '抽样有回话，且 Total Usage 未满')
+            : outcome === 'ok' && !quotaOk
+              ? t(
+                  'cursor.chatProbe.sampleMismatch',
+                  '抽样有回话，但 Total Usage 已满或不可用（不得标可用）',
+                )
+              : t('cursor.chatProbe.failed', '对话验活结果：{{outcome}}', { outcome }),
+      });
+      await store.fetchAccounts();
+    } catch (error) {
+      setMessage({ tone: 'error', text: String(error) });
+    } finally {
+      setProbingChatId(null);
+    }
+  }, [setMessage, store, t]);
+
+  const handleProbeChatSelected = useCallback(async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) {
+      setMessage({ tone: 'error', text: t('cursor.chatProbe.needSelection', '请先勾选要验活的账号') });
+      return;
+    }
+    setProbingChatBatch(true);
+    try {
+      const updated = await cursorService.probeCursorAccountsChat(ids);
+      const okCount = updated.filter(
+        (account) =>
+          account.chat_probe?.outcome === 'ok' &&
+          resolveCursorQuotaAvailability(account) === 'usable',
+      ).length;
+      setMessage({
+        tone: 'success',
+        text: t(
+          'cursor.chatProbe.batchDone',
+          '已完成 {{total}} 个账号验活；能对话 {{ok}} 个',
+          {
+            total: updated.length,
+            ok: okCount,
+          },
+        ),
+      });
+      await store.fetchAccounts();
+    } catch (error) {
+      setMessage({ tone: 'error', text: String(error) });
+    } finally {
+      setProbingChatBatch(false);
+    }
+  }, [selected, setMessage, store, t]);
 
   useEffect(() => {
     if (!filterPersistenceEnabled) {
@@ -230,7 +302,8 @@ export function CursorAccountsPage() {
 
   const isAbnormalAccount = useCallback(
     (account: CursorAccount) =>
-      isCursorAccountBanned(account) || (account.status || '').toLowerCase() === 'error',
+      isCursorAccountBanned(account) ||
+      (account.status || '').toLowerCase() === 'error',
     [],
   );
 
@@ -256,6 +329,18 @@ export function CursorAccountsPage() {
 
   // ─── Platform-specific: Quota ──────────────────────────────────────
 
+  /** 与卡片进度条一致；过期数据沉底。 */
+  const resolveRemainingQuotaPercent = useCallback(
+    (account: CursorAccount): number | null => resolveCursorSortRemainingPercent(account),
+    [],
+  );
+
+  const compareUsageUpdatedAt = useCallback((a: CursorAccount, b: CursorAccount): number => {
+    const aUpdated = a.usage_updated_at ?? 0;
+    const bUpdated = b.usage_updated_at ?? 0;
+    return bUpdated - aUpdated;
+  }, []);
+
   const resolveTotalQuota = useCallback(
     (account: CursorAccount) => {
       const usage = getCursorUsage(account);
@@ -266,9 +351,7 @@ export function CursorAccountsPage() {
           ? (usage.planUsedCents / usage.planLimitCents) * 100
           : null;
       const total = normalizeCursorPercent(usage.totalPercentUsed ?? ratioPct);
-      const costText = usage.planUsedCents != null && usage.planLimitCents != null
-        ? `${formatCursorUsageDollars(usage.planUsedCents)} / ${formatCursorUsageDollars(usage.planLimitCents)}`
-        : null;
+      const costText = formatCursorPlanQuotaText(usage);
       return {
         percentage: total.bar,
         quotaClass: getCursorQuotaClass(total.display),
@@ -400,7 +483,14 @@ export function CursorAccountsPage() {
       .filter((tier) => !(CURSOR_KNOWN_PLAN_FILTERS as readonly string[]).includes(tier))
       .sort((a, b) => a.localeCompare(b));
 
-    return { all: accounts.length, validCount, knownCounts, dynamicCounts, extraKeys, displayLabels };
+    return {
+      all: countCursorUniqueEmails(accounts),
+      validCount,
+      knownCounts,
+      dynamicCounts,
+      extraKeys,
+      displayLabels,
+    };
   }, [accounts, isAbnormalAccount, resolvePlanKey, resolvePlanLabel]);
 
   useEffect(() => {
@@ -447,26 +537,57 @@ export function CursorAccountsPage() {
       return currentFirstDiff;
     }
 
+    // 按剩余额度% 降序（与卡片红绿条一致）；同分再比可用性。
+    if (sortBy !== 'created_at') {
+      const aQuotaFailed = Boolean(a.quota_query_last_error?.trim());
+      const bQuotaFailed = Boolean(b.quota_query_last_error?.trim());
+      if (aQuotaFailed !== bQuotaFailed) {
+        return aQuotaFailed ? 1 : -1;
+      }
+
+      const aPending = isCursorQuotaPendingQuery(a);
+      const bPending = isCursorQuotaPendingQuery(b);
+      if (aPending !== bPending) {
+        return aPending ? 1 : -1;
+      }
+    }
+
     if (sortBy === 'created_at') {
       const diff = b.created_at - a.created_at;
-      return sortDirection === 'desc' ? diff : -diff;
+      if (diff !== 0) {
+        return sortDirection === 'desc' ? diff : -diff;
+      }
+      return compareUsageUpdatedAt(a, b);
     }
     if (sortBy === 'plan_end') {
       const aReset = getCursorUsage(a).allowanceResetAt ?? null;
       const bReset = getCursorUsage(b).allowanceResetAt ?? null;
-      if (aReset == null && bReset == null) return 0;
+      if (aReset == null && bReset == null) return compareUsageUpdatedAt(a, b);
       if (aReset == null) return 1;
       if (bReset == null) return -1;
       const diff = bReset - aReset;
+      if (diff !== 0) {
+        return sortDirection === 'desc' ? diff : -diff;
+      }
+      return compareUsageUpdatedAt(a, b);
+    }
+    const aValue = resolveRemainingQuotaPercent(a);
+    const bValue = resolveRemainingQuotaPercent(b);
+    if (aValue == null && bValue == null) return compareUsageUpdatedAt(a, b);
+    if (aValue == null) return 1;
+    if (bValue == null) return -1;
+    const diff = bValue - aValue;
+    if (diff !== 0) {
       return sortDirection === 'desc' ? diff : -diff;
     }
-    const aUsage = getCursorUsage(a);
-    const bUsage = getCursorUsage(b);
-    const aValue = 100 - (aUsage.inlineSuggestionsUsedPercent ?? 0);
-    const bValue = 100 - (bUsage.inlineSuggestionsUsedPercent ?? 0);
-    const diff = bValue - aValue;
-    return sortDirection === 'desc' ? diff : -diff;
-  }, [currentAccountId, sortBy, sortDirection]);
+    const tier = (account: CursorAccount) =>
+      resolveCursorQuotaAvailability(account) === 'usable' ? 0 : 1;
+    const tierDiff = tier(a) - tier(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+    return compareUsageUpdatedAt(a, b);
+  }, [compareUsageUpdatedAt, currentAccountId, resolveRemainingQuotaPercent, sortBy, sortDirection]);
 
   const sortedAccountsForInstances = useMemo(
     () => [...accounts].sort(compareAccountsBySort),
@@ -482,7 +603,7 @@ export function CursorAccountsPage() {
         const haystacks = [
           getCursorAccountDisplayEmail(account),
           account.id,
-          account.auth_id ?? '',
+          getCursorAccountQuotaPoolId(account),
           account.membership_type ?? '',
           account.subscription_status ?? '',
         ];
@@ -568,7 +689,7 @@ export function CursorAccountsPage() {
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authIdText = (account.auth_id || '').trim();
+      const authIdText = getCursorAccountQuotaPoolId(account);
       const maskedAuthIdText = authIdText ? maskAccountText(authIdText) : '--';
       const planLabel = resolvePlanLabel(account);
       const total = resolveTotalQuota(account);
@@ -583,12 +704,17 @@ export function CursorAccountsPage() {
       const isSelected = selected.has(account.id);
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
+      const pendingQuota = isCursorQuotaPendingQuery(account);
       const hasQuotaData = hasCursorQuotaData(account);
       const isBanned = isCursorAccountBanned(account);
       const hasStatusError = (account.status || '').toLowerCase() === 'error';
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
+      const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
+      const quotaAvailUi = resolveCursorQuotaAvailabilityUi(account);
+      const chatProbeUi = resolveCursorChatProbeUi(account);
+      const probingThis = probingChatId === account.id;
 
       return (
         <div
@@ -603,6 +729,14 @@ export function CursorAccountsPage() {
               {maskAccountText(emailText)}
             </span>
             {isCurrent && (<span className="current-tag">{t('accounts.status.current')}</span>)}
+            <span className={`tier-badge ${quotaAvailUi.className}`} title={quotaAvailUi.title}>
+              {quotaAvailUi.label}
+            </span>
+            {chatProbeUi && (
+              <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
+                {chatProbeUi.label}
+              </span>
+            )}
             {hasStatusError && (
               <span className="status-pill warning" title={errorTitle}>
                 <CircleAlert size={12} />
@@ -621,7 +755,13 @@ export function CursorAccountsPage() {
                 {t('accounts.status.forbidden')}
               </span>
             )}
-            <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
+            {planLabel && planLabel !== 'UNKNOWN' ? (
+              <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
+            ) : !quotaError && pendingQuota ? (
+              <span className="tier-badge pending-query" title={pendingBadgeLabel}>
+                {pendingBadgeLabel}
+              </span>
+            ) : null}
           </div>
 
           <div className="account-sub-line">
@@ -640,7 +780,11 @@ export function CursorAccountsPage() {
           )}
 
           <div className="ghcp-quota-section">
-            {hasQuotaData ? (
+            {quotaError ? (
+              <div className="quota-empty" title={quotaError}>
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
+              </div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-credit-item">
                   <div className="quota-header">
@@ -697,6 +841,8 @@ export function CursorAccountsPage() {
                   </div>
                 </div>
               </>
+            ) : pendingQuota ? (
+              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}
@@ -714,6 +860,14 @@ export function CursorAccountsPage() {
               </button>
               <button className="card-action-btn" onClick={() => handleRefresh(account.id)} disabled={refreshing === account.id} title={t('common.shared.refreshQuota', '刷新配额')}>
                 <RotateCw size={14} className={refreshing === account.id ? 'loading-spinner' : ''} />
+              </button>
+              <button
+                className="card-action-btn"
+                onClick={() => handleProbeChat(account.id)}
+                disabled={probingThis || probingChatBatch || isBanned}
+                title={t('cursor.chatProbe.action', '对话验活（真实 Agent CLI）')}
+              >
+                {probingThis ? <RefreshCw size={14} className="loading-spinner" /> : <MessageSquare size={14} />}
               </button>
               <button
                 className="card-action-btn export-btn"
@@ -735,7 +889,7 @@ export function CursorAccountsPage() {
     items.map((account) => {
       const displayEmail = resolveDisplayEmail(account);
       const emailText = displayEmail || account.id;
-      const authIdText = (account.auth_id || '').trim();
+      const authIdText = getCursorAccountQuotaPoolId(account);
       const maskedAuthIdText = authIdText ? maskAccountText(authIdText) : '--';
       const planLabel = resolvePlanLabel(account);
       const total = resolveTotalQuota(account);
@@ -750,11 +904,16 @@ export function CursorAccountsPage() {
       const isCurrent = currentAccountId === account.id;
       const isBanned = isCursorAccountBanned(account);
       const quotaError = account.quota_query_last_error?.trim();
+      const pendingQuota = isCursorQuotaPendingQuery(account);
       const hasQuotaData = hasCursorQuotaData(account);
       const hasStatusError = (account.status || '').toLowerCase() === 'error';
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
+      const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
+      const quotaAvailUi = resolveCursorQuotaAvailabilityUi(account);
+      const chatProbeUi = resolveCursorChatProbeUi(account);
+      const probingThis = probingChatId === account.id;
 
       return (
         <tr key={groupKey ? `${groupKey}-${account.id}` : account.id} className={`${isCurrent ? 'current' : ''} ${isBanned ? 'disabled' : ''}`}>
@@ -764,6 +923,14 @@ export function CursorAccountsPage() {
               <div className="account-main-line">
                 <span className="account-email-text" title={maskAccountText(emailText)}>{maskAccountText(emailText)}</span>
                 {isCurrent && <span className="mini-tag current">{t('accounts.status.current')}</span>}
+                <span className={`tier-badge ${quotaAvailUi.className}`} title={quotaAvailUi.title}>
+                  {quotaAvailUi.label}
+                </span>
+                {chatProbeUi && (
+                  <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
+                    {chatProbeUi.label}
+                  </span>
+                )}
               </div>
               {(hasStatusError || isBanned) && (
                 <div className="account-sub-line">
@@ -790,9 +957,21 @@ export function CursorAccountsPage() {
               )}
             </div>
           </td>
-          <td><span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span></td>
           <td>
-            {hasQuotaData ? (
+            {planLabel && planLabel !== 'UNKNOWN' ? (
+              <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
+            ) : !quotaError && pendingQuota ? (
+              <span className="tier-badge pending-query" title={pendingBadgeLabel}>
+                {pendingBadgeLabel}
+              </span>
+            ) : null}
+          </td>
+          <td>
+            {quotaError ? (
+              <div className="quota-empty" title={quotaError}>
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
+              </div>
+            ) : hasQuotaData ? (
               <div className="quota-item windsurf-table-credit-item">
                 <div className="quota-header">
                   <span className="quota-name">Total Usage</span>
@@ -812,12 +991,18 @@ export function CursorAccountsPage() {
                   <div className={`quota-progress-bar ${total.quotaClass}`} style={{ width: `${Math.min(total.percentage, 100)}%` }} />
                 </div>
               </div>
+            ) : pendingQuota ? (
+              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}
           </td>
           <td>
-            {hasQuotaData ? (
+            {quotaError ? (
+              <div className="quota-empty" title={quotaError}>
+                {t('common.shared.quota.queryFailed', '配额查询失败')}
+              </div>
+            ) : hasQuotaData ? (
               <>
                 <div className="quota-item windsurf-table-credit-item">
                   <div className="quota-header">
@@ -852,6 +1037,8 @@ export function CursorAccountsPage() {
                   </div>
                 </div>
               </>
+            ) : pendingQuota ? (
+              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}
@@ -867,6 +1054,14 @@ export function CursorAccountsPage() {
               </button>
               <button className="action-btn" onClick={() => handleRefresh(account.id)} disabled={refreshing === account.id} title={t('common.shared.refreshQuota', '刷新配额')}>
                 <RotateCw size={14} className={refreshing === account.id ? 'loading-spinner' : ''} />
+              </button>
+              <button
+                className="action-btn"
+                onClick={() => handleProbeChat(account.id)}
+                disabled={probingThis || probingChatBatch || isBanned}
+                title={t('cursor.chatProbe.action', '对话验活（真实 Agent CLI）')}
+              >
+                {probingThis ? <RefreshCw size={14} className="loading-spinner" /> : <MessageSquare size={14} />}
               </button>
               <button
                 className="action-btn"
@@ -1002,6 +1197,15 @@ export function CursorAccountsPage() {
           <button className="btn btn-secondary icon-only" onClick={handleRefreshAll} disabled={refreshingAll || accounts.length === 0} title={t('common.shared.refreshAll', '刷新全部')} aria-label={t('common.shared.refreshAll', '刷新全部')}>
             <RefreshCw size={14} className={refreshingAll ? 'loading-spinner' : ''} />
           </button>
+          <button
+            className="btn btn-secondary icon-only"
+            onClick={handleProbeChatSelected}
+            disabled={probingChatBatch || selected.size === 0}
+            title={t('cursor.chatProbe.batch', '对话验活所选账号')}
+            aria-label={t('cursor.chatProbe.batch', '对话验活所选账号')}
+          >
+            <MessageSquare size={14} className={probingChatBatch ? 'loading-spinner' : ''} />
+          </button>
           <button className="btn btn-secondary icon-only" onClick={togglePrivacyMode}
             title={privacyModeEnabled ? t('privacy.showSensitive', '显示邮箱') : t('privacy.hideSensitive', '隐藏邮箱')}
             aria-label={privacyModeEnabled ? t('privacy.showSensitive', '显示邮箱') : t('privacy.hideSensitive', '隐藏邮箱')}>
@@ -1013,29 +1217,14 @@ export function CursorAccountsPage() {
             aria-label={exportSelectionCount > 0 ? `${t('common.shared.export.title', '导出')} (${exportSelectionCount})` : t('common.shared.export.title', '导出')}>
             <Upload size={14} />
           </button>
-          <QuickSettingsPopover type="cursor" />
-        </div>
-      </div>
-
-      {filteredAccounts.length > 0 && (
-        <AccountSelectionToolbar
-          selectedCount={selected.size}
-          allSelected={isAllPaginatedSelected}
-          disabled={paginatedIds.length === 0}
-          onToggleSelectAll={() => toggleSelectAll(paginatedIds)}
-          onClearSelection={() => toggleSelectAll(Array.from(selected))}
-          actions={(
-            <button
-              className="btn btn-danger icon-only"
-              onClick={handleBatchDelete}
-              title={`${t('common.delete', '删除')} (${selected.size})`}
-              aria-label={`${t('common.delete', '删除')} (${selected.size})`}
-            >
+          {selected.size > 0 && (
+            <button className="btn btn-danger icon-only" onClick={handleBatchDelete} title={`${t('common.delete', '删除')} (${selected.size})`} aria-label={`${t('common.delete', '删除')} (${selected.size})`}>
               <Trash2 size={14} />
             </button>
           )}
-        />
-      )}
+          <QuickSettingsPopover type="cursor" />
+        </div>
+      </div>
 
       {loading && accounts.length === 0 ? (
         <div className="loading-container"><RefreshCw size={24} className="loading-spinner" /><p>{t('common.loading', '加载中...')}</p></div>
@@ -1146,7 +1335,7 @@ export function CursorAccountsPage() {
       />
 
       {showAddModal && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={closeAddModal}>
           <div className="modal-content ghcp-add-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{t('cursor.addModal.title', '添加 Cursor 账号')}</h2>
@@ -1233,14 +1422,18 @@ export function CursorAccountsPage() {
 
               {addTab === 'token' && (
                 <div className="add-section">
-                  <p className="section-desc">{t('cursor.token.desc', '粘贴您的 Cursor Access Token（JWT）或导出的 JSON 数据。')}</p>
+                  <p className="section-desc">{t('cursor.token.desc', '粘贴 Cursor Access Token（JWT）、导出的 JSON，或 邮箱----auth_id----access_token----refresh_token。')}</p>
                   <details className="token-format-collapse">
                     <summary className="token-format-collapse-summary">{t('cursor.token.formatHint', '必填字段与示例（点击展开）')}</summary>
                     <div className="token-format">
-                      <p className="token-format-required">{t('cursor.token.formatRequired', '单条 Token 直接粘贴 JWT；批量导入使用 JSON 数组格式')}</p>
+                      <p className="token-format-required">{t('cursor.token.formatRequired', '支持三种格式：单条 JWT、JSON、以及 邮箱----auth_id----access_token----refresh_token')}</p>
                       <div className="token-format-group">
                         <div className="token-format-label">{t('cursor.token.singleExample', '单条示例（JWT）')}</div>
                         <pre className="token-format-code">{CURSOR_TOKEN_SINGLE_EXAMPLE}</pre>
+                      </div>
+                      <div className="token-format-group">
+                        <div className="token-format-label">{t('cursor.token.dashedExample', '单条示例（分隔格式）')}</div>
+                        <pre className="token-format-code">{CURSOR_TOKEN_DASHED_EXAMPLE}</pre>
                       </div>
                       <div className="token-format-group">
                         <div className="token-format-label">{t('cursor.token.batchExample', '批量示例（JSON）')}</div>
