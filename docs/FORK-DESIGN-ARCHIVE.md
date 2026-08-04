@@ -401,13 +401,15 @@
 
 ### 2026-08-04（upstream v1.3.16 正式版同步 · 交付 v1.3.18）
 
+- **对照 PR**: https://github.com/aliceemoce/cockpit-tools/pull/15
+
 - **触碰功能**: F-006、F-007、F-008、F-010、F-011；Cursor watch / 轮换调用点保留。
 - **用户目标是否变化**: 否。
 - **本次目的**: 主仓正式发布 **v1.3.16**（`e1ef55ce`）高于已记集成 **v1.3.15**；隔离合并并完成构建/UIA/个人仓 release/网页复核。
 - **实现手段**:
   - 合并前：`origin/sync-upstream-v1.3.15-20260802` @ `612fe2db` + Release exe SHA `42814DE7…` 已在个人仓。
   - 分支 `sync-upstream-v1.3.16-20260804`；merge `94e4bb99` parents=`612fe2db`+`e1ef55ce` → ProductVersion **1.3.18**。
-  - 对照 PR：base=`upstream-v1.3.16-base`（upstream tip strip workflows；OAuth 无法直接推含 workflow 的 `upstream/main` 镜像），head=同步分支。
+  - 对照 PR #15：base=`upstream-v1.3.16-base`（upstream tip strip workflows；OAuth 无法直接推含 workflow 的 `upstream/main` 镜像），head=同步分支。
   - Release `sync-upstream-v1.3.16-20260804` 资产 `cockpit-tools-1.3.18.exe` SHA **`67E971E2…`**。
 - **涉及文件/模块**: Codex/cliproxy/Windows NSIS 快捷方式等上游变更；`provider_token_keeper.rs` / `useProviderAccountsPage.ts` / `pick_cursor_rotation_account` 调用点保留；规则/SCOPE/AGENTS/本档案最新构建记录。
 - **验证方式**: 安装 exe ProductVersion 1.3.18 + SHA `67E971E2…`；PrintWindow 标题 `Cockpit Tools`、Cursor 页 **`ALL (2604)`**（磁盘 2604）；系统浏览器+UIA 复核分支 / PR / Release 资产。
