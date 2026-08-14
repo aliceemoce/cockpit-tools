@@ -205,7 +205,9 @@
         "weekly": "Wöchentliches Kontingent",
         "resetAt": "Zurücksetzung: {{time}}",
         "expiresAt": "Läuft ab am: {{time}}",
-        "leftPercent": "{{value}} % übrig"
+        "leftPercent": "{{value}} % übrig",
+        "pendingQueryBadge": "Kontingent nicht abgefragt",
+        "pendingQuery": "Kontingent ausstehend"
       },
       "subtitle": "Verwalte deine GitHub Copilot-Konten",
       "time": {

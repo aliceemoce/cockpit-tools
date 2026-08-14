@@ -3,6 +3,7 @@ import { PlatformInstancesContent } from '../components/platform/PlatformInstanc
 import { useCursorInstanceStore } from '../stores/useCursorInstanceStore';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
 import type { CursorAccount } from '../types/cursor';
+import { isCursorQuotaPendingQuery } from '../types/cursor';
 import { usePlatformRuntimeSupport } from '../hooks/usePlatformRuntimeSupport';
 import {
   buildCursorAccountPresentation,
@@ -48,6 +49,18 @@ export function CursorInstancesContent({
       renderAccountQuotaPreview={renderCursorQuotaPreview}
       renderAccountBadge={(account) => {
         const presentation = buildCursorAccountPresentation(account, t);
+        const quotaError = (account.quota_query_last_error || '').trim();
+        if (!quotaError && isCursorQuotaPendingQuery(account)) {
+          const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
+          return (
+            <span className="instance-plan-badge cursor-plan-badge pending-query" title={pendingBadgeLabel}>
+              {pendingBadgeLabel}
+            </span>
+          );
+        }
+        if (!presentation.planLabel || presentation.planLabel.toUpperCase() === 'UNKNOWN') {
+          return null;
+        }
         return (
           <span className={`instance-plan-badge cursor-plan-badge ${presentation.planClass}`}>
             {presentation.planLabel}
@@ -63,7 +76,7 @@ export function CursorInstancesContent({
       unsupportedTitleKey="common.shared.instances.unsupported.title"
       unsupportedTitleDefault="暂不支持当前系统"
       unsupportedDescKey="cursor.instances.unsupported.descPlatform"
-      unsupportedDescDefault="Cursor 应用多开仅支持 macOS、Windows 和 Linux。"
+      unsupportedDescDefault="Cursor 多开实例仅支持 macOS、Windows 和 Linux。"
     />
   );
 }

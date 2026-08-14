@@ -200,7 +200,9 @@
         "weekly": "Hạn mức tuần",
         "resetAt": "Đặt lại: {{time}}",
         "expiresAt": "Hết hạn lúc: {{time}}",
-        "leftPercent": "Còn {{value}}%"
+        "leftPercent": "Còn {{value}}%",
+        "pendingQueryBadge": "Chưa truy vấn hạn mức",
+        "pendingQuery": "Hạn mức đang chờ"
       },
       "subtitle": "Quản lý các tài khoản GitHub Copilot",
       "time": {

@@ -205,7 +205,9 @@
         "weekly": "Недельная квота",
         "resetAt": "Сброс: {{time}}",
         "expiresAt": "Истекает: {{time}}",
-        "leftPercent": "Осталось {{value}}%"
+        "leftPercent": "Осталось {{value}}%",
+        "pendingQueryBadge": "Квота не запрошена",
+        "pendingQuery": "Квота ожидает запроса"
       },
       "subtitle": "Управляйте аккаунтами GitHub Copilot",
       "time": {

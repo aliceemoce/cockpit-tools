@@ -1,0 +1,59 @@
+---
+description: Cockpit fork 部署、GitHub 同步、历史要求主档不可只留本机
+alwaysApply: true
+---
+
+# Cockpit：部署、GitHub、历史要求
+
+## 覆盖安装路径（硬禁止）
+
+| 操作 | 结果 |
+|------|------|
+| 仅 `cargo build` 后 `Copy-Item target\debug\cockpit-tools.exe` → `%LocalAppData%\Cockpit Tools\` | **禁止**；WebView「网络错误」 |
+| `npm run build` + `npm run tauri build`（release OOM 时 `-- --debug`）后覆盖安装 | **唯一允许**的 Agent 自部署路径 |
+
+覆盖后须核对：安装 exe SHA、`Cockpit Tools` 窗口 WebView **非**「localhost 网络错误」。
+
+## GitHub 同步（硬要求）
+
+fork 功能改动完成（或用户明确要求上传）时：
+
+1. **必须 commit + push** 到 `origin`（`fork-update-github-sync.mdc`）
+2. **必须纳入版本库**：`.cursor/user-history-requirements.md`、`.cursor/rules/*.mdc`（工作区规则）、触及功能的源码
+3. **禁止**只写本机 `user-history-requirements.md` 却不提交——GitHub 上看不到 = 历史要求未备份
+4. **禁止**提交：`scripts/_release_staging/*.exe`、截图、leveldb 备份、`__pycache__`、token、`.env`
+
+回复须写：**仓库 URL、分支、commit hash**。
+
+## 分支（硬禁止推旧分支）
+
+**禁止**把新的 fork 功能 / 历史要求 / 规则改动 **commit 或 push 到旧 integrate/合并基线分支**。
+
+| 类别 | 示例 | Agent 行为 |
+|------|------|----------|
+| **旧分支（禁止新 push）** | `integrate-upstream-v0.26.5-20260622` 等历史合并/对照分支 | 仅只读对照；**不得**再 `git push` 新提交上去 |
+| **新分支（必须）** | `fork-20260630` 或 `fork-YYYYMMDD-简短说明` | 用户要求上传或 fork 入库时：**先** `git checkout -b fork-YYYYMMDD-…`，再 commit + `git push -u origin <新分支>` |
+
+push 前须 `git branch --show-current` 核对当前分支**不是**旧 integrate 分支。  
+用户未指定分支名时，默认用 **任务日期** `fork-YYYYMMDD`（例：6/30 任务 → `fork-20260630`）。
+
+## 对比「改之前」的口径
+
+- **禁止**用 git `HEAD` 提交冒充「用户一直在用的版本」；用户日常 exe 多来自**未提交工作区**编译。
+- 宣称「多出来/没有」须基于：**旧安装包 SHA 字符串对比**或用户指定的锚点 exe，不得幻想。
+
+## 未用户开口禁止新增
+
+- 多开实例窗口配色、`cursor_profile_theme` 类模块
+- `ShowWindow(SW_HIDE)` 托盘方案
+- `sync_sidebar_state_from_default_to_profile` 侧栏复制
+- 用 git 提交差异表代替对用户行为的说明
+
+## Cursor main.js
+
+- 永久禁用 MacAddress `/*csp2*/` patch
+- 写入前 `node --check`；坏则从 `%USERPROFILE%\.cursor-backups\main.js.bak` 恢复
+
+## 全局技能
+
+触达切号 / 多开 Play / 覆盖安装时须读：`~/.cursor/skills/cockpit-cursor-switch-main-js/SKILL.md`
