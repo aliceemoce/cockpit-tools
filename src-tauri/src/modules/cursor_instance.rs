@@ -312,6 +312,7 @@ pub fn create_instance(params: CreateInstanceParams) -> Result<InstanceProfile, 
         created_at: Utc::now().timestamp_millis(),
         last_launched_at: None,
         last_pid: None,
+        app_path: default_multi_cursor_app_path(),
     };
 
     store.instances.push(instance.clone());
@@ -529,6 +530,111 @@ fn extract_user_data_dir(args: &[OsString]) -> Option<String> {
     None
 }
 
+#[cfg(not(target_os = "macos"))]
+fn extract_cdp_port_from_args(args: &[std::ffi::OsString]) -> Option<u16> {
+    let tokens: Vec<String> = args
+        .iter()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect();
+    for token in &tokens {
+        if let Some(rest) = token.strip_prefix("--remote-debugging-port=") {
+            if let Ok(port) = rest.trim().parse::<u16>() {
+                return Some(port);
+            }
+        }
+    }
+    for (index, token) in tokens.iter().enumerate() {
+        if token == "--remote-debugging-port" {
+            if let Some(next) = tokens.get(index + 1) {
+                if let Ok(port) = next.trim().parse::<u16>() {
+                    return Some(port);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 解析 profile 对应 CDP 端口：先读总控注册表，再从运行中 Cursor 命令行补全。
+pub fn resolve_cdp_port_for_user_data_dir(user_data_dir: &str) -> Option<u16> {
+    if let Some(port) = crate::modules::cursor_cdp_control::get_cdp_port(user_data_dir) {
+        return Some(port);
+    }
+
+    let target = normalize_path_for_compare(user_data_dir);
+    if target.is_empty() {
+        return None;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+        let mut system = System::new();
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing()
+                .with_exe(UpdateKind::OnlyIfNotSet)
+                .with_cmd(UpdateKind::OnlyIfNotSet),
+        );
+
+        for (pid, process) in system.processes() {
+            let name = process.name().to_string_lossy().to_lowercase();
+            let exe_path = process
+                .exe()
+                .and_then(|p| p.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let args_line = process
+                .cmd()
+                .iter()
+                .map(|arg| arg.to_string_lossy().to_lowercase())
+                .collect::<Vec<String>>()
+                .join(" ");
+
+            #[cfg(target_os = "windows")]
+            let is_cursor = name == "cursor.exe"
+                || exe_path.ends_with("\\cursor.exe")
+                || (name == "electron.exe" && exe_path.contains("\\cursor\\"));
+            #[cfg(target_os = "linux")]
+            let is_cursor = name.contains("cursor") || exe_path.contains("/cursor");
+
+            if !is_cursor || is_helper_process(&name, &args_line) {
+                continue;
+            }
+
+            let dir = extract_user_data_dir(process.cmd()).map(|value| normalize_path_for_compare(&value));
+            let matches = match dir.as_ref() {
+                Some(actual) => actual == &target,
+                None => {
+                    // 默认 profile：无 --user-data-dir 参数
+                    get_default_cursor_user_data_dir()
+                        .ok()
+                        .map(|d| normalize_path_for_compare(&d.to_string_lossy()) == target)
+                        .unwrap_or(false)
+                }
+            };
+            if !matches {
+                continue;
+            }
+
+            if let Some(port) = extract_cdp_port_from_args(process.cmd()) {
+                crate::modules::cursor_cdp_control::register_cdp_port(user_data_dir, port);
+                modules::logger::log_info(&format!(
+                    "[Cursor CDP] 从运行进程补登记 CDP: pid={}, port={}, dir={}",
+                    pid.as_u32(),
+                    port,
+                    user_data_dir
+                ));
+                return Some(port);
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(target_os = "macos")]
 fn split_command_tokens(command_line: &str) -> Vec<String> {
     let mut tokens = Vec::new();
@@ -743,58 +849,61 @@ fn collect_running_process_exe_by_pid() -> HashMap<u32, String> {
     map
 }
 
-fn resolve_expected_cursor_launch_path_for_match() -> Option<String> {
-    let launch_path = match resolve_cursor_launch_path() {
-        Ok(path) => path,
-        Err(err) => {
-            modules::logger::log_warn(&format!(
-                "[Cursor Resolve] 启动路径未配置或无效，跳过 PID 匹配: {}",
-                err
-            ));
-            return None;
+fn resolve_expected_cursor_launch_paths_for_match() -> Vec<String> {
+    let mut paths = Vec::new();
+    if let Ok(path) = resolve_cursor_launch_path() {
+        let normalized = normalize_path_for_compare(path.to_string_lossy().as_ref());
+        if !normalized.is_empty() {
+            paths.push(normalized);
         }
-    };
-    let normalized = normalize_path_for_compare(launch_path.to_string_lossy().as_ref());
-    if normalized.is_empty() {
-        modules::logger::log_warn("[Cursor Resolve] 启动路径为空，跳过 PID 匹配");
-        return None;
     }
-    Some(normalized)
+    if let Some(multi) = multi_cursor_install_exe() {
+        let normalized = normalize_path_for_compare(multi.to_string_lossy().as_ref());
+        if !normalized.is_empty() && !paths.iter().any(|p| p == &normalized) {
+            paths.push(normalized);
+        }
+    }
+    if paths.is_empty() {
+        modules::logger::log_warn("[Cursor Resolve] 无可用 Cursor 启动路径，跳过 PID 匹配");
+    }
+    paths
 }
 
 fn filter_cursor_entries_by_launch_path(
     entries: Vec<(u32, Option<String>)>,
-    expected: Option<String>,
+    expected_paths: Vec<String>,
 ) -> Vec<(u32, Option<String>)> {
     if entries.is_empty() {
         return entries;
     }
-    let Some(expected) = expected else {
+    if expected_paths.is_empty() {
         return Vec::new();
-    };
+    }
     let exe_by_pid = collect_running_process_exe_by_pid();
     let mut result = Vec::new();
     let mut missing_exe = 0usize;
     let mut path_mismatch = 0usize;
     for (pid, dir) in entries {
         match exe_by_pid.get(&pid) {
-            Some(actual) if actual == &expected => result.push((pid, dir)),
+            Some(actual) if expected_paths.iter().any(|expected| expected == actual) => {
+                result.push((pid, dir))
+            }
             Some(_) => path_mismatch += 1,
             None => missing_exe += 1,
         }
     }
     if result.is_empty() {
         modules::logger::log_warn(&format!(
-            "[Cursor Resolve] 启动路径硬匹配未命中：expected={}, path_mismatch={}, missing_exe={}",
-            expected, path_mismatch, missing_exe
+            "[Cursor Resolve] 启动路径硬匹配未命中：expected={:?}, path_mismatch={}, missing_exe={}",
+            expected_paths, path_mismatch, missing_exe
         ));
     }
     result
 }
 
 pub fn collect_cursor_process_entries() -> Vec<(u32, Option<String>)> {
-    let expected_launch = resolve_expected_cursor_launch_path_for_match();
-    if expected_launch.is_none() {
+    let expected_launchs = resolve_expected_cursor_launch_paths_for_match();
+    if expected_launchs.is_empty() {
         return Vec::new();
     }
 
@@ -890,7 +999,7 @@ pub fn collect_cursor_process_entries() -> Vec<(u32, Option<String>)> {
 
     let mut result: Vec<(u32, Option<String>)> = entries.into_iter().collect();
     result.sort_by_key(|(pid, _)| *pid);
-    filter_cursor_entries_by_launch_path(result, expected_launch)
+    filter_cursor_entries_by_launch_path(result, expected_launchs)
 }
 
 fn pick_preferred_pid(mut pids: Vec<u32>) -> Option<u32> {
@@ -1139,6 +1248,12 @@ fn detect_cursor_exec_path() -> Option<PathBuf> {
                 candidates.push(
                     Path::new(&local_appdata)
                         .join("Programs")
+                        .join("cursor")
+                        .join("Cursor.exe"),
+                );
+                candidates.push(
+                    Path::new(&local_appdata)
+                        .join("Programs")
                         .join("Cursor")
                         .join("Electron.exe"),
                 );
@@ -1228,6 +1343,93 @@ pub fn resolve_cursor_launch_path() -> Result<PathBuf, String> {
     }
 
     Err("APP_PATH_NOT_FOUND:cursor".to_string())
+}
+
+/// 多开隔离安装树（未注入续杯管家热换）。设计口径：默认走全局 Cursor 路径；多开走本树。
+pub fn multi_cursor_install_exe() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let candidates = [
+            PathBuf::from(r"C:\Cursor-Multi\Cursor.exe"),
+            PathBuf::from(r"C:\Cursor-Multi\cursor.exe"),
+        ];
+        for candidate in candidates {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+pub fn default_multi_cursor_app_path() -> Option<String> {
+    multi_cursor_install_exe().map(|p| normalize_cursor_path_for_config(&p))
+}
+
+/// 多开启动路径：实例自带路径 > Cursor-Multi > 全局配置（仅作回退）。
+pub fn resolve_multi_instance_launch_path(instance_app_path: Option<&str>) -> Result<PathBuf, String> {
+    if let Some(raw) = instance_app_path.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(normalized) = normalize_custom_path(raw) {
+            if let Some(exec) = resolve_macos_exec_path(&normalized) {
+                if exec.is_file() && path_looks_like_cursor(&exec) {
+                    return Ok(exec);
+                }
+            }
+        }
+    }
+    if let Some(multi) = multi_cursor_install_exe() {
+        return Ok(multi);
+    }
+    resolve_cursor_launch_path()
+}
+
+/// 确保多开实例绑定干净安装树路径并落盘。
+pub fn ensure_instance_bound_to_multi_install(instance_id: &str) -> Result<InstanceProfile, String> {
+    let Some(multi_path) = default_multi_cursor_app_path() else {
+        let _lock = CURSOR_INSTANCE_STORE_LOCK
+            .lock()
+            .map_err(|_| "无法获取实例锁")?;
+        let store = load_instance_store()?;
+        return store
+            .instances
+            .into_iter()
+            .find(|instance| instance.id == instance_id)
+            .ok_or_else(|| "实例不存在".to_string());
+    };
+    let _lock = CURSOR_INSTANCE_STORE_LOCK
+        .lock()
+        .map_err(|_| "无法获取实例锁")?;
+    let mut store = load_instance_store()?;
+    let index = store
+        .instances
+        .iter()
+        .position(|instance| instance.id == instance_id)
+        .ok_or("实例不存在")?;
+    let current = store.instances[index]
+        .app_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| normalize_path_for_compare(s));
+    let multi_norm = normalize_path_for_compare(&multi_path);
+    let already_bound = current
+        .as_ref()
+        .map(|c| c == &multi_norm || c.contains("cursor-multi"))
+        .unwrap_or(false);
+    if !already_bound {
+        store.instances[index].app_path = Some(multi_path);
+        save_instance_store(&store)?;
+        modules::logger::log_info(&format!(
+            "[Cursor Instance] 多开绑定干净安装: id={}, app_path={:?}",
+            instance_id,
+            store.instances[index].app_path
+        ));
+    }
+    Ok(store.instances[index].clone())
 }
 
 pub fn ensure_cursor_launch_path_configured() -> Result<(), String> {
@@ -1494,6 +1696,34 @@ fn spawn_cursor_windows(
     } else {
         cmd.arg("--reuse-window");
     }
+    
+    // 检查 extra_args 是否已包含 --remote-debugging-port
+    let mut allocated_cdp_port: Option<u16> = None;
+    let has_cdp_port = extra_args.iter().any(|arg| {
+        arg.contains("--remote-debugging-port") || arg.contains("--remote-debugging-address")
+    });
+    
+    // 如果没有 CDP 端口，自动添加
+    if !has_cdp_port {
+        // 分配一个动态端口用于 CDP
+        let cdp_port = std::net::TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| format!("分配 CDP 端口失败: {}", e))?
+            .local_addr()
+            .map_err(|e| format!("读取 CDP 端口失败: {}", e))?
+            .port();
+        
+        allocated_cdp_port = Some(cdp_port);
+        cmd.arg("--remote-debugging-address=127.0.0.1");
+        cmd.arg(format!("--remote-debugging-port={}", cdp_port));
+        // Chromium 新版 CDP 须显式放行 WebSocket 来源，否则外部/内置 CDP 客户端均 403。
+        cmd.arg("--remote-allow-origins=*");
+        
+        modules::logger::log_info(&format!(
+            "[Cursor Start] 自动启用 CDP: port={}",
+            cdp_port
+        ));
+    }
+    
     for arg in extra_args {
         if !arg.trim().is_empty() {
             cmd.arg(arg.trim());
@@ -1502,6 +1732,12 @@ fn spawn_cursor_windows(
     append_workspace_arg(&mut cmd, workspace);
     let child =
         spawn_command_with_trace(&mut cmd).map_err(|e| format!("启动 Cursor 失败: {}", e))?;
+    
+    // 注册 CDP 端口
+    if let Some(cdp_port) = allocated_cdp_port {
+        crate::modules::cursor_cdp_control::register_cdp_port(user_data_dir, cdp_port);
+    }
+    
     let probe_started = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(8);
     while probe_started.elapsed() < timeout {
@@ -1602,11 +1838,35 @@ pub fn start_cursor_with_args_with_new_window(
     use_new_window: bool,
     workspace: Option<&Path>,
 ) -> Result<u32, String> {
+    start_cursor_with_args_with_new_window_at(
+        user_data_dir,
+        extra_args,
+        use_new_window,
+        workspace,
+        None,
+    )
+}
+
+pub fn start_cursor_with_args_with_new_window_at(
+    user_data_dir: &str,
+    extra_args: &[String],
+    use_new_window: bool,
+    workspace: Option<&Path>,
+    launch_path_override: Option<&Path>,
+) -> Result<u32, String> {
     let target = user_data_dir.trim();
     if target.is_empty() {
         return Err("实例目录为空，无法启动".to_string());
     }
-    let launch_path = resolve_cursor_launch_path()?;
+    let launch_path = match launch_path_override {
+        Some(path) if path.is_file() => path.to_path_buf(),
+        _ => resolve_cursor_launch_path()?,
+    };
+    modules::logger::log_info(&format!(
+        "[Cursor Start] exe={}, user_data_dir={}",
+        launch_path.display(),
+        target
+    ));
     if let Some(ws) = workspace {
         modules::logger::log_info(&format!("[Cursor Start] CLI 工作区: {}", ws.display()));
     }
@@ -1731,11 +1991,15 @@ fn resolve_cursor_launch_path_nirvana_go() -> Result<PathBuf, String> {
         let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
         let pf = std::env::var("ProgramFiles").unwrap_or_default();
         let pfx86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
+        // 与 detect 同序：Program Files 默认安装优先于 Local 用户目录安装
         let candidates = [
-            PathBuf::from(&local).join("Programs/Cursor/Cursor.exe"),
-            PathBuf::from(&local).join("Cursor/Cursor.exe"),
             PathBuf::from(&pf).join("Cursor/Cursor.exe"),
+            PathBuf::from(&pf).join("cursor/Cursor.exe"),
             PathBuf::from(&pfx86).join("Cursor/Cursor.exe"),
+            PathBuf::from(&pfx86).join("cursor/Cursor.exe"),
+            PathBuf::from(&local).join("Programs/Cursor/Cursor.exe"),
+            PathBuf::from(&local).join("Programs/cursor/Cursor.exe"),
+            PathBuf::from(&local).join("Cursor/Cursor.exe"),
         ];
         for candidate in candidates {
             if candidate.is_file() {

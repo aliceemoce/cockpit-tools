@@ -106,6 +106,7 @@ pub async fn github_copilot_list_instances() -> Result<Vec<InstanceProfileView>,
         initialized: is_profile_initialized(&default_dir.to_string_lossy()),
         is_default: true,
         follow_local_account: false,
+            app_path: None,
     });
 
     Ok(result)
@@ -174,6 +175,7 @@ pub async fn github_copilot_update_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -263,6 +265,7 @@ pub async fn github_copilot_start_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -335,6 +338,7 @@ pub async fn github_copilot_stop_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 

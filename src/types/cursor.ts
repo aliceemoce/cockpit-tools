@@ -662,6 +662,10 @@ export function resolveCursorQuotaAvailability(
   if (totalPct == null) {
     return 'no_data';
   }
+  // 假 0%：未对话验活前不得标「有剩余」（闲置 free 号 API 常回 0%）
+  if (typeof totalPct === 'number' && Number.isFinite(totalPct) && totalPct <= 0) {
+    return 'needs_verify';
+  }
   return 'usable';
 }
 
@@ -715,9 +719,12 @@ export function resolveCursorQuotaAvailabilityUi(
       };
     case 'needs_verify':
       return {
-        label: '额度未知',
+        label: '核实中',
         className: 'quota-unknown',
-        title: `缺少 totalPercentUsed${totalHint}`,
+        title:
+          typeof total === 'number' && Number.isFinite(total) && total <= 0
+            ? `显示 0% 用量但未对话验活，不得当有剩余${totalHint}${autoFull}`
+            : `缺少 totalPercentUsed${totalHint}`,
       };
     case 'query_failed':
       return {

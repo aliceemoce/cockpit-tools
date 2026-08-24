@@ -83,6 +83,7 @@ pub async fn qoder_list_instances() -> Result<Vec<InstanceProfileView>, String> 
         initialized: is_profile_initialized(&default_dir.to_string_lossy()),
         is_default: true,
         follow_local_account: false,
+            app_path: None,
     });
 
     Ok(result)
@@ -147,6 +148,7 @@ pub async fn qoder_update_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -216,6 +218,7 @@ pub async fn qoder_start_instance(instance_id: String) -> Result<InstanceProfile
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -278,6 +281,7 @@ pub async fn qoder_stop_instance(instance_id: String) -> Result<InstanceProfileV
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 

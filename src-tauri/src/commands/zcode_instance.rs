@@ -32,6 +32,7 @@ fn default_view() -> Result<InstanceProfileView, String> {
         initialized: modules::zcode_instance::is_profile_initialized(&dir, true),
         is_default: true,
         follow_local_account: false,
+        app_path: None,
     })
 }
 

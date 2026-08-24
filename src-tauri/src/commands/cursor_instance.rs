@@ -330,6 +330,118 @@ fn spawn_switch_post_audit(
                 let Some(account) = modules::cursor_account::load_account(&account_id) else {
                     return;
                 };
+
+                // 粘号复查：默认无感以 get-token/seamless_state 为准（侧栏热替换）；只认磁盘 cachedEmail 会误报挤掉管家。
+                if trace.instance_id == DEFAULT_INSTANCE_ID {
+                    // 等同步 reassert + 至少一轮续盖后再判，避免刚写完就被管家盖回却报 ok。
+                    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                    let expected = account.email.trim().to_lowercase();
+                    let mut hot = modules::cursor_account::read_wuxian_get_token_email();
+                    for _ in 0..5 {
+                        if let Ok(Some(ref e)) = hot {
+                            if e.trim().to_lowercase() == expected {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        hot = modules::cursor_account::read_wuxian_get_token_email();
+                    }
+                    let disk = modules::cursor_account::read_default_cached_email();
+                    match (hot, disk) {
+                        (Ok(Some(hot_email)), disk_res) => {
+                            let got_hot = hot_email.trim().to_lowercase();
+                            let disk_email = disk_res.ok().flatten();
+                            let disk_ok = disk_email
+                                .as_ref()
+                                .map(|e| e.trim().to_lowercase() == expected)
+                                .unwrap_or(false);
+                            if got_hot == expected {
+                                let note = if disk_ok {
+                                    None
+                                } else {
+                                    Some(format!(
+                                        "热替换已粘住; 磁盘cachedEmail暂不一致={}",
+                                        disk_email.unwrap_or_default()
+                                    ))
+                                };
+                                modules::cursor_switch_audit::write_stick_check(
+                                    &trace,
+                                    &account,
+                                    "ok",
+                                    note.as_deref(),
+                                );
+                            } else {
+                                let err = format!(
+                                    "粘号失败(热替换未挤掉管家): 期望={} get-token={} 磁盘={}",
+                                    account.email,
+                                    hot_email,
+                                    disk_email.unwrap_or_default()
+                                );
+                                modules::cursor_switch_audit::write_stick_check(
+                                    &trace,
+                                    &account,
+                                    "stick_fail",
+                                    Some(&err),
+                                );
+                                modules::cursor_switch_audit::write_ui_error_mark(
+                                    &account.id,
+                                    &account.email,
+                                    &err,
+                                );
+                            }
+                        }
+                        (Ok(None), Ok(Some(cached))) => {
+                            let got = cached.trim().to_lowercase();
+                            if got == expected {
+                                modules::cursor_switch_audit::write_stick_check(
+                                    &trace,
+                                    &account,
+                                    "ok",
+                                    Some("get-token不可用; 仅磁盘cachedEmail一致"),
+                                );
+                            } else {
+                                let err = format!(
+                                    "粘号失败: 期望={} 实际={}",
+                                    account.email, cached
+                                );
+                                modules::cursor_switch_audit::write_stick_check(
+                                    &trace,
+                                    &account,
+                                    "stick_fail",
+                                    Some(&err),
+                                );
+                                modules::cursor_switch_audit::write_ui_error_mark(
+                                    &account.id,
+                                    &account.email,
+                                    &err,
+                                );
+                            }
+                        }
+                        (Ok(None), Ok(None)) => {
+                            let err = "粘号失败: get-token与cachedEmail皆空".to_string();
+                            modules::cursor_switch_audit::write_stick_check(
+                                &trace,
+                                &account,
+                                "stick_fail",
+                                Some(&err),
+                            );
+                            modules::cursor_switch_audit::write_ui_error_mark(
+                                &account.id,
+                                &account.email,
+                                &err,
+                            );
+                        }
+                        (Err(err), _) | (Ok(None), Err(err)) => {
+                            modules::cursor_switch_audit::write_stick_check(
+                                &trace,
+                                &account,
+                                "err",
+                                Some(&err),
+                            );
+                        }
+                    }
+                }
+
                 match modules::cursor_account::probe_cursor_account_live_auth(&account_id).await {
                     Ok(()) => modules::cursor_switch_audit::write_probe_post(
                         &trace, &account, "ok", None,
@@ -432,6 +544,7 @@ pub async fn cursor_list_instances() -> Result<Vec<InstanceProfileView>, String>
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+            app_path: None,
         },
     );
 
@@ -503,6 +616,7 @@ pub async fn cursor_update_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+            app_path: None,
         });
     }
 
@@ -582,6 +696,32 @@ pub async fn cursor_start_instance_prepared(
             modules::logger::log_info("[Cursor Instance Start] scoped default close done");
         } else {
             modules::logger::log_info("[Cursor Switch] 切号后跳过二次 close，直接启动默认实例");
+            // 无感：默认窗已在跑则不二次启动，避免抢焦点/开新窗。
+            if let Some(existing_pid) = modules::cursor_instance::resolve_cursor_pid(
+                default_settings.last_pid,
+                Some(&default_dir_str),
+            ) {
+                modules::logger::log_info(&format!(
+                    "[Cursor Switch] 默认实例已在运行，跳过启动: pid={}",
+                    existing_pid
+                ));
+                return Ok(InstanceProfileView {
+                    id: DEFAULT_INSTANCE_ID.to_string(),
+                    name: String::new(),
+                    user_data_dir: default_dir_str,
+                    working_dir: None,
+                    extra_args: default_settings.extra_args,
+                    bind_account_id: default_settings.bind_account_id,
+                    created_at: 0,
+                    last_launched_at: None,
+                    last_pid: Some(existing_pid),
+                    running: true,
+                    initialized: is_profile_initialized(&default_dir.to_string_lossy()),
+                    is_default: true,
+                    follow_local_account: false,
+                    app_path: None,
+                });
+            }
         }
 
         let extra_args = modules::process::parse_extra_args(&default_settings.extra_args);
@@ -617,6 +757,7 @@ pub async fn cursor_start_instance_prepared(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+            app_path: None,
         });
     }
 
@@ -626,6 +767,9 @@ pub async fn cursor_start_instance_prepared(
         .into_iter()
         .find(|item| item.id == instance_id)
         .ok_or("实例不存在")?;
+
+    let instance =
+        modules::cursor_instance::ensure_instance_bound_to_multi_install(&instance.id).unwrap_or(instance);
 
     modules::logger::log_info(&format!(
         "[Cursor Instance Start] begin id={}, profile={}, last_pid={:?}",
@@ -659,6 +803,20 @@ pub async fn cursor_start_instance_prepared(
             "[Cursor Switch] 切号后跳过二次 close，直接启动实例: {}",
             instance.id
         ));
+        // 多开无感：实例已在跑则不二次启动（对齐默认无感；对齐续杯不关窗热换）。
+        if let Some(existing_pid) = modules::cursor_instance::resolve_cursor_pid(
+            instance.last_pid,
+            Some(&instance.user_data_dir),
+        ) {
+            modules::logger::log_info(&format!(
+                "[Cursor Switch] 多开实例已在运行，跳过启动: id={}, pid={}",
+                instance.id, existing_pid
+            ));
+            let initialized = is_profile_initialized(&instance.user_data_dir);
+            let mut view = InstanceProfileView::from_profile(instance, true, initialized);
+            view.last_pid = Some(existing_pid);
+            return Ok(view);
+        }
     }
 
     let extra_args = modules::process::parse_extra_args(&instance.extra_args);
@@ -668,20 +826,38 @@ pub async fn cursor_start_instance_prepared(
     );
     let use_new_window =
         modules::cursor_instance::should_use_new_window_for_profile(&instance.user_data_dir);
+    let launch_exe = modules::cursor_instance::resolve_multi_instance_launch_path(
+        instance.app_path.as_deref(),
+    )?;
+    // 多开：保留管家注入，叠总控优先层，使本窗令牌压过管家全局 get-token。
+    match modules::cursor_hot_priority::ensure_multi_install_cockpit_priority_shim(&launch_exe) {
+        Ok(changed) => modules::logger::log_info(&format!(
+            "[Cursor Priority] 多开优先层 ok changed={} xubei_still={} shim={}",
+            changed,
+            modules::cursor_hot_priority::multi_workbench_still_has_xubei(&launch_exe),
+            modules::cursor_hot_priority::multi_workbench_has_priority_shim(&launch_exe)
+        )),
+        Err(err) => modules::logger::log_warn(&format!(
+            "[Cursor Priority] 多开优先层写入失败: {}",
+            err
+        )),
+    }
     modules::logger::log_info(&format!(
-        "[Cursor Instance Start] launching id={}, use_new_window={}, workspace={}",
+        "[Cursor Instance Start] launching id={}, exe={}, use_new_window={}, workspace={}",
         instance.id,
+        launch_exe.display(),
         use_new_window,
         workspace
             .as_ref()
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "-".to_string())
     ));
-    let pid = modules::cursor_instance::start_cursor_with_args_with_new_window(
+    let pid = modules::cursor_instance::start_cursor_with_args_with_new_window_at(
         &instance.user_data_dir,
         &extra_args,
         use_new_window,
         workspace.as_deref(),
+        Some(launch_exe.as_path()),
     )?;
     modules::logger::log_info(&format!(
         "[Cursor Instance Start] launch returned id={}, pid={}",
@@ -740,6 +916,7 @@ pub async fn cursor_stop_instance(instance_id: String) -> Result<InstanceProfile
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+            app_path: None,
         });
     }
 

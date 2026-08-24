@@ -323,6 +323,7 @@ fn default_view() -> Result<InstanceProfileView, String> {
         initialized: grok_instance::is_profile_initialized(&home),
         is_default: true,
         follow_local_account: settings.follow_local_account,
+        app_path: None,
     })
 }
 

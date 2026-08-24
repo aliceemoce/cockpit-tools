@@ -128,6 +128,7 @@ pub async fn antigravity_legacy_list_instances() -> Result<Vec<InstanceProfileVi
         initialized: modules::antigravity_legacy_instance::is_profile_initialized(&default_dir),
         is_default: true,
         follow_local_account: default_settings.follow_local_account,
+            app_path: None,
     });
 
     Ok(result)
@@ -197,6 +198,7 @@ pub async fn antigravity_legacy_update_instance(
             initialized: modules::antigravity_legacy_instance::is_profile_initialized(&default_dir),
             is_default: true,
             follow_local_account: updated.follow_local_account,
+                    app_path: None,
         });
     }
 
@@ -294,6 +296,7 @@ pub async fn antigravity_legacy_start_instance(
             initialized: modules::antigravity_legacy_instance::is_profile_initialized(&default_dir),
             is_default: true,
             follow_local_account: default_settings.follow_local_account,
+                    app_path: None,
         });
     }
 
@@ -374,6 +377,7 @@ pub async fn antigravity_legacy_stop_instance(
             initialized: modules::antigravity_legacy_instance::is_profile_initialized(&default_dir),
             is_default: true,
             follow_local_account: default_settings.follow_local_account,
+                    app_path: None,
         });
     }
 

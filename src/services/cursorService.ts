@@ -76,6 +76,11 @@ export async function injectCursorAccount(accountId: string): Promise<string> {
   return await invoke('inject_cursor_account', { accountId });
 }
 
+/** 默认自动换号：与多开「启动」同构（自动选号），不指定账号 */
+export async function injectCursorAccountAuto(): Promise<string> {
+  return await invoke('inject_cursor_account_auto');
+}
+
 export async function probeCursorAccountChat(accountId: string): Promise<CursorAccount> {
   return await invoke('probe_cursor_account_chat', { accountId });
 }

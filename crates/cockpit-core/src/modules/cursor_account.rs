@@ -1235,6 +1235,40 @@ pub fn inject_to_cursor(account_id: &str) -> Result<(), String> {
         upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
     }
 
+    let sub = extract_auth_id_from_access_token(&account.access_token);
+    let workos_id = sub
+        .as_ref()
+        .map(|s| s.replace("auth0|", ""))
+        .or_else(|| {
+            account
+                .cursor_auth_raw
+                .as_ref()
+                .and_then(|r| r.get("workosId"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| account.auth_id.clone());
+
+    let user_id = sub.clone().or_else(|| {
+        workos_id
+            .as_ref()
+            .map(|w| if w.starts_with("auth0|") { w.clone() } else { format!("auth0|{}", w) })
+    });
+
+    let auth_id = sub
+        .as_ref()
+        .map(|s| s.replace("auth0|", ""))
+        .or_else(|| workos_id.clone());
+
+    if let Some(ref id) = auth_id {
+        let clean_auth_id = id.replace("auth0|", "");
+        upsert_vscdb_item(&conn, "cursorAuth/authId", &clean_auth_id)?;
+        upsert_vscdb_item(&conn, "cursorAuth/workosId", &clean_auth_id)?;
+    }
+    if let Some(ref uid) = user_id {
+        upsert_vscdb_item(&conn, "cursorAuth/userId", uid)?;
+    }
+
     upsert_vscdb_item(&conn, "cursor.accessToken", &account.access_token)?;
     upsert_vscdb_item(&conn, "cursor.email", &account.email)?;
 
@@ -1265,6 +1299,40 @@ pub fn inject_to_cursor_at_path(db_path: &std::path::Path, account_id: &str) -> 
     }
     if let Some(ref ss) = account.subscription_status {
         upsert_vscdb_item(&conn, "cursorAuth/stripeSubscriptionStatus", ss)?;
+    }
+
+    let sub = extract_auth_id_from_access_token(&account.access_token);
+    let workos_id = sub
+        .as_ref()
+        .map(|s| s.replace("auth0|", ""))
+        .or_else(|| {
+            account
+                .cursor_auth_raw
+                .as_ref()
+                .and_then(|r| r.get("workosId"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| account.auth_id.clone());
+
+    let user_id = sub.clone().or_else(|| {
+        workos_id
+            .as_ref()
+            .map(|w| if w.starts_with("auth0|") { w.clone() } else { format!("auth0|{}", w) })
+    });
+
+    let auth_id = sub
+        .as_ref()
+        .map(|s| s.replace("auth0|", ""))
+        .or_else(|| workos_id.clone());
+
+    if let Some(ref id) = auth_id {
+        let clean_auth_id = id.replace("auth0|", "");
+        upsert_vscdb_item(&conn, "cursorAuth/authId", &clean_auth_id)?;
+        upsert_vscdb_item(&conn, "cursorAuth/workosId", &clean_auth_id)?;
+    }
+    if let Some(ref uid) = user_id {
+        upsert_vscdb_item(&conn, "cursorAuth/userId", uid)?;
     }
 
     upsert_vscdb_item(&conn, "cursor.accessToken", &account.access_token)?;
@@ -1688,7 +1756,11 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, S
                     account.membership_type = Some(mt.to_string());
                 }
             }
-            account.cursor_usage_raw = Some(usage);
+            account.cursor_usage_raw = Some(merge_usage_preserving_nonzero_history(
+                account.cursor_usage_raw.as_ref(),
+                usage,
+                &account.id,
+            ));
             account.quota_query_last_error = None;
             account.quota_query_last_error_at = None;
             usage_refreshed = true;
@@ -1799,6 +1871,44 @@ fn pick_number(value: Option<&Value>, keys: &[&str]) -> Option<f64> {
         }
     }
     None
+}
+
+fn usage_raw_total_percent(raw: &Value) -> Option<f64> {
+    let raw_obj = raw.as_object()?;
+    let plan_value = raw_obj
+        .get("individualUsage")
+        .and_then(|value| value.as_object())
+        .and_then(|value| value.get("plan"))
+        .or_else(|| {
+            raw_obj
+                .get("individual_usage")
+                .and_then(|value| value.as_object())
+                .and_then(|value| value.get("plan"))
+        })
+        .or_else(|| raw_obj.get("planUsage"))
+        .or_else(|| raw_obj.get("plan_usage"));
+    pick_number(plan_value, &["totalPercentUsed", "total_percent_used"])
+}
+
+/// API 新回 0% 不得覆盖磁盘上已有非 0 用量（闲置号假 0% 会冲掉真历史）。
+fn merge_usage_preserving_nonzero_history(
+    prior: Option<&Value>,
+    incoming: Value,
+    account_id: &str,
+) -> Value {
+    let Some(prior) = prior else {
+        return incoming;
+    };
+    let prior_total = usage_raw_total_percent(prior).unwrap_or(0.0);
+    let new_total = usage_raw_total_percent(&incoming).unwrap_or(0.0);
+    if prior_total > 0.5 && new_total <= 0.5 {
+        logger::log_warn(&format!(
+            "[Cursor Refresh] 拒绝用 API 0% 覆盖历史非 0 用量: id={}, prior_total={:.1}, new_total={:.1}",
+            account_id, prior_total, new_total
+        ));
+        return prior.clone();
+    }
+    incoming
 }
 
 fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {

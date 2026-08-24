@@ -1,0 +1,51 @@
+﻿# 新版本必须 UI 验收（硬门槛）
+
+## 适用
+
+凡完成以下任一动作，均视为「制作完成新版本」：
+
+- `npm run tauri build` / release 安装包覆盖 `%LocalAppData%\Cockpit Tools\cockpit-tools.exe`
+- 向用户交付「已编译 / 已修复 / 可用」的 Cockpit 桌面构建
+- 宣称 Cursor 账号页、排序、数量、切号链「已修好」
+
+## 必须做（Agent 自行完成，禁止推给用户）
+
+1. **启动**目标 exe（必要时先停旧进程），确认进程与 SHA 与声称一致。
+2. **UI 只读探测**（MCP：`ui_find_window` → `ui_get_children` / `ui_find_control` → 画面核对）：
+   - `ui_find_window` 锁定 **cockpit-tools.exe** 的 hwnd（与 pid、SHA 一致）
+   - `ui_get_children` / `ui_find_control` **找不到** `ALL`、侧栏 Cursor、Play 等 → **不得**据此声称「已验收」或「构建坏了」；须继续第 4 步画面核对
+   - **验收依据是画面**：锁定 hwnd 的截图里须看见目标页业务内容（如 `ALL (N)`、账号卡）；UIA 树里有没有这些文本 **不算验收**
+3. **锁定窗口**（防认错窗）：
+   - 先 `Get-Process cockpit-tools` 得 **pid** 与 exe **SHA**
+   - `ui_find_window(handle=…)` 或按 pid 枚举顶层窗；`name`/`processId` 单独传参可能找不到，**以 handle + pid 一致为准**
+   - 常见误窗：Cursor IDE、`Codex`、本对话所在编辑器——截到这些 = **验收失败**
+4. **画面核对**（硬门槛，禁止用错图冒充）：
+   - 优先 MCP `ui_screenshot(handle=…)`；**传了 handle 仍可能截到前台窗口**（实测会截到 Cursor/Codex）
+   - **每张截图必须目检**：左上角标题栏须为 **`Cockpit Tools`**，且为目标页（如 Cursor 账号页、`ALL (N)` 可见）；否则该张作废，**不得**写入验收结论
+   - `ui_screenshot` 目检失败时：在 **MCP 已用 `ui_find_window` 锁定 hwnd** 的前提下，可用 `PrintWindow(hwnd)`（如 pywin32）截同一 hwnd；仍须目检标题栏与页面内容
+   - 验收数字（如 `ALL (N)`）须与当次后端/磁盘口径对照；截图只证明 UI 显示，不代替后端
+5. **导航到相关页面**：侧栏 MCP 点击，或 deep link `…&token=nav&autoImport=false`（**仅导航**；禁止 `autoImport=true` 或真实 token，否则会弹「添加账号」）。
+6. **对照可观测标准**（至少一项必须写明并通过）：
+   - 账号数量与磁盘/索引一致（例：邮箱去重后 `ALL (N)` ≥2000 时，UI 不得只显示 ~1200）
+   - 排序：`credits` + 降序时顶行应为满额（0% 用量）在前，不得 100% 压过 0%
+   - 用户当次任务列出的其它 UI 项
+7. **后端与 UI 都须过，才可以说已修好**：脚本/磁盘通过而用户界面仍错 → 对用户结论只能是 **没修好**，继续修。
+8. **按钮操作优先应用内点击**：构建后界面验收的按钮操作优先走应用内点击（`gui_trigger_click`），细则见 `no-script-substitute-ui.mdc`；目标按钮有 `data-action-id` 锚点时禁止改用 UIA 外部点击。
+
+## UI 不对 → 必须重做（禁止收尾）
+
+| 现象 | 行为 |
+|------|------|
+| UI 与标准不符 | 继续改代码 / 重编译 / 重部署，**同一任务内**再跑 UI 验收 |
+| 截图抓到错误窗口（Cursor IDE / Codex / 编辑器等） | 作废该截图；用锁定 hwnd 重截 + **目检标题栏 `Cockpit Tools`**，不得用错窗冒充 |
+| `ui_screenshot` 与目检不一致 | 改用 `PrintWindow(已锁定 hwnd)` 或重试；仍不对 = **没修好** |
+| UIA 找不到业务控件 | 不作结论；必须做画面核对 |
+| 画面为网络错误 / 空白 / 无目标页内容 | **没修好**；先修构建或前端加载 |
+| 仅后端脚本 PASS | **没修好**（对用户不得说已修好），继续修 |
+
+**禁止**：以「请你看看」「若不对再…」「需要你再点一下」代替 Agent 自己的 UI 验收循环。
+
+## 完成表述（对用户）
+
+- **已修好**：`ui_find_window` 锁定 Cockpit hwnd + **目检通过**的截图（标题栏 `Cockpit Tools`、目标页与数字可见）+ 与后端/磁盘一致 + 必要时日志一致，且用户当次任务全部标准满足（见 `honest-fix-status-only.mdc`）。
+- **没修好**：任一项未过；只陈述未过的事实，同一任务内继续修。

@@ -33,6 +33,8 @@ pub struct InstanceProfile {
     pub last_launched_at: Option<i64>,
     #[serde(default)]
     pub last_pid: Option<u32>,
+    #[serde(default)]
+    pub app_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +110,7 @@ pub struct InstanceProfileView {
     pub initialized: bool,
     pub is_default: bool,
     pub follow_local_account: bool,
+    pub app_path: Option<String>,
 }
 
 impl InstanceProfileView {
@@ -126,6 +129,7 @@ impl InstanceProfileView {
             initialized,
             is_default: false,
             follow_local_account: false,
+            app_path: profile.app_path,
         }
     }
 }

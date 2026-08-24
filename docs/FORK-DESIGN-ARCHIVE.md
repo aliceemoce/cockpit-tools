@@ -1,6 +1,6 @@
 # Cockpit Tools Fork Persistent Design Archive
 
-**最后更新**: 2026-08-04  
+**最后更新**: 2026-08-24  
 **维护人**: 用户 + Codex/Cursor Agent  
 **性质**: 这个 fork 的长期功能设计档案，用来防止后续修改覆盖、回退或误解用户目标。
 
@@ -166,6 +166,22 @@
 **保留边界**: 不得跳过 UI 验收宣称「已修复」；后端与 UI 验收结论须分开写。
 
 **验证方式**: 安装 exe SHA 与 `target/release/cockpit-tools.exe` 一致；MCP `list_windows` → WebView 标题含应用内容而非「localhost - 网络错误」。
+
+### F-012 多开实例无感换号
+
+**用户目的**: 多开 Cursor 换号时不关窗、热写登录态；默认 Cursor 主实例不得被关掉。换号后对话仍可用，侧栏底部邮箱必须变成新号。
+
+**自然语言设计**: 多开换号应像续杯/虚备那样热写认证态，不是关窗再开。侧栏必须还能点开对话。底部邮箱以界面真实登录态为准，不得靠反复改页面文字伪装。验收必须走总控里点多开启动，不能只用命令行顶替。
+
+**代码设计**:
+- 多开热写：实例目录投递无感态 → 热写该实例库 → 单次把认证态推进运行中窗口的存储；后台只做只读校验，不再反复全量灌脚本。
+- 禁止再：递增强制令牌计数、定时直改侧栏底部邮箱文字、弹成功条、软重载页面。旧做法会打坏侧栏，点不动。
+- 总控多开启动走应用内点击：先切到 Cursor 多开页，再点实例启动。总控若收到托盘、主窗标题不是「Cockpit Tools」，点击发不到真实界面，须先唤回主窗。
+- 多开 exe 与实例目录与默认 Cursor 隔离；默认实例切号仍遵守 F-001。
+
+**保留边界**: 不得为换号杀掉默认 Cursor；不得恢复侧栏文字补丁；不得删除无忧式传统切号路径。
+
+**验证方式**: 总控主窗标题为 Cockpit Tools 后点多开启动；多开窗底部邮箱与磁盘邮箱一致；侧栏能点开已有对话并得到回复；默认 Cursor 进程仍在。
 
 ## 5. 增量记录格式
 
@@ -414,4 +430,18 @@
 - **涉及文件/模块**: Codex/cliproxy/Windows NSIS 快捷方式等上游变更；`provider_token_keeper.rs` / `useProviderAccountsPage.ts` / `pick_cursor_rotation_account` 调用点保留；规则/SCOPE/AGENTS/本档案最新构建记录。
 - **验证方式**: 安装 exe ProductVersion 1.3.18 + SHA `67E971E2…`；PrintWindow 标题 `Cockpit Tools`、Cursor 页 **`ALL (2604)`**（磁盘 2604）；系统浏览器+UIA 复核分支 / PR / Release 资产。
 - **风险**: Tauri updater 签名缺私钥（exit 1）但 MSI/NSIS/exe 已产出，交付为 release exe 直拷；Play/多开 GUI 点验仍待单独立项；本机 UIA MCP catalog 空时用 `uiautomation`+PrintWindow（已锁定 hwnd）。
+
+### 2026-08-24（多开无感换号 + 总控启动验收）
+
+- **触碰功能**: F-001、F-002、F-012。
+- **用户目标是否变化**: 否；当场要求多开无感换号、不动默认 Cursor、换号后对话可用、底部邮箱变成新号；并问多开侧栏完全无法使用。
+- **本次目的**: 修好多开换号后侧栏点不动；用总控界面启动多开，核对邮箱、侧栏、对话。
+- **实现手段**:
+  - 去掉多开换号脚本里对侧栏底部邮箱的定时改字、强制计数、成功条和软重载；后台改为最多几轮只读校验。
+  - 总控启动须先有标题为 Cockpit Tools 的主窗；托盘唤起壳窗点不到启动。唤回主窗后应用内点击启动实例成功。
+- **涉及文件/模块**: `src-tauri/src/modules/cursor_account.rs`、`src-tauri/src/modules/gui_in_app_click.rs`、`scripts/verify_dual_cursor_instances.py`、`scripts/_evidence_multi_seamless/`。
+- **验证方式**:
+  - CLI 无感切号：Robin / Sotero 底部邮箱对齐，侧栏可点，默认 Cursor 仍在。
+  - 总控 Play：前端已点击多开启动；实例起来；底部邮箱 `jzvj0743@outlook.com`；侧栏点开「Multi V3 cockpit strict reply」；回复 `GUI_PLAY_V1`；默认 Cursor 未关。
+- **风险或注意事项**: 总控收到托盘时 deep link 点击会发到空界面；须先唤回主窗。对话验收须在已打开的对话页，不能停在 Home / Plan New Idea。
 

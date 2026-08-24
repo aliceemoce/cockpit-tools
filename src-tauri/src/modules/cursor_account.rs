@@ -2249,29 +2249,599 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
 /// 无忧传统切号 `i()`：close → Kh → Gh → Jh → Yh → Nc（默认 profile）。
 fn nirvana_traditional_switch_steps(account_id: &str, manual_user_pick: bool) -> Result<(), String> {
     let account =
-        load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+        load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在：{}", account_id))?;
     ensure_cursor_switch_allowed(&account, manual_user_pick)?;
-    logger::log_info(&format!("[Cursor Switch] 无忧传统切号: {}", account.email));
+    logger::log_info(&format!("[Cursor Switch] 无忧传统切号：{}", account.email));
 
     let default_dir = get_default_cursor_data_dir()?;
-    let default_dir_str = default_dir.to_string_lossy().to_string();
-    // 对齐 r2：仅关闭默认 profile 的 Cursor，保留其它多开实例（禁止 taskkill 全杀）。
-    crate::modules::cursor_instance::close_cursor(&[default_dir_str], 20)?;
-
+    // 多开逻辑：不关闭 Cursor，直接切换 token
     switch_tokens_in_profile_db(&default_dir, account_id, manual_user_pick)?;
     reset_storage_json_ids_for_profile(&default_dir)?;
     reset_machine_id_file_for_profile(&default_dir)?;
 
     if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches(&cursor_exe);
+        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches_main_js_only(
+            &cursor_exe,
+        );
     }
 
     logger::log_info(&format!(
-        "[Cursor Switch] 无忧传统路径换号完成: email={}, profile={}",
+        "[Cursor Switch] 无忧传统路径换号完成（多开模式，不关 Cursor）: email={}, profile={}",
         account.email,
         default_dir.display()
     ));
     Ok(())
+}
+
+/// 虚备无感热替换权威落盘路径（注入 JS 轮询 get-token 读此文件）。
+fn wuxian_seamless_state_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or_else(|| "无法获取用户主目录".to_string())?;
+    Ok(home.join(".wuxian-assistant").join("seamless_state.json"))
+}
+
+fn wuxian_auto_switch_pref_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or_else(|| "无法获取用户主目录".to_string())?;
+    Ok(home.join(".wuxian-assistant").join("auto_switch_pref.json"))
+}
+
+fn cursor_appdata_root() -> Result<PathBuf, String> {
+    let appdata = std::env::var("APPDATA").map_err(|_| "APPDATA 未设置".to_string())?;
+    Ok(PathBuf::from(appdata).join("Cursor"))
+}
+
+/// 对齐虚备 `apply_account`：写 seamless_state + wx_*，并关掉自动换号偏好，避免管家 get-token 通道立刻盖回。
+fn apply_xubei_seamless_hot_path(
+    email: &str,
+    access_token: &str,
+    refresh_token: &str,
+    ids: &HashMap<&'static str, String>,
+) -> Result<(), String> {
+    let state_path = wuxian_seamless_state_path()?;
+    if let Some(parent) = state_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建 wuxian 目录失败: {}", e))?;
+    }
+
+    let mut old_ids: Option<serde_json::Map<String, Value>> = None;
+    let mut machine_ids_rev: i64 = 1;
+    if state_path.exists() {
+        if let Ok(raw) = fs::read_to_string(&state_path) {
+            if let Ok(Value::Object(old)) = serde_json::from_str::<Value>(&raw) {
+                if let Some(Value::Object(m)) = old.get("machineIds").cloned() {
+                    old_ids = Some(m);
+                }
+                if let Some(v) = old.get("machineIdsRev").and_then(|x| x.as_i64()) {
+                    machine_ids_rev = v + 1;
+                }
+            }
+        }
+    }
+
+    let machine_ids = serde_json::json!({
+        "machineId": ids["telemetry.machineId"],
+        "macMachineId": ids["telemetry.macMachineId"],
+        "devDeviceId": ids["telemetry.devDeviceId"],
+        "sqmId": ids["telemetry.sqmId"],
+    });
+
+    let mut mappings: Vec<Value> = Vec::new();
+    if let Some(ref old) = old_ids {
+        for key in ["machineId", "macMachineId"] {
+            let o = old.get(key).and_then(|v| v.as_str());
+            let n = machine_ids.get(key).and_then(|v| v.as_str());
+            if let (Some(o), Some(n)) = (o, n) {
+                if o.len() == n.len() && o != n {
+                    mappings.push(serde_json::json!({ "old": o, "new": n }));
+                }
+            }
+        }
+    }
+
+    // 总控切号时关掉自动换号偏好，否则管家进程会继续按用量把 get-token 盖回自家号。
+    let pref_path = wuxian_auto_switch_pref_path()?;
+    let pref_body = serde_json::json!({ "enabled": false });
+    crate::modules::atomic_write::write_string_atomic(
+        &pref_path,
+        &serde_json::to_string_pretty(&pref_body).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入 auto_switch_pref 失败: {}", e))?;
+
+    let st = serde_json::json!({
+        "config": { "enabled": true, "auto_switch": false },
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "email": email,
+        "is_new": !mappings.is_empty(),
+        "machineIds": machine_ids,
+        "machineIdsRev": machine_ids_rev,
+        "mappings": mappings,
+        "reset_ok": true,
+        "updated_at": chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
+        "source": "cockpit-tools",
+    });
+    crate::modules::atomic_write::write_string_atomic(
+        &state_path,
+        &serde_json::to_string_pretty(&st).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入 seamless_state 失败: {}", e))?;
+
+    let cursor_root = cursor_appdata_root()?;
+    fs::create_dir_all(&cursor_root).map_err(|e| format!("创建 Cursor AppData 失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(
+        &cursor_root.join("wx_token.txt"),
+        access_token,
+    )
+    .map_err(|e| format!("写入 wx_token 失败: {}", e))?;
+    let mid_doc = serde_json::json!({
+        "machineId": ids["telemetry.machineId"],
+        "macMachineId": ids["telemetry.macMachineId"],
+    });
+    crate::modules::atomic_write::write_string_atomic(
+        &cursor_root.join("wx_mid.json"),
+        &serde_json::to_string(&mid_doc).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入 wx_mid 失败: {}", e))?;
+    let eh_doc = serde_json::json!({ "mappings": mappings });
+    crate::modules::atomic_write::write_string_atomic(
+        &cursor_root.join("wx_eh_map.json"),
+        &serde_json::to_string(&eh_doc).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入 wx_eh_map 失败: {}", e))?;
+
+    // 对齐虚备 write_machine_id_file（默认 profile 根）。
+    crate::modules::atomic_write::write_string_atomic(
+        &cursor_root.join("machineId"),
+        &ids["telemetry.machineId"],
+    )
+    .map_err(|e| format!("写入 machineId 失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(
+        &cursor_root.join("machineid.json"),
+        &serde_json::to_string_pretty(&mid_doc).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入 machineid.json 失败: {}", e))?;
+    let gs = cursor_root.join("User").join("globalStorage");
+    fs::create_dir_all(&gs).map_err(|e| format!("创建 globalStorage 失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(
+        &gs.join("machine-id"),
+        &ids["telemetry.machineId"],
+    )
+    .map_err(|e| format!("写入 machine-id 失败: {}", e))?;
+
+    logger::log_info(&format!(
+        "[Cursor Switch] 虚备热替换落盘完成: email={}, state={}, auto_switch=false",
+        email,
+        state_path.display()
+    ));
+    Ok(())
+}
+
+/// 管家进程仍开着「自动换号」时会盖回 seamless_state；反复落盘直到 get-token 连续粘住，再顶住一段时间。
+fn reassert_xubei_hot_path_until_stuck(
+    email: &str,
+    access_token: &str,
+    refresh_token: &str,
+    ids: &HashMap<&'static str, String>,
+) -> Result<(), String> {
+    let expected = email.trim().to_lowercase();
+    let mut last_ok_streak = 0u32;
+    let mut stuck = false;
+    for round in 1..=20u32 {
+        // 每轮都重写 pref+state，对抗管家内存态仍把 auto_switch 报成 true、随后盖文件。
+        apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
+        std::thread::sleep(Duration::from_millis(500));
+        match read_wuxian_get_token_email() {
+            Ok(Some(got)) if got.trim().to_lowercase() == expected => {
+                last_ok_streak += 1;
+                logger::log_info(&format!(
+                    "[Cursor Switch] 热替换粘号确认 round={}, streak={}, email={}",
+                    round, last_ok_streak, email
+                ));
+                if last_ok_streak >= 5 {
+                    stuck = true;
+                    break;
+                }
+            }
+            Ok(Some(got)) => {
+                last_ok_streak = 0;
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 热替换仍被管家盖回 round={}, get-token={}, 期望={}",
+                    round, got, email
+                ));
+            }
+            Ok(None) => {
+                last_ok_streak = 0;
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 热替换 get-token 空 round={}, 期望={}",
+                    round, email
+                ));
+            }
+            Err(err) => {
+                last_ok_streak = 0;
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 热替换 get-token 读失败 round={}: {}",
+                    round, err
+                ));
+            }
+        }
+    }
+    if !stuck {
+        return Err(format!(
+            "热替换未挤掉管家: get-token 未能连续粘住 {}",
+            email
+        ));
+    }
+    // 粘住后再顶住约 12 秒，让 Cursor 注入轮询吃到总控号（避免刚返回就被管家盖回）。
+    for hold in 1..=24u32 {
+        apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
+        std::thread::sleep(Duration::from_millis(500));
+        match read_wuxian_get_token_email() {
+            Ok(Some(got)) if got.trim().to_lowercase() == expected => {
+                logger::log_info(&format!(
+                    "[Cursor Switch] 热替换顶住 hold={}/24, email={}",
+                    hold, email
+                ));
+            }
+            Ok(Some(got)) => {
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 热替换顶住期间被盖回 hold={}, get-token={}, 重写",
+                    hold, got
+                ));
+            }
+            other => {
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 热替换顶住期间读失败 hold={}: {:?}",
+                    hold, other
+                ));
+            }
+        }
+    }
+    match read_wuxian_get_token_email() {
+        Ok(Some(got)) if got.trim().to_lowercase() == expected => Ok(()),
+        Ok(Some(got)) => Err(format!(
+            "热替换顶住结束仍被管家盖回: 期望={} get-token={}",
+            email, got
+        )),
+        Ok(None) => Err(format!("热替换顶住结束 get-token 空, 期望={}", email)),
+        Err(err) => Err(format!("热替换顶住结束读失败: {}", err)),
+    }
+}
+
+/// 读管家/虚备本地 get-token 当前邮箱（侧栏热替换权威；只写库不够）。
+pub fn read_wuxian_get_token_email() -> Result<Option<String>, String> {
+    let ports: &[u16] = &[14520, 14521, 14522, 14523, 14524, 35420, 35421, 35422, 35423, 35424];
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(1200))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    for port in ports {
+        let url = format!("http://127.0.0.1:{}/api/get-token", port);
+        match client.get(&url).send() {
+            Ok(resp) if resp.status().is_success() => {
+                let body = resp.text().unwrap_or_default();
+                if let Ok(v) = serde_json::from_str::<Value>(&body) {
+                    if let Some(email) = v.get("email").and_then(|x| x.as_str()) {
+                        let email = email.trim();
+                        if !email.is_empty() {
+                            return Ok(Some(email.to_string()));
+                        }
+                    }
+                }
+            }
+            _ => continue,
+        }
+    }
+    // HTTP 未起时，直接读 state 文件（与 get-token 同源）。
+    let state_path = wuxian_seamless_state_path()?;
+    if !state_path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&state_path)
+        .map_err(|e| format!("读 seamless_state 失败: {}", e))?;
+    let v: Value = serde_json::from_str(&raw).map_err(|e| format!("解析 seamless_state 失败: {}", e))?;
+    Ok(v.get("email")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty()))
+}
+
+/// 默认 profile 无感：对齐虚备 apply_account（热替换通道 + 写库），不关正在用的默认窗（方案甲）。
+/// 无忧传统关窗路径仍由 `nirvana_traditional_switch_steps` 保留，勿删。
+fn default_seamless_switch_steps(account_id: &str, manual_user_pick: bool) -> Result<(), String> {
+    let account =
+        load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    ensure_cursor_switch_allowed(&account, manual_user_pick)?;
+    let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
+    let default_dir = get_default_cursor_data_dir()?;
+    let ids = build_cursor_fingerprint_ids();
+    logger::log_info(&format!(
+        "[Cursor Switch] 默认无感(虚备热替换+写库): email={}, profile={}",
+        account.email,
+        default_dir.display()
+    ));
+    // 先写 get-token / wx_*，侧栏才会在 1–2 秒内变成总控号；只写 vscdb 挤不掉管家。
+    apply_xubei_seamless_hot_path(
+        &account.email,
+        &access_token,
+        &refresh_token,
+        &ids,
+    )?;
+    // 对齐虚备 patch_vscdb_auth：Cursor 仍占用 state.vscdb 时不得切 journal / 删 -wal。
+    switch_tokens_in_profile_db_live(&default_dir, account_id, manual_user_pick)?;
+    let storage_json = default_dir
+        .join("User")
+        .join("globalStorage")
+        .join("storage.json");
+    upsert_storage_json_ids(&storage_json, &ids)?;
+    // 管家仍开自动换号时会盖回 state；同步粘住后再后台续盖一段时间。
+    reassert_xubei_hot_path_until_stuck(
+        &account.email,
+        &access_token,
+        &refresh_token,
+        &ids,
+    )?;
+    spawn_xubei_hot_path_keeper(
+        account.email.clone(),
+        access_token,
+        refresh_token,
+        ids.clone(),
+    );
+    logger::log_info(&format!(
+        "[Cursor Switch] 默认无感完成: email={}",
+        account.email
+    ));
+    Ok(())
+}
+
+/// 切号返回后继续对抗管家自动换号盖写（约 45 秒）。
+fn spawn_xubei_hot_path_keeper(
+    email: String,
+    access_token: String,
+    refresh_token: String,
+    ids: HashMap<&'static str, String>,
+) {
+    let _ = std::thread::Builder::new()
+        .name("xubei-hot-path-keeper".into())
+        .spawn(move || {
+            let expected = email.trim().to_lowercase();
+            for round in 1..=45u32 {
+                std::thread::sleep(Duration::from_secs(1));
+                let need = match read_wuxian_get_token_email() {
+                    Ok(Some(got)) => got.trim().to_lowercase() != expected,
+                    Ok(None) => true,
+                    Err(_) => true,
+                };
+                if need {
+                    if let Err(err) =
+                        apply_xubei_seamless_hot_path(&email, &access_token, &refresh_token, &ids)
+                    {
+                        logger::log_warn(&format!(
+                            "[Cursor Switch] 热替换续盖失败 round={}: {}",
+                            round, err
+                        ));
+                    } else {
+                        logger::log_info(&format!(
+                            "[Cursor Switch] 热替换续盖 round={}, email={}",
+                            round, email
+                        ));
+                    }
+                }
+            }
+        });
+}
+
+/// 读默认 profile 当前 `cursorAuth/cachedEmail`（粘号复查用）。
+pub fn read_default_cached_email() -> Result<Option<String>, String> {
+    let db_path = get_default_cursor_state_db_path()?;
+    if !db_path.exists() {
+        return Ok(None);
+    }
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("打开 Cursor state.vscdb 失败({}): {}", db_path.display(), e))?;
+    Ok(read_vscdb_item(&conn, "cursorAuth/cachedEmail").filter(|e| !e.trim().is_empty()))
+}
+
+/// 多开实例目录内的热换落点（禁止写全局家目录，避免串默认窗）。
+fn multi_profile_seamless_dir(profile_dir: &Path) -> PathBuf {
+    profile_dir.join("cockpit-seamless")
+}
+
+/// 对齐续杯投递：在本 profile 写 active_token / state，供后续注入轮询；不写 `~/.cursor-renewal`。
+fn apply_multi_profile_seamless_files(
+    profile_dir: &Path,
+    email: &str,
+    access_token: &str,
+    refresh_token: &str,
+    ids: &HashMap<&'static str, String>,
+) -> Result<(), String> {
+    let dir = multi_profile_seamless_dir(profile_dir);
+    fs::create_dir_all(&dir).map_err(|e| format!("创建多开热换目录失败: {}", e))?;
+
+    let machine_ids = serde_json::json!({
+        "machineId": ids["telemetry.machineId"],
+        "macMachineId": ids["telemetry.macMachineId"],
+        "devDeviceId": ids["telemetry.devDeviceId"],
+        "sqmId": ids["telemetry.sqmId"],
+    });
+    let st = serde_json::json!({
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "email": email,
+        "machineIds": machine_ids,
+        "updated_at": chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
+        "source": "cockpit-tools-multi",
+    });
+    crate::modules::atomic_write::write_string_atomic(
+        &dir.join("state.json"),
+        &serde_json::to_string_pretty(&st).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入多开 state.json 失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(&dir.join("active_token"), access_token)
+        .map_err(|e| format!("写入多开 active_token 失败: {}", e))?;
+    crate::modules::atomic_write::write_string_atomic(
+        &dir.join("machine_id_override.json"),
+        &serde_json::to_string(&serde_json::json!({ "mappings": [] })).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入多开 machine_id_override 失败: {}", e))?;
+    Ok(())
+}
+
+fn build_multi_cdp_auth_push_js(
+    email: &str,
+    access_token: &str,
+    refresh_token: &str,
+    ids: &HashMap<&'static str, String>,
+) -> Result<String, String> {
+    let auth = serde_json::json!({
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "email": email,
+        "machineIds": {
+            "machineId": ids["telemetry.machineId"],
+            "macMachineId": ids["telemetry.macMachineId"],
+            "devDeviceId": ids["telemetry.devDeviceId"],
+            "sqmId": ids["telemetry.sqmId"],
+        },
+    });
+    let auth_lit = serde_json::to_string(&auth).map_err(|e| e.to_string())?;
+    Ok(format!(
+        r#"(function(){{
+  var auth={auth};
+  window.__cockpitSeamlessAuth=auth;
+  var okStore=false, errStore=null;
+  try{{
+    if(window.__cockpitFooterSyncTimer){{
+      try{{ clearInterval(window.__cockpitFooterSyncTimer); }}catch(_ct){{}}
+      window.__cockpitFooterSyncTimer=null;
+      window.__cockpitFooterSync=false;
+    }}
+  }}catch(_cl){{}}
+  try{{
+    if(window.store&&typeof window.store.set==='function'){{
+      window.store.set('cursorAuth/accessToken', auth.accessToken, -1);
+      window.store.set('cursorAuth/refreshToken', auth.refreshToken, -1);
+      window.store.set('cursorAuth/cachedEmail', auth.email, -1);
+      if(auth.machineIds){{
+        window.store.set('telemetry.devDeviceId', auth.machineIds.devDeviceId, -1);
+        window.store.set('telemetry.machineId', auth.machineIds.machineId, -1);
+        window.store.set('telemetry.macMachineId', auth.machineIds.macMachineId, -1);
+        window.store.set('telemetry.sqmId', auth.machineIds.sqmId, -1);
+      }}
+      okStore=true;
+    }}
+  }}catch(e){{errStore=String(e);}}
+  var gotEmail=(window.store&&window.store.get)?window.store.get('cursorAuth/cachedEmail',-1):null;
+  return {{ok:true, okStore:okStore, errStore:errStore, email:gotEmail||auth.email, hasSeamless:!!window.__cockpitSeamlessAuth}};
+}})()"#,
+        auth = auth_lit
+    ))
+}
+
+fn build_multi_cdp_auth_verify_js(expected_email: &str) -> String {
+    let want = expected_email.trim().to_lowercase();
+    format!(
+        r#"(function(){{
+  var want={want_lit};
+  var got=((window.store&&window.store.get('cursorAuth/cachedEmail',-1))||'').toLowerCase();
+  var seam=(window.__cockpitSeamlessAuth&&window.__cockpitSeamlessAuth.email||'').toLowerCase();
+  return {{ok:got===want||seam===want, email:got||seam, want:want}};
+}})()"#,
+        want_lit = serde_json::to_string(&want).unwrap_or_else(|_| "\"\"".to_string())
+    )
+}
+
+/// 经 CDP 把认证态推进运行中多开窗的 `window.store` + `__cockpitSeamlessAuth`。
+fn push_multi_auth_via_cdp(
+    profile_dir: &Path,
+    email: &str,
+    access_token: &str,
+    refresh_token: &str,
+    ids: &HashMap<&'static str, String>,
+) -> Result<Value, String> {
+    let dir_s = profile_dir.to_string_lossy().to_string();
+    let port = crate::modules::cursor_instance::resolve_cdp_port_for_user_data_dir(&dir_s)
+        .ok_or_else(|| format!("多开无感：未找到 CDP 端口 profile={}", dir_s))?;
+    let js = build_multi_cdp_auth_push_js(email, access_token, refresh_token, ids)?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("创建 CDP 运行时失败: {}", e))?;
+    let result = rt.block_on(async {
+        crate::modules::cursor_cdp_control::execute_javascript(port, &js).await
+    })?;
+    logger::log_info(&format!(
+        "[Cursor Switch] 多开无感 CDP 热推: port={}, email={}, result={}",
+        port, email, result
+    ));
+    Ok(result)
+}
+
+fn spawn_multi_cdp_auth_keeper(profile_dir: PathBuf, email: String) {
+    let _ = std::thread::Builder::new()
+        .name("multi-cdp-auth-keeper".into())
+        .spawn(move || {
+            let expected = email.trim().to_lowercase();
+            let dir_s = profile_dir.to_string_lossy().to_string();
+            for round in 1..=5u32 {
+                std::thread::sleep(Duration::from_secs(2));
+                let Some(port) =
+                    crate::modules::cursor_instance::resolve_cdp_port_for_user_data_dir(&dir_s)
+                else {
+                    logger::log_warn(&format!(
+                        "[Cursor Switch] 多开 CDP 校验跳过 round={}: 无 CDP 端口",
+                        round
+                    ));
+                    continue;
+                };
+                let js = build_multi_cdp_auth_verify_js(&email);
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        logger::log_warn(&format!(
+                            "[Cursor Switch] 多开 CDP 校验运行时失败 round={}: {}",
+                            round, e
+                        ));
+                        continue;
+                    }
+                };
+                match rt.block_on(async {
+                    crate::modules::cursor_cdp_control::execute_javascript(port, &js).await
+                }) {
+                    Ok(v) => {
+                        let got = v
+                            .get("value")
+                            .and_then(|x| x.get("email"))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_lowercase();
+                        let ok = v
+                            .get("value")
+                            .and_then(|x| x.get("ok"))
+                            .and_then(|x| x.as_bool())
+                            .unwrap_or(false);
+                        if ok && got == expected {
+                            logger::log_info(&format!(
+                                "[Cursor Switch] 多开 CDP 热态已对齐 round={}, email={}",
+                                round, email
+                            ));
+                            break;
+                        }
+                        logger::log_warn(&format!(
+                            "[Cursor Switch] 多开 CDP 热态未对齐 round={}, want={}, got={}, raw={}",
+                            round, email, got, v
+                        ));
+                    }
+                    Err(err) => {
+                        logger::log_warn(&format!(
+                            "[Cursor Switch] 多开 CDP 校验失败 round={}: {}",
+                            round, err
+                        ));
+                    }
+                }
+            }
+        });
 }
 
 /// 账号总览 Play 与多开实例启动的切号落盘。`manual_user_pick=true` 时为用户点选，不拦配额/失败标记。
@@ -2281,36 +2851,72 @@ pub fn switch_cursor_account_to_profile(
     manual_user_pick: bool,
 ) -> Result<(), String> {
     if crate::modules::cursor_instance::is_default_cursor_profile_dir(profile_dir) {
-        return nirvana_traditional_switch_steps(account_id, manual_user_pick);
+        return default_seamless_switch_steps(account_id, manual_user_pick);
     }
 
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
     ensure_cursor_switch_allowed(&account, manual_user_pick)?;
-    let profile_dir_str = profile_dir.to_string_lossy().to_string();
-    crate::modules::cursor_instance::close_cursor_profile_strict(&profile_dir_str, 20)?;
+    let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
+    // 多开无感：对齐续杯「不关窗 + 热写认证态」语义；禁止关多开窗冷写。
+    // 不得写全局 ~/.cursor-renewal 或 wx_*（会串默认窗）；只写本 profile + CDP 推进运行窗。
     crate::modules::cursor_instance::ensure_state_db_for_injection(profile_dir)?;
-
-    switch_tokens_in_profile_db(profile_dir, account_id, manual_user_pick)?;
-    reset_storage_json_ids_for_profile(profile_dir)?;
-    reset_machine_id_file_for_profile(profile_dir)?;
-
-    if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
-        crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches_main_js_only(
-            &cursor_exe,
-        );
-    }
-
+    let ids = build_cursor_fingerprint_ids();
     logger::log_info(&format!(
-        "[Cursor Switch] 无忧传统路径换号完成(多开): email={}, profile={}",
+        "[Cursor Switch] 多开无感(热写库+实例目录+CDP): email={}, profile={}",
+        account.email,
+        profile_dir.display()
+    ));
+    apply_multi_profile_seamless_files(
+        profile_dir,
+        &account.email,
+        &access_token,
+        &refresh_token,
+        &ids,
+    )?;
+    switch_tokens_in_profile_db_live(profile_dir, account_id, manual_user_pick)?;
+    let storage_json = profile_dir
+        .join("User")
+        .join("globalStorage")
+        .join("storage.json");
+    upsert_storage_json_ids(&storage_json, &ids)?;
+    match push_multi_auth_via_cdp(
+        profile_dir,
+        &account.email,
+        &access_token,
+        &refresh_token,
+        &ids,
+    ) {
+        Ok(_) => {}
+        Err(err) => {
+            // 窗未开时只落盘；开窗后启动链会再切并可 CDP。此处不硬失败整条切号。
+            logger::log_warn(&format!(
+                "[Cursor Switch] 多开无感首次 CDP 热推未成（库与实例目录已写）: {}",
+                err
+            ));
+        }
+    }
+    spawn_multi_cdp_auth_keeper(profile_dir.to_path_buf(), account.email.clone());
+    logger::log_info(&format!(
+        "[Cursor Switch] 多开无感完成: email={}, profile={}",
         account.email,
         profile_dir.display()
     ));
     Ok(())
 }
 
+/// 显式走无忧传统关窗切号（保留；默认入口已改无感）。
+#[allow(dead_code)]
+pub fn switch_cursor_account_traditional_default(
+    account_id: &str,
+    manual_user_pick: bool,
+) -> Result<(), String> {
+    nirvana_traditional_switch_steps(account_id, manual_user_pick)
+}
+
 /// 无忧 `switchTokensInDb`（Kh）：`accessToken`/`refreshToken` 原样裸 JWT（与默认 profile 一致，不做 `user_id::jwt` 转换）。
 fn nirvana_kh_auth_tokens(account: &CursorAccount) -> Result<(String, String), String> {
+    // 1. 优先从 cursor_auth_raw 获取
     if let Some(raw) = account.cursor_auth_raw.as_ref() {
         if let Some(at) = raw.get("accessToken").and_then(|v| v.as_str()) {
             let access = at.trim();
@@ -2326,17 +2932,19 @@ fn nirvana_kh_auth_tokens(account: &CursorAccount) -> Result<(String, String), S
         }
     }
 
+    // 2. 从 access_token 字段获取
     let access = account.access_token.trim();
-    if access.is_empty() {
-        return Err(format!("账号 {} access_token 为空", account.email));
+    if !access.is_empty() {
+        let refresh = account
+            .refresh_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(access);
+        return Ok((access.to_string(), refresh.to_string()));
     }
-    let refresh = account
-        .refresh_token
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(access);
-    Ok((access.to_string(), refresh.to_string()))
+
+    Err(format!("账号 {} 无可用 token", account.email))
 }
 
 fn verify_switch_tokens_written(db_path: &Path) -> Result<(), String> {
@@ -2366,6 +2974,32 @@ pub fn switch_tokens_in_profile_db(
     account_id: &str,
     manual_user_pick: bool,
 ) -> Result<(), String> {
+    switch_tokens_in_profile_db_inner(profile_dir, account_id, manual_user_pick, false)
+}
+
+/// 默认无感：Cursor 仍占用库时写 token（对齐虚备 `patch_vscdb_auth`：busy 重试、不切 journal、不删 -wal）。
+pub fn switch_tokens_in_profile_db_live(
+    profile_dir: &Path,
+    account_id: &str,
+    manual_user_pick: bool,
+) -> Result<(), String> {
+    switch_tokens_in_profile_db_inner(profile_dir, account_id, manual_user_pick, true)
+}
+
+fn is_sqlite_busy_error(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("database is locked")
+        || lower.contains("database busy")
+        || lower.contains("sqlite_busy")
+        || lower.contains("locked")
+}
+
+fn switch_tokens_in_profile_db_inner(
+    profile_dir: &Path,
+    account_id: &str,
+    manual_user_pick: bool,
+    live_cursor: bool,
+) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
     ensure_cursor_switch_allowed(&account, manual_user_pick)?;
@@ -2378,15 +3012,89 @@ pub fn switch_tokens_in_profile_db(
         return Err(format!("Cursor state.vscdb 不存在: {}", db_path.display()));
     }
 
-    remove_vscdb_sidecars(&db_path);
-    let conn = Connection::open(&db_path)
-        .map_err(|e| format!("打开 Cursor state.vscdb 失败({}): {}", db_path.display(), e))?;
+    let mut last_err = String::new();
+    for attempt in 1..=8 {
+        match switch_tokens_in_profile_db_once(
+            &db_path,
+            &account,
+            &access_token,
+            &refresh_token,
+            live_cursor,
+        ) {
+            Ok(()) => {
+                verify_switch_tokens_written(&db_path)?;
+                logger::log_info(&format!(
+                    "[Cursor Switch] switchTokensInDb 完成: email={}, db={}, token=nirvana_raw, live={}, attempt={}",
+                    account.email,
+                    db_path.display(),
+                    live_cursor,
+                    attempt
+                ));
+                return Ok(());
+            }
+            Err(e) => {
+                last_err = e;
+                if is_sqlite_busy_error(&last_err) && attempt < 8 {
+                    logger::log_warn(&format!(
+                        "[Cursor Switch] 写库忙重试 {}/8 (live={}): {}",
+                        attempt, live_cursor, last_err
+                    ));
+                    std::thread::sleep(Duration::from_millis(250 * attempt as u64));
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+    Err(last_err)
+}
 
-    // 切换到 DELETE journal mode：13GB+ 的 DB 在 WAL 模式下 wal_checkpoint 不可靠，
-    // DELETE mode 的写入直接进主 DB 文件，不依赖 checkpoint flush。
-    conn.execute_batch("PRAGMA journal_mode=DELETE;")
-        .map_err(|e| format!("切换 journal_mode=DELETE 失败: {}", e))?;
-    conn.execute_batch("BEGIN;")
+fn switch_tokens_in_profile_db_once(
+    db_path: &Path,
+    account: &CursorAccount,
+    access_token: &str,
+    refresh_token: &str,
+    live_cursor: bool,
+) -> Result<(), String> {
+    if !live_cursor {
+        remove_vscdb_sidecars(db_path);
+    }
+
+    let conn = Connection::open(db_path)
+        .map_err(|e| format!("打开 Cursor state.vscdb 失败({}): {}", db_path.display(), e))?;
+    conn.busy_timeout(Duration::from_secs(if live_cursor { 15 } else { 5 }))
+        .map_err(|e| format!("设置 busy_timeout 失败: {}", e))?;
+
+    let mut switched_to_delete = false;
+    let mut wal_only = live_cursor;
+    if !live_cursor {
+        // 切换到 DELETE journal mode：13GB+ 的 DB 在 WAL 模式下 wal_checkpoint 不可靠，
+        // DELETE mode 的写入直接进主 DB 文件，不依赖 checkpoint flush。
+        match conn.execute_batch("PRAGMA journal_mode=DELETE;") {
+            Ok(_) => switched_to_delete = true,
+            Err(e) => {
+                let msg = format!("切换 journal_mode=DELETE 失败: {}", e);
+                if is_sqlite_busy_error(&msg) {
+                    logger::log_warn(&format!(
+                        "[Cursor Switch] Cursor 仍持锁，跳过 DELETE 改 WAL 直写: {}",
+                        msg
+                    ));
+                    wal_only = true;
+                    conn.busy_timeout(Duration::from_secs(15))
+                        .map_err(|e| format!("设置 busy_timeout 失败: {}", e))?;
+                    let _ = conn.execute_batch("PRAGMA journal_mode;");
+                } else {
+                    return Err(msg);
+                }
+            }
+        }
+    }
+    if wal_only && !switched_to_delete {
+        // 虚备式：Cursor 持锁时切 journal 会 database is locked；保持现有 WAL 直接写。
+        let _ = conn.execute_batch("PRAGMA journal_mode;");
+    }
+
+    conn.execute_batch("BEGIN IMMEDIATE;")
         .map_err(|e| format!("BEGIN transaction 失败: {}", e))?;
 
     let write_result = (|| {
@@ -2422,12 +3130,12 @@ pub fn switch_tokens_in_profile_db(
         )?;
         upsert_vscdb_item(&conn, "telemetry.sqmId", &ids["telemetry.sqmId"])?;
 
-        upsert_vscdb_item(&conn, "cursorAuth/accessToken", &access_token)?;
-        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", &refresh_token)?;
+        upsert_vscdb_item(&conn, "cursorAuth/accessToken", access_token)?;
+        upsert_vscdb_item(&conn, "cursorAuth/refreshToken", refresh_token)?;
         upsert_vscdb_item(&conn, "cursorAuth/cachedEmail", &account.email)?;
         upsert_vscdb_item(&conn, "cursorAuth/cachedSignUpType", "Auth_0")?;
 
-        if let Some(ref auth_id) = resolve_quota_pool_id(&account) {
+        if let Some(ref auth_id) = resolve_quota_pool_id(account) {
             upsert_vscdb_item(&conn, "cursorAuth/authId", auth_id)?;
             upsert_vscdb_item(&conn, "cursorAuth/workosId", auth_id)?;
         }
@@ -2447,23 +3155,18 @@ pub fn switch_tokens_in_profile_db(
         }
         Err(e) => {
             let _ = conn.execute_batch("ROLLBACK;");
-            let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
+            if switched_to_delete {
+                let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
+            }
             return Err(e);
         }
     }
 
-    // 恢复 WAL mode 供 Cursor 正常使用
-    conn.execute_batch("PRAGMA journal_mode=WAL;")
-        .map_err(|e| format!("恢复 journal_mode=WAL 失败: {}", e))?;
+    if switched_to_delete {
+        conn.execute_batch("PRAGMA journal_mode=WAL;")
+            .map_err(|e| format!("恢复 journal_mode=WAL 失败: {}", e))?;
+    }
     drop(conn);
-
-    verify_switch_tokens_written(&db_path)?;
-
-    logger::log_info(&format!(
-        "[Cursor Switch] switchTokensInDb 完成: email={}, db={}, token=nirvana_raw, journal_mode=delete_then_wal",
-        account.email,
-        db_path.display()
-    ));
     Ok(())
 }
 
@@ -2561,6 +3264,30 @@ pub fn hard_reset_cursor_fingerprint_state_for_profile(profile_dir: &Path) -> Re
         profile_dir.display()
     ));
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Auto-switch (TokenKeeper 保活用)
+// ---------------------------------------------------------------------------
+
+/// 是否启用自动换号（目前默认关闭，由配置/实验开关控制）
+pub fn is_auto_switch_enabled() -> bool {
+    false
+}
+
+/// 是否应该自动换号
+pub fn should_auto_switch(_current_account_id: &str) -> bool {
+    false
+}
+
+/// 自动换号冷却是否已过
+pub fn auto_switch_cooldown_ok() -> bool {
+    false
+}
+
+/// 执行自动换号
+pub async fn execute_auto_switch(_instance_id: &str) -> Result<String, String> {
+    Err("自动换号功能暂未启用".to_string())
 }
 
 /// 对齐无忧 `writeTokenToDb`（Lc）：仅回写 token，不做指纹重置/关进程（TokenKeeper 保活用）。
@@ -3035,7 +3762,11 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshRes
                     account.membership_type = Some(mt.to_string());
                 }
             }
-            account.cursor_usage_raw = Some(usage);
+            account.cursor_usage_raw = Some(merge_usage_preserving_nonzero_history(
+                account.cursor_usage_raw.as_ref(),
+                usage,
+                &account.id,
+            ));
             account.quota_query_last_error = None;
             account.quota_query_last_error_at = None;
             usage_refreshed = true;
@@ -3261,6 +3992,44 @@ fn pick_number(value: Option<&Value>, keys: &[&str]) -> Option<f64> {
         }
     }
     None
+}
+
+fn usage_raw_total_percent(raw: &serde_json::Value) -> Option<f64> {
+    let raw_obj = raw.as_object()?;
+    let plan_value = raw_obj
+        .get("individualUsage")
+        .and_then(|value| value.as_object())
+        .and_then(|value| value.get("plan"))
+        .or_else(|| {
+            raw_obj
+                .get("individual_usage")
+                .and_then(|value| value.as_object())
+                .and_then(|value| value.get("plan"))
+        })
+        .or_else(|| raw_obj.get("planUsage"))
+        .or_else(|| raw_obj.get("plan_usage"));
+    pick_number(plan_value, &["totalPercentUsed", "total_percent_used"])
+}
+
+/// API 新回 0% 不得覆盖磁盘上已有非 0 用量（闲置号假 0% 会冲掉真历史）。
+fn merge_usage_preserving_nonzero_history(
+    prior: Option<&serde_json::Value>,
+    incoming: serde_json::Value,
+    account_id: &str,
+) -> serde_json::Value {
+    let Some(prior) = prior else {
+        return incoming;
+    };
+    let prior_total = usage_raw_total_percent(prior).unwrap_or(0.0);
+    let new_total = usage_raw_total_percent(&incoming).unwrap_or(0.0);
+    if prior_total > 0.5 && new_total <= 0.5 {
+        logger::log_warn(&format!(
+            "[Cursor Refresh] 拒绝用 API 0% 覆盖历史非 0 用量: id={}, prior_total={:.1}, new_total={:.1}",
+            account_id, prior_total, new_total
+        ));
+        return prior.clone();
+    }
+    incoming
 }
 
 fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {

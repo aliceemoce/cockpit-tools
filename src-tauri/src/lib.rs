@@ -1,8 +1,8 @@
-mod commands;
+pub mod commands;
 pub mod error;
-mod models;
+pub mod models;
 pub mod modules;
-mod utils;
+pub mod utils;
 
 use modules::config::CloseWindowBehavior;
 use modules::logger;
@@ -231,7 +231,17 @@ pub fn run() {
                 args.len()
             ));
             let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+            // cockpit-tools:// 必须由已运行的主实例处理；副实例 on_open_url 会点空窗，此处统一转发到主进程 WebView。
+            let deep_link_actions_handled = args.iter().any(|a| {
+                let trimmed = a.trim();
+                if trimmed.starts_with("cockpit-tools://") || trimmed.starts_with("cockpittools://")
+                {
+                    return modules::deep_link_actions::handle_deep_link_actions(app, trimmed);
+                }
+                modules::deep_link_actions::handle_deep_link_actions(app, a)
+            });
             let handled = zcode_oauth_handled
+                || deep_link_actions_handled
                 || modules::external_import::handle_external_import_args(
                     app,
                     &args,
@@ -408,8 +418,13 @@ pub fn run() {
                         args.len(),
                         summarize_deep_link_args(&args)
                     ));
+                    if modules::gui_in_app_click::should_skip_deeplink_on_open_url() {
+                        return;
+                    }
                     let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                    let deep_link_actions_handled = args.iter().any(|a| modules::deep_link_actions::handle_deep_link_actions(&app_handle, a));
                     let handled = zcode_oauth_handled
+                        || deep_link_actions_handled
                         || modules::external_import::handle_external_import_args(
                             &app_handle,
                             &args,
@@ -433,7 +448,9 @@ pub fn run() {
                             summarize_deep_link_args(&args)
                         ));
                         let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                        let deep_link_actions_handled = args.iter().any(|a| modules::deep_link_actions::handle_deep_link_actions(&app_handle, a));
                         let handled = zcode_oauth_handled
+                            || deep_link_actions_handled
                             || modules::external_import::handle_external_import_args(
                                 &app_handle,
                                 &args,
@@ -703,6 +720,8 @@ pub fn run() {
             commands::system::external_import_fetch_import_url,
             commands::system::open_folder,
             commands::system::delete_corrupted_file,
+            commands::system::gui_trigger_click,
+            commands::system::gui_click_ack,
             // Logs Commands
             commands::logs::logs_get_snapshot,
             commands::logs::logs_open_log_directory,
@@ -1141,6 +1160,7 @@ pub fn run() {
             commands::cursor::cursor_oauth_login_complete,
             commands::cursor::cursor_oauth_login_cancel,
             commands::cursor::inject_cursor_account,
+            commands::cursor::inject_cursor_account_auto,
             commands::cursor::probe_cursor_account_chat,
             commands::cursor::probe_cursor_accounts_chat,
             // Grok Commands
@@ -1260,6 +1280,12 @@ pub fn run() {
             commands::antigravity_legacy_instance::antigravity_legacy_stop_instance,
             commands::antigravity_legacy_instance::antigravity_legacy_open_instance_window,
             commands::antigravity_legacy_instance::antigravity_legacy_close_all_instances,
+            // Screenshot Commands
+            commands::screenshot::take_screenshot,
+            commands::screenshot::take_window_screenshot,
+            // UI State Commands
+            commands::ui_state::get_ui_state,
+            commands::ui_state::export_ui_state,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

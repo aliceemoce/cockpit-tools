@@ -1,0 +1,4 @@
+﻿1. API、命令行、读写配置文件（可用脚本，见 `no-script-substitute-ui.mdc`）
+2. **UIA Control Pattern（MCP）**（`user-uia-pattern`：`ui_invoke`、`ui_toggle`、`ui_set_value` 等）—— **UI 唯一入口，禁止用 Python 脚本代替**
+3. 只读 UI 探测（MCP：`user-uiautomation` / `user-uia-pattern` 的 find、inspect、screenshot）
+- Shell、脚本：**仅后端/CLI**（禁止脚本点 GUI，见 `no-script-substitute-ui.mdc`）

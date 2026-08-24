@@ -248,6 +248,11 @@ export function PlatformOverviewTabsHeader({
               key={tab.key}
               className={`filter-tab${active === tab.key ? ' active' : ''}`}
               onClick={() => onTabChange?.(tab.key)}
+              data-action-id={
+                platform === 'cursor' && tab.key === 'instances'
+                  ? 'nav-cursor-instances'
+                  : undefined
+              }
             >
               {tab.icon}
               <span>{tab.label}</span>

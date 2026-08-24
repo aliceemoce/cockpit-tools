@@ -94,6 +94,7 @@ pub async fn list_instances() -> Result<Vec<InstanceProfileView>, String> {
         initialized: modules::instance::is_profile_initialized(&default_dir),
         is_default: true,
         follow_local_account: default_settings.follow_local_account,
+            app_path: None,
     });
 
     Ok(result)
@@ -161,6 +162,7 @@ pub async fn update_instance(
             initialized: modules::instance::is_profile_initialized(&default_dir),
             is_default: true,
             follow_local_account: updated.follow_local_account,
+                    app_path: None,
         });
     }
 
@@ -247,6 +249,7 @@ pub async fn start_instance(instance_id: String) -> Result<InstanceProfileView, 
             initialized: modules::instance::is_profile_initialized(&default_dir),
             is_default: true,
             follow_local_account: default_settings.follow_local_account,
+                    app_path: None,
         });
     }
 
@@ -313,6 +316,7 @@ pub async fn stop_instance(instance_id: String) -> Result<InstanceProfileView, S
             initialized: modules::instance::is_profile_initialized(&default_dir),
             is_default: true,
             follow_local_account: default_settings.follow_local_account,
+                    app_path: None,
         });
     }
 

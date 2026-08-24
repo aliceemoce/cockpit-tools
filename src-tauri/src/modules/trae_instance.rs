@@ -287,7 +287,8 @@ pub fn create_instance_for_platform(
         created_at: Utc::now().timestamp_millis(),
         last_launched_at: None,
         last_pid: None,
-    };
+            app_path: None,
+};
 
     store.instances.push(instance.clone());
     save_instance_store_for_platform(platform, &store)?;

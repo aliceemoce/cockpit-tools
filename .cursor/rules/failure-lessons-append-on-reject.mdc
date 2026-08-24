@@ -1,0 +1,14 @@
+---
+description: 用户拒收后必须追加工作区 failure-lessons 并换方法再试
+alwaysApply: true
+---
+
+# 拒收后：写失败档 + 换方法
+
+当用户判定交付**非白 / 垃圾 / 重做**：
+
+1. 在**当前工作区** `.cursor/rules/failure-lessons-shiro-extract.mdc`（或项目约定的 `failure-lessons-*.mdc`）**追加一条**：日期、失败物路径、根因、禁止再用的做法、下次必须换什么。
+2. **不得**用同一链路再跑一遍只改阈值或文案。
+3. 下次交付仍须满足 `result-only-delivery-complete-audio.mdc`：完整音频 + 打开 + 播放证据。
+
+用户只批准结果，不教流程。助手从失败档与主档读约束，不问用户要建议。

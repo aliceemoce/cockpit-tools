@@ -213,6 +213,7 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({
             </h2>
             <button
               className="modal-close"
+              data-action-id="update-modal-close"
               onClick={handleClose}
               aria-label={t('common.cancel')}
               disabled={isRestarting || isInstalling}
@@ -229,6 +230,7 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({
           <div className="modal-footer">
             <button
               className="btn btn-secondary"
+              data-action-id="update-modal-close"
               onClick={handleClose}
               disabled={isRestarting || isInstalling}
             >
@@ -252,6 +254,7 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({
           </h2>
           <button
             className="modal-close"
+            data-action-id="update-modal-close"
             onClick={handleClose}
             aria-label={t('common.cancel')}
             disabled={isRestarting || isInstalling}
@@ -349,6 +352,7 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({
         <div className="modal-footer">
           <button
             className="btn btn-secondary"
+            data-action-id="update-modal-close"
             onClick={handleClose}
             disabled={isRestarting || isInstalling}
           >

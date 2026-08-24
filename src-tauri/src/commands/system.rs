@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt as _;
 use url::Url;
 
@@ -4102,6 +4102,23 @@ pub async fn delete_corrupted_file(path: String) -> Result<(), String> {
         path, backup_name
     ));
 
+    Ok(())
+}
+
+/// 应用内点击：通过 action_id 触发前端按钮点击，无需 UIA 外部操作
+#[tauri::command]
+pub fn gui_trigger_click(app: tauri::AppHandle, action_id: String) -> Result<(), String> {
+    crate::modules::gui_in_app_click::trigger_click(&app, &action_id)
+}
+
+/// 前端回执应用内点击是否真正点到控件
+#[tauri::command]
+pub fn gui_click_ack(
+    action_id: String,
+    success: bool,
+    detail: Option<String>,
+) -> Result<(), String> {
+    crate::modules::gui_in_app_click::ack_from_frontend(action_id, success, detail);
     Ok(())
 }
 

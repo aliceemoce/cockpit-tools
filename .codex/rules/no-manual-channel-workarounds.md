@@ -1,0 +1,24 @@
+﻿# 禁止手工替代程序（通道 / 恢复 / 验收）
+
+## 用户纠正（2026-07-23）
+
+用户原话大意：连接后若最后一条是用户发的，须由**程序**重新获取内容并完成任务；禁止让用户重发；禁止 Agent 一直手动代替程序做事——否则就是撒谎。
+
+## 硬禁止（Agent 行为）
+
+1. **禁止**让用户「再发一条 / 重发 / 发短任务验收」来触发或验证微信链路。
+2. **禁止**用手工 `message send`、`openclaw agent --deliver`、临时脚本、直连 sendmessage、向 ACP 会话注入假入站，冒充自动回复或自动恢复（总禁令：`no-agent-wechat-publish-or-die.mdc`——Agent 发布了就死 ×10；含探测/点号；禁经 WorkBuddy 代发）。
+3. **禁止**用 Cursor 窗里口头说明、手工改状态文件「假装」通道已自动续跑。
+4. **禁止**把本应写进 `patches/weixin`（或同等插件代码）的自动行为，改成 Agent 每轮人工代劳。
+5. **禁止** Cursor IDE 会话里的 Agent **亲自去做**微信用户那条任务（改业务文件、代答用户问题）；只允许改程序让 **Gateway/微信 monitor/ACP 自动链路**把任务做完。说「补丁已改 / 不再问任务 / 正在…」交差仍算打断、未完成。
+
+## 必须（程序行为）
+
+1. Gateway / 微信 monitor **启动或重连**后：若某 peer **最后一条仍是用户入站且未验证出站**，代码必须自动把该入站入队并**无限重试**直到 `outbound` 成功或硬阻塞。
+2. ACP 若只吐出「正在 / 问任务是什么 / 盯日志」：视为**打断**，程序必须在同会话 **强制续派**（`program-continue`），不得结束工作；拦截垃圾出站本身不等于任务完成。
+3. 实现位置：`patches/weixin` 的 `last-user-inbound` + `recover-unanswered` + `inbound-retry` + `process-message` program-continue；经 `apply-weixin-acp-patches.ps1` 打进 live 插件。
+4. Agent 若发现自动续跑缺失或失败：只允许 **改代码 / 打补丁 / 修配置并让程序自己跑**；验收看日志里的 `auto-recover` / `program-continue` / `outbound: text sent OK`（且正文非垃圾），不得要求用户补发，不得在 Cursor 窗代做微信任务。
+
+## 与已有规则
+
+- 同效加强：`no-manual-wechat-printing.mdc`、`no-cursor-substitute-weixin.mdc`、`no-fantasy-completion.mdc`、`program-plan.mdc` 中「不得依赖手工 message send」「断线恢复续跑」。

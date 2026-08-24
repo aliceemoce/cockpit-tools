@@ -1,4 +1,4 @@
-import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck } from 'lucide-react';
+import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck, Camera } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -38,6 +38,7 @@ interface SideNavProps {
   updateRemindersEnabled: boolean;
   sponsorEntryVisible: boolean;
   onOpenLogViewer: () => void;
+  onTakeScreenshot?: () => void;
 }
 
 interface FlyingRocket {
@@ -142,6 +143,7 @@ export function SideNav({
   updateRemindersEnabled,
   sponsorEntryVisible,
   onOpenLogViewer,
+  onTakeScreenshot,
 }: SideNavProps) {
   const { t } = useTranslation();
   const { showModal } = useGlobalModal();
@@ -1019,6 +1021,19 @@ export function SideNav({
             ) : null}
           </button>
 
+          {onTakeScreenshot ? (
+            <button
+              className="nav-item"
+              onClick={onTakeScreenshot}
+              title={t('nav.screenshot', '截图') + ' (Ctrl+Shift+S)'}
+            >
+              <Camera size={isClassicLayout ? classicMainIconSize : 20} />
+              {showClassicLabels ? (
+                <span className="nav-item-text">{t('nav.screenshot', '截图')}</span>
+              ) : null}
+            </button>
+          ) : null}
+
           <button
             className={`nav-item ${page === 'settings' && !shouldLockActiveOnMore ? 'active' : ''}`}
             onClick={() => setPage('settings')}
@@ -1035,6 +1050,16 @@ export function SideNav({
       {!isClassicLayout && (
         <>
           <div className="nav-footer">
+            {onTakeScreenshot ? (
+              <button
+                className="nav-item"
+                onClick={onTakeScreenshot}
+                title={t('nav.screenshot', '截图') + ' (Ctrl+Shift+S)'}
+              >
+                <Camera size={20} />
+                <span className="tooltip">{t('nav.screenshot', '截图')}</span>
+              </button>
+            ) : null}
             <button
               className={`nav-item ${page === 'settings' && !shouldLockActiveOnMore ? 'active' : ''}`}
               onClick={() => setPage('settings')}

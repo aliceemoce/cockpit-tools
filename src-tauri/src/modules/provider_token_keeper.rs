@@ -63,6 +63,41 @@ pub fn ensure_started(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
             sync_cursor_local_watch(&watch_app).await;
+
+            // === 自动换号检测 ===
+            if cursor_account::is_auto_switch_enabled() {
+                if let Ok(Some(current_id)) =
+                    crate::modules::provider_current_state::get_current_account_id("cursor")
+                {
+                    if cursor_account::should_auto_switch(&current_id) {
+                        if cursor_account::auto_switch_cooldown_ok() {
+                            match cursor_account::execute_auto_switch("__default__").await {
+                                Ok(new_email) => {
+                                    logger::log_info(&format!(
+                                        "[AutoSwitch] 额度耗尽自动换号成功: {} -> {}",
+                                        current_id, new_email
+                                    ));
+                                    let _ = watch_app.emit(
+                                        "accounts:changed",
+                                        serde_json::json!({
+                                            "platformId": "cursor",
+                                            "accountId": "",
+                                            "reason": "auto-switch",
+                                        }),
+                                    );
+                                }
+                                Err(e) => {
+                                    logger::log_warn(&format!(
+                                        "[AutoSwitch] 自动换号失败: {}",
+                                        e
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             tokio::time::sleep(Duration::from_secs(CURSOR_LOCAL_WATCH_SECONDS)).await;
         }
     });

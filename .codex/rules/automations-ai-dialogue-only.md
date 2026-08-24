@@ -1,0 +1,13 @@
+﻿# 本地 Automations = AI 对话（硬）
+
+## 用户纠正（2026-07-25）
+
+Automations 不得做成「跑审计/测量脚本 → 报 fail → 交差」。派发内容必须是 Agent CLI **对话任务**。
+
+## 硬要求
+
+1. 提示词 = 让 AI 读目的/改程序或规划/做成。
+2. 禁止提示词主体为：必须先跑某某 `.py`、以脚本 exit/fail 数为交付、audit-only。
+3. 对话中用 Shell 等工具可以；外包成测量脚本交差不行。
+
+与各仓 `chengxu-guihua-from-user.mdc` 自动化节同效。

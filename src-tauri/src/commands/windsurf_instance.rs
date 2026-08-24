@@ -122,6 +122,7 @@ pub async fn windsurf_list_instances() -> Result<Vec<InstanceProfileView>, Strin
         initialized: is_profile_initialized(&default_dir.to_string_lossy()),
         is_default: true,
         follow_local_account: false,
+            app_path: None,
     });
 
     Ok(result)
@@ -190,6 +191,7 @@ pub async fn windsurf_update_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -281,6 +283,7 @@ pub async fn windsurf_start_instance(instance_id: String) -> Result<InstanceProf
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -338,6 +341,7 @@ pub async fn windsurf_stop_instance(instance_id: String) -> Result<InstanceProfi
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 

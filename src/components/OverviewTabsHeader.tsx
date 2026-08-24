@@ -118,6 +118,7 @@ export function OverviewTabsHeader({
             <button
               key={tab.key}
               className={`filter-tab${active === tab.key ? ' active' : ''}`}
+              data-action-id={tab.key === 'instances' ? 'nav-instances' : undefined}
               onClick={() => onNavigate?.(tab.key)}
             >
               {tab.icon}

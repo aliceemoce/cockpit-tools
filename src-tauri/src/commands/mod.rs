@@ -41,3 +41,5 @@ pub mod workbuddy_instance;
 pub mod zcode;
 pub mod zcode_instance;
 pub mod zed;
+pub mod screenshot;
+pub mod ui_state;

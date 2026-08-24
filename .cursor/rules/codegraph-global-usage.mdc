@@ -1,0 +1,45 @@
+---
+description: 全局通用 CodeGraph 使用习惯（所有项目生效）。遇到代码层面细节问题优先调 CodeGraph MCP 工具而非猜，明确 MCP 工具 vs CLI 的优先级、索引不存在时的兜底流程、和 alwaysApply 固定上下文快照的配合规则。
+alwaysApply: true
+---
+
+# CodeGraph 全局通用使用规则（跨所有项目生效）
+
+## 核心原则
+遇到任何代码层面的细节问题（符号定义/调用链/依赖关系/影响面/谁调用了谁/内部调用了哪些方法/文件周边引用/具体某段源码内容），**优先自动查 CodeGraph，不要猜、不要瞎蒙、不要上来就 glob+grep+Read 扫文件**。
+
+## 优先级（从高到低）
+1. **MCP 工具（优先）**：AI 能直接拿到结构化结果，没有文件读取开销
+   - `codegraph_explore`：区域探索子图，目标符号 + 所有直接调用者/被调用者链路（最常用，对应 CLI `explore`）
+   - `codegraph_node`：单符号/单文件上下文，带行号源码 + 引用者 used-by 列表（对应 CLI `node`）
+   - `codegraph_search`：语义 + FTS5 全文关键词搜索（对应 CLI `query`）
+   - `codegraph_callers`：谁调了这个符号（对应 CLI `callers`）
+   - `codegraph_impact` / 等效 CLI `impact`：改动影响面分析
+   - `codegraph_status` / 等效 CLI `status`：索引健康度、文件数、节点数、边数
+
+2. **CLI 工具（兜底）**：若 MCP 工具不可用或参数不匹配时，用 CLI 补
+   - PowerShell 前缀固定：`npx.cmd --yes @colbymchenry/codegraph <子命令>`
+   - 子命令全表：`query`（全文搜索）、`node`（单符号上下文）、`explore`（区域探索子图）、`callers`（谁调用）、`callees`（调用了谁）、`impact`（影响面）、`files`（项目文件结构树）、`status`（索引统计）、`init -i`（首次或大改后重建索引）、`sync`（增量同步变更）
+
+## 索引不存在时的兜底流程
+如果当前工作区没有 `.codegraph/` 目录（说明索引还没建），**不要猜、不要跳过检索**，按以下步骤执行：
+1. 确定源码根目录（项目级 Dart/TS/Python 源码所在的最顶层目录，不一定是 Trae 打开的工作区根目录——JHenTai 源码根在 `JHenTai-source` 而非编译产物根目录）
+2. 执行：`cd <源码根目录> ; npx.cmd --yes @colbymchenry/codegraph init -i`
+3. 等索引构建完成（通常 1-3 秒/百文件）
+4. 再继续检索
+
+## 和 alwaysApply 固定上下文快照的配合规则
+如果当前项目 `.cursor/rules/` 下有带 `alwaysApply: true` 的项目级架构快照（例如某项目的 core-context / 路由总表 / Service 索引 / 表结构总览）：
+- **不要重复读取这些已经自动注入的内容**（避免浪费 token）
+- **用 CodeGraph 补全细节**：固定快照里只有架构级宏观信息，具体到某个函数的实现源码、某条路由的完整处理链、某个表的所有引用位置、某个 Service 内部调用了哪些方法——这些动态细节全部用 CodeGraph 查
+
+## 触发场景（AI 在以下情况必须自动调用 CodeGraph 而非跳过）
+- 用户问「某类/函数/方法在哪定义？」→ `codegraph_search` / CLI `query`
+- 用户问「谁调用了 xxx？」→ `codegraph_callers` / CLI `callers`
+- 用户问「xxx 内部调用了谁？」→ CLI `callees` 或 `codegraph_explore`
+- 用户问「xxx 的调用链/依赖关系？」→ `codegraph_explore` / CLI `explore`
+- 要改某个模块/类/Service/Setting，需要完整源码 + 周边依赖 → `codegraph_node` / CLI `node`
+- 评估改动影响面（谁依赖这个符号）→ CLI `impact`
+- 查项目文件结构/目录索引 → CLI `files`
+- 查某个枚举/表/DAO/配置常量的所有引用 → `codegraph_search` + FTS5
+- 用户给出具体代码片段让解释，但上下文里没加载对应源码位置 → 自动 `codegraph_node` 注入对应位置再解释

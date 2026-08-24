@@ -1,0 +1,18 @@
+﻿# 禁止手工向微信打印内容
+
+## 硬约束
+
+- **总禁令**：Cursor Agent 不得经 OpenClaw / 微信发布任何消息；发了就死（十遍见 `no-agent-wechat-publish-or-die.mdc`）。
+- 禁止通过脚本、临时程序、直连 `ilink/bot/sendmessage` 等方式手工向微信发送**任何**内容（含探测、点号、单字）。
+- 禁止发送与当前用户任务无关的说明、日志、回执、调试信息到微信。
+- 微信出站仅允许由 OpenClaw **自动会话链路**产生，且内容必须与当前任务直接相关。
+- 禁止要求用户发送“第三条消息”或“再发一条短任务”作为排查或触发条件，必须在现有入站记录基础上由**程序**自动恢复并触发回复。
+- 禁止经 WorkBuddy 代发或探测发信（见 `no-workbuddy-hijack-no-probe-send.mdc`）。
+- 未出现用户侧微信对话成立前，禁止宣称已完成（见 `no-fantasy-completion.mdc`）。
+- 与 `no-manual-channel-workarounds.mdc`、`no-agent-wechat-publish-or-die.mdc` 同效：通道恢复禁止 Agent 手工代劳发信。
+
+## 本项目当前任务上下文
+
+- 主任务：本仓龙虾微信对话成立；Agent 只改程序，不代发。
+- 不得再用“补发说明/调试回执/探测气泡”替代任务执行。
+- 允许动作仅限：修复会话调度、模型调用、自动出站链路本身。

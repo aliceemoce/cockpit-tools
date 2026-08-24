@@ -1,26 +1,44 @@
 ---
-description: 禁止 Cursor 内置/Glass 浏览器与空浏览器；网页操作用系统浏览器 + UIA MCP
+description: 需登录的在线网页禁止内置浏览器，改用系统浏览器+UIA；本地构建可用内置/无头
 alwaysApply: true
 ---
 
-# 浏览器：系统浏览器 + UIA MCP
+# 浏览器：在线需登录 vs 本地构建
 
-网页相关任务**禁止**使用 Cursor 内置浏览器；**必须**在用户系统浏览器中打开目标 URL，并用 UIA MCP 探测与操作。
+## 为什么这样分（原因）
 
-## 禁止
+- **需登录的在线站**：Agent **不会、也不能**在隔离的内置/空浏览器里替你完成真实登录。登录 Cookie、OAuth 会话、扫码态只存在于**你本机已登录的系统浏览器 Profile**。内置浏览器是空会话，没有你的登录信息，打开也等于未登录或假操作。因此必须用**你的系统浏览器** + UIA。
+- **本地构建**（本机环回、如 SillyTavern）：一般**不依赖**你的公网账号登录态，用内置浏览器 / Playwright 无头即可操纵真实前端，且不抢桌面焦点；可多开并行。
+
+## 分界（硬规则）
+
+| 场景 | 定义 | 内置浏览器 / Playwright 无头 | 系统浏览器 + UIA |
+|------|------|------------------------------|------------------|
+| **本地构建** | `http://127.0.0.1` / `http://localhost` / 本机环回上的服务（如 SillyTavern、本机管理页） | **允许**（可多标签/多 context 并行） | 可用，非必须 |
+| **需登录的在线** | 公网/非本机 URL，且任务涉及登录态、OAuth、Cookie、扫码账号、已登录会话 | **禁止** `cursor-ide-browser` / Glass 内嵌代登 | **必须**（因为只有你的浏览器里有登录信息） |
+
+「本地构建」含：本仓库启动的酒馆、总控台、本机反代页面等，不要求用户看见系统窗。
+
+## 禁止（仅针对：需登录的在线）
 
 | 类别 | 禁止项 |
 |------|--------|
-| 内置浏览器 MCP | `cursor-ide-browser` 全部工具：`browser_navigate`、`browser_click`、`browser_type`、`browser_snapshot`、`browser_cdp`、`browser_tabs` 等 |
-| Glass / IDE 内嵌 | `open_resource` 打开 `http://` / `https://`（走 Glass 或 IDE 内嵌浏览器） |
+| 内置浏览器 MCP | 对需登录的在线站使用 `cursor-ide-browser`：`browser_navigate`、`browser_click`、`browser_type`、`browser_snapshot`、`browser_cdp`、`browser_tabs` 等 |
+| Glass / IDE 内嵌 | 用 `open_resource` 打开需登录的在线 `https://` 并冒充已完成登录操作 |
 | 空浏览器 | 无目标 URL 就 `browser_navigate`、只 `Start-Process chrome`/`msedge`/`firefox` 不带 URL、打开 `about:blank` 或空白新标签 |
 | 脚本点浏览器 | Python/PowerShell 坐标点击、盲目遍历浏览器控件（见 `no-ui-mouse-automation.mdc`） |
+| 空会话代登 | 无用户 Profile 的自动化去完成在线 OAuth / 账号密码登录（见 `no-empty-browser-oauth.mdc`） |
 
-## 必须怎么做
+## 本地构建：允许怎么做
+
+1. 用 `cursor-ide-browser` 或 Playwright 无头打开明确本地 URL（例：`http://127.0.0.1:8003`）。
+2. 可一次多标签 / 多 BrowserContext 并行（批量酒馆对话等）。
+3. 在页内调真实前端 API（如 `SillyTavern.getContext()`）发可见对话；验收仍以聊天气泡 + `chats/*.jsonl` 为准。
+4. **禁止**把 Cursor 聊天口述冒充「已在本地页面对话」。
+
+## 需登录的在线：必须怎么做
 
 ### 1. 打开页面（Shell，带完整 URL）
-
-用系统默认或指定浏览器打开**明确 URL**，例如：
 
 ```powershell
 Start-Process "https://example.com/path"
@@ -32,7 +50,7 @@ Start-Process msedge -ArgumentList "https://example.com/path"
 
 ### 2. 探测（UIA MCP，先于一切点击）
 
-1. `ui_find_window`：按窗口标题、进程名（Chrome / msedge / firefox）或 processId 定位浏览器窗口，勿认错窗口
+1. `ui_find_window`：按窗口标题、进程名或 processId 定位，勿认错窗口
 2. `ui_get_children` / `ui_find_control`：读地址栏、链接、按钮、输入框、Tab
 3. `ui_screenshot`：必要时截图核对页面已加载
 
@@ -50,15 +68,17 @@ MCP 路由：`user-mcp-router`（`user-uiautomation` / `user-uia-pattern`）。
 
 ### 4. 验收
 
-- 「浏览器已操作」= 系统浏览器窗口存在 + UIA MCP 证明目标控件存在并完成操作 + 必要时 `ui_screenshot` 一致
-- 不得称「已在内置浏览器里点过」
+- 「在线需登录已操作」= 系统浏览器窗口存在 + UIA 证明目标控件存在并完成操作
+- 「本地构建已操作」= 对本地 URL 的内置/无头页完成操作 + 可核对产物（截图、jsonl、验收 JSON）
+- 不得把在线需登录任务说成「已在内置浏览器里登过」
 
 ## 不必开浏览器
 
 - 纯 API、CLI、`gh`、读写文件即可完成的任务
-- 只需在回复中给出链接、不需 Agent 代操作网页时：写 URL 即可，**禁止**用内置浏览器打开
+- 只需在回复中给出链接、不需 Agent 代操作时：写 URL 即可
 
 ## 关联规则
 
 - 桌面 GUI 通用：`no-script-substitute-ui.mdc`（先 MCP 探测再点）
 - 禁止坐标/脚本代替 UIA：`no-ui-mouse-automation.mdc`
+- OAuth：`no-empty-browser-oauth.mdc`

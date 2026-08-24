@@ -22,6 +22,7 @@ pub enum SwitchAuditPhase {
     Launch,
     ProbePost,
     RefreshPost,
+    StickCheck,
     UiErrorMark,
 }
 
@@ -264,6 +265,36 @@ pub fn write_refresh_post(
         outcome,
         error.map(str::to_string),
     );
+}
+
+pub fn write_stick_check(
+    ctx: &CursorSwitchAuditCtx,
+    account: &CursorAccount,
+    outcome: &str,
+    error: Option<&str>,
+) {
+    write_event(
+        Some(ctx),
+        SwitchAuditPhase::StickCheck,
+        Some(&ctx.instance_id),
+        Some(account),
+        None,
+        outcome,
+        error.map(str::to_string),
+    );
+    if outcome == "ok" {
+        logger::log_info(&format!(
+            "[Cursor Switch] 粘号复查通过: switch_trace_id={}, email={}",
+            ctx.switch_trace_id, account.email
+        ));
+    } else {
+        logger::log_warn(&format!(
+            "[Cursor Switch] 粘号复查失败: switch_trace_id={}, expected={}, {}",
+            ctx.switch_trace_id,
+            account.email,
+            error.unwrap_or(outcome)
+        ));
+    }
 }
 
 pub fn write_ui_error_mark(account_id: &str, email: &str, error: &str) {

@@ -1453,10 +1453,17 @@ export function InstancesManager<TAccount extends AccountLike>({
       const preMarkedStarting = options?.preMarkedStarting ?? false;
 
       if (instance.running) {
-        if (showRunningNotice) {
-          setRunningNoticeInstance(instance);
+        // 光标多开：已在跑仍走切号入口（热写库 + 跳过二次启动），禁止只弹「关闭并重启」。
+        const cursorMultiSeamless =
+          appType === "cursor" && !instance.isDefault;
+        if (cursorMultiSeamless) {
+          // fall through to startInstance
+        } else {
+          if (showRunningNotice) {
+            setRunningNoticeInstance(instance);
+          }
+          return "already-running";
         }
-        return "already-running";
       }
 
       if (!preMarkedStarting) {
@@ -1518,6 +1525,7 @@ export function InstancesManager<TAccount extends AccountLike>({
       }
     },
     [
+      appType,
       handleMissingPathError,
       handleCodexManagedStoreLaunchError,
       markInstanceStarting,
@@ -2616,6 +2624,7 @@ export function InstancesManager<TAccount extends AccountLike>({
                   <button
                     className="icon-button"
                     title={t("instances.actions.start", "启动")}
+                    data-action-id={`cursor-instance-start-${instance.id}`}
                     onClick={() => handleStart(instance)}
                     disabled={
                       isInstanceBusy || restartingAll || bulkActionLoading
@@ -2838,11 +2847,16 @@ export function InstancesManager<TAccount extends AccountLike>({
             <div className="modal-footer">
               <button
                 className="btn btn-secondary"
+                data-action-id="cursor-instance-running-go"
                 onClick={handleOpenRunningInstance}
               >
                 {t("instances.runningDialog.go", "立马前往")}
               </button>
-              <button className="btn btn-danger" onClick={handleForceRestart}>
+              <button
+                className="btn btn-danger"
+                data-action-id="cursor-instance-running-restart"
+                onClick={handleForceRestart}
+              >
                 {t("instances.runningDialog.restart", "关闭并重启")}
               </button>
             </div>

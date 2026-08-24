@@ -139,8 +139,15 @@ def move_offscreen(win: auto.Control) -> None:
 
 def focus_webview(win: auto.Control, wait_s: float = 8.0) -> bool:
     for c in walk(win):
-        if "Chrome_RenderWidgetHostHWND" in (c.ClassName or ""):
-            c.SetFocus()
+        try:
+            class_name = c.ClassName or ""
+        except Exception:
+            continue
+        if "Chrome_RenderWidgetHostHWND" in class_name:
+            try:
+                c.SetFocus()
+            except Exception:
+                continue
             time.sleep(wait_s)
             return True
     return False
@@ -175,7 +182,10 @@ def find_clickable(
     }
     skip.update(exclude)
     for c in walk(win):
-        n = (c.Name or "").strip()
+        try:
+            n = (c.Name or "").strip()
+        except Exception:
+            continue
         if not n or n in skip or not control_visible(c):
             continue
         if any(x in n for x in exclude):

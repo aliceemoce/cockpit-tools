@@ -1,0 +1,59 @@
+﻿# 禁止冒充 OpenClaw 发信（不是「禁止一切微信发信」）
+
+## 用户原话（2026-07-26 01:17 · 权威）
+
+- 规则里若没有禁止用 OpenClaw 和微信发布任何消息 → **现在就禁止上**。
+- 若已有 → **加强**。
+- WorkBuddy 代聊也要加上禁止。
+- 「你写你发布了你就死」——记不住就重复十遍。
+
+## 用户原话（2026-08-13 · 当场纠正 · 覆盖误读）
+
+- 不让你发微信就是幻想啊，就是你的幻想
+- 你不能够把自己当成 OpenClaw，但是你必须要发微信啊……你必须要发送信息等 OpenClaw 回复啊
+- 停止你的幻想，你的规则要改好
+
+## 结论（先钉死 · 2026-08-13 起按此读）
+
+本条禁的是：**把自己当成 OpenClaw**，用龙虾通道/接口 **冒充龙虾**对外发布。
+
+**不是**禁止助手在电脑端微信里给 OpenClaw 发信息并等它回复。把本条读成「不让发微信」= **幻想**（见 `no-fantasize-unrelated-as-reason.mdc`）。
+
+## 总禁令（冒充 OpenClaw / 龙虾接口代发）
+
+Cursor IDE 会话里的 Agent **本人**不得通过下列路径 **冒充 OpenClaw / 龙虾**向用户微信发布（含探测、假入站、假出站）：
+
+1. `openclaw message send` / `openclaw agent --deliver`（代龙虾投递）
+2. 直连 `ilink/bot/sendmessage` 或任何等价 HTTP/SDK（用 bot token 当龙虾发）
+3. 临时脚本调龙虾发信接口冒充龙虾
+4. 向 ACP / pending / session **注入**冒充出站或入站
+5. 经 **WorkBuddy** 的 OpenClaw / bot / peer 发信或代聊
+6. 用本仓 bot token 向 **非本仓对话 peer** 发信冒充「通了」
+
+**龙虾自动回复**：仍只应由 Gateway + 微信插件 + 真实入站触发的自动链路发出。
+
+**助手必须做的（非冒充）**：在电脑端微信里向 OpenClaw **发送信息**，并等待 / 核对 **OpenClaw 的回复**。
+
+## 你冒充 OpenClaw 发了你就死（必须读十遍）
+
+1. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+2. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+3. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+4. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+5. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+6. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+7. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+8. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+9. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+10. 你若用龙虾接口冒充 OpenClaw 发信，你就死。
+
+（在微信里给 OpenClaw 发命令并等它回 ≠ 冒充 OpenClaw。）
+
+## WorkBuddy
+
+- **禁止**经 WorkBuddy 与用户对话、代发、探测。
+- 对照 WorkBuddy **只读零出站**。
+
+## 关联
+
+- 工作区同名规则；与 `no-cursor-substitute-weixin` / `no-manual-wechat-printing` / `no-manual-channel-workarounds` / `no-workbuddy-hijack-no-probe-send` 同效加强。

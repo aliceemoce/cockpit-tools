@@ -327,6 +327,71 @@ pub async fn inject_cursor_account(app: AppHandle, account_id: String) -> Result
     }
 }
 
+/// 默认自动换号：与多开「启动」同构（forced_account_id=None），写默认 profile。
+#[tauri::command]
+pub async fn inject_cursor_account_auto(app: AppHandle) -> Result<String, String> {
+    let started_at = Instant::now();
+    logger::log_info("[Cursor Switch] 开始默认自动换号");
+
+    let view = match crate::commands::cursor_instance::start_cursor_instance_with_account_switch(
+        "__default__".to_string(),
+        None,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(err) => {
+            if err.starts_with("APP_PATH_NOT_FOUND:") || err.contains("启动 Cursor 失败") {
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 自动换号写库完成但启动失败: elapsed={}ms, error={}",
+                    started_at.elapsed().as_millis(),
+                    err
+                ));
+                if err.contains("未找到 Cursor") || err.contains("APP_PATH_NOT_FOUND") {
+                    let _ = app.emit(
+                        "app:path_missing",
+                        serde_json::json!({ "app": "cursor", "retry": { "kind": "default" } }),
+                    );
+                }
+                return Ok(format!("自动换号完成，但 Cursor 启动失败: {}", err));
+            }
+            return Err(err);
+        }
+    };
+
+    let account_id = view
+        .bind_account_id
+        .clone()
+        .or_else(|| {
+            crate::modules::provider_current_state::get_current_account_id("cursor")
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_default();
+    if !account_id.is_empty() {
+        let _ = crate::modules::provider_current_state::set_current_account_id(
+            "cursor",
+            Some(&account_id),
+        );
+    }
+    let email = cursor_account::load_account(&account_id)
+        .map(|a| a.email)
+        .unwrap_or_else(|| account_id.clone());
+
+    let app_for_tray = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = crate::modules::tray::update_tray_menu(&app_for_tray);
+    });
+
+    logger::log_info(&format!(
+        "[Cursor Switch] 默认自动换号完成: account_id={}, email={}, elapsed={}ms",
+        account_id,
+        email,
+        started_at.elapsed().as_millis()
+    ));
+    Ok(format!("自动换号完成: {}", email))
+}
+
 #[tauri::command]
 pub async fn probe_cursor_account_chat(
     app: AppHandle,

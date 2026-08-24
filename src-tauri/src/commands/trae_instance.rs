@@ -176,6 +176,7 @@ pub async fn trae_list_instances(
         initialized: is_profile_initialized(&default_dir.to_string_lossy()),
         is_default: true,
         follow_local_account: false,
+            app_path: None,
     });
 
     Ok(result)
@@ -248,6 +249,7 @@ pub async fn trae_update_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -339,6 +341,7 @@ pub async fn trae_start_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 
@@ -423,6 +426,7 @@ pub async fn trae_stop_instance(
             initialized: is_profile_initialized(&default_dir.to_string_lossy()),
             is_default: true,
             follow_local_account: false,
+                    app_path: None,
         });
     }
 

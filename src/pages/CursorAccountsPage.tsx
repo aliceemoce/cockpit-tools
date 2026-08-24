@@ -25,6 +25,7 @@ import {
   Lock,
   MessageSquare,
   BookOpen,
+  Zap,
 } from 'lucide-react';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
 import * as cursorService from '../services/cursorService';
@@ -117,8 +118,33 @@ function normalizeCursorPercent(raw: number | null | undefined): {
   return { bar, display: Math.round(bar) };
 }
 
-export function CursorAccountsPage() {
-  const [activeTab, setActiveTab] = useState<CursorTab>('overview');
+type CursorAccountsPageProps = {
+  /** App 层 deep link 传入的子 Tab，解决懒加载前 window 事件丢失 */
+  requestedTab?: CursorTab;
+  onRequestedTabApplied?: () => void;
+};
+
+export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: CursorAccountsPageProps = {}) {
+  const [activeTab, setActiveTab] = useState<CursorTab>(() => requestedTab ?? 'overview');
+
+  useEffect(() => {
+    if (!requestedTab) return;
+    setActiveTab(requestedTab);
+    onRequestedTabApplied?.();
+  }, [requestedTab, onRequestedTabApplied]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const custom = e as CustomEvent<{ platform?: string; tab?: CursorTab }>;
+      const platform = custom.detail?.platform;
+      const tab = custom.detail?.tab;
+      if (platform === 'cursor' && tab) {
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener('app-platform-tab', handler as EventListener);
+    return () => window.removeEventListener('app-platform-tab', handler as EventListener);
+  }, []);
   const [filterTypes, setFilterTypes] = useState<string[]>(() =>
     readAccountsOverviewFilterPersistenceEnabled(CURSOR_FILTER_PERSISTENCE_SCOPE)
       ? readAccountsOverviewFilterStringArray(CURSOR_FILTER_PERSISTENCE_SCOPE, FILTER_TYPES_FIELD)
@@ -204,6 +230,20 @@ export function CursorAccountsPage() {
 
   const [probingChatId, setProbingChatId] = useState<string | null>(null);
   const [probingChatBatch, setProbingChatBatch] = useState(false);
+  const [autoInjecting, setAutoInjecting] = useState(false);
+
+  const handleAutoInject = useCallback(async () => {
+    setAutoInjecting(true);
+    try {
+      const result = await cursorService.injectCursorAccountAuto();
+      setMessage({ tone: 'success', text: result });
+      await store.fetchAccounts();
+    } catch (error) {
+      setMessage({ tone: 'error', text: String(error) });
+    } finally {
+      setAutoInjecting(false);
+    }
+  }, [setMessage, store]);
 
   const handleProbeChat = useCallback(async (accountId: string) => {
     setProbingChatId(accountId);
@@ -851,7 +891,7 @@ export function CursorAccountsPage() {
           <div className="card-footer">
             <span className="card-date">{formatDate(account.created_at)}</span>
             <div className="card-actions">
-              <button className="card-action-btn success" onClick={() => handleInjectToVSCode?.(account.id)} disabled={!!injecting || isBanned}
+              <button className="card-action-btn success" data-action-id="cursor-inject" onClick={() => handleInjectToVSCode?.(account.id)} disabled={!!injecting || isBanned}
                 title={isBanned ? t('accounts.status.forbidden_msg') : t('cursor.injectToCursor', '切换到 Cursor')}>
                 {injecting === account.id ? <RefreshCw size={14} className="loading-spinner" /> : <Play size={14} />}
               </button>
@@ -1045,7 +1085,7 @@ export function CursorAccountsPage() {
           </td>
           <td className="sticky-action-cell table-action-cell">
             <div className="action-buttons">
-              <button className="action-btn success" onClick={() => handleInjectToVSCode?.(account.id)} disabled={!!injecting || isBanned}
+              <button className="action-btn success" data-action-id="cursor-play" onClick={() => handleInjectToVSCode?.(account.id)} disabled={!!injecting || isBanned}
                 title={isBanned ? t('accounts.status.forbidden_msg') : t('cursor.injectToCursor', '切换到 Cursor')}>
                 {injecting === account.id ? <RefreshCw size={14} className="loading-spinner" /> : <Play size={14} />}
               </button>
@@ -1193,6 +1233,16 @@ export function CursorAccountsPage() {
           </button>
         </div>
         <div className="toolbar-right">
+          <button
+            className="btn btn-primary icon-only"
+            data-action-id="cursor-auto-inject"
+            onClick={() => void handleAutoInject()}
+            disabled={autoInjecting || accounts.length === 0}
+            title={t('cursor.autoInject', '自动换号')}
+            aria-label={t('cursor.autoInject', '自动换号')}
+          >
+            <Zap size={14} className={autoInjecting ? 'loading-spinner' : ''} />
+          </button>
           <button className="btn btn-primary icon-only" onClick={() => openAddModal('oauth')} title={t('common.shared.addAccount', '添加账号')} aria-label={t('common.shared.addAccount', '添加账号')}><Plus size={14} /></button>
           <button className="btn btn-secondary icon-only" onClick={handleRefreshAll} disabled={refreshingAll || accounts.length === 0} title={t('common.shared.refreshAll', '刷新全部')} aria-label={t('common.shared.refreshAll', '刷新全部')}>
             <RefreshCw size={14} className={refreshingAll ? 'loading-spinner' : ''} />

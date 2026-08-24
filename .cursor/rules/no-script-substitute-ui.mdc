@@ -45,6 +45,36 @@ Shell / Python / `.ps1` / `.bat` **仅**用于后端与命令行，例如：
 
 **没有可点的业务控件 = 不点。** 不是幻想里有 Play 就能脚本点 Play。
 
+## 应用内点击优先（2026-08-16 用户纠正）
+
+### 用户原话（权威）
+
+- 如果你的应用内点击能够点击，那就不要用 UIA 点击，把规则也这样改
+
+### 优先级（硬）
+
+1. **第一优先：应用内点击** —— 通过 Tauri 命令 `gui_trigger_click(action_id)` 发射 `gui:trigger-click` 事件，前端按 `data-action-id` 定位按钮并点击。目标按钮已有 `data-action-id` 锚点时，**禁止**改用 UIA/脚本外部点击。
+2. **第二优先：UIA MCP `ui_invoke`** —— 目标控件无 `data-action-id` 锚点（如其它平台页面、Cursor IDE 窗口等非本应用控件）时使用。
+3. **降级：与 MCP 探测结果绑定的脚本点击** —— 仅当 UIA MCP 不可用时。
+
+### 已有锚点清单（持续维护）
+
+| action_id | 功能 | 位置 |
+|---|---|---|
+| `cursor-auto-inject` | Cursor 自动选号（Zap 按钮） | CursorAccountsPage toolbar |
+| `cursor-auto-switch-toggle` | 运行时自动换号开关（Repeat） | CursorAccountsPage toolbar |
+| `cursor-inject` | 卡片视图切号/注入 | CursorAccountsPage 卡片 |
+| `cursor-play` | 表格视图切号/注入 | CursorAccountsPage 表格 |
+| `cursor-instance-start-*` | 应用多开实例 Play | InstancesManager 卡片 |
+| `cursor-instance-running-go` | 实例已在运行 → 立马前往 | InstancesManager 弹窗 |
+| `cursor-instance-running-restart` | 实例已在运行 → 关闭并重启 | InstancesManager 弹窗 |
+
+新增业务按钮时须同步加 `data-action-id` 并登记本表。
+
+### 触发方式
+
+应用内点击由应用内部链路触发（后端命令 / CLI / 前端 invoke）；禁止为触发它而伪造外部输入。
+
 ## UI 必须用什么
 
 对桌面 GUI 的自动化 **优先 MCP**；脚本点击仅作 MCP 已锁定控件的执行器：
@@ -59,5 +89,6 @@ Shell / Python / `.ps1` / `.bat` **仅**用于后端与命令行，例如：
 ## 完成标准
 
 - 「GUI 已验收」= `ui_find_window` 锁定 Cockpit + **目检通过**的截图（非 Cursor/Codex 错窗）+ 标准项一致；能点业务控件时须 MCP 点对控件
+- 「GUI 已验收」的点击证据优先用**应用内点击的调用记录**（`gui_trigger_click` 返回成功）+ 点击后画面截图
 - 「后端已验收」= 编译/bin/日志核对通过，**不得**写成 GUI 已点过
 - 两者分开写；**禁止幻想 UI 状态**

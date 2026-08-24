@@ -216,7 +216,8 @@ pub fn create_instance(params: CreateInstanceParams) -> Result<InstanceProfile, 
         created_at: Utc::now().timestamp_millis(),
         last_launched_at: None,
         last_pid: None,
-    };
+            app_path: None,
+};
     store.instances.push(instance.clone());
     save_instance_store(&store)?;
     Ok(instance)

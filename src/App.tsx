@@ -14,6 +14,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { takeScreenshot } from './services/screenshotService';
 import { useTranslation } from 'react-i18next';
 import { FileText, FolderOpen, RefreshCw, X } from 'lucide-react';
 import { SideNav } from './components/layout/SideNav';
@@ -21,6 +22,7 @@ import { GlobalModal } from './components/GlobalModal';
 import { AnnouncementHost } from './components/AnnouncementCenter';
 import { TopCenterPromoBanner } from './components/TopCenterPromoBanner';
 import type { QuickSettingsType } from './components/QuickSettingsPopover';
+import type { CursorTab } from './components/CursorOverviewTabsHeader';
 import { isMainWindowNavigablePage, type Page } from './types/navigation';
 import type { TopRightAd } from './types/topRightAd';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
@@ -750,6 +752,8 @@ function MainApp() {
     } catch {}
     return 'dashboard';
   });
+  /** deep link / 应用内点击要求的 Cursor 子 Tab；经 props 传给懒加载页，避免 window 事件竞态 */
+  const [cursorTabRequest, setCursorTabRequest] = useState<CursorTab | null>(null);
   const isCodexSuitePage = page === 'codex' || page === 'codex-api-service';
   const [codexSuiteKeepAlive, setCodexSuiteKeepAlive] = useState(isCodexSuitePage);
   const shouldMountCodexSuite = isCodexSuitePage || codexSuiteKeepAlive;
@@ -1062,6 +1066,34 @@ function MainApp() {
     window.addEventListener('keydown', handleRefreshShortcut, true);
     return () => {
       window.removeEventListener('keydown', handleRefreshShortcut, true);
+    };
+  }, []);
+
+  // Ctrl+Shift+S 截图快捷键
+  useEffect(() => {
+    const handleScreenshotShortcut = (event: KeyboardEvent) => {
+      const isScreenshotKey =
+        event.key.toLowerCase() === 's' &&
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        !event.altKey;
+      if (!isScreenshotKey || event.repeat) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      takeScreenshot()
+        .then((path) => {
+          console.log('[Screenshot] 截图已保存:', path);
+        })
+        .catch((err) => {
+          console.error('[Screenshot] 截图失败:', err);
+        });
+    };
+
+    window.addEventListener('keydown', handleScreenshotShortcut, true);
+    return () => {
+      window.removeEventListener('keydown', handleScreenshotShortcut, true);
     };
   }, []);
 
@@ -3552,6 +3584,7 @@ function MainApp() {
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let unlistenGuiClick: UnlistenFn | undefined;
 
         listen<string>('tray:navigate', (event) => {
           const target = String(event.payload || '');
@@ -3560,9 +3593,39 @@ function MainApp() {
           }
         }).then((fn) => { unlisten = fn; });
 
+    // 应用内点击：监听 gui:trigger-click 事件，找到 data-action-id 匹配的按钮并点击
+    listen<string>('gui:trigger-click', (event) => {
+      const actionId = String(event.payload || '');
+      if (!actionId) return;
+      const reportAck = (success: boolean, detail: string) => {
+        void invoke('gui_click_ack', { actionId, success, detail }).catch(() => {});
+      };
+      const tryClick = (attempt: number) => {
+        const el = document.querySelector(`[data-action-id="${actionId}"]`) as HTMLElement | null;
+        if (el) {
+          el.click();
+          console.info('[gui:trigger-click] clicked', actionId, 'attempt', attempt);
+          reportAck(true, `attempt ${attempt}`);
+          return;
+        }
+        const maxAttempts = actionId.startsWith('cursor-instance-start-') ? 48 : 8;
+        const delayMs = actionId.startsWith('cursor-instance-start-') ? 400 : 250;
+        if (attempt < maxAttempts) {
+          window.setTimeout(() => tryClick(attempt + 1), delayMs);
+          return;
+        }
+        console.warn('[gui:trigger-click] element not found', actionId);
+        reportAck(false, `element not found after ${maxAttempts} attempts`);
+      };
+      tryClick(1);
+    }).then((fn) => { unlistenGuiClick = fn; });
+
     return () => {
       if (unlisten) {
         unlisten();
+      }
+      if (unlistenGuiClick) {
+        unlistenGuiClick();
       }
     };
   }, []);
@@ -3582,6 +3645,37 @@ function MainApp() {
       }
     };
   }, [handleExternalProviderImportRawPayload]);
+
+  // 监听 deep link 导航事件
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    listen<{ page: string; tab?: string }>('deep-link-navigate', (event) => {
+      const page = event.payload?.page;
+      const tab = event.payload?.tab;
+      if (page) {
+        console.info('[DeepLinkNavigate] 导航到:', page, tab ? `tab=${tab}` : '');
+        setPage(page as Page);
+        if (tab) {
+          if (page === 'cursor') {
+            setCursorTabRequest(tab as CursorTab);
+          }
+          window.dispatchEvent(
+            new CustomEvent('app-platform-tab', {
+              detail: { platform: page, tab },
+            }),
+          );
+        }
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [setPage]);
 
   useEffect(() => {
     let canceled = false;
@@ -3987,6 +4081,11 @@ function MainApp() {
         updateRemindersEnabled={updateRemindersEnabled}
         sponsorEntryVisible={sponsorEntryVisible}
         onOpenLogViewer={() => setShowLogViewer(true)}
+        onTakeScreenshot={() => {
+          takeScreenshot()
+            .then((path) => console.log('[Screenshot] 截图已保存:', path))
+            .catch((err) => console.error('[Screenshot] 截图失败:', err));
+        }}
       />
 
       <AnnouncementHost onNavigate={setPage} />
@@ -4062,7 +4161,12 @@ function MainApp() {
           {page === 'github-copilot' && <GitHubCopilotAccountsPage />}
           {page === 'windsurf' && <WindsurfAccountsPage />}
           {page === 'kiro' && <KiroAccountsPage />}
-          {page === 'cursor' && <CursorAccountsPage />}
+          {page === 'cursor' && (
+            <CursorAccountsPage
+              requestedTab={cursorTabRequest ?? undefined}
+              onRequestedTabApplied={() => setCursorTabRequest(null)}
+            />
+          )}
           {page === 'grok' && <GrokAccountsPage />}
           {page === 'codebuddy' && <CodebuddyAccountsPage />}
           {page === 'codebuddy-cn' && <CodebuddyCnAccountsPage />}
