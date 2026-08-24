@@ -1,9 +1,13 @@
 use std::collections::HashSet;
 use std::path::Path;
+use std::time::Duration;
 
 use crate::models::{DefaultInstanceSettings, InstanceProfileView};
 use crate::modules;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, OnceCell};
+
+const AUTO_SWITCH_TICK_SECS: u64 = 20;
 
 const DEFAULT_INSTANCE_ID: &str = "__default__";
 
@@ -991,4 +995,87 @@ pub async fn cursor_close_all_instances() -> Result<(), String> {
     modules::cursor_instance::close_cursor(&target_dirs, 20)?;
     let _ = modules::cursor_instance::clear_all_pids();
     Ok(())
+}
+
+/// 运行中多开自动换号：开关开着时轮询已启动实例，额度到阈值则走现有无感切号链。不抢默认窗。
+pub fn spawn_runtime_auto_switch(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tick_runtime_auto_switch(&app).await;
+            tokio::time::sleep(Duration::from_secs(AUTO_SWITCH_TICK_SECS)).await;
+        }
+    });
+}
+
+async fn tick_runtime_auto_switch(app: &AppHandle) {
+    if !modules::cursor_account::is_auto_switch_enabled() {
+        return;
+    }
+    let store = match modules::cursor_instance::load_instance_store() {
+        Ok(value) => value,
+        Err(err) => {
+            modules::logger::log_warn(&format!("[AutoSwitch] 读多开实例失败: {}", err));
+            return;
+        }
+    };
+    for instance in store.instances {
+        // 禁止碰默认实例：运行中自动换号只服务多开
+        if instance.id == DEFAULT_INSTANCE_ID {
+            continue;
+        }
+        let running = modules::cursor_instance::resolve_cursor_pid(
+            instance.last_pid,
+            Some(instance.user_data_dir.as_str()),
+        )
+        .is_some();
+        if !running {
+            continue;
+        }
+        let Some(bind_id) = instance
+            .bind_account_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if !modules::cursor_account::should_auto_switch(bind_id) {
+            continue;
+        }
+        if !modules::cursor_account::auto_switch_cooldown_ok(&instance.id) {
+            continue;
+        }
+        modules::cursor_account::mark_auto_switch_attempt(&instance.id);
+        let from_email = modules::cursor_account::load_account(bind_id)
+            .map(|account| account.email)
+            .unwrap_or_else(|| bind_id.to_string());
+        match start_cursor_instance_with_account_switch(instance.id.clone(), None).await {
+            Ok(view) => {
+                let to_email = view
+                    .bind_account_id
+                    .as_deref()
+                    .and_then(|id| modules::cursor_account::load_account(id))
+                    .map(|account| account.email)
+                    .unwrap_or_default();
+                modules::logger::log_info(&format!(
+                    "[AutoSwitch] 多开自动换号成功: instance_id={}, from={}, to={}",
+                    instance.id, from_email, to_email
+                ));
+                let _ = app.emit(
+                    "accounts:changed",
+                    serde_json::json!({
+                        "platformId": "cursor",
+                        "accountId": "",
+                        "reason": "auto-switch",
+                    }),
+                );
+            }
+            Err(err) => {
+                modules::logger::log_warn(&format!(
+                    "[AutoSwitch] 多开自动换号失败: instance_id={}, error={}",
+                    instance.id, err
+                ));
+            }
+        }
+    }
 }

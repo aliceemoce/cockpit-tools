@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::models::cursor::{CursorAccount, CursorAccountIndex, CursorImportPayload};
@@ -38,6 +38,7 @@ lazy_static::lazy_static! {
     static ref CURSOR_INDEX_MAINTENANCE_DONE: AtomicBool = AtomicBool::new(false);
     static ref CURSOR_INDEX_MAINTENANCE_SCHEDULED: AtomicBool = AtomicBool::new(false);
     static ref CURSOR_REFRESH_IN_FLIGHT: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    static ref AUTO_SWITCH_LAST_AT: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
     /// 本进程内最近一次刷新尝试时间（成功/失败/transient 都记），用于最旧优先调度时给失败号冷却。
     static ref CURSOR_REFRESH_RECENT_ATTEMPTS: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
 }
@@ -3270,24 +3271,66 @@ pub fn hard_reset_cursor_fingerprint_state_for_profile(profile_dir: &Path) -> Re
 // Auto-switch (TokenKeeper 保活用)
 // ---------------------------------------------------------------------------
 
-/// 是否启用自动换号（目前默认关闭，由配置/实验开关控制）
+const AUTO_SWITCH_COOLDOWN: Duration = Duration::from_secs(60);
+
+/// 是否启用自动换号（读本机配置，不再写死关闭）
 pub fn is_auto_switch_enabled() -> bool {
-    false
+    crate::modules::config::get_user_config().auto_switch_enabled
 }
 
-/// 是否应该自动换号
-pub fn should_auto_switch(_current_account_id: &str) -> bool {
-    false
+/// 当前绑定号额度（或对话限流）是否已到该换的程度
+pub fn should_auto_switch(current_account_id: &str) -> bool {
+    let id = current_account_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let Some(account) = load_account(id) else {
+        return false;
+    };
+    if account
+        .chat_probe
+        .as_ref()
+        .is_some_and(|p| p.outcome == "rate_limited")
+    {
+        return true;
+    }
+    let cfg = crate::modules::config::get_user_config();
+    if cfg.auto_switch_account_scope_mode == "selected_accounts" {
+        let selected = &cfg.auto_switch_selected_account_ids;
+        if !selected.is_empty() && !selected.iter().any(|item| item == id) {
+            return false;
+        }
+    }
+    let threshold = cfg.auto_switch_threshold.clamp(0, 100);
+    match cursor_overview_remaining_percent(&account) {
+        Some(remaining) if remaining <= threshold => true,
+        _ => false,
+    }
 }
 
-/// 自动换号冷却是否已过
-pub fn auto_switch_cooldown_ok() -> bool {
-    false
+/// 该实例距上次自动换号是否已过冷却
+pub fn auto_switch_cooldown_ok(instance_id: &str) -> bool {
+    let key = instance_id.trim();
+    if key.is_empty() {
+        return false;
+    }
+    let Ok(map) = AUTO_SWITCH_LAST_AT.lock() else {
+        return false;
+    };
+    match map.get(key) {
+        None => true,
+        Some(at) => at.elapsed() >= AUTO_SWITCH_COOLDOWN,
+    }
 }
 
-/// 执行自动换号
-pub async fn execute_auto_switch(_instance_id: &str) -> Result<String, String> {
-    Err("自动换号功能暂未启用".to_string())
+pub fn mark_auto_switch_attempt(instance_id: &str) {
+    let key = instance_id.trim();
+    if key.is_empty() {
+        return;
+    }
+    if let Ok(mut map) = AUTO_SWITCH_LAST_AT.lock() {
+        map.insert(key.to_string(), Instant::now());
+    }
 }
 
 /// 对齐无忧 `writeTokenToDb`（Lc）：仅回写 token，不做指纹重置/关进程（TokenKeeper 保活用）。

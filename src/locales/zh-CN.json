@@ -4538,6 +4538,10 @@
   "cursor": {
     "subscription": "订阅状态",
     "injectToCursor": "切换到 Cursor",
+    "autoInject": "自动选号",
+    "autoSwitchRuntime": "运行中自动换号",
+    "autoSwitchRuntimeOn": "运行中自动换号已开",
+    "autoSwitchRuntimeOff": "运行中自动换号已关",
     "quota": {
       "onDemand": "按需使用"
     },

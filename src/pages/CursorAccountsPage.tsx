@@ -26,8 +26,10 @@ import {
   MessageSquare,
   BookOpen,
   Zap,
+  Repeat,
 } from 'lucide-react';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
+import { invoke } from '@tauri-apps/api/core';
 import * as cursorService from '../services/cursorService';
 import { TagEditModal } from '../components/TagEditModal';
 import { ExportJsonModal } from '../components/ExportJsonModal';
@@ -231,6 +233,42 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
   const [probingChatId, setProbingChatId] = useState<string | null>(null);
   const [probingChatBatch, setProbingChatBatch] = useState(false);
   const [autoInjecting, setAutoInjecting] = useState(false);
+  const [autoSwitchOn, setAutoSwitchOn] = useState(false);
+
+  const loadAutoSwitchEnabled = useCallback(async () => {
+    try {
+      const cfg = await invoke<{ auto_switch_enabled?: boolean }>('get_general_config');
+      setAutoSwitchOn(Boolean(cfg.auto_switch_enabled));
+    } catch {
+      setAutoSwitchOn(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAutoSwitchEnabled();
+    const onConfigUpdated = () => {
+      void loadAutoSwitchEnabled();
+    };
+    window.addEventListener('config-updated', onConfigUpdated);
+    return () => window.removeEventListener('config-updated', onConfigUpdated);
+  }, [loadAutoSwitchEnabled]);
+
+  const handleToggleRuntimeAutoSwitch = useCallback(async () => {
+    const next = !autoSwitchOn;
+    try {
+      await invoke('patch_general_config', { updates: { auto_switch_enabled: next } });
+      setAutoSwitchOn(next);
+      window.dispatchEvent(new Event('config-updated'));
+      setMessage({
+        tone: 'success',
+        text: next
+          ? t('cursor.autoSwitchRuntimeOn', '运行中自动换号已开')
+          : t('cursor.autoSwitchRuntimeOff', '运行中自动换号已关'),
+      });
+    } catch (error) {
+      setMessage({ tone: 'error', text: String(error) });
+    }
+  }, [autoSwitchOn, setMessage, t]);
 
   const handleAutoInject = useCallback(async () => {
     setAutoInjecting(true);
@@ -1238,10 +1276,20 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
             data-action-id="cursor-auto-inject"
             onClick={() => void handleAutoInject()}
             disabled={autoInjecting || accounts.length === 0}
-            title={t('cursor.autoInject', '自动换号')}
-            aria-label={t('cursor.autoInject', '自动换号')}
+            title={t('cursor.autoInject', '自动选号')}
+            aria-label={t('cursor.autoInject', '自动选号')}
           >
             <Zap size={14} className={autoInjecting ? 'loading-spinner' : ''} />
+          </button>
+          <button
+            className={autoSwitchOn ? 'btn btn-primary icon-only' : 'btn btn-secondary icon-only'}
+            data-action-id="cursor-auto-switch-toggle"
+            onClick={() => void handleToggleRuntimeAutoSwitch()}
+            title={t('cursor.autoSwitchRuntime', '运行中自动换号')}
+            aria-label={t('cursor.autoSwitchRuntime', '运行中自动换号')}
+            aria-pressed={autoSwitchOn}
+          >
+            <Repeat size={14} />
           </button>
           <button className="btn btn-primary icon-only" onClick={() => openAddModal('oauth')} title={t('common.shared.addAccount', '添加账号')} aria-label={t('common.shared.addAccount', '添加账号')}><Plus size={14} /></button>
           <button className="btn btn-secondary icon-only" onClick={handleRefreshAll} disabled={refreshingAll || accounts.length === 0} title={t('common.shared.refreshAll', '刷新全部')} aria-label={t('common.shared.refreshAll', '刷新全部')}>

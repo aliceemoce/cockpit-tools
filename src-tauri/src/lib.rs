@@ -379,6 +379,7 @@ pub fn run() {
             }
 
             modules::provider_token_keeper::ensure_started(app.handle().clone());
+            commands::cursor_instance::spawn_runtime_auto_switch(app.handle().clone());
             modules::auto_local_import::ensure_started(app.handle().clone());
 
             // Wakeup restore/start and Deep Link registration/read can hit disk or OS

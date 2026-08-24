@@ -22,10 +22,16 @@
 - [x] 2026-08-24：多开无感换号前后本人 CDP 对话验收 + 复刻功能代码量对照
   - 换号前 `GUI_PROBE_OK`；总控 Play 热写库到 `yodnjw057993@outlook.com`，pid 3588 未杀；换号后 `AFTER_GUI_PROBE_OK`；侧栏仍显示旧邮箱（热写库未复刻注入轮询刷新）
   - 代码量纠偏（禁止把共用写库/优先层/跳过启动/界面 Play 算进复刻体）：续杯 util+eh 注入本体约 **120** 行；Cockpit 多开无感分支约 **24** 行（`cursor_account.rs` 2652–2675）；比值约 0.2。先前把 live/inner/once 等算进来抬到 209/352 行 = 算错。证据 `scripts/_evidence_multi_seamless/chat_before_after/functional_code_volume_corrected.json`
-- [ ] 2026-08-24：多开真·热换补齐（侧栏邮箱须变）
+- [ ] 2026-08-24：多开真·热换补齐（侧栏邮箱须变）——**延后**：须等运行中自动换号验收过后再做；用户当场顺序「先上传 → 做完自动换号 → 再看这个」
   - 实例目录 `cockpit-seamless/` 投递（禁全局家目录）
   - CDP 推进 `window.store` + `__cockpitSeamlessAuth`
   - 优先层改读总控热态；验收：换号后侧栏邮箱 = 新号 + 对话前后可聊
+- [x] 2026-08-24：运行中自动换号（对齐续杯式运行时换号，非仅启动时选号）
+  - 配置开关 `auto_switch_enabled` + 阈值；总览 Repeat（`cursor-auto-switch-toggle`）
+  - 每 20 秒扫已跑多开实例；额度到阈值或对话限流则走现有无感切号；每实例 60 秒冷却
+  - **不碰默认实例**；TokenKeeper 不再对默认窗跑假自动换号
+  - 验收：开关开/关两态已点通（配置 `True`/`False`，条「运行中自动换号已开/已关」）；覆盖安装 SHA `ABF2F663…` ProductVersion 1.3.22
+  - 2026-08-24 18:43：日志 `[AutoSwitch] 多开自动换号成功: instance_id=20013c7e-…, from=zv***i@o***k.com, to=vv***7@o***k.com`；Cursor-Multi 进程仍在；Program Files Cursor 进程仍在（41 个）。阈值已改回 5。续杯完整注入复刻仍延后。
 
 ## 2026-08-22 用户纠正（权威）
 
