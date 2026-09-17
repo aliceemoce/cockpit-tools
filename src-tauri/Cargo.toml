@@ -24,6 +24,38 @@ path = "src/bin/dual_cursor_launch.rs"
 name = "gui_play_switch_once"
 path = "src/bin/gui_play_switch_once.rs"
 
+[[bin]]
+name = "xubei_pull_n"
+path = "src/bin/xubei_pull_n.rs"
+
+[[bin]]
+name = "wuxian_alone_smoke"
+path = "src/bin/wuxian_alone_smoke.rs"
+
+[[bin]]
+name = "xubei_pool_switch_smoke"
+path = "src/bin/xubei_pool_switch_smoke.rs"
+
+[[bin]]
+name = "xubei_license_smoke"
+path = "src/bin/xubei_license_smoke.rs"
+
+[[bin]]
+name = "xubei_inject_smoke"
+path = "src/bin/xubei_inject_smoke.rs"
+
+[[bin]]
+name = "cursor_quota_dump"
+path = "src/bin/cursor_quota_dump.rs"
+
+[[bin]]
+name = "cursor_refresh_batch"
+path = "src/_bin_orphans_park_0009/cursor_refresh_batch.rs"
+
+[[bin]]
+name = "cursor_refresh_ids"
+path = "src/_bin_orphans_park_0009/cursor_refresh_ids.rs"
+
 [lib]
 name = "antigravity_cockpit_tools_lib"
 crate-type = ["staticlib", "rlib"]
@@ -33,6 +65,7 @@ tauri-build = { version = "2", features = [] }
 swift-rs = { version = "1.0.7", features = ["build"] }
 
 [dependencies]
+cockpit-core = { path = "../crates/cockpit-core" }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -47,7 +80,7 @@ toml_edit = "0.20"
 uuid = { version = "1.10", features = ["v4", "serde"] }
 chrono = "0.4"
 dirs = "5.0"
-reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "zstd", "stream", "socks", "blocking"] }
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "stream", "socks", "blocking"] }
 quick-xml = "0.40"
 # ??tauri-plugin-updater ??????????reqwest 0.13 ?????socks ???????
 # ??updater ???????????????????????socks5:// ????????????????????
@@ -76,6 +109,7 @@ regex = "1"
 rand = "0.8"
 futures = "0.3"
 sysinfo = "0.33"
+get_if_addrs = "0.5"
 libc = "0.2"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
@@ -93,8 +127,11 @@ image = "0.25"
 aes-gcm = "0.10"
 aes = "0.8"
 cbc = "0.1"
+cipher = "0.4"
 pbkdf2 = "0.12"
 sha1 = "0.10"
+hmac = "0.12"
+hex = "0.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"

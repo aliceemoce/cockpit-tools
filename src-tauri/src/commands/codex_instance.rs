@@ -621,6 +621,7 @@ mod tests {
             bind_account_id: Some("target-account".to_string()),
             launch_mode: InstanceLaunchMode::App,
             app_speed: CodexAppSpeed::Standard,
+            app_path: None,
             created_at: 0,
             last_launched_at: None,
             last_pid: None,

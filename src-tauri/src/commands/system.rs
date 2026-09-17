@@ -4105,21 +4105,84 @@ pub async fn delete_corrupted_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 应用内点击：通过 action_id 触发前端按钮点击，无需 UIA 外部操作
+/// 应用内点击：等待前端真点到（或明确失败原因）再返回。派发成功 ≠ 已点击。
 #[tauri::command]
-pub fn gui_trigger_click(app: tauri::AppHandle, action_id: String) -> Result<(), String> {
-    crate::modules::gui_in_app_click::trigger_click(&app, &action_id)
+pub fn gui_trigger_click(
+    app: tauri::AppHandle,
+    action_id: String,
+) -> Result<crate::modules::gui_in_app_click::ClickResult, String> {
+    crate::modules::gui_in_app_click::trigger_click_wait(&app, &action_id, None)
 }
 
-/// 前端回执应用内点击是否真正点到控件
+/// 前端回执应用内点击是否真正点到控件（含 request_id / 元素信息）
 #[tauri::command]
 pub fn gui_click_ack(
     action_id: String,
     success: bool,
     detail: Option<String>,
+    element_info: Option<String>,
+    request_id: Option<String>,
 ) -> Result<(), String> {
-    crate::modules::gui_in_app_click::ack_from_frontend(action_id, success, detail);
+    crate::modules::gui_in_app_click::ack_from_frontend_enhanced(
+        action_id,
+        request_id,
+        success,
+        detail,
+        element_info,
+    );
     Ok(())
+}
+
+/// 查询最近的应用内点击结果（供 Agent / DeepLink 验证操作是否真实生效）。
+#[tauri::command]
+pub fn gui_click_recent_acks() -> Vec<crate::modules::gui_in_app_click::ClickAckRecord> {
+    crate::modules::gui_in_app_click::get_recent_ack_results()
+}
+
+/// 查询指定 action_id 的最新一条 ack。
+#[tauri::command]
+pub fn gui_click_latest_ack(
+    action_id: String,
+) -> Option<crate::modules::gui_in_app_click::ClickAckRecord> {
+    crate::modules::gui_in_app_click::get_latest_ack_for(&action_id)
+}
+
+/// 模块七：派发可点元素枚举并等待前端回执。
+#[tauri::command]
+pub fn gui_enumerate_actions(
+    app: tauri::AppHandle,
+) -> Result<crate::modules::gui_in_app_click::EnumerateAckRecord, String> {
+    crate::modules::gui_in_app_click::trigger_enumerate_wait(&app, None)
+}
+
+/// 模块七：前端枚举回执（含危险标记与拦截原因）。
+#[tauri::command]
+pub fn gui_enumerate_ack(
+    request_id: Option<String>,
+    success: bool,
+    route: Option<String>,
+    total_clickable: usize,
+    legacy_action_ids: Vec<String>,
+    actions: serde_json::Value,
+    detail: Option<String>,
+) -> Result<(), String> {
+    crate::modules::gui_in_app_click::enumerate_ack_from_frontend(
+        request_id,
+        success,
+        route,
+        total_clickable,
+        legacy_action_ids,
+        actions,
+        detail,
+    );
+    Ok(())
+}
+
+/// 查询最近一次枚举结果。
+#[tauri::command]
+pub fn gui_enumerate_latest(
+) -> Option<crate::modules::gui_in_app_click::EnumerateAckRecord> {
+    crate::modules::gui_in_app_click::get_last_enumerate_result()
 }
 
 #[cfg(test)]

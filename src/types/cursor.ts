@@ -637,9 +637,6 @@ export function resolveCursorQuotaAvailability(
   if (chatAvail === 'can_chat') {
     return 'usable';
   }
-  if (chatAvail === 'cannot_chat') {
-    return 'exhausted';
-  }
 
   if ((account.quota_query_last_error || '').trim()) {
     return 'query_failed';
@@ -662,10 +659,6 @@ export function resolveCursorQuotaAvailability(
   if (totalPct == null) {
     return 'no_data';
   }
-  // 假 0%：未对话验活前不得标「有剩余」（闲置 free 号 API 常回 0%）
-  if (typeof totalPct === 'number' && Number.isFinite(totalPct) && totalPct <= 0) {
-    return 'needs_verify';
-  }
   return 'usable';
 }
 
@@ -680,71 +673,29 @@ export function isCursorChatUsable(account: CursorAccount): boolean {
 
 export function resolveCursorQuotaAvailabilityUi(
   account: CursorAccount,
-): { label: string; className: string; title?: string } {
+): { label: string; className: string; title?: string } | null {
   const usage = hasCursorQuotaData(account) ? getCursorUsage(account) : null;
-  const auto = usage?.autoPercentUsed;
-  const api = usage?.apiPercentUsed;
   const total = usage?.totalPercentUsed;
-  const autoFull =
-    typeof auto === 'number' && Number.isFinite(auto) && auto >= 100
-      ? '；Auto+Composer 已满（与 Total 不是同一计数）'
-      : '';
   const totalHint =
     typeof total === 'number' && Number.isFinite(total)
       ? `；Total Usage ${total}%`
       : '';
   const chatAvail = resolveCursorChatProbeAvailability(account);
-  switch (resolveCursorQuotaAvailability(account)) {
-    case 'usable':
-      return {
-        label: '有剩余',
-        className: 'quota-usable',
-        title:
-          chatAvail === 'can_chat'
-            ? `Agent 验活有回话${totalHint}${autoFull}`
-            : typeof total === 'number' && total >= 100 && typeof api === 'number' && api < 100
-              ? `Total 显示 100% 但 API 未满（${api}%），Agent 仍可对话${autoFull}`
-              : `totalPercentUsed 未满 100%${totalHint}${autoFull}`,
-      };
-    case 'exhausted':
-      return {
-        label: '额度用尽',
-        className: 'quota-exhausted',
-        title:
-          chatAvail === 'cannot_chat'
-            ? `Agent 验活已限额${totalHint}`
-            : typeof api === 'number' && api >= 100
-              ? `total 与 api 均已满 100%${totalHint}`
-              : `totalPercentUsed≥100%${totalHint}`,
-      };
-    case 'needs_verify':
-      return {
-        label: '核实中',
-        className: 'quota-unknown',
-        title:
-          typeof total === 'number' && Number.isFinite(total) && total <= 0
-            ? `显示 0% 用量但未对话验活，不得当有剩余${totalHint}${autoFull}`
-            : `缺少 totalPercentUsed${totalHint}`,
-      };
-    case 'query_failed':
-      return {
-        label: '配额查询失败',
-        className: 'quota-query-failed',
-        title: account.quota_query_last_error || undefined,
-      };
-    case 'pending':
-      return {
-        label: '配额未查询',
-        className: 'quota-pending',
-        title: '尚无 usage-summary 数据',
-      };
-    default:
-      return {
-        label: '额度未知',
-        className: 'quota-unknown',
-        title: '有 usage 数据但缺少 totalPercentUsed',
-      };
+
+  const availability = resolveCursorQuotaAvailability(account);
+  if (availability === 'exhausted') {
+    return {
+      label: '额度用尽',
+      className: 'quota-exhausted',
+      title:
+        chatAvail === 'cannot_chat'
+          ? `已限额${totalHint}`
+          : `totalPercentUsed≥100%${totalHint}`,
+    };
   }
+
+  // 去除「有剩余」和「未验活/核实中」等伪逻辑标签，正常账号直接由 Plan 徽章与额度条展示
+  return null;
 }
 
 /** 抽样 CLI 次要标注（主徽标已由验活结果决定）。 */

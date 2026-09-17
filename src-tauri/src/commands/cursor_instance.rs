@@ -96,6 +96,8 @@ async fn resolve_auto_switch_account_with_probe_retry(
             Err(err) => {
                 let outcome = if err.contains("额度已耗尽") || err.contains("配额不可用") {
                     "quota_exhausted"
+                } else if err.contains("无套餐额度") {
+                    "zero_budget"
                 } else if modules::cursor_account::is_cursor_transient_quota_error(&err) {
                     "transient"
                 } else {
@@ -235,6 +237,21 @@ pub async fn start_cursor_instance_with_account_switch(
                     modules::cursor_switch_audit::write_probe_pre(&trace, &account, "ok", None);
                 }
                 Err(err) => {
+                    // 0012 §2.3：被服务端判定为「会话失效/未认证」的候选直接中止切号，
+                    // 绝不落盘、不启动、不写 auth.json（避免把失效凭据推给 DSH）。
+                    if modules::cursor_account::is_cursor_auth_quota_error(&err) {
+                        modules::cursor_switch_audit::write_probe_pre(
+                            &trace,
+                            &stale,
+                            "manual_abort_auth",
+                            Some(&err),
+                        );
+                        modules::logger::log_warn(&format!(
+                            "[Cursor Switch] 手动选号因会话失效中止切号: id={}, error={}",
+                            id, err
+                        ));
+                        return Err(err);
+                    }
                     modules::cursor_switch_audit::write_probe_pre(
                         &trace,
                         &stale,
@@ -335,26 +352,30 @@ fn spawn_switch_post_audit(
                     return;
                 };
 
-                // 粘号复查：默认无感以 get-token/seamless_state 为准（侧栏热替换）；只认磁盘 cachedEmail 会误报挤掉管家。
+                // 粘号复查：get-token HTTP 可达时以热通道为准；不可达时以磁盘 cachedEmail 为准并 note。
                 if trace.instance_id == DEFAULT_INSTANCE_ID {
                     // 等同步 reassert + 至少一轮续盖后再判，避免刚写完就被管家盖回却报 ok。
                     tokio::time::sleep(std::time::Duration::from_secs(4)).await;
                     let expected = account.email.trim().to_lowercase();
-                    let mut hot = modules::cursor_account::read_wuxian_get_token_email();
+                    let mut hot = modules::cursor_account::probe_wuxian_get_token_http();
                     for _ in 0..5 {
                         if let Ok(Some(ref e)) = hot {
                             if e.trim().to_lowercase() == expected {
                                 break;
                             }
                         }
+                        // 不可达则无需再等热通道对齐
+                        if hot.is_err() {
+                            break;
+                        }
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                        hot = modules::cursor_account::read_wuxian_get_token_email();
+                        hot = modules::cursor_account::probe_wuxian_get_token_http();
                     }
                     let disk = modules::cursor_account::read_default_cached_email();
-                    match (hot, disk) {
-                        (Ok(Some(hot_email)), disk_res) => {
+                    match hot {
+                        Ok(Some(hot_email)) => {
                             let got_hot = hot_email.trim().to_lowercase();
-                            let disk_email = disk_res.ok().flatten();
+                            let disk_email = disk.ok().flatten();
                             let disk_ok = disk_email
                                 .as_ref()
                                 .map(|e| e.trim().to_lowercase() == expected)
@@ -394,35 +415,13 @@ fn spawn_switch_post_audit(
                                 );
                             }
                         }
-                        (Ok(None), Ok(Some(cached))) => {
-                            let got = cached.trim().to_lowercase();
-                            if got == expected {
-                                modules::cursor_switch_audit::write_stick_check(
-                                    &trace,
-                                    &account,
-                                    "ok",
-                                    Some("get-token不可用; 仅磁盘cachedEmail一致"),
-                                );
-                            } else {
-                                let err = format!(
-                                    "粘号失败: 期望={} 实际={}",
-                                    account.email, cached
-                                );
-                                modules::cursor_switch_audit::write_stick_check(
-                                    &trace,
-                                    &account,
-                                    "stick_fail",
-                                    Some(&err),
-                                );
-                                modules::cursor_switch_audit::write_ui_error_mark(
-                                    &account.id,
-                                    &account.email,
-                                    &err,
-                                );
-                            }
-                        }
-                        (Ok(None), Ok(None)) => {
-                            let err = "粘号失败: get-token与cachedEmail皆空".to_string();
+                        Ok(None) => {
+                            // HTTP 可达但邮箱空：仍要求 get-token==expected，不得用磁盘顶替放水。
+                            let disk_email = disk.ok().flatten().unwrap_or_default();
+                            let err = format!(
+                                "粘号失败(get-token可达但邮箱空): 期望={} 磁盘={}",
+                                account.email, disk_email
+                            );
                             modules::cursor_switch_audit::write_stick_check(
                                 &trace,
                                 &account,
@@ -435,13 +434,60 @@ fn spawn_switch_post_audit(
                                 &err,
                             );
                         }
-                        (Err(err), _) | (Ok(None), Err(err)) => {
-                            modules::cursor_switch_audit::write_stick_check(
-                                &trace,
-                                &account,
-                                "err",
-                                Some(&err),
-                            );
+                        Err(_unreachable) => {
+                            // get-token 不可达：stick 以磁盘 cachedEmail 为准。
+                            match disk {
+                                Ok(Some(cached)) => {
+                                    let got = cached.trim().to_lowercase();
+                                    if got == expected {
+                                        modules::cursor_switch_audit::write_stick_check(
+                                            &trace,
+                                            &account,
+                                            "ok",
+                                            Some("get-token不可达; 以磁盘cachedEmail为准"),
+                                        );
+                                    } else {
+                                        let err = format!(
+                                            "粘号失败: 期望={} 磁盘={}",
+                                            account.email, cached
+                                        );
+                                        modules::cursor_switch_audit::write_stick_check(
+                                            &trace,
+                                            &account,
+                                            "stick_fail",
+                                            Some(&err),
+                                        );
+                                        modules::cursor_switch_audit::write_ui_error_mark(
+                                            &account.id,
+                                            &account.email,
+                                            &err,
+                                        );
+                                    }
+                                }
+                                Ok(None) => {
+                                    let err =
+                                        "粘号失败: get-token不可达且cachedEmail为空".to_string();
+                                    modules::cursor_switch_audit::write_stick_check(
+                                        &trace,
+                                        &account,
+                                        "stick_fail",
+                                        Some(&err),
+                                    );
+                                    modules::cursor_switch_audit::write_ui_error_mark(
+                                        &account.id,
+                                        &account.email,
+                                        &err,
+                                    );
+                                }
+                                Err(err) => {
+                                    modules::cursor_switch_audit::write_stick_check(
+                                        &trace,
+                                        &account,
+                                        "err",
+                                        Some(&err),
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -816,6 +862,9 @@ pub async fn cursor_start_instance_prepared(
                 "[Cursor Switch] 多开实例已在运行，跳过启动: id={}, pid={}",
                 instance.id, existing_pid
             ));
+            modules::cursor_account::spawn_multi_cdp_auth_resync_after_launch(
+                std::path::PathBuf::from(&instance.user_data_dir),
+            );
             let initialized = is_profile_initialized(&instance.user_data_dir);
             let mut view = InstanceProfileView::from_profile(instance, true, initialized);
             view.last_pid = Some(existing_pid);
@@ -846,6 +895,17 @@ pub async fn cursor_start_instance_prepared(
             err
         )),
     }
+    match modules::cursor_multi_util_eh::ensure_multi_install_util_eh(&launch_exe) {
+        Ok(changed) => modules::logger::log_info(&format!(
+            "[Cursor UtilEH] 多开 util/EH ok changed={} present={}",
+            changed,
+            modules::cursor_multi_util_eh::multi_install_has_util_eh(&launch_exe)
+        )),
+        Err(err) => modules::logger::log_warn(&format!(
+            "[Cursor UtilEH] 多开 util/EH 写入失败: {}",
+            err
+        )),
+    }
     modules::logger::log_info(&format!(
         "[Cursor Instance Start] launching id={}, exe={}, use_new_window={}, workspace={}",
         instance.id,
@@ -867,6 +927,9 @@ pub async fn cursor_start_instance_prepared(
         "[Cursor Instance Start] launch returned id={}, pid={}",
         instance.id, pid
     ));
+    modules::cursor_account::spawn_multi_cdp_auth_resync_after_launch(
+        std::path::PathBuf::from(&instance.user_data_dir),
+    );
     let instance_id_for_store = instance.id.clone();
     let pid_for_store = pid;
     tokio::task::spawn_blocking(move || {
@@ -997,8 +1060,9 @@ pub async fn cursor_close_all_instances() -> Result<(), String> {
     Ok(())
 }
 
-/// 运行中多开自动换号：开关开着时轮询已启动实例，额度到阈值则走现有无感切号链。不抢默认窗。
+/// 运行中自动换号：默认 Cursor 与全部多开实例都参与。
 pub fn spawn_runtime_auto_switch(app: AppHandle) {
+    modules::logger::log_info("[AutoSwitch] runtime tick spawned (default + multi-instance)");
     tauri::async_runtime::spawn(async move {
         loop {
             tick_runtime_auto_switch(&app).await;
@@ -1007,75 +1071,186 @@ pub fn spawn_runtime_auto_switch(app: AppHandle) {
     });
 }
 
+/// 单个实例的自动换号判定与执行。
+///
+/// `instance_id` 为 `DEFAULT_INSTANCE_ID` 时代表默认 Cursor，否则为多开实例。
+/// `bind_id` 为该实例当前绑定的账号；`pid` 为已解析的进程号（None 表示未运行）。
+async fn tick_auto_switch_for_instance(
+    app: &AppHandle,
+    instance_id: &str,
+    bind_id: &str,
+    pid: Option<u32>,
+) {
+    let is_default = instance_id == DEFAULT_INSTANCE_ID;
+    let label = if is_default { "默认" } else { "多开" };
+
+    // 阈值判定前刷新额度；加超时，避免 refresh 卡死整条 tick
+    let refresh_result = tokio::time::timeout(
+        Duration::from_secs(8),
+        modules::cursor_account::refresh_account_fast_async(bind_id),
+    )
+    .await;
+    match refresh_result {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => {
+            modules::logger::log_warn(&format!(
+                "[AutoSwitch] {}号额度刷新失败，仍用磁盘缓存判定: instance={}, id={}, error={}",
+                label, instance_id, bind_id, err
+            ));
+        }
+        Err(_) => {
+            modules::logger::log_warn(&format!(
+                "[AutoSwitch] {}号额度刷新超时(8s)，仍用磁盘缓存判定: instance={}, id={}",
+                label, instance_id, bind_id
+            ));
+        }
+    }
+
+    if !modules::cursor_account::should_auto_switch(bind_id) {
+        let account = modules::cursor_account::load_account(bind_id);
+        let rem = account
+            .as_ref()
+            .and_then(|acc| modules::cursor_account::cursor_overview_remaining_percent(acc));
+        let (_r, auto_used, total_used) = account
+            .as_ref()
+            .map(modules::cursor_account::cursor_switch_usage_snapshot)
+            .unwrap_or((None, None, None));
+        let membership = account.as_ref().and_then(|acc| acc.membership_type.clone());
+        let plan_budget = account
+            .as_ref()
+            .map(modules::cursor_account::has_effective_plan_budget)
+            .unwrap_or(false);
+        modules::logger::log_info(&format!(
+            "[AutoSwitch] skip: threshold not met instance={}, id={}, remaining={:?}, auto_used={:?}, total_used={:?}, membership={:?}, plan_budget={}, pid={:?}",
+            instance_id, bind_id, rem, auto_used, total_used, membership, plan_budget, pid
+        ));
+        return;
+    }
+    if !modules::cursor_account::auto_switch_cooldown_ok(instance_id) {
+        modules::logger::log_info(&format!(
+            "[AutoSwitch] skip: cooldown instance={}",
+            instance_id
+        ));
+        return;
+    }
+    modules::cursor_account::mark_auto_switch_attempt(instance_id);
+
+    let from_email = modules::cursor_account::load_account(bind_id)
+        .map(|account| account.email)
+        .unwrap_or_else(|| bind_id.to_string());
+
+    modules::logger::log_info(&format!(
+        "[AutoSwitch] triggering {} switch: instance={}, from={}, pid={:?}",
+        label, instance_id, from_email, pid
+    ));
+
+    match start_cursor_instance_with_account_switch(instance_id.to_string(), None).await {
+        Ok(view) => {
+            let to_email = view
+                .bind_account_id
+                .as_deref()
+                .and_then(|id| modules::cursor_account::load_account(id))
+                .map(|account| account.email)
+                .unwrap_or_default();
+            modules::logger::log_info(&format!(
+                "[AutoSwitch] {}自动换号成功: instance={}, from={}, to={}",
+                label, instance_id, from_email, to_email
+            ));
+            let _ = app.emit(
+                "accounts:changed",
+                serde_json::json!({
+                    "platformId": "cursor",
+                    "accountId": "",
+                    "reason": "auto-switch",
+                    "instanceId": instance_id,
+                }),
+            );
+        }
+        Err(err) => {
+            modules::logger::log_warn(&format!(
+                "[AutoSwitch] {}自动换号失败: instance={}, error={}",
+                label, instance_id, err
+            ));
+        }
+    }
+}
+
 async fn tick_runtime_auto_switch(app: &AppHandle) {
     if !modules::cursor_account::is_auto_switch_enabled() {
         return;
     }
+
     let store = match modules::cursor_instance::load_instance_store() {
         Ok(value) => value,
         Err(err) => {
-            modules::logger::log_warn(&format!("[AutoSwitch] 读多开实例失败: {}", err));
+            modules::logger::log_warn(&format!("[AutoSwitch] 读实例配置失败: {}", err));
             return;
         }
     };
-    for instance in store.instances {
-        // 禁止碰默认实例：运行中自动换号只服务多开
-        if instance.id == DEFAULT_INSTANCE_ID {
-            continue;
+
+    // 1) 默认 Cursor
+    let default_dir = match modules::cursor_instance::get_default_cursor_user_data_dir() {
+        Ok(path) => path,
+        Err(err) => {
+            modules::logger::log_warn(&format!("[AutoSwitch] 读默认 Cursor 目录失败: {}", err));
+            return;
         }
-        let running = modules::cursor_instance::resolve_cursor_pid(
-            instance.last_pid,
-            Some(instance.user_data_dir.as_str()),
-        )
-        .is_some();
-        if !running {
-            continue;
+    };
+    let default_dir_str = default_dir.to_string_lossy();
+    let default_pid = modules::cursor_instance::resolve_cursor_pid(
+        store.default_settings.last_pid,
+        Some(default_dir_str.as_ref()),
+    );
+    let default_bind_id = store
+        .default_settings
+        .bind_account_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    match default_pid {
+        Some(pid) => match default_bind_id {
+            Some(bind_id) => {
+                tick_auto_switch_for_instance(app, DEFAULT_INSTANCE_ID, &bind_id, Some(pid)).await;
+            }
+            None => {
+                modules::logger::log_info("[AutoSwitch] skip: default bind_account_id empty");
+            }
+        },
+        None => {
+            modules::logger::log_info(&format!(
+                "[AutoSwitch] skip: default Cursor not running (last_pid={:?}, dir={})",
+                store.default_settings.last_pid, default_dir_str
+            ));
         }
-        let Some(bind_id) = instance
+    }
+
+    // 2) 全部多开实例（逐个独立判定与冷却）
+    for instance in &store.instances {
+        let bind_id = instance
             .bind_account_id
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-        else {
+            .map(|value| value.to_string());
+        let Some(bind_id) = bind_id else {
+            modules::logger::log_info(&format!(
+                "[AutoSwitch] skip: instance bind_account_id empty instance={}",
+                instance.id
+            ));
             continue;
         };
-        if !modules::cursor_account::should_auto_switch(bind_id) {
+        let pid = modules::cursor_instance::resolve_cursor_pid(
+            instance.last_pid,
+            Some(instance.user_data_dir.as_str()),
+        );
+        let Some(pid) = pid else {
+            modules::logger::log_info(&format!(
+                "[AutoSwitch] skip: instance not running instance={}, last_pid={:?}",
+                instance.id, instance.last_pid
+            ));
             continue;
-        }
-        if !modules::cursor_account::auto_switch_cooldown_ok(&instance.id) {
-            continue;
-        }
-        modules::cursor_account::mark_auto_switch_attempt(&instance.id);
-        let from_email = modules::cursor_account::load_account(bind_id)
-            .map(|account| account.email)
-            .unwrap_or_else(|| bind_id.to_string());
-        match start_cursor_instance_with_account_switch(instance.id.clone(), None).await {
-            Ok(view) => {
-                let to_email = view
-                    .bind_account_id
-                    .as_deref()
-                    .and_then(|id| modules::cursor_account::load_account(id))
-                    .map(|account| account.email)
-                    .unwrap_or_default();
-                modules::logger::log_info(&format!(
-                    "[AutoSwitch] 多开自动换号成功: instance_id={}, from={}, to={}",
-                    instance.id, from_email, to_email
-                ));
-                let _ = app.emit(
-                    "accounts:changed",
-                    serde_json::json!({
-                        "platformId": "cursor",
-                        "accountId": "",
-                        "reason": "auto-switch",
-                    }),
-                );
-            }
-            Err(err) => {
-                modules::logger::log_warn(&format!(
-                    "[AutoSwitch] 多开自动换号失败: instance_id={}, error={}",
-                    instance.id, err
-                ));
-            }
-        }
+        };
+        tick_auto_switch_for_instance(app, &instance.id, &bind_id, Some(pid)).await;
     }
 }

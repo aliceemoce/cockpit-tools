@@ -16,6 +16,8 @@ alwaysApply: true
 
 **优先级**：用户当场纠正 > 用户对历史冲突的裁决 > **历史要求**（`.cursor/user-history-requirements.md`，见 `user-history-requirements.mdc`）> 本规则注册表 > `docs/FORK-DESIGN-ARCHIVE.md` > `project-brief.md` > `AGENTS.md` / `docs/CURSOR-FORK-SCOPE.md`（若冲突，**立即改注册表并同步旧文档**，不得沿用过期基线）。
 
+**文档生成依据（本注册表及一切规格/规则文档的前置约束）**：本注册表、`AGENTS.md`、`CLAUDE.md`、各 `.mdc` 与任何 `docs/implementation/*.md` 中列出的「需要 / 目标 / 改动项」，其**内容必须依据用户实际说过的话来生成**——撰写时先确定「用户原话说的是什么」，再据此成文，不以 Agent 自拟为内容来源。每条需求必须标注其用户原话来源（原话文本 + 日期或会话键，可引 `.cursor/user-history-requirements.md`）；**无用户原话来源的项视为 Agent 臆造，禁止写入、禁止当验收项、禁止据此写代码**。写作与判断以用户原话为唯一内容来源，不自行补充、不自行发挥。
+
 ---
 
 ## 2. 当前已核实特征（2026-08-04，upstream v1.3.16 同步 → 交付 1.3.18 — 能用）

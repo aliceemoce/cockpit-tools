@@ -21,10 +21,18 @@ const DEFAULT_TICK_MS = 5_000;
 const DEFAULT_MAX_CONCURRENT = 1;
 const INITIAL_DELAY_WINDOW_RATIO = 0.8;
 const MIN_INITIAL_DELAY_RATIO = 0.05;
+/**
+ * 被 shouldSkip 跳过的任务不消耗本轮机会，改到 1 个 tick 后重试。
+ * 之前是直接推到 nextRunAt = now + interval，导致「全量刷新」长期占用
+ * maxConcurrent=1 时，「当前账号刷新」每个周期都被顺手跳过、永不执行。
+ */
+const SKIPPED_RETRY_DELAY_TICKS = 1;
 
 interface RuntimeTask extends AutoRefreshSchedulerTask {
   nextRunAt: number;
   running: boolean;
+  /** 因 shouldSkip 被推迟的次数，仅用于日志，便于判断「有没有一直轮到不到」。 */
+  skipCount: number;
 }
 
 function clampIntervalMs(intervalMs: number): number {
@@ -76,6 +84,7 @@ export function createAutoRefreshScheduler(
       ...task,
       nextRunAt: Date.now() + buildInitialDelayMs(task, tickMs),
       running: false,
+      skipCount: 0,
     }));
 
   const scheduleDueTasks = () => {
@@ -90,6 +99,10 @@ export function createAutoRefreshScheduler(
         if (left.nextRunAt !== right.nextRunAt) {
           return left.nextRunAt - right.nextRunAt;
         }
+        // 同级就绪时，被跳过次数多的优先，避免它被反复顺延成饥饿。
+        if (left.skipCount !== right.skipCount) {
+          return right.skipCount - left.skipCount;
+        }
         return left.key.localeCompare(right.key);
       });
 
@@ -99,10 +112,13 @@ export function createAutoRefreshScheduler(
       }
 
       if (task.shouldSkip?.()) {
-        task.nextRunAt = Date.now() + clampIntervalMs(task.intervalMs);
+        task.skipCount += 1;
+        // 短延时重试，而不是丢掉整个周期。
+        task.nextRunAt = Date.now() + tickMs * SKIPPED_RETRY_DELAY_TICKS;
         continue;
       }
 
+      task.skipCount = 0;
       task.running = true;
       task.nextRunAt = Date.now() + clampIntervalMs(task.intervalMs);
       activeCount += 1;

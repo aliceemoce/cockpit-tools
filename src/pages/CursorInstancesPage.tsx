@@ -3,12 +3,14 @@ import { PlatformInstancesContent } from '../components/platform/PlatformInstanc
 import { useCursorInstanceStore } from '../stores/useCursorInstanceStore';
 import { useCursorAccountStore } from '../stores/useCursorAccountStore';
 import type { CursorAccount } from '../types/cursor';
-import { isCursorQuotaPendingQuery } from '../types/cursor';
 import { usePlatformRuntimeSupport } from '../hooks/usePlatformRuntimeSupport';
 import {
   buildCursorAccountPresentation,
   buildQuotaPreviewLines,
 } from '../presentation/platformAccountPresentation';
+
+const EMPTY_CURSOR_INSTANCE_ACCOUNTS: CursorAccount[] = [];
+const CURSOR_INSTANCE_SELECT_LIMIT = 200;
 
 interface CursorInstancesContentProps {
   accountsForSelect?: CursorAccount[];
@@ -19,8 +21,16 @@ export function CursorInstancesContent({
 }: CursorInstancesContentProps = {}) {
   const { t } = useTranslation();
   const instanceStore = useCursorInstanceStore();
-  const { accounts: storeAccounts, fetchAccounts } = useCursorAccountStore();
-  const sourceAccounts = accountsForSelect ?? storeAccounts;
+  const fetchAccounts = useCursorAccountStore((state) => state.fetchAccounts);
+  // 父组件已传选择列表时不订 store 全表，避免四千账号更新拖死多开页
+  const storeAccounts = useCursorAccountStore((state) =>
+    accountsForSelect ? EMPTY_CURSOR_INSTANCE_ACCOUNTS : state.accounts,
+  );
+  const limitedStoreAccounts =
+    !accountsForSelect && storeAccounts.length > CURSOR_INSTANCE_SELECT_LIMIT
+      ? storeAccounts.slice(0, CURSOR_INSTANCE_SELECT_LIMIT)
+      : storeAccounts;
+  const sourceAccounts = accountsForSelect ?? limitedStoreAccounts;
   const isSupportedPlatform = usePlatformRuntimeSupport('desktop');
 
   const renderCursorQuotaPreview = (account: CursorAccount) => {
@@ -48,16 +58,8 @@ export function CursorInstancesContent({
       fetchAccounts={fetchAccounts}
       renderAccountQuotaPreview={renderCursorQuotaPreview}
       renderAccountBadge={(account) => {
+        // 「配额未查询」由 presentation 层 resolveCursorPlanUiBadge 统一产出，此处不再重复判定
         const presentation = buildCursorAccountPresentation(account, t);
-        const quotaError = (account.quota_query_last_error || '').trim();
-        if (!quotaError && isCursorQuotaPendingQuery(account)) {
-          const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
-          return (
-            <span className="instance-plan-badge cursor-plan-badge pending-query" title={pendingBadgeLabel}>
-              {pendingBadgeLabel}
-            </span>
-          );
-        }
         if (!presentation.planLabel || presentation.planLabel.toUpperCase() === 'UNKNOWN') {
           return null;
         }

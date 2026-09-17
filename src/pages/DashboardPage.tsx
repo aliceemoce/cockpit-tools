@@ -471,13 +471,15 @@ export function DashboardPage({
     switchAccount: switchKiroAccount,
   } = useKiroAccountStore();
 
-  // Cursor Data
-  const {
-    accounts: cursorAccounts,
-    currentAccountId: cursorCurrentId,
-    fetchAccounts: fetchCursorAccounts,
-    switchAccount: switchCursorAccount,
-  } = useCursorAccountStore();
+  // Cursor：禁止订全表、禁止启动预拉全表（四千级账号会拖死整窗）
+  const CURSOR_DASHBOARD_SCAN_LIMIT = 200;
+  const cursorAccountCount = useCursorAccountStore((state) => state.accounts.length);
+  const cursorCurrent = useCursorAccountStore((state) => {
+    const id = state.currentAccountId;
+    if (!id) return null;
+    return state.accounts.find((account) => account.id === id) ?? null;
+  });
+  const switchCursorAccount = useCursorAccountStore((state) => state.switchAccount);
 
   // Grok CLI Data
   const {
@@ -603,6 +605,7 @@ export function DashboardPage({
     void Promise.allSettled([fetchAgAccounts(), fetchAgCurrent(antigravityRuntimeTarget)]);
     loadDisplayGroups();
 
+    // 故意不预拉 Cursor 全表：账号多时会堵死仪表盘与其它 keep-alive 页
     const deferredTasks: Array<() => Promise<unknown>> = [
       fetchCodexAccounts,
       fetchCodexCurrent,
@@ -611,7 +614,6 @@ export function DashboardPage({
       fetchGitHubCopilotAccounts,
       fetchWindsurfAccounts,
       fetchKiroAccounts,
-      fetchCursorAccounts,
       fetchGrokAccounts,
       fetchCodebuddyAccounts,
       fetchCodebuddyCnAccounts,
@@ -692,7 +694,8 @@ export function DashboardPage({
         githubCopilotAccounts.length +
         windsurfAccounts.length +
         kiroAccounts.length +
-        cursorAccounts.length +        grokAccounts.length +
+        cursorAccountCount +
+        grokAccounts.length +
         codebuddyAccounts.length +
         codebuddyCnAccounts.length +
         qoderAccounts.length +
@@ -706,7 +709,8 @@ export function DashboardPage({
       githubCopilot: githubCopilotAccounts.length,
       windsurf: windsurfAccounts.length,
       kiro: kiroAccounts.length,
-      cursor: cursorAccounts.length,      grok: grokAccounts.length,
+      cursor: cursorAccountCount,
+      grok: grokAccounts.length,
       codebuddy: codebuddyAccounts.length,
       codebuddy_cn: codebuddyCnAccounts.length,
       qoder: qoderAccounts.length,
@@ -717,10 +721,11 @@ export function DashboardPage({
       trae_solo_cn: traeAccountsByPlatform.trae_solo_cn.length,
       workbuddy: workbuddyAccounts.length,
     };
-  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorAccounts, grokAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, zcodeAccounts, traeAccounts, traeAccountsByPlatform, workbuddyAccounts]);
+  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorAccountCount, grokAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, zcodeAccounts, traeAccounts, traeAccountsByPlatform, workbuddyAccounts]);
 
   const dashboardAvailableTags = useMemo(() => {
     const tagSet = new Set<string>();
+    // Cursor 全表不进标签扫描：四千级账号会卡死仪表盘 keep-alive
     const allAccounts = [
       ...agAccounts,
       ...codexAccounts,
@@ -729,7 +734,7 @@ export function DashboardPage({
       ...githubCopilotAccounts,
       ...windsurfAccounts,
       ...kiroAccounts,
-      ...cursorAccounts,      ...grokAccounts,
+      ...grokAccounts,
       ...codebuddyAccounts,
       ...codebuddyCnAccounts,
       ...qoderAccounts,
@@ -737,6 +742,11 @@ export function DashboardPage({
       ...traeAccounts,
       ...workbuddyAccounts,
     ];
+    if (cursorCurrent?.tags) {
+      for (const tag of cursorCurrent.tags) {
+        tagSet.add(tag);
+      }
+    }
     for (const acc of allAccounts) {
       if (acc.tags) {
         for (const tag of acc.tags) {
@@ -745,7 +755,7 @@ export function DashboardPage({
       }
     }
     return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
-  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorAccounts, grokAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, zcodeAccounts, traeAccounts, workbuddyAccounts]);
+  }, [agAccounts, codexAccounts, claudeAccounts, zedAccounts, githubCopilotAccounts, windsurfAccounts, kiroAccounts, cursorCurrent, grokAccounts, codebuddyAccounts, codebuddyCnAccounts, qoderAccounts, zcodeAccounts, traeAccounts, workbuddyAccounts]);
 
 
   // Refresh States
@@ -1671,10 +1681,7 @@ export function DashboardPage({
     [kiroAccounts, kiroCurrentId],
   );
 
-  const cursorCurrent = useMemo(
-    () => resolveDashboardCurrentAccount(cursorAccounts, cursorCurrentId),
-    [cursorAccounts, cursorCurrentId],
-  );
+  // cursorCurrent 已由 store 选择器直接取当前号，禁止再依赖全表
 
   const grokCurrent = useMemo(
     () => resolveDashboardCurrentAccount(grokAccounts, grokCurrentId),
@@ -1789,7 +1796,11 @@ export function DashboardPage({
   }, [kiroAccounts, kiroCurrent?.id]);
 
   const cursorRecommended = useMemo(() => {
-    if (cursorAccounts.length <= 1) return null;
+    // 大账号池不在仪表盘扫全表推荐，避免 keep-alive 仪表盘拖死整窗
+    if (cursorAccountCount <= 1 || cursorAccountCount > CURSOR_DASHBOARD_SCAN_LIMIT) {
+      return null;
+    }
+    const cursorAccounts = useCursorAccountStore.getState().accounts;
     const currentId = cursorCurrent?.id;
     const others = cursorAccounts.filter((a) => a.id !== currentId);
     if (others.length === 0) return null;
@@ -1852,7 +1863,7 @@ export function DashboardPage({
 
       return candidateScore.freshness > bestScore.freshness ? candidate : best;
     });
-  }, [cursorAccounts, cursorCurrent?.id]);
+  }, [cursorAccountCount, cursorCurrent?.id]);
 
   const grokRecommended = useMemo(() => {
     if (grokAccounts.length <= 1) return null;
@@ -2642,6 +2653,7 @@ export function DashboardPage({
     trae_cn: stats.trae_cn,
     trae_solo_cn: stats.trae_solo_cn,
     workbuddy: stats.workbuddy,
+    wuyou: 0,
   };
 
   const entryCounts = useMemo(() => {

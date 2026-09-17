@@ -5000,7 +5000,7 @@ mod imp {
                         .map(|_| 0)
                 }
                 (PlatformId::Cursor, None) => {
-                    commands::cursor::refresh_all_cursor_tokens(app.clone()).await
+                    commands::cursor::refresh_all_cursor_tokens(app.clone(), None, None).await
                 }
                 (PlatformId::Grok, Some(account_id)) => {
                     commands::grok::refresh_grok_account(app.clone(), account_id)

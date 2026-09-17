@@ -4,6 +4,13 @@ use swift_rs::SwiftLinker;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// Windows debug 构建增加主线程栈大小到 16MB，防止栈溢出
+#[cfg(all(target_os = "windows", debug_assertions))]
+fn increase_windows_stack_size() {
+    // MSVC linker: /STACK:reserve[,commit]
+    println!("cargo:rustc-link-arg=/STACK:16777216"); // 16MB
+}
+
 #[cfg(target_os = "macos")]
 fn link_macos_swift_runtime_rpaths() {
     println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
@@ -164,9 +171,53 @@ fn build_cockpit_cliproxy_sidecar() {
     }
 }
 
+#[cfg(windows)]
+fn run_tauri_build_tolerating_winres_false_panic() {
+    use std::io::Write;
+    use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        tauri_build::build();
+    }));
+
+    match result {
+        Ok(()) => {}
+        Err(payload) => {
+            let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+                (*s).to_string()
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                resume_unwind(payload);
+            };
+
+            let matches_false_os0 =
+                msg.contains("Os { code: 0") || msg.contains("called `Result::unwrap()` on an `Err` value: Os { code: 0");
+
+            if matches_false_os0 {
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "cargo:warning=tauri-winres triggered spurious Os-code-0 panic during Windows resource compile; skipping (EXE icon/version may be absent). See build.rs for context."
+                );
+            } else {
+                resume_unwind(payload);
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn run_tauri_build_tolerating_winres_false_panic() {
+    tauri_build::build();
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     build_cockpit_cliproxy_sidecar();
+
+    // Windows debug 构建增加栈大小
+    #[cfg(all(target_os = "windows", debug_assertions))]
+    increase_windows_stack_size();
 
     #[cfg(target_os = "macos")]
     {
@@ -176,5 +227,5 @@ fn main() {
         link_macos_swift_runtime_rpaths();
     }
 
-    tauri_build::build()
+    run_tauri_build_tolerating_winres_false_panic()
 }

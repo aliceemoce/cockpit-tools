@@ -36,10 +36,24 @@ pub fn get_ui_state(_app: AppHandle) -> Result<serde_json::Value, String> {
     let codebuddy_cn_accounts = crate::modules::codebuddy_cn_account::list_accounts();
     let zed_accounts = crate::modules::zed_account::list_accounts();
     let workbuddy_accounts = crate::modules::workbuddy_account::list_accounts();
+    let recent_gui_click_acks = crate::modules::gui_in_app_click::get_recent_ack_results();
+    let latest_manual_continue_ack =
+        crate::modules::gui_in_app_click::get_latest_ack_for("cursor-renewal-manual-continue");
+    let recent_gui_click_results = crate::modules::gui_in_app_click::get_recent_dispatch_results();
+    let latest_manual_continue_result =
+        crate::modules::gui_in_app_click::get_latest_dispatch_for("cursor-renewal-manual-continue");
 
     let state = serde_json::json!({
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "app_version": env!("CARGO_PKG_VERSION"),
+        "process": {
+            "pid": std::process::id(),
+            "exe": std::env::current_exe().ok().map(|path| path.display().to_string()),
+        },
+        "recent_gui_click_acks": recent_gui_click_acks,
+        "latest_manual_continue_ack": latest_manual_continue_ack,
+        "recent_gui_click_results": recent_gui_click_results,
+        "latest_manual_continue_result": latest_manual_continue_result,
         "platforms": {
             "cursor": {
                 "account_count": cursor_accounts.len(),

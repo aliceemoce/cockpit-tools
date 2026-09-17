@@ -77,5 +77,10 @@ pub mod zed_account;
 pub mod zed_instance;
 pub mod zed_oauth;
 
+pub mod clash;
+pub mod dpapi;
+pub mod patcher;
+pub mod proxy;
+
 // 重新导出常用函数
 pub use account::*;

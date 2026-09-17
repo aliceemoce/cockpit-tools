@@ -112,6 +112,7 @@ interface CodexAccountState {
   
   // Actions
   fetchAccounts: (options?: FetchCodexAccountsOptions) => Promise<void>;
+  cancelPendingFetches: () => void;
   fetchCurrentAccount: (options?: FetchCodexCurrentAccountOptions) => Promise<void>;
   switchAccount: (accountId: string) => Promise<CodexAccount>;
   deleteAccount: (accountId: string) => Promise<void>;
@@ -181,6 +182,13 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
         return;
       }
       set({ error: String(e), loading: false });
+    }
+  },
+
+  cancelPendingFetches: () => {
+    invalidateCodexFetchRequests();
+    if (get().loading) {
+      set({ loading: false });
     }
   },
   

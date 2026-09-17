@@ -1327,7 +1327,39 @@ pub fn detect_and_save_cursor_launch_path(force: bool) -> Option<String> {
     Some(normalized)
 }
 
+/// WP-5 / D3 返工：用户显式指定的 Cursor 路径（`~/.cursor-switch-assistant/cursor_path.json`）。
+///
+/// 该文件由 `commands/cursor.rs::pick_cursor_path` 写入，历史上全仓无读取方。
+/// 现在把它纳入 `resolve_cursor_launch_path()` 的优先级链，使 UI 的 `cursorPathActive`
+/// 名副其实（指定路径确实会被后续注入/启动解析使用）。
+///
+/// **保守口径**：仅当「用户显式指定 且 目标 is_file 且 文件名像 Cursor 可执行」时才生效，
+/// 其余情况一律返回 None，由调用方回落原逻辑。因此：
+/// - 无 `cursor_path.json`（当前机器就是这样）→ 行为与改动前逐字节一致，默认 Play /
+///   默认实例自动换号主路径语义不变（WP-4 红线）。
+/// - 指定了但文件不存在 / 指向目录 / 不像 Cursor → 同样回落，不引入新的失败模式。
+fn resolve_user_pinned_cursor_launch_path() -> Option<PathBuf> {
+    // 复用 xubei_renewal_prefs 的唯一读取方，避免两处口径漂移。
+    let (pinned, source) = modules::xubei_renewal_prefs::resolve_configured_cursor_path_layer();
+    if !matches!(source, modules::xubei_renewal_prefs::CursorPathSource::Configured) {
+        return None;
+    }
+    let custom = normalize_custom_path(pinned.as_deref()?)?;
+    let exec = resolve_macos_exec_path(&custom)?;
+    // 比原逻辑更严：必须是文件（不能是目录），且名字得像 Cursor。
+    if exec.is_file() && path_looks_like_cursor(&exec) {
+        Some(exec)
+    } else {
+        None
+    }
+}
+
 pub fn resolve_cursor_launch_path() -> Result<PathBuf, String> {
+    // 优先级：用户显式指定（cursor_path.json）> 全局 config.cursor_app_path。
+    if let Some(pinned) = resolve_user_pinned_cursor_launch_path() {
+        return Ok(pinned);
+    }
+
     let config = modules::config::get_user_config();
     if let Some(custom) = normalize_custom_path(&config.cursor_app_path) {
         if let Some(exec) = resolve_macos_exec_path(&custom) {

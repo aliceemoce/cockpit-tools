@@ -5826,35 +5826,64 @@ fn switch_account_with_prepared(
     account_id: &str,
     account_for_write: CodexAccount,
 ) -> Result<CodexAccount, String> {
+    let flow_start = std::time::Instant::now();
     let codex_home = get_codex_home();
     let auth_path = codex_home.join("auth.json");
     logger::log_info(&format!(
-        "[Codex切号] 开始切换账号: account_id={}, email={}, target_dir={}",
+        "[Codex 切号] 开始切换账号：account_id={}, email={}, target_dir={}",
         account_for_write.id,
         account_for_write.email,
         codex_home.display()
     ));
+    
+    let write1_start = std::time::Instant::now();
     write_prepared_account_bundle_to_dir(&codex_home, &account_for_write)?;
+    let write1_elapsed = write1_start.elapsed();
     logger::log_info(&format!(
-        "[Codex切号] 已替换目录登录信息: target_dir={}, target_file={}",
+        "[Codex 切号] 写入本地 auth.json 完成，耗时={}ms",
+        write1_elapsed.as_millis()
+    ));
+    
+    logger::log_info(&format!(
+        "[Codex 切号] 已替换目录登录信息：target_dir={}, target_file={}",
         codex_home.display(),
         auth_path.display()
     ));
+    
+    let wsl_start = std::time::Instant::now();
     sync_default_codex_account_to_wsl(&account_for_write.id, |wsl_dir| {
         write_prepared_account_bundle_to_dir(wsl_dir, &account_for_write)
     });
+    let wsl_elapsed = wsl_start.elapsed();
+    logger::log_info(&format!(
+        "[Codex 切号] WSL 同步完成，耗时={}ms",
+        wsl_elapsed.as_millis()
+    ));
 
     // 更新索引中的 current_account_id
+    let index_start = std::time::Instant::now();
     let mut index = load_account_index();
     index.current_account_id = Some(account_id.to_string());
     save_account_index(&index)?;
+    let index_elapsed = index_start.elapsed();
+    logger::log_info(&format!(
+        "[Codex 切号] 更新索引完成，耗时={}ms",
+        index_elapsed.as_millis()
+    ));
 
     // 更新账号的 last_used
+    let save_start = std::time::Instant::now();
     let mut updated_account = account_for_write.clone();
     updated_account.update_last_used();
     save_account(&updated_account)?;
+    let save_elapsed = save_start.elapsed();
+    logger::log_info(&format!(
+        "[Codex 切号] 保存账号记录完成，总耗时={}ms，save_account={}ms",
+        flow_start.elapsed().as_millis(),
+        save_elapsed.as_millis()
+    ));
 
-    logger::log_info(&format!("已切换到 Codex 账号: {}", updated_account.email));
+    logger::log_info(&format!("已切换到 Codex 账号：{}", updated_account.email));
 
     Ok(updated_account)
 }
@@ -5925,19 +5954,39 @@ pub async fn reactivate_if_imported_matches_current(
 }
 
 pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, String> {
+    let flow_started_at = std::time::Instant::now();
+    logger::log_info(&format!(
+        "[Codex Switch][Start] account_id={}, total_elapsed_ms=0",
+        account_id
+    ));
+
     let account = load_account_after_index_repair(account_id)
-        .ok_or_else(|| format!("账号不存在: {}", account_id))?;
+        .ok_or_else(|| format!("账号不存在：{}", account_id))?;
     if account.is_agent_identity_auth() {
-        return Err("Agent Identity 账号仅支持 API 服务，无法作为普通账号切换".to_string());
+        let elapsed = flow_started_at.elapsed();
+        return Err(format!(
+            "[Codex Switch][Fail] Agent Identity 账号不支持，耗时={}ms",
+            elapsed.as_millis()
+        ));
     }
     if account.is_web_session_auth() {
-        return Err("Web Session 账号仅支持查看额度，无法作为普通账号切换或启动".to_string());
+        let elapsed = flow_started_at.elapsed();
+        return Err(format!(
+            "[Codex Switch][Fail] Web Session 账号不支持，耗时={}ms",
+            elapsed.as_millis()
+        ));
     }
     if account.is_api_key_auth() {
         if normalize_optional_ref(account.bound_oauth_account_id.as_deref()).is_none() {
             let updated_account = switch_account_with_prepared(account_id, account)?;
             let codex_home = get_codex_home();
             activate_provider_gateway_after_switch_if_needed(&codex_home, &updated_account).await?;
+            let elapsed = flow_started_at.elapsed();
+            logger::log_info(&format!(
+                "[Codex Switch][Complete] API Key 无 OAuth，耗时={}ms，email={}",
+                elapsed.as_millis(),
+                updated_account.email
+            ));
             return Ok(updated_account);
         }
         let oauth_account = refresh_bound_oauth_account_for_api_key(&account, "switch").await?;
@@ -5973,15 +6022,51 @@ pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, St
         ));
 
         activate_provider_gateway_after_switch_if_needed(&codex_home, &updated_account).await?;
-
+    
+        let elapsed = flow_started_at.elapsed();
+        logger::log_info(&format!(
+            "[Codex Switch][Complete] API Key 有 OAuth，耗时={}ms，email={}",
+            elapsed.as_millis(),
+            updated_account.email
+        ));
+    
         return Ok(updated_account);
     }
-
+    
     let lock = codex_token_lock_for(account_id);
     let _guard = lock.lock().await;
+    let file_lock_start = std::time::Instant::now();
     let _file_guard = acquire_codex_token_refresh_file_lock(account_id, "switch").await?;
-    let account = refresh_managed_account_locked(account_id, false, "switch", None).await?;
-    switch_account_with_prepared(account_id, account)
+    let file_lock_elapsed = file_lock_start.elapsed();
+    logger::log_info(&format!(
+        "[Codex Switch][FileLock] 获取文件锁耗时={}ms",
+        file_lock_elapsed.as_millis()
+    ));
+    let refresh_start = std::time::Instant::now();
+    let account_result = refresh_managed_account_locked(account_id, false, "switch", None).await;
+    let refresh_elapsed = refresh_start.elapsed();
+    match &account_result {
+        Ok(_) => logger::log_info(&format!(
+            "[Codex Switch][Refresh] Token 刷新成功，耗时={}ms",
+            refresh_elapsed.as_millis()
+        )),
+        Err(e) => logger::log_error(&format!(
+            "[Codex Switch][Refresh] Token 刷新失败，耗时={}ms，error={}",
+            refresh_elapsed.as_millis(),
+            e
+        )),
+    };
+    let account = account_result?;
+        
+    let prepared_start = std::time::Instant::now();
+    let result = switch_account_with_prepared(account_id, account);
+    let prepared_elapsed = prepared_start.elapsed();
+    logger::log_info(&format!(
+        "[Codex Switch][Prepare] 准备切换完成，总耗时={}ms，prepare_only={}ms",
+        flow_started_at.elapsed().as_millis(),
+        prepared_elapsed.as_millis()
+    ));
+    result
 }
 
 /// 从本地 auth.json 导入账号

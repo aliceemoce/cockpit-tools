@@ -15,6 +15,13 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { takeScreenshot } from './services/screenshotService';
+import {
+  describeElement,
+  enumerateClickableActions,
+  evaluateClickGuard,
+  findClickTarget,
+  isClickTargetDisabled,
+} from './utils/guiClickEnumerate';
 import { useTranslation } from 'react-i18next';
 import { FileText, FolderOpen, RefreshCw, X } from 'lucide-react';
 import { SideNav } from './components/layout/SideNav';
@@ -147,6 +154,9 @@ const WorkbuddyAccountsPage = lazy(() =>
 const ZedAccountsPage = lazy(() =>
   import('./pages/ZedAccountsPage').then((module) => ({ default: module.ZedAccountsPage })),
 );;
+const NirvanaConsole = lazy(() =>
+  import('./pages/nirvana/NirvanaConsole').then((module) => ({ default: module.NirvanaConsole })),
+);
 const WakeupTasksPage = lazy(() =>
   import('./pages/WakeupTasksPage').then((module) => ({ default: module.WakeupTasksPage })),
 );
@@ -214,6 +224,7 @@ const RENDERABLE_PAGE_VALUES: readonly Page[] = [
   'trae-cn',
   'trae-solo-cn',
   'workbuddy',
+  'wuyou',
   'zed',
   'instances',
   'wakeup',
@@ -757,12 +768,52 @@ function MainApp() {
   const isCodexSuitePage = page === 'codex' || page === 'codex-api-service';
   const [codexSuiteKeepAlive, setCodexSuiteKeepAlive] = useState(isCodexSuitePage);
   const shouldMountCodexSuite = isCodexSuitePage || codexSuiteKeepAlive;
+  /** Cursor 账号页首次进入后保留挂载，避免快速切页整页卸载/重建导致卡死 */
+  const isCursorPage = page === 'cursor';
+  const [cursorPageKeepAlive, setCursorPageKeepAlive] = useState(isCursorPage);
+  const shouldMountCursorPage = isCursorPage || cursorPageKeepAlive;
+  /**
+   * Antigravity 总览套件（账号总览 / 应用多开 / 定时唤醒 / 验活）：
+   * 顶栏 Tab 互切时禁止整页卸载重建（用户实测：总览→多开会卡）。
+   */
+  const isAntigravityOverviewSuitePage =
+    page === 'overview' ||
+    page === 'instances' ||
+    page === 'wakeup' ||
+    page === 'verification';
+  const [antigravityOverviewSuiteKeepAlive, setAntigravityOverviewSuiteKeepAlive] =
+    useState(isAntigravityOverviewSuitePage);
+  const shouldMountAntigravityOverviewSuite =
+    isAntigravityOverviewSuitePage || antigravityOverviewSuiteKeepAlive;
+  /** 其它主内容页：访问过后 keep-alive，禁止「点到未覆盖页就整页拆装卡死」 */
+  const [visitedMainPages, setVisitedMainPages] = useState(() => new Set<string>([page]));
+  useEffect(() => {
+    setVisitedMainPages((prev) => {
+      if (prev.has(page)) return prev;
+      const next = new Set(prev);
+      next.add(page);
+      return next;
+    });
+  }, [page]);
+  const shouldMountVisitedPage = (pageId: string) => page === pageId || visitedMainPages.has(pageId);
 
   useEffect(() => {
     if (isCodexSuitePage) {
       setCodexSuiteKeepAlive(true);
     }
   }, [isCodexSuitePage]);
+
+  useEffect(() => {
+    if (isCursorPage) {
+      setCursorPageKeepAlive(true);
+    }
+  }, [isCursorPage]);
+
+  useEffect(() => {
+    if (isAntigravityOverviewSuitePage) {
+      setAntigravityOverviewSuiteKeepAlive(true);
+    }
+  }, [isAntigravityOverviewSuitePage]);
 
   useEffect(() => {
     const ensureMounted = () => setCodexSuiteKeepAlive(true);
@@ -3585,6 +3636,7 @@ function MainApp() {
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
     let unlistenGuiClick: UnlistenFn | undefined;
+    let unlistenGuiEnumerate: UnlistenFn | undefined;
 
         listen<string>('tray:navigate', (event) => {
           const target = String(event.payload || '');
@@ -3593,32 +3645,123 @@ function MainApp() {
           }
         }).then((fn) => { unlisten = fn; });
 
-    // 应用内点击：监听 gui:trigger-click 事件，找到 data-action-id 匹配的按钮并点击
-    listen<string>('gui:trigger-click', (event) => {
-      const actionId = String(event.payload || '');
+    // 应用内点击：监听 gui:trigger-click（payload 含 action_id + request_id），真点到或明确失败才 ack
+    // 模块七：兼容 data-action-id 与 enum/…；危险操作前端二次拦截并回执 blocked_by_whitelist。
+    type GuiClickPayload = { action_id?: string; request_id?: string } | string;
+    listen<GuiClickPayload>('gui:trigger-click', (event) => {
+      const raw = event.payload;
+      const actionId =
+        typeof raw === 'string'
+          ? String(raw || '')
+          : String(raw?.action_id || '');
+      const requestId =
+        typeof raw === 'string' ? null : (raw?.request_id ? String(raw.request_id) : null);
       if (!actionId) return;
-      const reportAck = (success: boolean, detail: string) => {
-        void invoke('gui_click_ack', { actionId, success, detail }).catch(() => {});
+      const pageHint = (() => {
+        try {
+          return `hash=${window.location.hash || '(empty)'} path=${window.location.pathname || ''}`;
+        } catch {
+          return 'page=unknown';
+        }
+      })();
+      const reportAck = (success: boolean, detail: string, elementInfo?: string) => {
+        void invoke('gui_click_ack', {
+          actionId,
+          success,
+          detail,
+          elementInfo: elementInfo ?? null,
+          requestId,
+        }).catch(() => {});
       };
+
+      // 先解析目标再做白名单判定，便于回执带上元素描述。
+      const hintedEl = findClickTarget(actionId);
+      const elementHint = describeElement(hintedEl) ?? null;
+      const guard = evaluateClickGuard(actionId, elementHint);
+      if (!guard.allowed) {
+        const detail = guard.blockReason || `blocked_by_whitelist; ${pageHint}`;
+        console.warn('[gui:trigger-click] blocked by whitelist', actionId, detail, elementHint);
+        reportAck(false, detail, elementHint ?? undefined);
+        return;
+      }
+
       const tryClick = (attempt: number) => {
-        const el = document.querySelector(`[data-action-id="${actionId}"]`) as HTMLElement | null;
+        // 续费台 / Cursor 子 Tab：大池保活时控件晚挂载，且拉号/无感 busy 时 disabled，须长重试对齐后端 45s。
+        const isRenewalOrCursorNav =
+          actionId.startsWith('cursor-renewal-') ||
+          actionId.startsWith('nav-cursor-') ||
+          actionId.startsWith('enum/');
+        const maxAttempts = actionId.startsWith('cursor-instance-start-')
+          ? 48
+          : isRenewalOrCursorNav
+            ? 120
+            : 8;
+        const delayMs = actionId.startsWith('cursor-instance-start-')
+          ? 400
+          : isRenewalOrCursorNav
+            ? 400
+            : 250;
+
+        const el = findClickTarget(actionId);
         if (el) {
+          const disabled = isClickTargetDisabled(el);
+          const elementInfo = describeElement(el) || '';
+          if (disabled) {
+            // 续费台 busy（拉号/无感进行中）时继续等到可点，禁止首轮就报 disabled 交差。
+            if (isRenewalOrCursorNav && attempt < maxAttempts) {
+              window.setTimeout(() => tryClick(attempt + 1), delayMs);
+              return;
+            }
+            console.warn('[gui:trigger-click] element disabled', actionId, elementInfo, pageHint);
+            reportAck(false, `element disabled; ${pageHint}`, elementInfo);
+            return;
+          }
           el.click();
-          console.info('[gui:trigger-click] clicked', actionId, 'attempt', attempt);
-          reportAck(true, `attempt ${attempt}`);
+          console.info('[gui:trigger-click] clicked', actionId, 'attempt', attempt, elementInfo);
+          reportAck(true, `attempt ${attempt}`, elementInfo);
           return;
         }
-        const maxAttempts = actionId.startsWith('cursor-instance-start-') ? 48 : 8;
-        const delayMs = actionId.startsWith('cursor-instance-start-') ? 400 : 250;
         if (attempt < maxAttempts) {
           window.setTimeout(() => tryClick(attempt + 1), delayMs);
           return;
         }
-        console.warn('[gui:trigger-click] element not found', actionId);
-        reportAck(false, `element not found after ${maxAttempts} attempts`);
+        console.warn('[gui:trigger-click] element not found', actionId, pageHint);
+        reportAck(false, `element not found after ${maxAttempts} attempts; ${pageHint}`);
       };
       tryClick(1);
     }).then((fn) => { unlistenGuiClick = fn; });
+
+    // 模块七：枚举当前页可点元素，回执含 dangerous / blockReason，写入 cockpit-ui-state.json
+    type GuiEnumeratePayload = { request_id?: string } | string;
+    listen<GuiEnumeratePayload>('gui:enumerate-actions', (event) => {
+      const raw = event.payload;
+      const requestId =
+        typeof raw === 'string'
+          ? (raw || null)
+          : (raw?.request_id ? String(raw.request_id) : null);
+      try {
+        const result = enumerateClickableActions({ stampEnumId: true });
+        void invoke('gui_enumerate_ack', {
+          requestId,
+          success: true,
+          route: result.route,
+          totalClickable: result.totalClickable,
+          legacyActionIds: result.legacyActionIds,
+          actions: result.actions,
+          detail: `enumerated ${result.totalClickable}; legacy=${result.legacyActionIds.length}`,
+        }).catch(() => {});
+      } catch (error) {
+        void invoke('gui_enumerate_ack', {
+          requestId,
+          success: false,
+          route: null,
+          totalClickable: 0,
+          legacyActionIds: [],
+          actions: [],
+          detail: `enumerate failed: ${String(error)}`,
+        }).catch(() => {});
+      }
+    }).then((fn) => { unlistenGuiEnumerate = fn; });
 
     return () => {
       if (unlisten) {
@@ -3626,6 +3769,9 @@ function MainApp() {
       }
       if (unlistenGuiClick) {
         unlistenGuiClick();
+      }
+      if (unlistenGuiEnumerate) {
+        unlistenGuiEnumerate();
       }
     };
   }, []);
@@ -4124,15 +4270,77 @@ function MainApp() {
         ) : null}
         {/* overview 现在是合并后的账号总览页面 */}
         <Suspense fallback={suspenseFallback}>
-          {page === 'dashboard' && (
-            <DashboardPage
-              onNavigate={setPage}
-              onOpenPlatformLayout={openPlatformLayoutModal}
-              onEasterEggTriggerClick={handleBreakoutEntryTriggerClick}
-            />
+          {shouldMountVisitedPage('dashboard') && (
+            <Suspense fallback={page === 'dashboard' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'dashboard'}
+                aria-hidden={page !== 'dashboard'}
+              >
+                <DashboardPage
+                  onNavigate={setPage}
+                  onOpenPlatformLayout={openPlatformLayoutModal}
+                  onEasterEggTriggerClick={handleBreakoutEntryTriggerClick}
+                />
+              </div>
+            </Suspense>
           )}
-          {page === 'api-relay' && <ApiKeyFunPage />}
-          {page === 'overview' && <AccountsPage onNavigate={setPage} />}
+          {shouldMountVisitedPage('api-relay') && (
+            <Suspense fallback={page === 'api-relay' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'api-relay'}
+                aria-hidden={page !== 'api-relay'}
+              >
+                <ApiKeyFunPage />
+              </div>
+            </Suspense>
+          )}
+          {/* Antigravity overview suite: keep tabs mounted after first visit (overview ↔ instances). */}
+          {shouldMountAntigravityOverviewSuite && (
+            <Suspense fallback={page === 'overview' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'overview'}
+                aria-hidden={page !== 'overview'}
+              >
+                <AccountsPage onNavigate={setPage} />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountAntigravityOverviewSuite && (
+            <Suspense fallback={page === 'instances' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'instances'}
+                aria-hidden={page !== 'instances'}
+              >
+                <InstancesPage onNavigate={setPage} />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountAntigravityOverviewSuite && (
+            <Suspense fallback={page === 'wakeup' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'wakeup'}
+                aria-hidden={page !== 'wakeup'}
+              >
+                <WakeupTasksPage onNavigate={setPage} />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountAntigravityOverviewSuite && (
+            <Suspense fallback={page === 'verification' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'verification'}
+                aria-hidden={page !== 'verification'}
+              >
+                <WakeupVerificationPage onNavigate={setPage} />
+              </div>
+            </Suspense>
+          )}
           {/* Codex suite: keep both pages mounted after first visit to avoid empty flash when switching. */}
           {shouldMountCodexSuite && (
             <Suspense fallback={page === 'codex' ? suspenseFallback : null}>
@@ -4156,39 +4364,245 @@ function MainApp() {
               </div>
             </Suspense>
           )}
-          {page === 'claude' && <ClaudeAccountsPage subPlatform="desktop" />}
-          {page === 'claude-cli' && <ClaudeAccountsPage subPlatform="cli" />}
-          {page === 'github-copilot' && <GitHubCopilotAccountsPage />}
-          {page === 'windsurf' && <WindsurfAccountsPage />}
-          {page === 'kiro' && <KiroAccountsPage />}
-          {page === 'cursor' && (
-            <CursorAccountsPage
-              requestedTab={cursorTabRequest ?? undefined}
-              onRequestedTabApplied={() => setCursorTabRequest(null)}
-            />
+          {shouldMountVisitedPage('claude') && (
+            <Suspense fallback={page === 'claude' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'claude'}
+                aria-hidden={page !== 'claude'}
+              >
+                <ClaudeAccountsPage subPlatform="desktop" />
+              </div>
+            </Suspense>
           )}
-          {page === 'grok' && <GrokAccountsPage />}
-          {page === 'codebuddy' && <CodebuddyAccountsPage />}
-          {page === 'codebuddy-cn' && <CodebuddyCnAccountsPage />}
-          {page === 'qoder' && <QoderAccountsPage />}
-          {page === 'zcode' && <ZcodeAccountsPage />}
-          {page === 'trae' && <TraeAccountsPage platformId="trae" />}
-          {page === 'trae-solo' && <TraeAccountsPage platformId="trae_solo" />}
-          {page === 'trae-cn' && <TraeAccountsPage platformId="trae_cn" />}
-          {page === 'trae-solo-cn' && <TraeAccountsPage platformId="trae_solo_cn" />}
-          {page === 'workbuddy' && <WorkbuddyAccountsPage />}
-          {page === 'zed' && <ZedAccountsPage />}
-          {page === 'instances' && <InstancesPage onNavigate={setPage} />}
-          {page === 'wakeup' && <WakeupTasksPage onNavigate={setPage} />}
-          {page === 'verification' && <WakeupVerificationPage onNavigate={setPage} />}
-          {page === '2fa' && <TwoFactorAuthPage />}
-          {page === 'manual' && (
-            <ManualPage
-              onNavigate={setPage}
-              onOpenPlatformLayout={openPlatformLayoutModal}
-            />
+          {shouldMountVisitedPage('claude-cli') && (
+            <Suspense fallback={page === 'claude-cli' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'claude-cli'}
+                aria-hidden={page !== 'claude-cli'}
+              >
+                <ClaudeAccountsPage subPlatform="cli" />
+              </div>
+            </Suspense>
           )}
-          {page === 'settings' && <SettingsPage />}
+          {shouldMountVisitedPage('github-copilot') && (
+            <Suspense fallback={page === 'github-copilot' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'github-copilot'}
+                aria-hidden={page !== 'github-copilot'}
+              >
+                <GitHubCopilotAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('windsurf') && (
+            <Suspense fallback={page === 'windsurf' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'windsurf'}
+                aria-hidden={page !== 'windsurf'}
+              >
+                <WindsurfAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('kiro') && (
+            <Suspense fallback={page === 'kiro' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'kiro'}
+                aria-hidden={page !== 'kiro'}
+              >
+                <KiroAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {/* Cursor: keep mounted after first visit — same pattern as Codex suite (avoid remount + full list reload on rapid nav). */}
+          {shouldMountCursorPage && (
+            <Suspense fallback={page === 'cursor' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'cursor'}
+                aria-hidden={page !== 'cursor'}
+              >
+                <CursorAccountsPage
+                  pageActive={page === 'cursor'}
+                  requestedTab={cursorTabRequest ?? undefined}
+                  onRequestedTabApplied={() => setCursorTabRequest(null)}
+                />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('grok') && (
+            <Suspense fallback={page === 'grok' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'grok'}
+                aria-hidden={page !== 'grok'}
+              >
+                <GrokAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('codebuddy') && (
+            <Suspense fallback={page === 'codebuddy' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'codebuddy'}
+                aria-hidden={page !== 'codebuddy'}
+              >
+                <CodebuddyAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('codebuddy-cn') && (
+            <Suspense fallback={page === 'codebuddy-cn' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'codebuddy-cn'}
+                aria-hidden={page !== 'codebuddy-cn'}
+              >
+                <CodebuddyCnAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('qoder') && (
+            <Suspense fallback={page === 'qoder' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'qoder'}
+                aria-hidden={page !== 'qoder'}
+              >
+                <QoderAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('zcode') && (
+            <Suspense fallback={page === 'zcode' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'zcode'}
+                aria-hidden={page !== 'zcode'}
+              >
+                <ZcodeAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('trae') && (
+            <Suspense fallback={page === 'trae' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'trae'}
+                aria-hidden={page !== 'trae'}
+              >
+                <TraeAccountsPage platformId="trae" />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('trae-solo') && (
+            <Suspense fallback={page === 'trae-solo' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'trae-solo'}
+                aria-hidden={page !== 'trae-solo'}
+              >
+                <TraeAccountsPage platformId="trae_solo" />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('trae-cn') && (
+            <Suspense fallback={page === 'trae-cn' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'trae-cn'}
+                aria-hidden={page !== 'trae-cn'}
+              >
+                <TraeAccountsPage platformId="trae_cn" />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('trae-solo-cn') && (
+            <Suspense fallback={page === 'trae-solo-cn' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'trae-solo-cn'}
+                aria-hidden={page !== 'trae-solo-cn'}
+              >
+                <TraeAccountsPage platformId="trae_solo_cn" />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('workbuddy') && (
+            <Suspense fallback={page === 'workbuddy' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'workbuddy'}
+                aria-hidden={page !== 'workbuddy'}
+              >
+                <WorkbuddyAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('wuyou') && (
+            <Suspense fallback={page === 'wuyou' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'wuyou'}
+                aria-hidden={page !== 'wuyou'}
+              >
+                <NirvanaConsole onMessage={() => {}} />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('zed') && (
+            <Suspense fallback={page === 'zed' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'zed'}
+                aria-hidden={page !== 'zed'}
+              >
+                <ZedAccountsPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('2fa') && (
+            <Suspense fallback={page === '2fa' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== '2fa'}
+                aria-hidden={page !== '2fa'}
+              >
+                <TwoFactorAuthPage />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('manual') && (
+            <Suspense fallback={page === 'manual' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'manual'}
+                aria-hidden={page !== 'manual'}
+              >
+                <ManualPage
+                  onNavigate={setPage}
+                  onOpenPlatformLayout={openPlatformLayoutModal}
+                />
+              </div>
+            </Suspense>
+          )}
+          {shouldMountVisitedPage('settings') && (
+            <Suspense fallback={page === 'settings' ? suspenseFallback : null}>
+              <div
+                className="app-page-keep-alive"
+                hidden={page !== 'settings'}
+                aria-hidden={page !== 'settings'}
+              >
+                <SettingsPage />
+              </div>
+            </Suspense>
+          )}
         </Suspense>
       </div>
     </div>

@@ -57,9 +57,22 @@ Shell / Python / `.ps1` / `.bat` **仅**用于后端与命令行，例如：
 | action_id | 功能 | 位置 |
 |---|---|---|
 | `cursor-auto-inject` | Cursor 自动选号（Zap 按钮） | CursorAccountsPage toolbar |
+| `cursor-xubei-pull` | 续杯拉号（只进账号池，不写 Cursor） | CursorAccountsPage toolbar |
 | `cursor-auto-switch-toggle` | 运行时自动换号开关（Repeat） | CursorAccountsPage toolbar |
 | `cursor-inject` | 卡片视图切号/注入 | CursorAccountsPage 卡片 |
 | `cursor-play` | 表格视图切号/注入 | CursorAccountsPage 表格 |
+| `cursor-instance-start-*` | 应用多开实例 Play | InstancesManager 卡片 |
+| `cursor-instance-running-go` | 实例已在运行 → 立马前往 | InstancesManager 弹窗 |
+| `cursor-instance-running-restart` | 实例已在运行 → 关闭并重启 | InstancesManager 弹窗 |
+| `nav-cursor-renewal` | 切到续费控制台 Tab | PlatformOverviewTabsHeader |
+| `cursor-renewal-program-xubei` | 续费台选续杯管家 | CursorRenewalConsole |
+| `cursor-renewal-xubei-pull` | 续杯管家拉号 | CursorRenewalConsole |
+| `cursor-renewal-xubei-switch` | 续杯管家池内换号 | CursorRenewalConsole |
+| `cursor-renewal-xubei-seamless` | 续杯管家无感换号 | CursorRenewalConsole |
+| `cursor-renewal-xubei-toggle-seamless` | 激活无感换号开关 | CursorRenewalConsole |
+| `cursor-renewal-xubei-toggle-auto-switch` | 自动换号开关 | CursorRenewalConsole |
+| `cursor-renewal-xubei-toggle-machine-id` | 自动重置机器码开关 | CursorRenewalConsole |
+| `cursor-renewal-xubei-toggle-continue` | 换号后自动发送继续 | CursorRenewalConsole |
 
 新增业务按钮时须同步加 `data-action-id` 并登记本表。
 

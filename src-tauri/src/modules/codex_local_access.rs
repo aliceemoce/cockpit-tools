@@ -28613,6 +28613,7 @@ wire_api = "responses"
             bind_account_id: bind_account_id.map(str::to_string),
             launch_mode: InstanceLaunchMode::App,
             app_speed: CodexAppSpeed::Standard,
+            app_path: None,
             created_at: 0,
             last_launched_at: None,
             last_pid: None,

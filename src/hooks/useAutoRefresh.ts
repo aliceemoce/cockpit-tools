@@ -33,7 +33,7 @@ import {
 import { getZedAccountDisplayEmail } from '../types/zed';
 import * as traeService from '../services/traeService';
 import {
-  CURSOR_AUTO_REFRESH_BATCH_SIZE,
+  CURSOR_AUTO_REFRESH_WINDOW_SECS,
   refreshAllCursorTokens as refreshCursorTokensStaleBatch,
 } from '../services/cursorService';
 import {
@@ -593,8 +593,8 @@ export function useAutoRefresh() {
               fullRefreshingRef: cursorRefreshingRef,
               currentRefreshingRef: cursorCurrentRefreshingRef,
               runFullRefresh: async () => {
-                // 每轮只刷最旧一批（串行），下一轮继续挑最旧；避免每 10 分钟从头扫完全库扫不完。
-                await refreshCursorTokensStaleBatch(CURSOR_AUTO_REFRESH_BATCH_SIZE);
+                // 0012：不再固定刷 120 个；按墙钟预算 + 最旧优先滚动，长期覆盖全池（4482）。
+                await refreshCursorTokensStaleBatch(null, CURSOR_AUTO_REFRESH_WINDOW_SECS);
                 await fetchCursorAccounts();
               },
               runCurrentRefresh: async () => {

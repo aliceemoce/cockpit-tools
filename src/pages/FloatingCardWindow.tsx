@@ -229,6 +229,10 @@ function resolveInstanceStoreApi(platformId: PlatformId): FloatingCardInstanceSt
       return useZcodeInstanceStore.getState();
     case 'zed':
       return null;
+    case 'wuyou':
+      return null;
+    default:
+      return null;
   }
 }
 
@@ -262,46 +266,32 @@ export function FloatingCardWindow() {
     accounts: windsurfAccounts,
     currentAccountId: windsurfCurrentId,
   } = useWindsurfAccountStore();
-  const {
-    accounts: kiroAccounts,
-    currentAccountId: kiroCurrentId,
-  } = useKiroAccountStore();
-  const {
-    accounts: cursorAccounts,
-    currentAccountId: cursorCurrentId,
-  } = useCursorAccountStore();
-  const {
-    accounts: grokAccounts,
-    currentAccountId: grokCurrentId,
-  } = useGrokAccountStore();
-  const {
-    accounts: codebuddyAccounts,
-    currentAccountId: codebuddyCurrentId,
-  } = useCodebuddyAccountStore();
-  const {
-    accounts: codebuddyCnAccounts,
-    currentAccountId: codebuddyCnCurrentId,
-  } = useCodebuddyCnAccountStore();
-  const {
-    accounts: qoderAccounts,
-    currentAccountId: qoderCurrentId,
-  } = useQoderAccountStore();
-  const {
-    accounts: zcodeAccounts,
-    currentAccountId: zcodeCurrentId,
-  } = useZcodeAccountStore();
-  const {
-    accounts: traeAccounts,
-    currentAccountId: traeCurrentId,
-  } = useTraeAccountStore();
-  const {
-    accounts: workbuddyAccounts,
-    currentAccountId: workbuddyCurrentId,
-  } = useWorkbuddyAccountStore();
-  const {
-    accounts: zedAccounts,
-    currentAccountId: zedCurrentId,
-  } = useZedAccountStore();
+  const kiroAccounts = useKiroAccountStore((state) => state.accounts);
+  const kiroCurrentId = useKiroAccountStore((state) => state.currentAccountId);
+  // Cursor：禁止订全表；浮卡只用当前号 + 计数，推荐大池直接跳过
+  const CURSOR_FLOATING_SCAN_LIMIT = 200;
+  const cursorAccountCount = useCursorAccountStore((state) => state.accounts.length);
+  const cursorCurrentAccount = useCursorAccountStore((state) => {
+    const id = state.currentAccountId;
+    if (!id) return null;
+    return state.accounts.find((account) => account.id === id) ?? null;
+  });
+  const grokAccounts = useGrokAccountStore((state) => state.accounts);
+  const grokCurrentId = useGrokAccountStore((state) => state.currentAccountId);
+  const codebuddyAccounts = useCodebuddyAccountStore((state) => state.accounts);
+  const codebuddyCurrentId = useCodebuddyAccountStore((state) => state.currentAccountId);
+  const codebuddyCnAccounts = useCodebuddyCnAccountStore((state) => state.accounts);
+  const codebuddyCnCurrentId = useCodebuddyCnAccountStore((state) => state.currentAccountId);
+  const qoderAccounts = useQoderAccountStore((state) => state.accounts);
+  const qoderCurrentId = useQoderAccountStore((state) => state.currentAccountId);
+  const zcodeAccounts = useZcodeAccountStore((state) => state.accounts);
+  const zcodeCurrentId = useZcodeAccountStore((state) => state.currentAccountId);
+  const traeAccounts = useTraeAccountStore((state) => state.accounts);
+  const traeCurrentId = useTraeAccountStore((state) => state.currentAccountId);
+  const workbuddyAccounts = useWorkbuddyAccountStore((state) => state.accounts);
+  const workbuddyCurrentId = useWorkbuddyAccountStore((state) => state.currentAccountId);
+  const zedAccounts = useZedAccountStore((state) => state.accounts);
+  const zedCurrentId = useZedAccountStore((state) => state.currentAccountId);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const previousInstanceContextRef = useRef<FloatingCardInstanceContext | null>(null);
   const [displayGroups, setDisplayGroups] = useState<DisplayGroup[]>([]);
@@ -790,10 +780,7 @@ export function FloatingCardWindow() {
     () => resolveCurrentAccountById(kiroAccounts, kiroCurrentId),
     [kiroAccounts, kiroCurrentId],
   );
-  const cursorCurrent = useMemo(
-    () => resolveCurrentAccountById(cursorAccounts, cursorCurrentId),
-    [cursorAccounts, cursorCurrentId],
-  );
+  const cursorCurrent = cursorCurrentAccount;
   const grokCurrent = useMemo(
     () => resolveCurrentAccountById(grokAccounts, grokCurrentId),
     [grokAccounts, grokCurrentId],
@@ -867,8 +854,13 @@ export function FloatingCardWindow() {
         };
       case 'cursor':
         return {
-          accounts: cursorAccounts,
-          actualCurrentAccount: cursorCurrent,
+          accounts:
+            cursorAccountCount > CURSOR_FLOATING_SCAN_LIMIT
+              ? cursorCurrentAccount
+                ? [cursorCurrentAccount]
+                : []
+              : useCursorAccountStore.getState().accounts,
+          actualCurrentAccount: cursorCurrentAccount,
         };
       case 'grok':
         return {
@@ -930,7 +922,8 @@ export function FloatingCardWindow() {
     codebuddyCurrent,
     codexAccounts,
     codexCurrent,
-    cursorAccounts,
+    cursorAccountCount,
+    cursorCurrentAccount,
     cursorCurrent,
 
     grokAccounts,
@@ -983,7 +976,13 @@ export function FloatingCardWindow() {
       case 'kiro':
         return getRecommendedKiroAccount(kiroAccounts, effectiveCurrentId);
       case 'cursor':
-        return getRecommendedCursorAccount(cursorAccounts, effectiveCurrentId);
+        if (cursorAccountCount > CURSOR_FLOATING_SCAN_LIMIT) {
+          return null;
+        }
+        return getRecommendedCursorAccount(
+          useCursorAccountStore.getState().accounts,
+          effectiveCurrentId,
+        );
       case 'grok':
         return getRecommendedGrokAccount(grokAccounts, effectiveCurrentId);
       case 'codebuddy':
@@ -1013,7 +1012,8 @@ export function FloatingCardWindow() {
     codebuddyCnAccounts,
     codexAccounts,
     currentAccount?.id,
-    cursorAccounts,
+    cursorAccountCount,
+    cursorCurrentAccount,
 
     grokAccounts,
     githubCopilotAccounts,
@@ -1082,7 +1082,7 @@ export function FloatingCardWindow() {
       case 'kiro':
         return buildKiroAccountPresentation(viewedAccount as typeof kiroAccounts[number], t);
       case 'cursor':
-        return buildCursorAccountPresentation(viewedAccount as typeof cursorAccounts[number], t);
+        return buildCursorAccountPresentation(viewedAccount as NonNullable<typeof cursorCurrentAccount>, t);
       case 'grok':
         return buildGrokAccountPresentation(viewedAccount as typeof grokAccounts[number], t);
       case 'codebuddy':
@@ -1111,7 +1111,7 @@ export function FloatingCardWindow() {
     codebuddyAccounts,
     codebuddyCnAccounts,
     codexAccounts,
-    cursorAccounts,
+    cursorCurrentAccount,
     displayGroups,
 
     grokAccounts,

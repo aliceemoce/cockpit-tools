@@ -4576,6 +4576,25 @@
       "desc": "支持从本地 Cursor 安装导入、粘贴 JWT 令牌或 OAuth 授权登录来管理 Cursor 账号。",
       "reason": "权限范围：读取并写入 Cursor 本地认证存储（state.vscdb），用于账号导入与令牌注入（切号）。",
       "storage": "网络请求范围：刷新配额时携带 JWT 向 cursor.com 官方接口请求使用量、用户信息及订阅信息；不向任何第三方服务器上传数据。"
+    },
+    "renewalConsole": {
+      "resultTitleSuccess": "操作成功",
+      "resultTitleError": "操作失败",
+      "resultTitleInfo": "提示",
+      "ok": "确定",
+      "statusLineLabel": "续杯状态",
+      "statusLineIdle": "空闲 — 当前无续杯动作进行中",
+      "statusLineChecking": "正在检查额度…",
+      "statusLineSwitching": "正在换号…",
+      "statusLineCooldown": "换号冷却中 — 剩余 {{secs}}s",
+      "statusLineRecentSuccess": "空闲 — 上次换号成功（{{result}}）",
+      "statusLineRecentFailure": "空闲 — 上次换号失败（{{result}}）",
+      "statusLinePulling": "正在云端拉号（只进账号池，不写入当前 Cursor）…",
+      "statusLineSwitchingManual": "正在换号：云端拉号并写入当前 Cursor…",
+      "toastNote": "换号成功后，Cursor 右上角会出现「账号已切换」toast；该提示依赖注入处于生效状态。",
+      "unlimitedQuota": "无限额度",
+      "quotaChecking": "额度核实中",
+      "remainingQuotaPercent": "剩余额度 {{percent}}%"
     }
   },
   "breakout": {

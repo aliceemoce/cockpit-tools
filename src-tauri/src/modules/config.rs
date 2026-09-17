@@ -1004,7 +1004,8 @@ fn default_antigravity_dual_switch_no_restart_enabled() -> bool {
     false
 }
 fn default_auto_switch_enabled() -> bool {
-    false
+    // 模块一修复（病根C）：默认开启，与用户「默认就应该开着」的诉求一致，消除「默认关」根源。
+    true
 }
 fn default_auto_switch_threshold() -> i32 {
     5

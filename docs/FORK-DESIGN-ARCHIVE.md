@@ -179,6 +179,7 @@
 - 总控多开启动走应用内点击：先切到 Cursor 多开页，再点实例启动。总控若收到托盘、主窗标题不是「Cockpit Tools」，点击发不到真实界面，须先唤回主窗。
 - 多开 exe 与实例目录与默认 Cursor 隔离；默认实例切号仍遵守 F-001。
 - 运行中自动换号只扫多开实例，禁止对默认实例热写。
+- 续杯 util/EH：只写入多开安装树 `main.js` / 共享进程 / ExtHost 头钩，令牌文件落在该实例 `cockpit-seamless/`；默认安装禁止写入。
 
 **保留边界**: 不得为换号杀掉默认 Cursor；不得恢复侧栏文字补丁；不得删除无忧式传统切号路径。
 
@@ -458,5 +459,259 @@
   - 本地跟号不再对默认实例跑假自动换号。
 - **涉及文件/模块**: `src-tauri/src/modules/cursor_account.rs`、`src-tauri/src/commands/cursor_instance.rs`、`src-tauri/src/lib.rs`、`src/pages/CursorAccountsPage.tsx`。
 - **验证方式**: 覆盖安装后打开运行中开关；多开绑定号到阈值后日志出现自动换号成功；多开窗邮箱变新号且可聊；默认 Cursor 仍在；关掉开关后不再换。
-- **风险或注意事项**: 完整续杯注入复刻须等本项验收过后再做。
+- **风险或注意事项**: 完整续杯注入复刻已在自动换号验收后开工。
+
+### 2026-08-27（禁止抢续杯无感通道 · 范围仅限默认切号）
+
+- **触碰功能**: F-001 默认切号；与续杯管家共存边界。
+- **用户目标是否变化**: 是；当场纠正「总之不能抢别人的」——**默认 Play/默认无感**不得占用续杯管家无感通道。
+- **本次目的**: 默认切号只写本机默认 Cursor 库，不再写 `.wuxian-assistant` / `wx_*`、不再关对方自动换号、不再后台对抗盖写。
+- **实现手段**: 删除 `apply_xubei_seamless_hot_path` 及粘号/续盖；`default_seamless_switch_steps` 仅 `switch_tokens_in_profile_db_live` + `upsert_storage_json_ids`；`read_wuxian_get_token_email` 保留只读对照。
+- **涉及文件/模块**: `src-tauri/src/modules/cursor_account.rs`、`.cursor/workspace-plan.md`。
+- **验证方式**: `cargo check` 通过；源码无 `wx_token` / `apply_xubei` 写入点（**续杯专用入口恢复后除外**，见 2026-09-02）。
+- **风险或注意事项**: 若续杯注入仍在默认 Cursor 轮询 get-token，总控只写库后侧栏可能仍被续杯盖回——这是**默认链**隔离后果；**不**适用于续杯专用链。
+
+### 2026-09-02（续杯链必须与管家同通道 · 总控内自成一体）
+
+- **触碰功能**: F-012 续杯拉号+无感换号；F-001 默认切号边界澄清。
+- **用户目标是否变化**: 是；用户纠正：续杯无感**不能**做成「半套依赖管家开着」；**必须**与续杯管家**同一通道**；「不抢」**只约束默认**；无忧/续杯助手/续杯管家三程序换号逻辑**多半矛盾**，须分链。
+- **用户原话**: 「这个不能不抢管家通道，必须和管家是一个通道，写在规划里，不抢的是默认，三种换号软件的逻辑多半是矛盾的」
+- **本次目的**:
+  - **续杯专用入口**（`cursor-xubei-pull`、`cursor-xubei-seamless-switch`）：写 `.wuxian-assistant` / `wx_*`、对齐 get-token 热换、对齐管家 `apply_account` 语义；目标态为**总控 alone 可用**（登录、注入、本地服务均在总控内）
+  - **默认 Play/闪电/自动换号**：仍只写默认 Cursor 本库，**不写** wuxian（2026-08-27 边界保留）
+- **实现手段（目标态，待完成）**:
+  - 总控内续杯云端登录与 device_code（替代只读 `~/.cursor-switch-assistant/auth.json`）
+  - 总控内 Cursor main.js 注入/还原（复刻管家补丁，非 Play 路径跳过）
+  - 总控内本地 get-token HTTP 服务（端口与协议对齐管家）
+  - 续杯无感 UI 对齐管家：注入/还原、激活无感、自动换号、重置机器码、换号后发「继续」
+  - 已恢复（2026-09-02 半链）：`apply_xubei_seamless_hot_path` / `xubei_seamless_switch_account` / `pull_and_xubei_seamless_switch` — **仍依赖管家进程**，属过渡态
+- **涉及文件/模块**: `xubei_switch_client.rs`、`cursor_account.rs`、待增注入/get-token 模块、`CursorAccountsPage.tsx`、`program-plan.mdc`、`.cursor/workspace-plan.md`。
+- **验证方式**: 关闭续杯管家进程；总控完成拉号+无感换号；get-token 返回新邮箱；侧栏变号；默认 Play 仍不写 wuxian。
+- **风险或注意事项**: 三程序逻辑互斥——默认链与续杯链**禁止混用**；同一时刻只应有一条链写当前 Cursor；续杯链与管家同通道意味着磁盘态与协议须对齐，不能各写各的格式。
+
+### 2026-09-03（续杯管家池内换号接线 + 四开关写盘）
+
+- **触碰功能**: F-012 续杯拉号+无感换号；续费控制台管家面板。
+- **用户目标是否变化**: 否；用户要求继续重做管家一整块，禁止占位壳。
+- **本次目的**:
+  - 续费台「换号」走池内 wuxian 链（`switch_cursor_account_from_xubei_pool`），不得误接默认 Play
+  - 四开关真实读写 `~/.wuxian-assistant` 与 `~/.cursor-switch-assistant/config.json`
+- **实现手段**:
+  - `xubei_renewal_prefs.rs` + 命令 `get_xubei_renewal_prefs` / `set_xubei_renewal_pref`
+  - `renewal_console_status` 增加 `autoResetMachine` / `autoSendContinue`
+  - `CursorRenewalConsole.tsx` 开关去掉 `disabled`，拨动即写盘
+  - 四开关加 `data-action-id`（`cursor-renewal-xubei-toggle-*`），走应用内点击 / `cockpit-tools://click/…`
+- **验证方式**（2026-09-03 已验收）:
+  - 单元测试 `write_auto_reset_machine_roundtrip` 通过
+  - 覆盖安装 debug exe SHA `1FD4D6F9…`；日志 `前端已点` 四开关 + `续杯偏好写入` 键值成对出现（10:53 / 10:55 / 10:57）
+  - 磁盘对照：拨 `seamless`/`autoSwitch`/`autoResetMachine`/`autoSendContinue` 后 `seamless_state.json`、`auto_switch_pref.json`、`auto_resume_continue_pref.json`、`config.json` 字段随之变
+  - PrintWindow 留证 `_verify_renewal_prefs_final.png`（标题 `Cockpit Tools`）
+- **风险或注意事项**: 自动换号状态机、注入/还原、get-token 内嵌仍未完成；开关写盘 ≠ 自动换号已跑通；深链若连开多实例会产生无标题僵尸窗，验收前须只留一个有标题主进程。
+
+### 2026-09-06（续费台真机拉号/无感/四开关 + deep link 点击修复）
+
+- **触碰功能**: F-012 续杯拉号+无感换号；F-014 应用内点击 / DeepLink。
+- **用户目标是否变化**: 否；用户多次「继续」要求真机验收拉号、无感换号、四开关写盘。
+- **本次目的**: 消灭续费台 deep link 点击 `timeout_no_ack`；真机点通拉号/无感/四开关并留下磁盘与 get-token 证据。
+- **实现手段**:
+  - `deep_link_actions.rs`：`handle_click` 改为 `spawn_blocking` 等 ack，避免堵死主线程导致 WebView 无法回执
+  - `handle_ui_state` 去掉全量 `list_accounts`，只读索引条数 + 点击 ack，避免轮询卡死
+  - `gui_in_app_click` 续费/nav 超时 45s；前端续费/nav 长重试
+- **验证方式**（已验收）:
+  - 覆盖安装 SHA 前缀 `974BBE3D…`
+  - `_verify_nav_keepalive/PULL_SEAMLESS_v3_report.json`：`pull_clicked` / `seamless_email_changed` / `prefs_changed` 均为 true；池新增 `EckelWalner47@outlook.com`；无感后 get-token=`BucholzLeonelli361@outlook.com`
+  - 验收拨关后已应用内点击恢复四开全开
+- **风险或注意事项**: 总控内嵌 wuxian 服务/注入/还原仍未完成（`workspace-plan` 2026-09-03 未勾项）；功能齐全与管家同级代码量仍未宣称。
+
+### 2026-08-28（续杯 main.js 补丁共存 · Play 不抹机器码）
+
+- **触碰功能**: F-001 默认切号；与续杯管家「重置机器码」共存。
+- **用户目标是否变化**: 否；续做「续杯管家重置机器码失灵」——Cockpit 不得覆盖续杯/虚备已打的 `main.js`，Play 切号不得反复重写 `storage.json` / `machineId` 抵消续杯重置。
+- **本次目的**: 检测第三方续杯补丁标记后，Cockpit 跳过自有 csp patch、禁止从 `.cursor-backups` 恢复原版抹掉续杯补丁；默认无忧切号路径在第三方补丁存在时跳过 Gh/Jh 指纹重置。
+- **实现手段**:
+  - `crates/cockpit-core/src/modules/patcher/cursor_patch.rs`：`THIRD_PARTY_MAIN_JS_MARKERS`（`global.__cs_mid`、`MOCURSO`、`/*i0*/` 等）；`patch_cursor_main_js` / `restore_cursor_main_js` 遇第三方标记返回 false。
+  - `src-tauri/src/modules/cursor_switch_align.rs`：`restore_main_js_from_backup` / `patch_cursor_machine_id` 第三方 guard；`cursor_main_js_has_third_party_renewal_patch` 供切号链查询。
+  - `src-tauri/src/modules/cursor_account.rs`：`nirvana_traditional_switch_steps` 在 `main.js` 含续杯补丁时跳过 `reset_storage_json_ids_for_profile` 与 `reset_machine_id_file_for_profile`；**`default_seamless_switch_steps`（Play/默认无感主路径）** 在同样条件下跳过 `upsert_storage_json_ids`。
+- **涉及文件/模块**: 上列三文件；`patcher/mod.rs` 导出；单元测试 `cursor_patch` 三例。
+- **验证方式**: `cargo test -p cockpit-core cursor_patch` 3/3；本机 `C:\Program Files\Cursor\resources\app\out\main.js` 含 `__cs_mid`×8、无 `csp1`；覆盖安装后 Play 切号日志须见「跳过 storage.json 与 machineId 文件重置」；续杯「重置机器码」后额度条仍可见（UI 验收待做）。
+- **风险或注意事项**: 多开实例切号走 `switch_tokens_in_profile_db_live` 本就不写 Gh/Jh，无需重复 guard；关闭 Cockpit 不自动恢复磁盘改动；额度仍失败时需查代理/API/续杯 get-token 与写库冲突（与 main.js 互踩正交）。
+
+### F-014 应用内操作与 DeepLink 系统级触发 (In-App Actions)
+
+**用户目的**: 解决外部脚本模拟点击（鼠标坐标、UIA 外部驱动）不稳定、易受窗口焦点干扰的问题，实现应用内部精准可控的按钮触发。**2026-09-04**：消灭「派发即成功」的虚假能力与幻想完成；卡住须有可读原因。
+
+**自然语言设计**: Agent、CLI 或 DeepLink 触发 UI 操作时，不走外部假鼠标点击，而是由后端命令或系统协议直接唤醒应用内部事件总线，精准触发前端对应按钮的原生 DOM 点击。**成功仅当前端找到可点控件并完成 click 且回执成功**；超时、找不到、禁用、去重跳过均须失败并带原因码。
+
+**代码设计**:
+- 后端：`src-tauri/src/modules/gui_in_app_click.rs` 的 `trigger_click_wait`；命令在 `src-tauri/src/commands/system.rs`（`gui_trigger_click` / `gui_click_ack` / `gui_click_recent_acks` / `gui_click_latest_ack`）。
+- 派发 payload：`{ action_id, request_id }` → 事件 `gui:trigger-click`；前端 ack 按 `request_id` 唤醒等待方。
+- 前端：`src/App.tsx` 按 `data-action-id` 查找；disabled / 未找到须 `success=false` 并带页提示。
+- DeepLink：`cockpit-tools://click/<action_id>` 同样 wait-ack，失败写 warn 并 emit `deep-link-action-result`。
+
+**保留边界**: 凡目标按钮已挂载 `data-action-id` 锚点，GUI 验收与自动化一律强制走应用内点击，严禁改用 UIA 或外部坐标点击。**派发成功 ≠ 已点击**。
+
+**验证方式**: `gui_trigger_click` 返回 `success: true` 且含 `element_info`；假 action_id / 错页必须失败原因码，不得 Ok。
+
+#### 增量 · 2026-09-04 wait-ack
+
+- **触碰功能**: F-014。
+- **用户目标**: 解决卡顿、幻想、虚假能力、卡死无知觉。
+- **实现手段**: pending + recv_timeout；原因码 `timeout_no_ack` / `element_not_found` / `element_disabled` / `deduped_skipped`；注册 `gui_click_recent_acks`。
+- **涉及文件**: `gui_in_app_click.rs`、`system.rs`、`lib.rs`、`App.tsx`、`deep_link_actions.rs`、规则 `cockpit-in-app-control-only.mdc` / `no-script-substitute-ui.mdc`。
+
+---
+
+### 2026-08-25（Nirvana-Proxy 方案 A 原生 Sidecar 深度联动）
+
+- **触碰功能**: F-013 & F-014。
+- **用户目标是否变化**: 明确要求拒绝两个互不相干的独立程序，采用方案 A（原生 Sidecar 伴生引擎 + Cockpit 深度总控双向联动）。
+- **本次目的**: 彻底打通生命周期强绑定、账号池动态推送、IDE 自动引流与前端控制面板。
+- **实现手段**:
+  - `crates/cockpit-core/src/modules/proxy/sidecar.rs`: Win32 Job Object 内核级绑定 + `CREATE_NO_WINDOW` 后台静默伴生运行。
+  - `crates/cockpit-core/src/modules/proxy/account_sync.rs`: 将 Cockpit 管理的所有账号动态推送至原生代理轮换池。
+  - `src/pages/ProxyManagerPage.tsx`: 增加原生 Sidecar 伴生引擎管理看板与账号池注入交互。
+- **涉及文件/模块**: `crates/cockpit-core/src/modules/proxy/{sidecar.rs, account_sync.rs, mod.rs}`, `src-tauri/src/commands/proxy.rs`, `src/pages/ProxyManagerPage.tsx`, `.codewiki/modules/nirvana_sidecar_architecture.md`。
+- **验证方式**: `cargo check --workspace` 与 `npm run build` 全量通过（Exit Code 0）。
+
+#### 增量 · 2026-09-06 切页卡死 / 续费无窗 / ALL 不回落
+
+- **触碰功能**: 账号列表与主路由保活；续费台外置同步；F-014 验收路径（deep link / 应用内截图）。
+- **用户目标**: 应用内快速切页不卡死；进续费台不弹可见 PowerShell；账号总览 ↔ 应用多开互切后 ALL 保持全量。
+- **实现手段**: 停全表浏览器缓存；keep-alive 隐藏跳过重活；Cursor 列表分页去令牌；分片未完成禁止更小集合覆盖更大内存池；多开页取消挂载/定时整表重拉；续费同步脚本 Hidden + CREATE_NO_WINDOW。
+- **涉及文件**: `createProviderAccountStore.ts`、`useProviderAccountsPage.ts`、`InstancesManager.tsx`、`App.tsx`、`renewal_apps_auto_update.rs`、切片 `docs/*/0003-account-cache-wrong-place-freeze.md`。
+- **验证方式**: 覆盖安装后 deep link 总览↔多开，截图 `ALL (4072)` 不回落；进续费台 20s 内无新可见 PowerShell。
+- **备注**: 多开实例「账号不存在」若绑定 id 在磁盘池中确无文件，属陈旧绑定，与分片盖池已区分。
+
+#### 增量 · 2026-09-06 续费台切走卡死
+
+- **触碰功能**: Cursor 页子 Tab 保活；续费同步命令。
+- **用户目标**: 从续费控制台切出去不得卡死。
+- **实现手段**: `visitedCursorTabs` 保活总览/多开/续费；`sync_renewal_apps_auto_update` 异步 spawn_blocking；续费台先状态后同步。
+- **涉及文件**: `CursorAccountsPage.tsx`、`CursorRenewalConsole.tsx`、`commands/cursor.rs`。
+- **验证方式**: `LEAVE_02` 续费台 → `LEAVE_07` 总览 `ALL (4076)`；进程 Responding；安装 SHA `CE6305CE…`。
+
+#### 增量 · 2026-09-09 Cursor 分片水合卡约 200
+
+- **触碰功能**: Cursor/提供商账号分片 list 水合与 keep-alive 切页。
+- **用户目标**: 磁盘数千号时前端不得长期只有约 200 且列表区空白。
+- **实现手段**: `accountsHydrationComplete`/`totalHint`；隐藏页不 cancel 分片；未完成或池短于 hint 时切回重拉；后台 loading 中切回不二次 fetch。
+- **涉及文件**: `createProviderAccountStore.ts`、`useProviderAccountsPage.ts`、`CursorAccountsPage.tsx`、切片 `docs/*/0005-cursor-chunk-hydration-stuck-200.md`。
+- **验证方式**: tsc/build 通过；覆盖安装后 deep link 总览 ALL≈磁盘量且列表可见（qa 真机项仍未执行）。
+
+### 2026-09-06（无忧原生适配器 · ASAR 指纹探测 · 前端能力接入）
+
+- **触碰功能**: 无忧小助手续费控制台面板；F-001 无忧传统切号保留。
+- **用户目标是否变化**: 否；用户要求无忧按钮对应真实原程序能力，不做占位。
+- **本次目的**:
+  - 新增 `wuyou_native.rs` 无忧原生适配器：ASAR 指纹探测、能力判定、fail-closed 策略
+  - 前端无忧面板接入真实状态（指纹验证、材料就绪、SHA-256）
+  - 无忧按钮按后端能力禁用/启用，拉号/无感显示不可用原因
+  - 注册 `wuyou_traditional_switch` 命令，前置检查指纹验证
+- **实现手段**:
+  - `wuyou_native.rs`：比较工作区样本与安装 ASAR SHA-256，不一致时 fail-closed
+  - `renewal_console_status.rs`：`collect_wuyou_status` 从适配器读取真值
+  - `commands/cursor.rs`：`get_wuyou_native_status` + `wuyou_traditional_switch`
+  - `CursorRenewalConsole.tsx`：无忧面板显示探测状态，按钮按 `backendReady` / `cloudPullAvailable` / `seamlessAvailable` 禁用
+  - `cursorService.ts`：`WuyouNativeStatus` 类型 + `getWuyouNativeStatus` + `wuyouTraditionalSwitch`
+- **涉及文件/模块**: `wuyou_native.rs`、`mod.rs`、`renewal_console_status.rs`、`commands/cursor.rs`、`lib.rs`、`cursorService.ts`、`CursorRenewalConsole.tsx`、`docs/adr/0001-wuyou-native-adapter-boundary.md`
+- **ASAR 取证结论**:
+  - `cursor:cloud-pull` 固定返回"即将开放" → `cloud_pull_available = false`
+  - `cursor:seamless:ping` 缺 bridge 服务端 → `seamless_available = false`
+  - `cursor:accounts:switch` 传统切号 → 已对齐 `cursor_switch_align.rs`
+  - 工作区 ASAR 与安装 ASAR SHA-256 不同 → 当前 `fingerprint_verified = false` → 所有按钮禁用
+- **验证方式**: `cargo check` ✓、`tsc --noEmit` ✓、`npm run build` ✓、单元测试 `uses_a_distinct_account_source_tag` ✓；完整 Tauri 构建进行中
+- **风险或注意事项**: 三程序换号链互相独立，无忧模块不写管家目录/端口；指纹不一致时所有动作 fail-closed；自动更新后须重新取证
+
+
+### 2026-09-10（纠正：运行中自动换号只服务默认页）
+
+- **触碰功能**: F-012 运行中自动换号。
+- **用户目标是否变化**: 是；用户明确纠正：不存在多开页自动换号，自动换号只存在于默认页面。
+- **纠正对象**: 2026-08-24「只扫多开、禁止碰默认」实现与档案条目——一开始就接反。
+- **本次目的**: tick 只监控默认 Cursor；多开不参与；阈值判定前刷新绑定号额度。
+- **实现手段**: 重写 `tick_runtime_auto_switch`：读 default_settings 绑定与默认 userDataDir 进程；调用 `start_cursor_instance_with_account_switch(__default__, None)`。
+- **涉及文件/模块**: `src-tauri/src/commands/cursor_instance.rs`、切片 `docs/implementation/0008-default-runtime-auto-switch.md`。
+- **验证方式**: cargo check；开关开启且默认 Cursor 在跑、额度到阈值时日志出现「默认自动换号成功/失败」；多开不被本 tick 切换。
+- **风险或注意事项**: 旧档案中「只扫多开」条文作废，以本条为准。
+
+### F-015 续杯管家八模块（用户语言版说明）
+
+> 这张卡是「续杯管家补完整」这一整块功能的**人话说明**。蓝图原文在 `docs/implementation/0010-renewal-butler-completion.md`（八个模块，每段按「原版是什么样 / 现在什么样 / 要改成什么样 / 验收怎么看」四段写）。本卡只留用户能读懂的部分，不写代码实现。
+>
+> **顺序偏离登记（诚实）**：本功能代码早于 wiki 完成，属顺序偏离，已登记；后续按「先写 wiki 再写代码」执行。
+>
+> 因此本卡是**事后补写的说明**，不是施工图；它不证明功能已好，也不改动已发生的事实。八个模块的真实好坏以磁盘上的 QA（`docs/qa/0010-renewal-butler-completion.md`）为准，见本卡末尾「当前状态」。
+
+#### W-1 自动换号永不被偷关
+
+- **这个功能替用户解决什么**：用户把「自动换号」打开以后，就不再想跟它较劲。以前的情况是：明明开着，用着用着就自己变回关闭了；用户会反复被「设置被偷偷改掉」这件事折磨。
+- **用户眼里的边界**：开关是用户的东西。只有用户自己在界面上动手拨过，它才能变。程序自己读不到设置、读乱了、或者在换号过程中顺手回写——这些都不是「用户关掉了」，不许被当成用户关掉了。「我没动过它，它就一直是开着的」算好；任何一次「我没动，它自己关了」都不算好。
+- **验收含义**：连续换号很多次，开关一路都是开着的；把某个设置文件删掉再开软件，它也不许自己写成关闭；三处存开关的地方说法得一致，不许互相打架；程序若真想偷偷关，得留下一条可被查出来的记录，而用户看到的仍然是开着的。
+
+#### W-2 续杯管家自动换号真会自己跑
+
+- **这个功能替用户解决什么**：用户要的是「续杯管家那套自动换号在 Cockpit 里真的能跑」。以前集成进来的那一套是半截的：有个口子在等别人来叫它，结果没人叫，等于没有；判断额度那一步还一直返回「没事」，跟真实额度没关系。
+- **用户眼里的边界**：不用用户去额外开什么脚本、不用外部程序来推一把，Cockpit 自己到点了就该自己动；判断是否该换号必须看**真实额度**，不能永远答「不用换」；换到哪一步、上次成没成、还在不在冷却，得让用户看得见。还有一条硬边界：**续杯这套开关管续杯的号，默认页那套开关管默认页的号**，两套各管各的，不许互相覆盖、不许互相触发。
+- **验收含义**：在不借助外部脚本的情况下，能亲眼看到一次真实的自动换号发生；它报的额度和账号页显示的一致；关掉默认页的开关，续杯这边照样能换；反过来也一样；续杯换完号，默认那边绑的号没被动过。
+
+#### W-3 点一下不再卡住
+
+- **这个功能替用户解决什么**：用户点一下，界面就得有反应。以前存在 20 秒以上的整段干等、后台还挂着一个几十秒不停轮询的常驻动作、进页面时同步跑外部探测、操作完再连着刷三遍全量——结果就是「点了没反应，或者要等很久」。
+- **用户眼里的边界**：没事就别空转。确认到位了就立刻停，不要为了保险反复重写；后台那个常驻动作只在真的发现跟期望不一致时才动手；进页面先让用户看到画面，重活放到后面悄悄补。能接受的手感是「通常很快就有反应」，不是「固定等二十秒」。
+- **验收含义**：一次换号从点到能用不再出现整段二十秒的等待；连着操作十次界面都能点得动；一次操作只完整地算一次状态采集；进续杯页的第一屏不被外部探测堵住。
+
+#### W-4 按钮都不是摆设
+
+- **这个功能替用户解决什么**：按钮按下去要有真事发生。以前有几个按钮点了只弹一句「功能复刻中，即将接入」；还有几个开关在界面上永远显示关闭，只是因为背后写着死值，并不是真实状态就是关闭。
+- **用户眼里的边界**：按钮要么真干活，要么**明明白白告诉用户它现在不能用、为什么不能用**，并把按钮置灰；不许用一句漂亮话冒充「快好了」。开关显示的值必须是磁盘上的真实偏好；读不到就说「未知」，不许拿「关」来凑数。
+- **验收含义**：拉号 / 换号 / 无感换号点下去能看到真的结果（池子里的号变了，或者 Cursor 那边真的生效）；开关显示的值在改了磁盘上的文件再刷新后能跟着变；「指定 Cursor 路径」指定了以后，后面的动作真按这个路径走；「推荐版本」得说得出这个版本号是从哪来的。
+
+#### W-5 提示方式照老版来
+
+- **这个功能替用户解决什么**：出事要看得见。以前集成版把什么都压成一句一闪而过的小提示，用户容易错过，也不知道进行到哪一步。
+- **用户眼里的边界**：按原版规矩分两种场合。激活、卡密、重置、改密码、退出登录，以及各类失败——这些要有**正经弹框**，不论成功还是失败都要弹，用户点了才算过去。唯独「无感换号」顺顺畅畅跑完的主路**不要**再拦着用户点一次「确定」，改个账号文字、刷新状态行就够了。另外 Cursor 里面换了号也要有提示，页面上还要有一条跟着动作变的状态行。
+- **验收含义**：那些非主路径的操作真会弹出框；无感换号成功不会再要求用户多点一次；换号后 Cursor 里能看到「账号已切换」的提示；操作过程中状态行的字是真的一段时间一个样，不是一句死话。
+
+#### W-6 页面信息不滞后
+
+- **这个功能替用户解决什么**：别的页面改了账号或注入状态，续杯这边要跟着变，不能让用户手动刷新才看得到。
+- **用户眼里的边界**：一个刷新周期内能看到变化；主要靠「有事就通知」，定时刷新只做没通知时的兜底。定时刷新必须是**便宜**的，不得靠把重活缩短间隔来假装实时。
+- **验收含义**：在别处改了账号/注入状态后，续杯页在一个周期内自己就变了；续杯页和账号页都能收到那个通知；定时刷新不会让 CPU/磁盘明显忙起来。
+
+#### W-7 批量自动点击
+
+- **这个功能替用户解决什么**：测试要能一下子点到站里所有能点的东西，而不是给每个按钮手工登记一遍。以前登记过的只占全部按钮的百分之一多点，绝大多数点不到。
+- **用户眼里的边界**：页面上像能点的东西都被自动找出来，每个都有稳定的身份，可以被直接点到。危险操作（删号、退出登录、清数据、重置机器码、杀进程这类）**默认不许点**，要显式放行才行。原先手工登记的那些继续能用。每次点击都得留下「点到了什么、成没成、是不是被拦了」的回执。
+- **验收含义**：可点覆盖率接近全部；危险操作的点法会被拒绝并说清为什么；老的那批登记标识一个都不失效；对着全站点一遍，能列出「点了哪些会卡死」的清单。
+
+#### W-8 额度显示真额度
+
+- **这个功能替用户解决什么**：额度要显示真的。以前界面上无条件写着「无限额度」，跟账号实际剩多少毫无关系，这是假数字。
+- **用户眼里的边界**：额度和账号页用同一套算法、同一个来源，两处必须说得一样。查不到的时候就写「核实中」，**绝不允许**拿「无限额度」填空。只有当确定这个套餐本来就是无限的时候，才可以说无限，而且这个判断得有出处，不许写死。
+- **验收含义**：续杯页和账号页对同一个号显示的额度一致；查不到的时候显示「核实中」而不是「无限额度」；拿一个本来不是无限的号来看，不会显示无限。
+
+#### 当前状态（口径以磁盘为准，2026-09-13）
+
+- 切片 0010：**`in-progress`，二元：没修好**。
+- 模块一~六、模块八（G1–G4）：**静态已修好**。
+- 模块七：H1–H3 **协议层通过**；**H4 全站扫未执行**（需要图形界面人工批量点，不许空跑冒充）。
+- 真机未执行：A1–A5、B1/B3/B4、C1/C2、D 全项、E/F/G 真机、H1 覆盖率实证、H4。
+- 门禁：`cargo check`、`npx tsc --noEmit`、`npm run build` 均 EXIT 0；指定单测 25 passed；`npm run tauri build -- --debug` EXIT 1（缺 `TAURI_SIGNING_PRIVATE_KEY`，非功能回归）。
+
+#### 维持边界
+
+- 「静态已修好」不等于「用户在自己机器上已经好了」；没跑真机的一律写未执行。
+- 本卡不改任何既有切片结论，只补写；与本卡措辞不同的旧结论仍以原条目为准，本卡不作推翻。
+- 正式 wiki 见 `.qoder/repowiki/zh/content/核心功能/续杯管家.md`（续杯管家的自然语言功能页，已写入真正的 repowiki，本卡仅作设计档案历史溯源）。
+
+### 2026-09-13（补写 0010 八模块用户语言说明）
+
+- **触碰功能**: F-015（新增持久说明卡）。
+- **用户目标是否变化**: 否；按 AGENTS.md 硬规则 4「蓝图 → 蓝图 wiki → 代码」的要求，把八模块蓝图落成给人读的自然语言说明。
+- **本次目的**: 让后续人与 Agent 先读到「用户要什么、什么算好、人怎么判断好了」三层意思，再谈代码。
+- **实现手段**: 在 `docs/FORK-DESIGN-ARCHIVE.md` **末尾增量补写** F-015 一张卡（W-1～W-8 八节）+ 当前状态 + 维持边界；未删改既有内容，未触碰 `src/` 与其它任何文件。
+- **顺序偏离**: 本功能代码早于 wiki 完成，属顺序偏离，已登记；后续按「先写 wiki 再写代码」执行。
+- **涉及文件/模块**: 仅 `docs/FORK-DESIGN-ARCHIVE.md`（本轮唯一改动）；只读参考 `docs/implementation/0010-renewal-butler-completion.md`、`docs/qa/0010-renewal-butler-completion.md`、`docs/project-status.md`。
+- **验证方式**: 状态口径逐条比对 `docs/qa/0010-renewal-butler-completion.md` 与 `docs/project-status.md` 第 57–64 行的实际文字后落笔；本轮未运行任何构建命令。
+- **风险或注意事项**: 本卡是事后补写，不得被读成「功能已修好」；二元结论仍以磁盘 QA 为准——0010 整体仍是**没修好**。
 

@@ -12,12 +12,9 @@ fn resolve_provider_current_account_id(platform: &str) -> Result<Option<String>,
                 &accounts,
             ))
         }
-        "cursor" => {
-            let accounts = crate::modules::cursor_account::list_accounts();
-            Ok(crate::modules::cursor_account::resolve_current_account_id(
-                &accounts,
-            ))
-        }
+        "cursor" => Ok(
+            crate::modules::cursor_account::resolve_current_account_id_from_local_state(),
+        ),
         "codebuddy" => {
             let accounts = crate::modules::codebuddy_account::list_accounts();
             Ok(crate::modules::codebuddy_account::resolve_current_account_id(&accounts))

@@ -12,6 +12,11 @@ export function CursorOverviewTabsHeader({
   onTabChange,
 }: CursorOverviewTabsHeaderProps) {
   return (
-    <PlatformOverviewTabsHeader platform="cursor" active={active} onTabChange={onTabChange} />
+    <PlatformOverviewTabsHeader
+      platform="cursor"
+      active={active}
+      onTabChange={onTabChange}
+      tabs={['overview', 'instances', 'renewal']}
+    />
   );
 }

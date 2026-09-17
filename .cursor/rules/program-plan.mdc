@@ -2,6 +2,29 @@
 # 目的
 自用桌面总控的分叉：管理光标等多平台账号；以真实「能在编辑器里对话」驱动显示与选号；主仓有正式版发布时再同步上游，并保留本分叉的切号与多开能力。
 
+# 当前权威任务（2026-09-09 · 用户六问 + 继续）
+
+- **用户原话**：七个卡片为什么全放 Cursor；换号能不能用；为什么没用 Cockpit UI 画风；有没有和 Nirvana Proxy 组合弄清无感换 Qoder；无忧换号怎么接 Cockpit 已有账号；拉取账号有没有直接存 Cockpit 一份；继续
+- **核对（禁止当全修好）**：七卡嵌在 Cursor 续费台；Cursor 切号已接 `inject_cursor_account`（待覆盖安装验收）；拉号未接入硬失败；画风未改；Proxy 解包在、面板未接 Qoder 无感；列表读池、切号待验；拉号不入库
+- **本回合待办**：覆盖安装验收 Cursor 真切号；拉号/入库；Proxy+Qoder；入口层级与画风
+
+# 当前权威任务（2026-09-08 · 用户：底栏绑启动器 / 不要 powershell 弹窗 · 已被 2026-09-09 六问继续覆盖主线 · 正文保留）
+
+一句话：续杯管家底栏须绑会自动更新的启动器；点开更新时不得弹 PowerShell 蓝窗。
+
+## 本回合待办纲领
+
+1. **底栏**：MyDockFinder `ico.ini` 管家项指向 `...\CursorXuBei\CursorXuBei.exe`（不是 `app\v版本号.exe`）。
+2. **无蓝窗**：`updater.py` / sync 杀进程、列进程、启动改 `tasklist`/`taskkill`/`wmic` + 无窗口标志；禁止调 powershell / `cmd start`。
+3. 安装目录已覆盖新 `updater.py`；桌面快捷方式目标仍为启动器。
+4. 旧「获得全部代码」权威：**本条覆盖主线**（正文保留）；本回合只做上述两句用户原话。
+
+## 用户原话来源（本回合）
+
+- 「1.让底栏绑定你做的」
+- 「2.不要有powershell弹窗的」
+- 「继续」
+
 # 程序要求
 
 ## 工作区目标
@@ -58,8 +81,23 @@
 - **2026-08-24**：多开无感须本人换号前后都能在多开窗对话；对照解包续杯助手时只比无感复刻功能体行数/字节（util+eh 注入 vs 热写库链），禁止拿整包体积冒充；侧栏邮箱未热刷新则记为注入体未复刻
 - **2026-08-15**：默认也做成多开那次可用的自动选号逻辑；默认无感换号要粘住；增加默认自动换号；显示诚实（假有剩余不得当有剩余；未核实写核实中）；无忧换号方式保留不删
 - **2026-08-15**：参考四个程序（无忧小助手/CursorXuBei/续杯助手/Cockpit 主仓库本体）；出问题从这几个程序不出问题的地方找或复刻代码；见 `reference-four-switch-programs.mdc`
+- **2026-09-07（权威 · 覆盖「只四个」；纠正误写 Antigravity-Manager）**：除四个外再加第五个参考程序 **Nirvana Proxy**（与无忧小助手不是同一程序；本机代理，界面「可用」）；制作/排查代理与无忧体系链路须对照其解包；解包已有，不重做；见 `reference-four-switch-programs.mdc`
 - **2026-08-22**：续杯可盖默认号（默认换号不改、交给续杯）；只强制多开换号隔离——多开独立安装 + 优先层压过管家全局换号，保留管家注入、禁止清注入；成不成以实际核对为准。禁止动默认热替换/优先锁去抢默认号。
-- **2026-08-24**：运行中自动换号——开关开着时，已启动的多开实例额度到阈值（或对话限流）须自动走现有无感切号链；总览有运行中开关；禁止抢默认窗；续杯完整注入复刻须等本项验收过后再做。
+- **2026-08-24**：运行中自动换号——开关开着时，已启动的多开实例额度到阈值（或对话限流）须自动走现有无感切号链；总览有运行中开关；禁止抢默认窗。已验收（日志自动换号成功；默认进程仍在）。
+- **2026-08-24**：续杯 util/EH 完整注入（仅多开）——读实例热换目录拦截请求；优先层把热态写回界面存储使侧栏邮箱变新号；禁止写默认安装、禁止清管家注入。
+- **2026-09-01**：续杯管家不止换号，还从后台拉号；须先解包/字符串/重建盘点全量能力，再在总控账号页加「拉号」与「续杯式换号」；拉号走云端换号接口落盘进池；禁止未盘点就假移植；禁止用代码图索引二进制冒充已拿到全部源码。
+- **2026-09-02（权威）**：续杯无感换号**必须**与续杯管家**同一通道**（wuxian 热换 + get-token + 注入链）；总控在此路径上**等于**管家，目标态为**不依赖管家进程常驻**；「不抢续杯通道」**仅**约束**默认 Play/默认无感/闪电**（只写默认 Cursor 本库）；无忧小助手、续杯助手、续杯管家三套换号逻辑**多半矛盾**，须**分入口、分链**，禁止与默认链混为一谈。
+- **2026-09-04（权威）**：解决卡顿、幻想、应用内操控虚假能力、卡死原因无知觉——应用内点击须等前端真点到；失败须带原因；派发成功不得冒充已点击。
+- **2026-09-05（权威）**：应用内快速切页卡死——Cursor 重页复用 Codex 式 keep-alive（首次进入后不卸载）；卸载路径丢弃过期拉号结果；验收以应用内快速连切不卡死为准。
+- **2026-09-06（权威）**：账号总览切应用多开会卡——总览套件 Tab 互切须 keep-alive；验收必须覆盖这条；截图须截主窗应用内画面。
+- **2026-09-06（权威 · 覆盖「只保几页」）**：改的是整个程序；未覆盖的页点到仍会卡死。账号多不该拖垮不显示账号的整体；账号影响全体是缓存错位置——须停全表进浏览器本地缓存、收口整表订阅、隐藏保活页停重活、主路由统一保活。
+- **2026-09-06（续）**：进续费台不得弹出可见 PowerShell；总览↔应用多开互切后 ALL 不得被分片首批盖回成约两百；多开定时不得整表重拉账号。
+- **2026-09-07（权威）**：续杯助手差的不多；无忧小助手与原版完全不一样——本阶段主改无忧面板对齐原版首页（品牌 + 产品卡片网格）再进各 IDE 切号页；禁止把双栏拉号页冒充无忧首页。
+- **2026-09-08（权威 · 当前主线 · 获得全部代码）**：见文首「当前权威任务」；完整代码标准保留；禁止不含 Pro 算是 / 空 stub；Pro 字符串表明文接入中；无 Pro 仍 = 无全部；旧自动更新三程序已被覆盖。
+- **2026-09-07 22:06（已被 2026-09-08「获得全部代码」覆盖 · 正文保留）**：本回合继续 = **非 Pro 缺口续做**（管家 MachineIDResetter 接线 + 助手一元否口径）；完整代码标准不变；三程序合计完整代码仍否。权威以文首为准。
+- **2026-09-07 21:31（已被 22:06 / 2026-09-08 覆盖 · 正文保留）**：同日「继续」三程序完整代码锚点；权威以文首「获得全部代码」为准。
+- **2026-09-07 21:28（已被 22:06 / 21:31 / 2026-09-08 覆盖 · 正文保留）**：同日「继续」三程序完整代码锚点；权威以文首「获得全部代码」为准。
+- **2026-09-06（再续）**：从续费控制台切到总览/其它页不得因整表重挂卡死；Cursor 三子 Tab 须保活；续费同步不得堵死切页。
 - 瞬时失败不得误标账号永久失效；邮箱去重
 - 正式版同步：合并前后代码与可执行文件均可在个人仓追溯
 
@@ -67,8 +105,20 @@
 
 | 能力 | 落点 |
 |------|------|
+| 无忧原版首页卡片网格 + 切号页 | `src/pages/nirvana/NirvanaConsole.tsx` |
+| Cursor 页切页 keep-alive | `src/App.tsx`（`shouldMountCursorPage` / `app-page-keep-alive`） |
+| 总览套件 keep-alive（总览/多开/唤醒/验活） | `src/App.tsx`（`shouldMountAntigravityOverviewSuite`） |
+| 主路由统一保活 | `src/App.tsx`（访问过的主内容页 `app-page-keep-alive`，禁止裸拆装） |
+| 停全表账号浏览器本地缓存 | `src/stores/createProviderAccountStore.ts`；`src/stores/useAccountStore.ts`（persist 不落 accounts） |
+| 隐藏保活页停重活 | `src/hooks/useProviderAccountsPage.ts`（`pageActive`）；账号页传入 |
+| 应用内主窗截图 | `src-tauri/src/commands/screenshot.rs`；deep link `cockpit-tools://screenshot` |
+| 过期拉号丢弃 | `src/stores/createProviderAccountStore.ts`（`cancelPendingFetches`）；`src/hooks/useProviderAccountsPage.ts` |
+| 应用内点击 wait-ack（真点到才成功） | `src-tauri/src/modules/gui_in_app_click.rs`；命令 `gui_trigger_click` / `gui_click_ack` / `gui_click_recent_acks` |
+| 前端锚点点击与可诊断回执 | `src/App.tsx`（`gui:trigger-click`） |
+| Deep Link 点击 | `src-tauri/src/modules/deep_link_actions.rs` |
 | 账号落盘、切号、额度刷新 | `src-tauri/src/modules/cursor_account.rs` |
 | 多开优先层（仅多开安装） | `src-tauri/src/modules/cursor_hot_priority.rs` |
+| 多开 util/EH 注入（仅多开安装） | `src-tauri/src/modules/cursor_multi_util_eh.rs` |
 | 多开实例与启动 | `src-tauri/src/modules/cursor_instance.rs` |
 | 多开命令入口 | `src-tauri/src/commands/cursor_instance.rs` |
 | 运行中自动换号轮询 | `src-tauri/src/commands/cursor_instance.rs`（启动后循环） |
@@ -87,7 +137,28 @@
 | 额度导出工具 | `src-tauri/src/bin/cursor_quota_dump.rs` |
 | 多开图形验收脚本 | `scripts/cockpit_gui_play_e2e_verify.py` |
 | 参考四个程序本体与解包 | `external/xubei_and_renewal/`（01_CursorXuBei_无感 + 02_续杯助手_无感 + 03_nirvana_无忧 + 本仓本体） |
+| 第五参考：Nirvana Proxy（解包已有） | `external/xubei_and_renewal/03_nirvana_无忧/decompiled/nirvana-proxy/`（含 `nirvana-proxy.exe` + `source/*.go`）；本机 `%USERPROFILE%\.antigravity_cockpit\bin\nirvana-proxy.exe` |
+| 续杯管家自动更新（本机+工作区副本） | `scripts/sync_xubei_renewal_auto_update.py`；报告 `scripts/_xubei_auto_update_report.json`；本机基线 **14.3.5**（2026-09-08：盘上最新但进程仍旧版须强制换新，禁止只写报告） |
+| 无忧自动更新 | `scripts/sync_nirvana_auto_update.py`；主源 jzzcg `jzzcg-ai-suite/release/latest.yml`；报告 `_nirvana_auto_update_report.json` |
+| 续杯助手自动更新 | `scripts/sync_renewal_assistant_auto_update.py`；123 无专用包时用工作区权威 `续杯工具_*.exe`；报告 `_renewal_assistant_auto_update_report.json` |
+| 续杯管家点图标先更新再启动 | `scripts/install_xubei_click_to_update_launcher.py`；安装目录 `CursorXuBei.exe` 启动器 + `updater.py`；原入口备份 `CursorXuBei_direct.exe` |
+| 三参考程序自动更新总入口 | `scripts/sync_external_renewal_apps.ps1`；汇总 `scripts/_external_renewal_sync_report.json`（2026-09-03：三程序源已分链） |
+| 续费外置程序同步无窗 | `src-tauri/src/modules/renewal_apps_auto_update.rs`（隐藏窗 + 无控制台创建） |
+| Cursor 列表分页去令牌 | `list_cursor_accounts_page`；前端 `listCursorAccountsChunked` |
+| 分片未完成禁止更小集合盖更大池 | `src/stores/createProviderAccountStore.ts` |
+| 切回可见有池且无变更则跳过重拉 | `src/hooks/useProviderAccountsPage.ts` |
+| 多开页不挂载/定时整表重拉 | `src/components/InstancesManager.tsx` |
+| 续杯管家续费台四开关写盘 | `src-tauri/src/modules/xubei_renewal_prefs.rs`；命令 `set_xubei_renewal_pref` |
+| 续杯管家池内换号 | `src-tauri/src/modules/xubei_switch_client.rs`；命令 `switch_cursor_account_from_xubei_pool` |
+| 续杯管家 14.3.1 功能全量地图（拉号+换号+其余） | `external/xubei_and_renewal/01_CursorXuBei_无感/decompiled/功能全量地图_14_3_1.md` |
+| 14.3.1 接口/界面字符串证据 | `external/xubei_and_renewal/01_CursorXuBei_无感/decompiled/_extract_14_3_1_all_apis.json` 等 |
+| 旧版重建：云端拉号换号与按钮表 | `external/xubei_and_renewal/01_CursorXuBei_无感/decompiled/xubei_unpacked/rebuild/xubei_re/` |
 | 规则自动同步脚本 | `scripts/sync_rules_to_all_ides.ps1` |
+| 三程序完整度一元对照 | `external/xubei_and_renewal/三程序完整度与体量对照.md` |
+| 管家完整代码状态档 | `external/xubei_and_renewal/01_CursorXuBei_无感/decompiled/COMPLETE_CODE_STATUS.md` |
+| 助手完整代码状态档 | `external/xubei_and_renewal/02_续杯助手_无感/decompiled/COMPLETE_CODE_STATUS.md` |
+| 管家 MachineIDResetter（已接线；一元仍否） | `external/xubei_and_renewal/01_CursorXuBei_无感/decompiled/restored_source/xubei_restored/machine_reset.py` |
+| 管家换号写 mid 既有接线 | `external/xubei_and_renewal/01_CursorXuBei_无感/decompiled/xubei_restored/switch_flow.py` |
 
 # 如何检查
 
@@ -97,6 +168,8 @@
 4. 默认切换：不得仅凭命令行写库成功宣称「已用过」；须总控点切换 + 默认窗内真实对话。
 5. 覆盖安装须完整前端构建 + 桌面壳构建产物，禁止只用调试可执行文件冒充。
 6. 运行中自动换号：总览打开开关 → 多开实例绑定号到阈值后日志出现自动换号成功 → 多开窗邮箱变新号且可聊 → 默认进程仍在；关掉开关后不再换。
+7. 多开 util/EH：仅多开安装树有注入标记；默认程序文件安装无该标记；换号后侧栏邮箱为新号且可对话。
+8. 三程序完整代码 / 获得全部代码：一元表与 COMPLETE 状态档口径一致；管家 MachineIDResetter 须有真调用点；助手未达几乎同款时一元为否；Pro 明文已可从 CursorXuBei-v14.3.5.exe 字符串表抠出，须接入 inject(pro=True)；无 Pro 仍 = 无全部；禁止不含 Pro 算是 / 空 stub。
 
 # 短附录
 
@@ -110,3 +183,12 @@
 - 同步巡检：只按正式版标签；合并前个人仓可追溯；对照；构建与界面验收；有改动维护设计档案。
 - 2026-08-12：多开已图形验收；默认切换不得用命令行单独证明「用过」。
 - 2026-08-11 及更早：切号约束、禁止幻想规则注入对方上下文等见主档与计划纲领历史条。
+- 2026-08-29：续杯关掉会关自动换号的功能——只改续杯、禁止守护脚本、打坏还原=没改；虚拟机单机登录冲突则搁置（用户原话）。
+- 2026-09-07：「除了四个程序在程序规划增加一个」+ 附图确认 **Nirvana Proxy**；追问「不是四个吗？另一个是哪个？」「这个解包已经做完了，你有没有？」——四个仍是无忧小助手/续杯管家/续杯助手/Cockpit；另一个即 Nirvana Proxy；解包在 `03_nirvana_无忧/decompiled/nirvana-proxy/`。
+- 2026-09-07：「继续」——承接三程序完整代码标准（具备编回几乎同款；不要两套口径）；管家 MachineIDResetter 接线中；续杯助手一元否；Pro 硬阻塞保留。
+- 2026-09-07 21:28：同条「继续」再锚——三程序完整代码；管家 MachineIDResetter 接线中；续杯助手一元否；Pro 硬阻塞保留；禁止两套口径 / 禁止不含 Pro 就算是。
+- 2026-09-07 21:31：同条「继续」再锚——三程序完整代码；管家 MachineIDResetter 接线中；续杯助手一元否；Pro 硬阻塞保留；禁止两套口径 / 禁止不含 Pro 就算是（已被 22:06 覆盖）。
+- 2026-09-08：**获得全部代码**（当前权威）——完整代码 = 手里有能编回几乎一模一样、代码量相差极少的程序的能力；Pro 字符串表明文接入 inject(pro=True)；无 Pro 仍 = 无全部；旧「自动更新三程序」已被覆盖。
+- 2026-09-08：同条「继续」再锚（已被「获得全部代码」覆盖）——助手 LOGBODY + 前端碎片；管家无感缺路由；合计仍否。
+- 2026-09-07 22:10：同条「继续」（已被 2026-09-08「获得全部代码」覆盖）——管家 MachineIDResetter **已接线**；助手 cargo 退出码 0 留证、一元否。
+- 2026-09-07 22:06：同条「继续」（已被 22:10 / 2026-09-08「获得全部代码」覆盖）——非 Pro 缺口续做；接线中。

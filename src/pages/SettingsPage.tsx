@@ -327,6 +327,7 @@ const FALLBACK_PLATFORM_SETTINGS_ORDER: Record<PlatformId, number> = {
   trae_solo_cn: 17,
   workbuddy: 18,
   zed: 19,
+  wuyou: 20,
 };
 type ConfigUpdatedEventDetail = {
   source?: string;

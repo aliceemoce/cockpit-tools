@@ -2,6 +2,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::de::DeserializeOwned;
@@ -121,6 +122,34 @@ fn write_synced_temp_file(temp_path: &Path, content: &str) -> Result<(), String>
     write_synced_temp_file_bytes(temp_path, content.as_bytes())
 }
 
+fn replace_file_with_retry(temp_path: &Path, path: &Path) -> Result<(), String> {
+    const RETRY_DELAYS_MS: [u64; 6] = [20, 50, 100, 150, 250, 400];
+    let mut last_error: Option<std::io::Error> = None;
+
+    for (attempt, delay_ms) in RETRY_DELAYS_MS.iter().enumerate() {
+        match fs::rename(temp_path, path) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::PermissionDenied
+                    || error.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                last_error = Some(error);
+                if attempt + 1 < RETRY_DELAYS_MS.len() {
+                    thread::sleep(std::time::Duration::from_millis(*delay_ms));
+                    continue;
+                }
+            }
+            Err(error) => return Err(format_io_error("替换文件", path, &error)),
+        }
+    }
+
+    Err(format_io_error(
+        "替换文件",
+        path,
+        &last_error.unwrap_or_else(|| std::io::Error::other("未知替换失败")),
+    ))
+}
+
 fn write_string_atomic_internal(
     path: &Path,
     content: &str,
@@ -152,9 +181,9 @@ fn write_string_atomic_internal(
         let _ = fs::remove_file(&temp_path);
         return Err(err);
     }
-    if let Err(err) = fs::rename(&temp_path, path) {
+    if let Err(err) = replace_file_with_retry(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
-        return Err(format_io_error("替换文件", path, &err));
+        return Err(err);
     }
 
     Ok(())
@@ -201,9 +230,9 @@ pub fn write_bytes_atomic(path: &Path, content: &[u8]) -> Result<(), String> {
         let _ = fs::remove_file(&temp_path);
         return Err(err);
     }
-    if let Err(err) = fs::rename(&temp_path, path) {
+    if let Err(err) = replace_file_with_retry(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
-        return Err(format_io_error("替换文件", path, &err));
+        return Err(err);
     }
 
     Ok(())

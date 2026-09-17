@@ -135,6 +135,8 @@ export interface ProviderStoreActions<TAccount> {
   fetchCurrentAccountId?: () => Promise<string | null>;
   setCurrentAccountId?: (accountId: string | null) => void;
   fetchAccounts: () => Promise<void>;
+  /** 可选：切页卸载时丢弃过期 list 结果 */
+  cancelPendingFetches?: () => void;
   switchAccount?: (accountId: string) => Promise<unknown>;
   deleteAccounts: (ids: string[]) => Promise<void>;
   refreshToken: (id: string) => Promise<void>;
@@ -188,6 +190,11 @@ export interface ProviderPageConfig<TAccount extends ProviderAccountBase> {
   isDeleteConfirmBusy?: boolean;
   /** 关闭内置删除确认的 Enter 绑定（页面自行 useEnterConfirm 时使用） */
   disableEnterConfirmDelete?: boolean;
+  /**
+   * keep-alive 页是否当前可见。为 false 时不主动拉全表、不处理 accounts:changed，
+   * 避免隐藏页拖垮总览/多开等不显示账号列表的界面。
+   */
+  pageActive?: boolean;
 }
 
 export interface ProviderAccountBase {
@@ -674,12 +681,12 @@ export interface UseProviderAccountsPageReturn {
   confirmDelete: () => Promise<void>;
 
   // Messages
-  message: { text: string; tone?: 'error' | 'success' } | null;
+  message: { text: string; tone?: 'error' | 'success' | 'info' } | null;
   setMessage: (
     msg:
       | {
           text: string;
-          tone?: 'error' | 'success';
+          tone?: 'error' | 'success' | 'info';
         }
       | null
   ) => void;
@@ -797,7 +804,9 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     initialSearchQuery: initialSearchQueryConfig,
     defaultSortBy: defaultSortByConfig,
     onExternalImportCompleted,
+    pageActive: pageActiveConfig,
   } = config;
+  const pageActive = pageActiveConfig !== false;
   const defaultSortBy = defaultSortByConfig?.trim() || DEFAULT_SORT_BY;
 
   const oauthTabKeys = useMemo(() => {
@@ -814,6 +823,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
   const {
     accounts,
     currentAccountId: storeCurrentAccountId,
+    loading: _storeLoading,
     error: storeError,
     fetchAccounts,
     fetchCurrentAccountId: storeFetchCurrentAccountId,
@@ -1163,12 +1173,38 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showTagFilter]);
 
-  // ─── Fetch on mount ───────────────────────────────────────────────────
+  // ─── Fetch on mount；隐藏 keep-alive 页不拉全表 ───
+  const accountsChangedWhileHiddenRef = useRef(false);
+  const accountsLenRef = useRef(accounts.length);
+  accountsLenRef.current = accounts.length;
+  // 0012 撤回：不再有分片水合。accounts 恒为后端整表快照，
+  // 已有数据且隐藏期间无 accounts:changed 就不重拉。
+  const hydrateInFlightRef = useRef(false);
   useEffect(() => {
-    fetchAccounts();
-  }, [fetchAccounts]);
+    if (!pageActive) {
+      return;
+    }
+    const hadHiddenChange = accountsChangedWhileHiddenRef.current;
+    if (hadHiddenChange) {
+      accountsChangedWhileHiddenRef.current = false;
+    }
+    const len = accountsLenRef.current;
+    if (!hadHiddenChange && len > 0) {
+      return;
+    }
+    // 拉取进行中：禁止并发 fetchAccounts（seq 自增会互相打断）
+    if (hydrateInFlightRef.current) {
+      return;
+    }
+    hydrateInFlightRef.current = true;
+    void Promise.resolve(fetchAccounts())
+      .catch(() => undefined)
+      .finally(() => {
+        hydrateInFlightRef.current = false;
+      });
+  }, [pageActive, fetchAccounts]);
 
-  // TokenKeeper 本地换号 / 导入写盘后 emit accounts:changed；长驻页须重拉列表与 current
+  // TokenKeeper 本地换号 / 导入写盘后 emit accounts:changed；仅可见页重拉
   const ACCOUNTS_CHANGED_DEBOUNCE_MS = 500;
   const accountsChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1183,6 +1219,10 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
       } | null;
       if (payload?.platformId !== platformId) return;
       if (payload.reason === 'delete') return;
+      if (!pageActive) {
+        accountsChangedWhileHiddenRef.current = true;
+        return;
+      }
       if (accountsChangedTimerRef.current) {
         clearTimeout(accountsChangedTimerRef.current);
       }
@@ -1200,7 +1240,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
       }
       void unlisten?.();
     };
-  }, [fetchAccounts, platformId]);
+  }, [fetchAccounts, platformId, pageActive]);
 
   // ─── CRUD ─────────────────────────────────────────────────────────────
   const [refreshing, setRefreshing] = useState<string | null>(null);
@@ -1216,7 +1256,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
     set: setDeleteConfirmError,
   } = useModalErrorState();
   const [deleting, setDeleting] = useState(false);
-  const [message, setMessage] = useState<{ text: string; tone?: 'error' | 'success' } | null>(null);
+  const [message, setMessage] = useState<{ text: string; tone?: 'error' | 'success' | 'info' } | null>(null);
   const setDeleteConfirm = useCallback((value: { ids: string[]; message: string } | null) => {
     setDeleteConfirmError(null);
     rawSetDeleteConfirm(value);

@@ -9,9 +9,18 @@ import {
   normalizeAntigravityRuntimeTarget,
 } from '../utils/antigravityRuntimeTarget';
 
-const ACCOUNTS_STORE_KEY = 'agtools.accounts.store.v1';
+const ACCOUNTS_STORE_KEY = 'agtools.accounts.store.v2';
+const LEGACY_ACCOUNTS_STORE_KEY = 'agtools.accounts.store.v1';
 const LEGACY_ACCOUNTS_CACHE_KEY = 'agtools.accounts.cache';
 const LEGACY_CURRENT_ACCOUNT_CACHE_KEY = 'agtools.accounts.current';
+
+try {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(LEGACY_ACCOUNTS_STORE_KEY);
+  }
+} catch {
+  // ignore
+}
 
 let accountStoreQuotaCleanupScheduled = false;
 let accountStoreQuotaWarned = false;
@@ -521,8 +530,8 @@ export const useAccountStore = create<AccountState>()(
   {
     name: ACCOUNTS_STORE_KEY,
     storage: accountStoreStorage,
+    // 全表 accounts 不得进 persist：账号多时 rehydrate/写盘会卡死整窗（含不显示账号的页）
     partialize: (state) => ({
-      accounts: state.accounts.map(toPersistedAccountSnapshot),
       currentAccount: state.currentAccount
         ? toPersistedAccountSnapshot(state.currentAccount)
         : null,
@@ -533,47 +542,31 @@ export const useAccountStore = create<AccountState>()(
         ]),
       ) as CurrentAccountsByTarget,
     }),
-    onRehydrateStorage: () => (state) => {
-      // Migrate from old ACCOUNTS_CACHE_KEY if the new state is empty
-      if (state && state.accounts.length === 0 && typeof window !== 'undefined') {
-        setTimeout(() => {
-          try {
-            const oldAccountsRaw = localStorage.getItem(LEGACY_ACCOUNTS_CACHE_KEY);
-            const oldCurrentRaw = localStorage.getItem(LEGACY_CURRENT_ACCOUNT_CACHE_KEY);
-            let hasMigrated = false;
-            
-            if (oldAccountsRaw) {
-              const oldAccounts = JSON.parse(oldAccountsRaw);
-              if (Array.isArray(oldAccounts) && oldAccounts.length > 0) {
-                useAccountStore.setState({ accounts: oldAccounts });
-                hasMigrated = true;
-              }
+    onRehydrateStorage: () => () => {
+      if (typeof window === 'undefined') return;
+      setTimeout(() => {
+        try {
+          // 清掉旧版误存的全表键；当前号可从 legacy 小键迁一次
+          localStorage.removeItem(LEGACY_ACCOUNTS_CACHE_KEY);
+          const oldCurrentRaw = localStorage.getItem(LEGACY_CURRENT_ACCOUNT_CACHE_KEY);
+          if (oldCurrentRaw) {
+            const oldCurrent = JSON.parse(oldCurrentRaw);
+            if (oldCurrent && oldCurrent.id) {
+              useAccountStore.setState((currentState) => ({
+                currentAccount: oldCurrent,
+                currentAccountsByTarget: updateCurrentAccountsByTarget(
+                  currentState.currentAccountsByTarget,
+                  DEFAULT_ANTIGRAVITY_RUNTIME_TARGET,
+                  oldCurrent,
+                ),
+              }));
             }
-            if (oldCurrentRaw) {
-              const oldCurrent = JSON.parse(oldCurrentRaw);
-              if (oldCurrent && oldCurrent.id) {
-                useAccountStore.setState((currentState) => ({
-                  currentAccount: oldCurrent,
-                  currentAccountsByTarget: updateCurrentAccountsByTarget(
-                    currentState.currentAccountsByTarget,
-                    DEFAULT_ANTIGRAVITY_RUNTIME_TARGET,
-                    oldCurrent,
-                  ),
-                }));
-                hasMigrated = true;
-              }
-            }
-            
-            // Cleanup the old keys if we migrated successfully
-            if (hasMigrated) {
-              localStorage.removeItem(LEGACY_ACCOUNTS_CACHE_KEY);
-              localStorage.removeItem(LEGACY_CURRENT_ACCOUNT_CACHE_KEY);
-            }
-          } catch (error) {
-            // ignore migration errors
+            localStorage.removeItem(LEGACY_CURRENT_ACCOUNT_CACHE_KEY);
           }
-        }, 0);
-      }
+        } catch {
+          // ignore migration errors
+        }
+      }, 0);
     },
   }
 ));

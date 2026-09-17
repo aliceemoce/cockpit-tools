@@ -1400,6 +1400,7 @@ export function CodexAccountsPage() {
       loading: store.loading,
       error: store.error,
       fetchAccounts: store.fetchAccounts,
+      cancelPendingFetches: store.cancelPendingFetches,
       switchAccount: store.switchAccount,
       deleteAccounts: store.deleteAccounts,
       refreshToken: (id) => store.refreshQuota(id).then(() => {}),
@@ -10715,6 +10716,7 @@ export function CodexAccountsPage() {
             onClick={() => handleSwitch(account.id)}
             disabled={!!switching || Boolean(switchOrLaunchBlockedReason)}
             title={switchOrLaunchBlockedReason || t("codex.switch", "切换")}
+            data-action-id={`codex-switch-${account.id}`}
           >
             {switching === account.id ? (
               <RefreshCw size={14} className="loading-spinner" />
@@ -11206,6 +11208,7 @@ export function CodexAccountsPage() {
                   title={
                     switchOrLaunchBlockedReason || t("codex.switch", "切换")
                   }
+                  data-action-id={`codex-switch-${account.id}`}
                 >
                   {switching === account.id ? (
                     <RefreshCw size={14} className="loading-spinner" />
@@ -12584,6 +12587,7 @@ export function CodexAccountsPage() {
                 title={
                   switchOrLaunchBlockedReason || t("codex.switch", "切换")
                 }
+                data-action-id={`codex-switch-${account.id}`}
               >
                 {switching === account.id ? (
                   <RefreshCw size={14} className="loading-spinner" />

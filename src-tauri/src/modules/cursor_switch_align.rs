@@ -11,6 +11,9 @@ use std::process::Command;
 use regex::Regex;
 use uuid::Uuid;
 
+use cockpit_core::modules::patcher::{
+    main_js_has_cockpit_patch, main_js_has_third_party_renewal_patch,
+};
 use crate::modules::{atomic_write, logger};
 
 const AUTH_BRIDGE_MARKER: &str = "jzzcg-auth-bridge";
@@ -66,7 +69,23 @@ fn validate_js_content(content: &str) -> Result<(), String> {
     result
 }
 
-fn restore_main_js_from_backup(main_js: &Path) -> Result<(), String> {
+pub fn restore_main_js_from_backup(main_js: &Path) -> Result<(), String> {
+    if main_js.exists() {
+        let current = fs::read_to_string(main_js)
+            .map_err(|e| format!("读取 main.js 失败: {}", e))?;
+        if main_js_has_third_party_renewal_patch(&current) {
+            return Err(
+                "main.js 含续杯/虚备补丁，禁止从 .cursor-backups 恢复原版（会抹掉第三方补丁）"
+                    .into(),
+            );
+        }
+        if !main_js_has_cockpit_patch(&current) {
+            return Err(
+                "main.js 无 Cockpit csp 补丁，禁止 restore（避免覆盖续杯等第三方补丁）".into(),
+            );
+        }
+    }
+
     let backup = cursor_backups_dir()?.join("main.js.bak");
     if !backup.is_file() {
         return Err("main.js 损坏且无 .cursor-backups/main.js.bak".into());
@@ -79,6 +98,22 @@ fn restore_main_js_from_backup(main_js: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 读 Cursor 安装目录 main.js，检测是否含续杯/虚备等第三方补丁。
+pub fn cursor_main_js_has_third_party_renewal_patch(cursor_exe: &Path) -> bool {
+    let Some(main_js) = resolve_main_js(cursor_exe) else {
+        return false;
+    };
+    let Ok(content) = fs::read_to_string(&main_js) else {
+        return false;
+    };
+    main_js_has_third_party_renewal_patch(&content)
+}
+
+/// main.js 内容级第三方续费补丁检测（调用方已持有内容时复用，避免重复读大文件）。
+pub fn main_js_content_has_third_party_renewal_patch(content: &str) -> bool {
+    main_js_has_third_party_renewal_patch(content)
+}
+
 /// 对齐无忧 `patchCursorMachineId`（Yh）：patch `resources/app/out/main.js`。
 pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
     let main_js = resolve_main_js(cursor_exe).ok_or_else(|| "未找到 Cursor main.js".to_string())?;
@@ -86,9 +121,22 @@ pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
     let content = fs::read_to_string(&main_js)
         .map_err(|e| format!("读取 main.js 失败({}): {}", main_js.display(), e))?;
 
+    if main_js_has_third_party_renewal_patch(&content) {
+        logger::log_info(
+            "[Cursor Switch] main.js 已含续杯/虚备补丁，跳过 Cockpit machineId patch（避免互踩）",
+        );
+        return Ok(());
+    }
+
     if content.contains("/*csp1*/") || content.contains("/*csp2*/") {
         if validate_js_content(&content).is_ok() {
             logger::log_info("[Cursor Switch] main.js 已 patch，跳过");
+            return Ok(());
+        }
+        if main_js_has_third_party_renewal_patch(&content) {
+            logger::log_info(
+                "[Cursor Switch] main.js 含 csp 标记但亦有续杯补丁，跳过 restore",
+            );
             return Ok(());
         }
         logger::log_warn("[Cursor Switch] main.js 含 patch 标记但语法无效，从备份恢复");
@@ -97,9 +145,19 @@ pub fn patch_cursor_machine_id(cursor_exe: &Path) -> Result<(), String> {
     }
 
     if validate_js_content(&content).is_err() {
-        logger::log_warn("[Cursor Switch] main.js 当前语法无效，尝试从备份恢复");
-        restore_main_js_from_backup(&main_js)?;
-        return patch_cursor_machine_id(cursor_exe);
+        if main_js_has_third_party_renewal_patch(&content) {
+            logger::log_info(
+                "[Cursor Switch] main.js 语法无效但含续杯/虚备补丁，跳过 restore（禁止抹掉第三方补丁）",
+            );
+            return Ok(());
+        }
+        if main_js_has_cockpit_patch(&content) {
+            logger::log_warn("[Cursor Switch] main.js 当前语法无效，尝试从备份恢复");
+            restore_main_js_from_backup(&main_js)?;
+            return patch_cursor_machine_id(cursor_exe);
+        }
+        logger::log_warn("[Cursor Switch] main.js 语法无效且无 Cockpit 补丁，跳过 restore");
+        return Ok(());
     }
 
     let already_patched = Regex::new(r"async getMachineId\(\)\{return [a-zA-Z_$][a-zA-Z0-9_$]*\}")
@@ -322,4 +380,26 @@ pub fn apply_nirvana_traditional_switch_patches_main_js_only(cursor_exe: &Path) 
     if let Err(err) = patch_cursor_machine_id(cursor_exe) {
         logger::log_warn(&format!("[Cursor Switch] main.js patch 跳过: {}", err));
     }
+}
+
+/// 续杯管家注入：patch main.js machineId + workbench auth bridge。
+pub fn xubei_inject_cursor(cursor_exe: &Path) -> Result<Vec<String>, String> {
+    let mut touched = Vec::new();
+    patch_cursor_machine_id(cursor_exe)?;
+    touched.push("main.js machineId 已注入".to_string());
+    match patch_cursor_workbench_auth_bridge(cursor_exe) {
+        Ok(()) => touched.push("workbench auth bridge 已注入".to_string()),
+        Err(e) => touched.push(format!("workbench auth bridge 跳过: {}", e)),
+    }
+    logger::log_info(&format!("[Xubei Inject] 注入完成: {:?}", touched));
+    Ok(touched)
+}
+
+/// 续杯管家还原：从 .cursor-backups 恢复 main.js。
+pub fn xubei_restore_cursor(cursor_exe: &Path) -> Result<String, String> {
+    let main_js = resolve_main_js(cursor_exe)
+        .ok_or_else(|| "未找到 Cursor main.js".to_string())?;
+    restore_main_js_from_backup(&main_js)?;
+    logger::log_info("[Xubei Restore] main.js 已从备份还原");
+    Ok("main.js 已从备份还原".to_string())
 }

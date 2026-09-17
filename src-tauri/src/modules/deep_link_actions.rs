@@ -6,7 +6,8 @@
 //! - `cockpit-tools://probe/<platform>/<account_id>` — 对话验活
 //! - `cockpit-tools://start-instance/<platform>/<instance_id>` — 启动实例
 //! - `cockpit-tools://navigate/<page>` — 前端页面导航
-//! - `cockpit-tools://click/<action_id>` — 应用内点击（gui_trigger_click）
+//! - `cockpit-tools://click/<action_id>` — 应用内点击（gui_trigger_click；兼容旧 data-action-id 与 enum/…）
+//! - `cockpit-tools://enumerate` / `enumerate-actions` — 枚举当前页可点元素（模块七；回执含拦截原因）
 //! - `cockpit-tools://screenshot[?path=<output_path>]` — 截图
 //! - `cockpit-tools://verify-chat/<platform>/<scope>[/<instance_id>][?path=&screenshot=]` — Cursor 窗内对话验活（CDP，经总控）
 //! - `cockpit-tools://ui-state` — 获取 UI 状态（写入日志文件供外部读取）
@@ -59,6 +60,7 @@ pub fn handle_deep_link_actions(app: &AppHandle, url: &str) -> bool {
         "start-instance" | "start_instance" => handle_start_instance(app, &params),
         "navigate" => handle_navigate(app, &params),
         "click" => handle_click(app, &params),
+        "enumerate" | "enumerate-actions" | "enumerate_actions" => handle_enumerate(app),
         "screenshot" => handle_screenshot(app, query),
         "verify-chat" | "verify_chat" => handle_verify_chat(app, &params, query),
         "ui-state" | "ui_state" => handle_ui_state(app),
@@ -226,19 +228,97 @@ fn handle_navigate(app: &AppHandle, params: &[&str]) {
     }
 }
 
-/// click/<action_id> — 走应用内 gui_trigger_click（data-action-id）
+/// enumerate — 枚举当前页可点元素，写入 %TEMP%/cockpit-ui-state.json 的 enumerated_actions。
+fn handle_enumerate(app: &AppHandle) {
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        match crate::modules::gui_in_app_click::trigger_enumerate_wait(&app_clone, None) {
+            Ok(r) => {
+                crate::modules::logger::log_info(&format!(
+                    "[DeepLinkActions] 枚举完成 request_id={} total={} legacy={}",
+                    r.request_id,
+                    r.total_clickable,
+                    r.legacy_action_ids.len()
+                ));
+                let _ = app_clone.emit(
+                    "deep-link-action-result",
+                    serde_json::json!({
+                        "action": "enumerate",
+                        "ok": true,
+                        "request_id": r.request_id,
+                        "route": r.route,
+                        "total_clickable": r.total_clickable,
+                        "legacy_action_ids": r.legacy_action_ids,
+                        "actions": r.actions,
+                        "detail": r.detail,
+                    }),
+                );
+            }
+            Err(e) => {
+                crate::modules::logger::log_warn(&format!(
+                    "[DeepLinkActions] 枚举失败: {}",
+                    e
+                ));
+                let _ = app_clone.emit(
+                    "deep-link-action-result",
+                    serde_json::json!({
+                        "action": "enumerate",
+                        "ok": false,
+                        "error": e,
+                    }),
+                );
+            }
+        }
+    });
+}
+/// click/<action_id> — 走 wait-ack 应用内点击（真点到才算成功）
+/// 必须在后台线程等 ack：若在处理 deep link 的线程上同步阻塞，WebView 无法跑监听/回执 → 必现 timeout_no_ack。
 fn handle_click(app: &AppHandle, params: &[&str]) {
     if params.is_empty() {
         crate::modules::logger::log_warn("[DeepLinkActions] click 需要 action_id 参数");
         return;
     }
     let action_id = params.join("/");
-    if let Err(e) = crate::modules::gui_in_app_click::trigger_click(app, &action_id) {
-        crate::modules::logger::log_warn(&format!(
-            "[DeepLinkActions] 应用内点击派发失败: action_id={}, err={}",
-            action_id, e
-        ));
-    }
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        match crate::modules::gui_in_app_click::trigger_click_wait(&app_clone, &action_id, None) {
+            Ok(r) => {
+                crate::modules::logger::log_info(&format!(
+                    "[DeepLinkActions] 前端已点击 action_id={} request_id={} waited_ms={} elem={:?}",
+                    r.action_id, r.request_id, r.waited_ms, r.element_info
+                ));
+                let _ = app_clone.emit(
+                    "deep-link-action-result",
+                    serde_json::json!({
+                        "action": "click",
+                        "ok": true,
+                        "action_id": r.action_id,
+                        "request_id": r.request_id,
+                        "waited_ms": r.waited_ms,
+                        "element_info": r.element_info,
+                        "detail": r.detail,
+                    }),
+                );
+            }
+            Err(e) => {
+                crate::modules::logger::log_warn(&format!(
+                    "[DeepLinkActions] 应用内点击失败: action_id={}, err={}",
+                    action_id, e
+                ));
+                let blocked = e.contains("blocked_by_whitelist");
+                let _ = app_clone.emit(
+                    "deep-link-action-result",
+                    serde_json::json!({
+                        "action": "click",
+                        "ok": false,
+                        "action_id": action_id,
+                        "error": e,
+                        "blocked_by_whitelist": blocked,
+                    }),
+                );
+            }
+        }
+    });
 }
 
 /// screenshot[?path=<output_path>]
@@ -499,25 +579,48 @@ async fn execute_verify_cursor_chat(
     Ok(result)
 }
 
-/// ui-state — 将当前 UI 状态写入临时文件供外部读取
+/// ui-state — 将当前 UI 状态写入临时文件供外部读取。
+/// 禁止在此路径调用 list_accounts：账号池可达数千条，同步枚举会使 deep link 长时间无文件，
+/// 验收脚本轮询 ui-state 时会全部超时（ui-state=null），并拖垮点击回执。
 fn handle_ui_state(app: &AppHandle) {
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        let cursor_accounts = crate::modules::cursor_account::list_accounts();
-        let account_count = cursor_accounts.len();
+        // 只读索引条数，不加载详情；失败则记 0，不影响 ack 验收。
+        let account_count = (|| -> Option<usize> {
+            let path = dirs::home_dir()?.join(".antigravity_cockpit").join("cursor_accounts.json");
+            let raw = std::fs::read_to_string(path).ok()?;
+            let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+            if let Some(arr) = v.as_array() {
+                return Some(arr.len());
+            }
+            v.get("accounts")
+                .and_then(|a| a.as_array())
+                .map(|a| a.len())
+                .or_else(|| v.get("items").and_then(|a| a.as_array()).map(|a| a.len()))
+        })()
+        .unwrap_or(0);
+        let recent_gui_click_acks = crate::modules::gui_in_app_click::get_recent_ack_results();
+        let latest_manual_continue_ack =
+            crate::modules::gui_in_app_click::get_latest_ack_for("cursor-renewal-manual-continue");
+        let recent_gui_click_results =
+            crate::modules::gui_in_app_click::get_recent_dispatch_results();
+        let latest_manual_continue_result = crate::modules::gui_in_app_click::get_latest_dispatch_for(
+            "cursor-renewal-manual-continue",
+        );
 
         let state = serde_json::json!({
             "timestamp": chrono::Utc::now().to_rfc3339(),
+            "process": {
+                "pid": std::process::id(),
+                "exe": std::env::current_exe().ok().map(|p| p.display().to_string()),
+            },
             "platform": "cursor",
             "account_count": account_count,
-            "accounts": cursor_accounts.iter().map(|a| {
-                serde_json::json!({
-                    "id": a.id,
-                    "email": a.email,
-                    "plan": a.membership_type,
-                    "tags": a.tags,
-                })
-            }).collect::<Vec<_>>(),
+            "recent_gui_click_acks": recent_gui_click_acks,
+            "latest_manual_continue_ack": latest_manual_continue_ack,
+            "recent_gui_click_results": recent_gui_click_results,
+            "latest_manual_continue_result": latest_manual_continue_result,
+            "accounts": [],
         });
 
         let path = format!(

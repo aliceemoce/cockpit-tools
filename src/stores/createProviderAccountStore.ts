@@ -63,6 +63,8 @@ export interface ProviderAccountStoreState<TAccount> {
   fetchCurrentAccountId: () => Promise<string | null>;
   setCurrentAccountId: (accountId: string | null) => void;
   fetchAccounts: () => Promise<void>;
+  /** 丢弃进行中的 list 请求结果（切页卸载时调用，避免过期 set 抢状态） */
+  cancelPendingFetches: () => void;
   switchAccount: (accountId: string) => Promise<void>;
   deleteAccounts: (accountIds: string[]) => Promise<void>;
   refreshToken: (accountId: string) => Promise<void>;
@@ -90,24 +92,15 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
   let fetchAccountsSeq = { current: 0 };
   let fetchCurrentAccountSeq = 0;
 
-  const loadCachedAccounts = (): TAccount[] => {
-    try {
-      const raw = localStorage.getItem(cacheKey);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as TAccount[]) : [];
-    } catch {
-      return [];
+  // 全表账号只留内存。旧版把整表 JSON.stringify 进 localStorage，账号上千时同步写主线程，
+  // 会拖垮不显示账号列表的页（总览/多开等）。启动时清掉错误落点。
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(cacheKey) != null) {
+      localStorage.removeItem(cacheKey);
     }
-  };
-
-  const persistAccountsCache = (accounts: TAccount[]) => {
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify(accounts));
-    } catch {
-      // ignore cache write failures
-    }
-  };
+  } catch {
+    // ignore
+  }
 
   const loadCurrentAccountId = (): string | null => {
     if (!currentAccountIdKey || !shouldHydrateCurrentAccountId) {
@@ -190,7 +183,7 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
   };
 
   return create<ProviderAccountStoreState<TAccount>>((set, get) => ({
-    accounts: loadCachedAccounts(),
+    accounts: [],
     currentAccountId: loadCurrentAccountId(),
     loading: false,
     error: null,
@@ -259,31 +252,44 @@ export function createProviderAccountStore<TAccount extends ProviderAccountAugme
 
     fetchAccounts: async () => {
       const requestId = ++fetchAccountsSeq.current;
-      set({ loading: true, error: null });
+      set({
+        loading: true,
+        error: null,
+      });
       try {
         const accounts = await service.listAccounts();
         if (requestId !== fetchAccountsSeq.current) {
           return;
         }
         if (accounts.length === 0 && get().accounts.length > 0 && !allowNextEmptyAccountList) {
-          console.warn(`[Provider Store] 忽略异常空账号列表，保留本地缓存: ${cacheKey}`);
+          console.warn(`[Provider Store] 忽略异常空账号列表，保留内存列表: ${cacheKey}`);
           set({ loading: false });
           return;
         }
         allowNextEmptyAccountList = false;
         const mapped = mapAccountsForUnifiedView(accounts);
         set({ accounts: mapped, loading: false });
-        persistAccountsCache(mapped);
         await get().fetchCurrentAccountId();
       } catch (e) {
         if (requestId !== fetchAccountsSeq.current) {
           return;
         }
-        set({ error: String(e), loading: false });
+        set({
+          error: String(e),
+          loading: false,
+        });
       } finally {
         if (requestId === fetchAccountsSeq.current) {
           allowNextEmptyAccountList = false;
         }
+      }
+    },
+
+    cancelPendingFetches: () => {
+      fetchAccountsSeq.current += 1;
+      fetchCurrentAccountSeq += 1;
+      if (get().loading) {
+        set({ loading: false });
       }
     },
 

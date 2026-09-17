@@ -11,6 +11,7 @@ use rand::RngCore;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 const KEY_FILE: &str = "secure-account-storage.key";
 const VERSION: u32 = 1;
@@ -31,8 +32,27 @@ fn key_path() -> Result<PathBuf, String> {
     Ok(crate::modules::account::get_data_dir()?.join(KEY_FILE))
 }
 
+/// 0019：进程内密钥缓存。
+///
+/// 原实现每解密一个账号都要重走 `key_path()`（→ `get_data_dir()`：环境变量查找 + 主目录解析 +
+/// 目录存在性检查）+ `exists()` + 读密钥文件 + base64 解码。4472 个账号即重复 4472 次，
+/// 是单条 15ms 的主要构成之一（本机实测读 4KB 文件只要 0.13ms，慢的是重复固定开销）。
+///
+/// 以**路径为键**校验：测试切换数据目录（`COCKPIT_TOOLS_DATA_DIR` 等）时缓存自动失效，
+/// 不会串号。
+static KEY_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
+
 fn read_or_create_key() -> Result<[u8; 32], String> {
     let path = key_path()?;
+
+    if let Ok(guard) = KEY_CACHE.lock() {
+        if let Some((cached_path, cached_key)) = guard.as_ref() {
+            if cached_path == &path {
+                return Ok(*cached_key);
+            }
+        }
+    }
+
     if path.exists() {
         let raw =
             fs::read_to_string(&path).map_err(|e| format!("读取账号详情加密密钥失败: {}", e))?;
@@ -44,6 +64,9 @@ fn read_or_create_key() -> Result<[u8; 32], String> {
         }
         let mut key = [0u8; 32];
         key.copy_from_slice(&bytes);
+        if let Ok(mut guard) = KEY_CACHE.lock() {
+            *guard = Some((path, key));
+        }
         return Ok(key);
     }
 
@@ -56,6 +79,9 @@ fn read_or_create_key() -> Result<[u8; 32], String> {
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
+    if let Ok(mut guard) = KEY_CACHE.lock() {
+        *guard = Some((path, key));
     }
     Ok(key)
 }

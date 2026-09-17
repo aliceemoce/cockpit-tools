@@ -1,6 +1,6 @@
 import { ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Clock3, FolderOpen, Github, Layers, Server } from 'lucide-react';
+import { Clock3, FolderOpen, Github, Layers, MonitorCog, Server } from 'lucide-react';
 import { CodexIcon } from '../icons/CodexIcon';
 import { ClaudeIcon } from '../icons/ClaudeIcon';
 import { WindsurfIcon } from '../icons/WindsurfIcon';
@@ -28,6 +28,7 @@ export type PlatformOverviewTab =
   | 'overview'
   | 'wakeup'
   | 'instances'
+  | 'renewal'
   | 'sessions'
   | 'providers';
 export type PlatformOverviewHeaderId =
@@ -209,6 +210,11 @@ export function PlatformOverviewTabsHeader({
       label: t('instances.title', '应用多开'),
       icon: <Layers className="tab-icon" />,
     },
+    renewal: {
+      key: 'renewal',
+      label: t('cursor.renewalConsole.tab', '续费控制台'),
+      icon: <MonitorCog className="tab-icon" />,
+    },
     sessions: {
       key: 'sessions',
       label: t('codex.sessionManager.title', '会话管理'),
@@ -249,9 +255,13 @@ export function PlatformOverviewTabsHeader({
               className={`filter-tab${active === tab.key ? ' active' : ''}`}
               onClick={() => onTabChange?.(tab.key)}
               data-action-id={
-                platform === 'cursor' && tab.key === 'instances'
-                  ? 'nav-cursor-instances'
-                  : undefined
+                platform === 'cursor' && tab.key === 'overview'
+                  ? 'nav-cursor-overview'
+                  : platform === 'cursor' && tab.key === 'instances'
+                    ? 'nav-cursor-instances'
+                    : platform === 'cursor' && tab.key === 'renewal'
+                      ? 'nav-cursor-renewal'
+                      : undefined
               }
             >
               {tab.icon}

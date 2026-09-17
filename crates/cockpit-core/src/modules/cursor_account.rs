@@ -1756,11 +1756,8 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorAccount, S
                     account.membership_type = Some(mt.to_string());
                 }
             }
-            account.cursor_usage_raw = Some(merge_usage_preserving_nonzero_history(
-                account.cursor_usage_raw.as_ref(),
-                usage,
-                &account.id,
-            ));
+            // 真实拉取成功：API 回什么写什么（含真的 0%），不再用过时值覆盖，保证拿到真实额度。
+            account.cursor_usage_raw = Some(usage);
             account.quota_query_last_error = None;
             account.quota_query_last_error_at = None;
             usage_refreshed = true;
@@ -1888,27 +1885,6 @@ fn usage_raw_total_percent(raw: &Value) -> Option<f64> {
         .or_else(|| raw_obj.get("planUsage"))
         .or_else(|| raw_obj.get("plan_usage"));
     pick_number(plan_value, &["totalPercentUsed", "total_percent_used"])
-}
-
-/// API 新回 0% 不得覆盖磁盘上已有非 0 用量（闲置号假 0% 会冲掉真历史）。
-fn merge_usage_preserving_nonzero_history(
-    prior: Option<&Value>,
-    incoming: Value,
-    account_id: &str,
-) -> Value {
-    let Some(prior) = prior else {
-        return incoming;
-    };
-    let prior_total = usage_raw_total_percent(prior).unwrap_or(0.0);
-    let new_total = usage_raw_total_percent(&incoming).unwrap_or(0.0);
-    if prior_total > 0.5 && new_total <= 0.5 {
-        logger::log_warn(&format!(
-            "[Cursor Refresh] 拒绝用 API 0% 覆盖历史非 0 用量: id={}, prior_total={:.1}, new_total={:.1}",
-            account_id, prior_total, new_total
-        ));
-        return prior.clone();
-    }
-    incoming
 }
 
 fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {

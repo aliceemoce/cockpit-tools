@@ -228,6 +228,7 @@ export function TraeAccountsPage({ platformId = 'trae' }: TraeAccountsPageProps)
       loading: store.loading,
       error: store.error,
       fetchAccounts: store.fetchAccounts,
+      cancelPendingFetches: store.cancelPendingFetches,
       fetchCurrentAccountId: () => traeService.getTraeCurrentAccountId(platformId),
       deleteAccounts: store.deleteAccounts,
       refreshToken: store.refreshToken,

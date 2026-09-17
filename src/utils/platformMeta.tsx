@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Github } from 'lucide-react';
+import { Github, Shield } from 'lucide-react';
 import { TFunction } from 'i18next';
 import { PlatformId } from '../types/platform';
 import { AntigravityIcon } from '../components/icons/AntigravityIcon';
@@ -58,6 +58,8 @@ export function getPlatformLabel(platformId: PlatformId, _t: TFunction): string 
       return _t('nav.traeSoloCn', 'TRAE SOLO CN');
     case 'workbuddy':
       return 'WorkBuddy';
+    case 'wuyou':
+      return '无忧小助手';
     default:
       return platformId;
   }
@@ -105,6 +107,8 @@ export function renderPlatformIcon(platformId: PlatformId, size = 20): ReactNode
       return <TraeSoloCnIcon style={{ width: size, height: size }} />;
     case 'workbuddy':
       return <WorkbuddyIcon style={{ width: size, height: size }} />;
+    case 'wuyou':
+      return <Shield size={size} />;
     default:
       return null;
   }

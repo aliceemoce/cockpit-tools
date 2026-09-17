@@ -101,6 +101,7 @@ export function CodebuddyAccountsPage() {
       loading: store.loading,
       error: store.error,
       fetchAccounts: store.fetchAccounts,
+      cancelPendingFetches: store.cancelPendingFetches,
       fetchCurrentAccountId: store.fetchCurrentAccountId,
       deleteAccounts: store.deleteAccounts,
       refreshToken: store.refreshToken,

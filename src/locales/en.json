@@ -4572,6 +4572,25 @@
       "desc": "Manage Cursor accounts by importing from local Cursor installation, pasting a JWT token, or signing in via OAuth.",
       "reason": "Permission scope: read and write Cursor local auth storage (state.vscdb) for account import and token injection (account switching).",
       "storage": "Network scope: when refreshing quota, the JWT is sent to cursor.com official APIs to fetch usage, user info, and subscription data. No data is sent to any third-party server."
+    },
+    "renewalConsole": {
+      "resultTitleSuccess": "Success",
+      "resultTitleError": "Failed",
+      "resultTitleInfo": "Notice",
+      "ok": "OK",
+      "statusLineLabel": "Renewal status",
+      "statusLineIdle": "Idle — no renewal action running",
+      "statusLineChecking": "Checking quota…",
+      "statusLineSwitching": "Switching account…",
+      "statusLineCooldown": "Cooling down — {{secs}}s left",
+      "statusLineRecentSuccess": "Idle — last switch succeeded ({{result}})",
+      "statusLineRecentFailure": "Idle — last switch failed ({{result}})",
+      "statusLinePulling": "Pulling account from cloud (pool only, not written to Cursor)…",
+      "statusLineSwitchingManual": "Switching account: pulling from cloud and writing to current Cursor…",
+      "toastNote": "After a successful switch, Cursor shows an \"Account switched\" toast in its top-right corner. This requires injection to be active.",
+      "unlimitedQuota": "Unlimited quota",
+      "quotaChecking": "Verifying quota",
+      "remainingQuotaPercent": "Remaining {{percent}}%"
     }
   },
   "breakout": {

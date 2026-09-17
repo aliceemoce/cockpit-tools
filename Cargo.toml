@@ -14,7 +14,7 @@ anyhow = "1.0"
 thiserror = "2"
 chrono = "0.4"
 dirs = "5.0"
-reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "zstd", "stream"] }
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 uuid = { version = "1.10", features = ["v4", "serde"] }

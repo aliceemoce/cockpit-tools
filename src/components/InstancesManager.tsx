@@ -919,8 +919,11 @@ export function InstancesManager<TAccount extends AccountLike>({
   useEffect(() => {
     fetchDefaults();
     fetchInstances();
-    fetchAccounts();
-  }, [fetchDefaults, fetchInstances, fetchAccounts]);
+    // 父页（如 Cursor 总览）已拉过大池时禁止再 fetch：分片首片会盖成约 200，ALL 回落且多开「账号不存在」
+    if (accounts.length === 0) {
+      void fetchAccounts();
+    }
+  }, [fetchDefaults, fetchInstances, fetchAccounts, accounts.length]);
 
   useEffect(() => {
     let inFlight = false;
@@ -929,7 +932,8 @@ export function InstancesManager<TAccount extends AccountLike>({
       if (openInlineMenuId || showModal) return;
       if (inFlight) return;
       inFlight = true;
-      Promise.all([refreshInstances(), fetchAccounts()])
+      // 定时只刷实例列表；全表账号由总览/显式操作负责，避免每 10s 分片重拉盖池
+      Promise.resolve(refreshInstances())
         .catch(() => {
           // ignore periodic refresh errors; manual refresh still exposes errors
         })

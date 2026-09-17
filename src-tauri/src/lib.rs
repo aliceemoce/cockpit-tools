@@ -6,7 +6,8 @@ pub mod utils;
 
 use modules::config::CloseWindowBehavior;
 use modules::logger;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
 use tauri::RunEvent;
@@ -17,6 +18,8 @@ use tracing::info;
 
 /// 全局 AppHandle 存储
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+static RECENT_DEEPLINK_STAGE_EVENT: Mutex<Option<(String, String, Instant)>> = Mutex::new(None);
+const DEEPLINK_STAGE_DEDUPE_WINDOW: Duration = Duration::from_secs(10);
 
 /// 获取全局 AppHandle
 pub fn get_app_handle() -> Option<&'static tauri::AppHandle> {
@@ -202,6 +205,49 @@ fn summarize_deep_link_args(args: &[String]) -> Vec<String> {
         .collect()
 }
 
+fn append_deeplink_probe(stage: &str, args: &[String]) {
+    let path = std::env::temp_dir().join("cockpit-deeplink-probe.jsonl");
+    let record = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339(),
+        "stage": stage,
+        "pid": std::process::id(),
+        "exe": std::env::current_exe().ok().map(|p| p.display().to_string()),
+        "args": summarize_deep_link_args(args),
+    });
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "{}", record);
+    }
+}
+
+fn should_skip_duplicate_deeplink_stage(stage: &str, args: &[String]) -> bool {
+    let key = summarize_deep_link_args(args).join("\n");
+    let now = Instant::now();
+    let mut guard = RECENT_DEEPLINK_STAGE_EVENT
+        .lock()
+        .expect("recent deeplink stage event lock");
+    if let Some((last_stage, last_key, last_at)) = guard.as_ref() {
+        if last_stage != stage
+            && last_key == &key
+            && now.duration_since(*last_at) < DEEPLINK_STAGE_DEDUPE_WINDOW
+        {
+            logger::log_info(&format!(
+                "[DeepLink] 跳过跨阶段重复事件: stage={}, last_stage={}, args={:?}",
+                stage,
+                last_stage,
+                summarize_deep_link_args(args)
+            ));
+            return true;
+        }
+    }
+    *guard = Some((stage.to_string(), key, now));
+    false
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init_logger();
@@ -226,10 +272,14 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            append_deeplink_probe("single-instance", &args);
             logger::log_info(&format!(
                 "[SingleInstance] 收到唤起请求: arg_count={}",
                 args.len()
             ));
+            if should_skip_duplicate_deeplink_stage("single-instance", &args) {
+                return;
+            }
             let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
             // cockpit-tools:// 必须由已运行的主实例处理；副实例 on_open_url 会点空窗，此处统一转发到主进程 WebView。
             let deep_link_actions_handled = args.iter().any(|a| {
@@ -274,6 +324,7 @@ pub fn run() {
                 build_mode,
                 current_exe
             ));
+            append_deeplink_probe("startup", &[]);
 
             // 存储全局 AppHandle
             let _ = APP_HANDLE.set(app.handle().clone());
@@ -285,6 +336,23 @@ pub fn run() {
             // 启动时清理 WebKit LocalStorage WAL，防止无限膨胀
             std::thread::spawn(|| {
                 modules::webkit_cache_maintenance::checkpoint_webkit_localstorage();
+            });
+
+            modules::renewal_apps_auto_update::spawn_renewal_apps_auto_update_background();
+
+            // 续杯：启动时确保 get-token 可用（复用管家已听端口，或本进程自起；双开友好）
+            std::thread::spawn(|| {
+                match modules::wuxian_seamless_server::start(None) {
+                    Ok(port) => {
+                        let adopted = modules::wuxian_seamless_server::is_adopted_external();
+                        modules::logger::log_info(&format!(
+                            "[Startup] wuxian 无感就绪 port={port} adoptedExternal={adopted}"
+                        ));
+                    }
+                    Err(err) => modules::logger::log_warn(&format!(
+                        "[Startup] wuxian 无感服务启动失败: {err}"
+                    )),
+                }
             });
 
             // 当前主线不再使用 platform-packages；启动时回收旧版本遗留的孤儿 adapter。
@@ -380,6 +448,8 @@ pub fn run() {
 
             modules::provider_token_keeper::ensure_started(app.handle().clone());
             commands::cursor_instance::spawn_runtime_auto_switch(app.handle().clone());
+            // 续杯管家自动换号主动驱动（与默认页 tick 分账，见 ADR-0003）
+            modules::xubei_auto_switch_driver::spawn(app.handle().clone());
             modules::auto_local_import::ensure_started(app.handle().clone());
 
             // Wakeup restore/start and Deep Link registration/read can hit disk or OS
@@ -414,11 +484,15 @@ pub fn run() {
                 app.deep_link().on_open_url(move |event| {
                     let urls = event.urls();
                     let args: Vec<String> = urls.iter().map(|url| url.to_string()).collect();
+                    append_deeplink_probe("on-open-url", &args);
                     logger::log_info(&format!(
                         "[DeepLink] 收到 on_open_url 事件: url_count={}, urls={:?}",
                         args.len(),
                         summarize_deep_link_args(&args)
                     ));
+                    if should_skip_duplicate_deeplink_stage("on-open-url", &args) {
+                        return;
+                    }
                     if modules::gui_in_app_click::should_skip_deeplink_on_open_url() {
                         return;
                     }
@@ -443,6 +517,7 @@ pub fn run() {
                 std::thread::spawn(move || match app_handle.deep_link().get_current() {
                     Ok(Some(urls)) => {
                         let args: Vec<String> = urls.iter().map(|url| url.to_string()).collect();
+                        append_deeplink_probe("get-current", &args);
                         logger::log_info(&format!(
                             "[DeepLink] 启动时 get_current 命中: url_count={}, urls={:?}",
                             args.len(),
@@ -506,6 +581,20 @@ pub fn run() {
 
             let startup_args: Vec<String> = std::env::args().collect();
             logger::log_info(&format!("[Startup] 启动参数数量: {}", startup_args.len()));
+            append_deeplink_probe("startup-args", &startup_args);
+            let startup_zcode_oauth_handled = handle_zcode_oauth_deep_links(&startup_args);
+            let startup_deep_link_actions_handled = startup_args.iter().any(|arg| {
+                let trimmed = arg.trim();
+                if trimmed.starts_with("cockpit-tools://")
+                    || trimmed.starts_with("cockpittools://")
+                {
+                    return modules::deep_link_actions::handle_deep_link_actions(
+                        &app.handle(),
+                        trimmed,
+                    );
+                }
+                modules::deep_link_actions::handle_deep_link_actions(&app.handle(), arg)
+            });
             let startup_external_import_handled =
                 modules::external_import::handle_external_import_args(
                     &app.handle(),
@@ -513,7 +602,9 @@ pub fn run() {
                     "startup",
                 );
             logger::log_info(&format!(
-                "[Startup] 外部导入处理结果: handled={}",
+                "[Startup] 参数处理结果: zcode_handled={}, deeplink_handled={}, external_import_handled={}",
+                startup_zcode_oauth_handled,
+                startup_deep_link_actions_handled,
                 startup_external_import_handled
             ));
 
@@ -723,6 +814,9 @@ pub fn run() {
             commands::system::delete_corrupted_file,
             commands::system::gui_trigger_click,
             commands::system::gui_click_ack,
+            commands::system::gui_enumerate_actions,
+            commands::system::gui_enumerate_ack,
+            commands::system::gui_enumerate_latest,
             // Logs Commands
             commands::logs::logs_get_snapshot,
             commands::logs::logs_open_log_directory,
@@ -1147,6 +1241,8 @@ pub fn run() {
             commands::trae_instance::trae_close_all_instances,
             // Cursor Commands
             commands::cursor::list_cursor_accounts,
+            commands::cursor::list_cursor_accounts_page,
+            commands::cursor::refresh_cursor_current_account_realtime,
             commands::cursor::delete_cursor_account,
             commands::cursor::delete_cursor_accounts,
             commands::cursor::import_cursor_from_json,
@@ -1155,6 +1251,28 @@ pub fn run() {
             commands::cursor::refresh_cursor_token,
             commands::cursor::refresh_all_cursor_tokens,
             commands::cursor::add_cursor_account_with_token,
+            commands::cursor::pull_cursor_account_from_xubei,
+            commands::cursor::read_wuxian_get_token_email,
+            commands::cursor::get_renewal_console_status,
+            commands::cursor::get_wuyou_native_status,
+            commands::cursor::wuyou_traditional_switch,
+            commands::cursor::sync_renewal_apps_auto_update,
+            commands::cursor::switch_cursor_account_from_xubei_seamless,
+            commands::cursor::switch_cursor_account_from_xubei_pool,
+            commands::cursor::get_xubei_renewal_prefs,
+            commands::cursor::set_xubei_renewal_pref,
+            commands::cursor::pick_cursor_path,
+            commands::cursor::manual_send_continue,
+            commands::cursor::reset_cursor_machine_id,
+            commands::cursor::inject_xubei_basic,
+            commands::cursor::restore_cursor_injection,
+            commands::cursor::start_wuxian_seamless_server,
+            commands::cursor::stop_wuxian_seamless_server,
+            commands::cursor::get_wuxian_seamless_server_status,
+            commands::cursor::activate_card_key,
+            commands::cursor::verify_card_key,
+            commands::cursor::change_xubei_password,
+            commands::cursor::logout_xubei,
             commands::cursor::update_cursor_account_tags,
             commands::cursor::get_cursor_accounts_index_path,
             commands::cursor::cursor_oauth_login_start,
@@ -1287,6 +1405,247 @@ pub fn run() {
             // UI State Commands
             commands::ui_state::get_ui_state,
             commands::ui_state::export_ui_state,
+            // MITM Proxy & Sidecar Commands
+            commands::proxy::start_mitm_proxy,
+            commands::proxy::stop_mitm_proxy,
+            commands::proxy::get_proxy_status,
+            commands::proxy::install_ca_cert,
+            commands::proxy::uninstall_ca_cert,
+            commands::proxy::add_hosts_intercept_rules,
+            commands::proxy::remove_hosts_intercept_rules,
+            commands::proxy::start_sidecar_proxy,
+            commands::proxy::stop_sidecar_proxy,
+            commands::proxy::get_sidecar_status,
+            commands::proxy::sync_accounts_to_proxy_pool,
+            commands::proxy::get_proxy_pool_snapshot,
+            // Clash Controller Commands
+            commands::clash::get_clash_proxies,
+            commands::clash::get_clash_groups,
+            commands::clash::select_clash_proxy_node,
+            commands::clash::test_clash_proxy_delay,
+            commands::clash::auto_select_fastest_clash_node,
+            // IDE Patcher Commands
+            commands::patcher::generate_machine_ids,
+            commands::patcher::patch_cursor,
+            commands::patcher::restore_cursor,
+            commands::patcher::patch_kiro,
+            commands::patcher::restore_kiro,
+            commands::patcher::decrypt_warp_dpapi,
+            // Nirvana (无忧小助手) Commands
+            commands::nirvana::nirvana_get_platform,
+            commands::nirvana::nirvana_get_proxy_detection,
+            commands::nirvana::nirvana_get_device_fingerprint,
+            commands::nirvana::nirvana_read_preferences,
+            commands::nirvana::nirvana_get_preference,
+            commands::nirvana::nirvana_set_preference,
+            commands::nirvana::nirvana_export_switch_logs,
+            // Cursor
+            commands::nirvana::nirvana_cursor_detect_install_path,
+            commands::nirvana::nirvana_cursor_accounts_list,
+            commands::nirvana::nirvana_cursor_accounts_stats,
+            commands::nirvana::nirvana_cursor_accounts_add,
+            commands::nirvana::nirvana_cursor_accounts_delete,
+            commands::nirvana::nirvana_cursor_accounts_reset_status,
+            commands::nirvana::nirvana_cursor_accounts_batch_verify,
+            commands::nirvana::nirvana_cursor_get_token,
+            commands::nirvana::nirvana_cursor_cleaner_get_status,
+            commands::nirvana::nirvana_cursor_cleaner_run,
+            commands::nirvana::nirvana_cursor_restore_original_machineguid,
+            commands::nirvana::nirvana_cursor_get_machineguid_backups,
+            commands::nirvana::nirvana_cursor_seamless_check_setup,
+            commands::nirvana::nirvana_cursor_seamless_setup,
+            commands::nirvana::nirvana_cursor_seamless_teardown,
+            commands::nirvana::nirvana_cursor_seamless_ping,
+            commands::nirvana::nirvana_cursor_is_running,
+            commands::nirvana::nirvana_cursor_restart,
+            commands::nirvana::nirvana_cursor_get_local_account,
+            commands::nirvana::nirvana_cursor_get_usage,
+            commands::nirvana::nirvana_cursor_batch_get_info,
+            commands::nirvana::nirvana_cursor_batch_get_usage,
+            commands::nirvana::nirvana_cursor_cloud_pull,
+            commands::nirvana::nirvana_cursor_open_website,
+            // Kiro
+            commands::nirvana::nirvana_kiro_detect_install_path,
+            commands::nirvana::nirvana_kiro_check_installation,
+            commands::nirvana::nirvana_kiro_get_local_account,
+            commands::nirvana::nirvana_kiro_get_cached_account,
+            commands::nirvana::nirvana_kiro_switch_with_token,
+            commands::nirvana::nirvana_kiro_batch_verify,
+            commands::nirvana::nirvana_kiro_extract_token,
+            commands::nirvana::nirvana_kiro_verify_token,
+            commands::nirvana::nirvana_kiro_refresh_token,
+            commands::nirvana::nirvana_kiro_get_usage,
+            commands::nirvana::nirvana_kiro_cleaner_run,
+            commands::nirvana::nirvana_kiro_restore_original_machineid,
+            commands::nirvana::nirvana_kiro_pull_account,
+            commands::nirvana::nirvana_kiro_debug_config_files,
+            commands::nirvana::nirvana_kiro_registration_start,
+            commands::nirvana::nirvana_kiro_registration_wait_callback,
+            commands::nirvana::nirvana_kiro_registration_cancel,
+            commands::nirvana::nirvana_kiro_registration_status,
+            commands::nirvana::nirvana_kiro_accounts_list,
+            commands::nirvana::nirvana_kiro_accounts_delete,
+            // Qoder
+            commands::nirvana::nirvana_qoder_detect_install_path,
+            commands::nirvana::nirvana_qoder_get_local_account,
+            commands::nirvana::nirvana_qoder_switch,
+            commands::nirvana::nirvana_qoder_get_usage,
+            commands::nirvana::nirvana_qoder_health_check,
+            commands::nirvana::nirvana_qoder_is_running,
+            commands::nirvana::nirvana_qoder_cleaner_run,
+            commands::nirvana::nirvana_qoder_get_public_ip,
+            commands::nirvana::nirvana_qoder_list_nics,
+            commands::nirvana::nirvana_qoder_get_current_fingerprint,
+            commands::nirvana::nirvana_qoder_check_sideload,
+            commands::nirvana::nirvana_qoder_deploy_sideload,
+            commands::nirvana::nirvana_qoder_restore_official,
+            commands::nirvana::nirvana_qoder_has_conversation_backup,
+            commands::nirvana::nirvana_qoder_accounts_list,
+            commands::nirvana::nirvana_qoder_accounts_delete,
+            // Trae
+            commands::nirvana::nirvana_trae_detect_install_path,
+            commands::nirvana::nirvana_trae_detect_edition,
+            commands::nirvana::nirvana_trae_get_local_account,
+            commands::nirvana::nirvana_trae_switch_with_token,
+            commands::nirvana::nirvana_trae_pull_account,
+            commands::nirvana::nirvana_trae_batch_verify,
+            commands::nirvana::nirvana_trae_query_local_quota,
+            commands::nirvana::nirvana_trae_query_quota,
+            commands::nirvana::nirvana_trae_cache_get,
+            commands::nirvana::nirvana_trae_cache_set,
+            commands::nirvana::nirvana_trae_cache_delete,
+            commands::nirvana::nirvana_trae_cache_list,
+            commands::nirvana::nirvana_trae_cleaner_run,
+            commands::nirvana::nirvana_trae_accounts_list,
+            commands::nirvana::nirvana_trae_accounts_delete,
+            // Warp
+            commands::nirvana::nirvana_warp_detect_install_path,
+            commands::nirvana::nirvana_warp_get_local_account,
+            commands::nirvana::nirvana_warp_switch_account,
+            commands::nirvana::nirvana_warp_batch_verify,
+            commands::nirvana::nirvana_warp_verify_token,
+            commands::nirvana::nirvana_warp_smart_import_check,
+            commands::nirvana::nirvana_warp_force_clean,
+            commands::nirvana::nirvana_warp_restore_machine_guid,
+            commands::nirvana::nirvana_warp_accounts_list,
+            commands::nirvana::nirvana_warp_accounts_delete,
+            // Windsurf
+            commands::nirvana::nirvana_windsurf_detect_install_path,
+            commands::nirvana::nirvana_windsurf_get_local_account,
+            commands::nirvana::nirvana_windsurf_batch_verify,
+            commands::nirvana::nirvana_windsurf_verify_apikey,
+            commands::nirvana::nirvana_windsurf_abort_verify,
+            commands::nirvana::nirvana_windsurf_accounts_list,
+            commands::nirvana::nirvana_windsurf_accounts_delete,
+            commands::nirvana::nirvana_windsurf_cleaner_run,
+            commands::nirvana::nirvana_windsurf_restore_machine_guid,
+            // Windsurf 高级切号
+            commands::nirvana::nirvana_windsurf_switcher_get_proxy,
+            commands::nirvana::nirvana_windsurf_switcher_verify_account,
+            commands::nirvana::nirvana_windsurf_switcher_silent_login,
+            commands::nirvana::nirvana_windsurf_switcher_silent_login_no_close,
+            commands::nirvana::nirvana_windsurf_switcher_by_api_key,
+            commands::nirvana::nirvana_windsurf_switcher_get_credits,
+            commands::nirvana::nirvana_windsurf_switcher_batch_credits,
+            // Windsurf Firebase 登录
+            commands::nirvana::nirvana_windsurf_firebase_detect_proxy,
+            commands::nirvana::nirvana_windsurf_firebase_sign_in,
+            commands::nirvana::nirvana_windsurf_firebase_get_api_key,
+            commands::nirvana::nirvana_windsurf_firebase_verify,
+            commands::nirvana::nirvana_windsurf_firebase_silent_switch,
+            commands::nirvana::nirvana_windsurf_firebase_get_paths,
+            commands::nirvana::nirvana_windsurf_firebase_find_path,
+            // Windsurf Token 刷新
+            commands::nirvana::nirvana_windsurf_token_quick_refresh,
+            commands::nirvana::nirvana_windsurf_token_quick_post_auth,
+            // MachineGuid 管理
+            commands::nirvana::nirvana_machine_guid_read,
+            commands::nirvana::nirvana_machine_guid_write,
+            commands::nirvana::nirvana_machine_guid_backup,
+            commands::nirvana::nirvana_machine_guid_restore,
+            commands::nirvana::nirvana_machine_guid_generate_uuid,
+            commands::nirvana::nirvana_machine_guid_generate_random_serial,
+            commands::nirvana::nirvana_machine_guid_generate_random_mac,
+            // 账号健康检查
+            commands::nirvana::nirvana_account_check_health,
+            commands::nirvana::nirvana_account_batch_check_health,
+            commands::nirvana::nirvana_account_get_quota,
+            commands::nirvana::nirvana_account_filter,
+            commands::nirvana::nirvana_account_find_duplicates,
+            commands::nirvana::nirvana_account_deduplicate,
+            commands::nirvana::nirvana_account_statistics,
+            commands::nirvana::nirvana_account_validate_api_key,
+            commands::nirvana::nirvana_account_validate_email,
+            commands::nirvana::nirvana_account_export_report_markdown,
+            commands::nirvana::nirvana_account_export_report_json,
+            commands::nirvana::nirvana_account_export_report_csv,
+            // 环境清理
+            commands::nirvana::nirvana_env_clean,
+            commands::nirvana::nirvana_env_scan_cleanable,
+            commands::nirvana::nirvana_env_format_report,
+            // 剪贴板管理
+            commands::nirvana::nirvana_clipboard_copy,
+            commands::nirvana::nirvana_clipboard_paste,
+            commands::nirvana::nirvana_clipboard_serialize_accounts,
+            commands::nirvana::nirvana_clipboard_parse_accounts,
+            commands::nirvana::nirvana_clipboard_copy_accounts,
+            commands::nirvana::nirvana_clipboard_compute_summary,
+            commands::nirvana::nirvana_clipboard_batch_validate,
+            // Cursor Patch
+            commands::nirvana::nirvana_cursor_patch_machine_id,
+            commands::nirvana::nirvana_cursor_restore_main_js,
+            commands::nirvana::nirvana_cursor_patch_workbench_v6,
+            commands::nirvana::nirvana_cursor_patch_workbench_v7,
+            commands::nirvana::nirvana_cursor_patch_check_seamless,
+            commands::nirvana::nirvana_cursor_patch_setup_seamless,
+            commands::nirvana::nirvana_cursor_patch_teardown_seamless,
+            commands::nirvana::nirvana_cursor_patch_guid_backup_info,
+            commands::nirvana::nirvana_cursor_patch_restore_guid,
+            // IDE 进程管理
+            commands::nirvana::nirvana_ide_is_running,
+            commands::nirvana::nirvana_ide_shutdown,
+            commands::nirvana::nirvana_ide_launch,
+            commands::nirvana::nirvana_ide_restart,
+            commands::nirvana::nirvana_ide_all_status,
+            commands::nirvana::nirvana_ide_get_version,
+            commands::nirvana::nirvana_ide_detect_path,
+            commands::nirvana::nirvana_ide_ensure_stopped,
+            // 导入/导出
+            commands::nirvana::nirvana_import_quick_parse,
+            commands::nirvana::nirvana_import_quick_from_file,
+            commands::nirvana::nirvana_export_quick_json,
+            commands::nirvana::nirvana_export_quick_csv,
+            commands::nirvana::nirvana_export_quick_text,
+            commands::nirvana::nirvana_import_smart_detect,
+            commands::nirvana::nirvana_import_is_valid_email,
+            commands::nirvana::nirvana_import_is_valid_api_key,
+            commands::nirvana::nirvana_import_mask_api_key,
+            // 无感换号
+            commands::nirvana::nirvana_seamless_check,
+            commands::nirvana::nirvana_seamless_patch_v7,
+            commands::nirvana::nirvana_seamless_teardown,
+            // Nirvana Proxy 桥（Qoder 无感组合）
+            commands::nirvana::nirvana_proxy_detect,
+            commands::nirvana::nirvana_proxy_launch,
+            commands::nirvana::nirvana_proxy_combo_status,
+            commands::nirvana::nirvana_proxy_prepare_qoder,
+            commands::nirvana::nirvana_qoder_pull_account,
+            commands::nirvana::nirvana_proxy_feed_wuyou_qoder,
+            // Cursor IPC 高级
+            commands::nirvana::nirvana_cursor_ipc_accounts_list,
+            commands::nirvana::nirvana_cursor_ipc_accounts_stats,
+            commands::nirvana::nirvana_cursor_ipc_accounts_add,
+            commands::nirvana::nirvana_cursor_ipc_accounts_delete,
+            commands::nirvana::nirvana_cursor_ipc_cloud_pull,
+            commands::nirvana::nirvana_cursor_ipc_import_with_token,
+            commands::nirvana::nirvana_cursor_ipc_accounts_switch,
+            commands::nirvana::nirvana_cursor_ipc_switch_with_token,
+            commands::nirvana::nirvana_cursor_ipc_batch_verify,
+            commands::nirvana::nirvana_cursor_ipc_get_usage,
+            commands::nirvana::nirvana_cursor_ipc_batch_get_usage,
+            commands::nirvana::nirvana_cursor_ipc_batch_get_info,
+            commands::nirvana::nirvana_cursor_ipc_reset_status,
+            commands::nirvana::nirvana_cursor_ipc_cleaner_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

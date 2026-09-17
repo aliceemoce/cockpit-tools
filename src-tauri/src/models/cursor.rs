@@ -113,6 +113,33 @@ pub struct CursorImportPayload {
     pub status_reason: Option<String>,
 }
 
+/// 前端列表分页：不含 token / auth_raw，避免四千号一次 IPC 堵死整窗。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CursorAccountListPage {
+    pub accounts: Vec<CursorAccount>,
+    pub total: usize,
+    pub offset: usize,
+    pub next_offset: usize,
+    pub has_more: bool,
+}
+
+/// 0012：当前账号**实时**额度快照。
+/// `queried=false` 表示这次没真正拉到 usage（网络/401/未绑定），
+/// 前端**不得**用磁盘旧值充当满额度，必须显示「未刷新/查询失败」。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorCurrentQuotaSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    pub queried: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_percent: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<CursorAccount>,
+}
+
 impl CursorAccount {
     pub fn summary(&self) -> CursorAccountSummary {
         CursorAccountSummary {
@@ -124,5 +151,13 @@ impl CursorAccount {
             created_at: self.created_at,
             last_used: self.last_used,
         }
+    }
+
+    /// 列表 UI 用：去掉令牌与 auth 原文；保留 usage_raw 供额度展示。
+    pub fn for_ui_list(mut self) -> Self {
+        self.access_token.clear();
+        self.refresh_token = None;
+        self.cursor_auth_raw = None;
+        self
     }
 }

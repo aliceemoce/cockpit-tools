@@ -20,7 +20,8 @@ export type PlatformId =
   | 'trae_solo'
   | 'trae_cn'
   | 'trae_solo_cn'
-  | 'workbuddy';
+  | 'workbuddy'
+  | 'wuyou';
 
 export const ALL_PLATFORM_IDS: PlatformId[] = [
   'claude_manager',
@@ -43,10 +44,11 @@ export const ALL_PLATFORM_IDS: PlatformId[] = [
   'trae_cn',
   'trae_solo_cn',
   'workbuddy',
+  'wuyou',
 ];
 
 /** Platforms that do not own account lists (service / feature pages). */
-export const ACCOUNTLESS_PLATFORM_IDS: readonly PlatformId[] = ['codex_api_service'];
+export const ACCOUNTLESS_PLATFORM_IDS: readonly PlatformId[] = ['codex_api_service', 'wuyou'];
 
 export function isAccountPlatform(platformId: PlatformId): boolean {
   return !ACCOUNTLESS_PLATFORM_IDS.includes(platformId);
@@ -83,4 +85,5 @@ export const PLATFORM_PAGE_MAP: Record<PlatformId, Page> = {
   trae_cn: 'trae-cn',
   trae_solo_cn: 'trae-solo-cn',
   workbuddy: 'workbuddy',
+  wuyou: 'wuyou',
 };
