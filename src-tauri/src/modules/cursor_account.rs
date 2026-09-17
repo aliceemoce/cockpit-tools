@@ -13,7 +13,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-use crate::models::cursor::{CursorAccount, CursorAccountIndex, CursorImportPayload};
+use crate::models::cursor::{
+    CursorAccount, CursorAccountIndex, CursorAccountListPage, CursorCurrentQuotaSnapshot,
+    CursorImportPayload,
+};
 use crate::modules::{account, logger};
 
 const ACCOUNTS_INDEX_FILE: &str = "cursor_accounts.json";
@@ -38,6 +41,8 @@ lazy_static::lazy_static! {
     static ref CURSOR_INDEX_MAINTENANCE_DONE: AtomicBool = AtomicBool::new(false);
     static ref CURSOR_INDEX_MAINTENANCE_SCHEDULED: AtomicBool = AtomicBool::new(false);
     static ref CURSOR_REFRESH_IN_FLIGHT: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    /// 0013：本进程内已知的「零额度号」（free，plan.limit=0），仅用于状态变更日志。
+    static ref CURSOR_ZERO_BUDGET_SEEN: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
     static ref AUTO_SWITCH_LAST_AT: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
     /// 本进程内最近一次刷新尝试时间（成功/失败/transient 都记），用于最旧优先调度时给失败号冷却。
     static ref CURSOR_REFRESH_RECENT_ATTEMPTS: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
@@ -346,6 +351,17 @@ pub fn load_account(account_id: &str) -> Option<CursorAccount> {
     }
 }
 
+/// 按邮箱定位池内账号（续杯 get-token / check-usage 用）。大小写不敏感。
+pub fn find_account_id_by_email(email: &str) -> Option<String> {
+    let needle = normalize_email_identity(Some(email))?;
+    list_accounts()
+        .into_iter()
+        .find(|account| {
+            normalize_email_identity(Some(account.email.as_str())).as_ref() == Some(&needle)
+        })
+        .map(|account| account.id)
+}
+
 fn save_account_file(account: &CursorAccount) -> Result<(), String> {
     let path = resolve_account_file_path(account.id.as_str())?;
     let content =
@@ -478,14 +494,64 @@ fn refresh_summary(index: &mut CursorAccountIndex, account: &CursorAccount) {
 }
 
 fn upsert_account_record(account: CursorAccount) -> Result<CursorAccount, String> {
+    let lock_wait_started = std::time::Instant::now();
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
+    let lock_wait_ms = lock_wait_started.elapsed().as_millis();
+    if lock_wait_ms >= 200 {
+        logger::log_warn(&format!(
+            "[Cursor Perf] 等账号索引锁 {}ms",
+            lock_wait_ms
+        ));
+    }
     let mut index = load_account_index();
     save_account_file(&account)?;
     refresh_summary(&mut index, &account);
     save_account_index(&index)?;
     Ok(account)
+}
+
+/// 0012：批量刷新专用——只写账号详情文件，不动整表索引。
+/// 索引（4482 条 / 1.1MB）由批末 `flush_account_index_for` 统一写一次，
+/// 否则每刷一个账号都重写全表索引，单账号被拖到数十秒，一轮扫不完池子。
+fn upsert_account_record_deferred(account: CursorAccount) -> Result<CursorAccount, String> {
+    save_account_file(&account)?;
+    Ok(account)
+}
+
+/// 0012：批末统一回写索引——读一次索引、批量更新 summary、写一次盘。
+pub fn flush_account_index_for(accounts: &[CursorAccount]) {
+    if accounts.is_empty() {
+        return;
+    }
+    // 拿不到锁时绝不静默丢弃整批：原实现 `let Ok(_lock) = ... else { warn; return }`
+    // 会把整轮刷新结果吞掉（界面表现「刷新了额度没变 / 账号像被吞」）。
+    // 退化为逐个 upsert_record 兜底，保证每条都落盘。
+    match CURSOR_ACCOUNT_INDEX_LOCK.lock() {
+        Ok(_lock) => {
+            let mut index = load_account_index();
+            for account in accounts {
+                refresh_summary(&mut index, account);
+            }
+            if let Err(err) = save_account_index(&index) {
+                logger::log_warn(&format!("[Cursor Refresh] 批末回写索引失败: {}", err));
+            }
+        }
+        Err(_) => {
+            logger::log_warn(
+                "[Cursor Refresh] 批末回写取锁失败，退化为逐个 upsert 兜底，避免整批丢弃",
+            );
+            for account in accounts {
+                if let Err(err) = upsert_account_record(account.clone()) {
+                    logger::log_warn(&format!(
+                        "[Cursor Refresh] 兜底 upsert 失败: id={}, err={}",
+                        account.id, err
+                    ));
+                }
+            }
+        }
+    }
 }
 
 fn persist_quota_query_error(account_id: &str, message: &str) {
@@ -519,7 +585,7 @@ pub(crate) fn is_cursor_transient_quota_error(message: &str) -> bool {
         || lower.contains("504")
 }
 
-fn is_cursor_auth_quota_error(message: &str) -> bool {
+pub(crate) fn is_cursor_auth_quota_error(message: &str) -> bool {
     let lower = message.to_lowercase();
     lower.contains(CURSOR_UI_QUOTA_QUERY_FAILED)
         || lower.contains("会话已过期")
@@ -607,6 +673,22 @@ pub async fn refresh_for_forced_account_switch(account_id: &str) -> Result<Curso
         Ok(refreshed) => refreshed.account,
         Err(err) if is_cursor_transient_quota_error(&err) => load_account(account_id)
             .ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?,
+        // 0012 §2.3「换号必须配合查询成功」：token 已被服务端拒绝（401 / 会话失效）
+        // 的号一律禁止落盘切号，否则会把失效凭据写进 state.vscdb 与 auth.json，
+        // 导致 DSH 读到无法使用的账号。
+        Err(err) if is_cursor_auth_quota_error(&err) => {
+            let email = load_account(account_id)
+                .map(|a| a.email)
+                .unwrap_or_else(|| "<unknown>".to_string());
+            logger::log_warn(&format!(
+                "[Cursor Switch] 手动选号被服务端拒绝(会话失效)，中止切号: id={}, email={}, error={}",
+                account_id, email, err
+            ));
+            return Err(format!(
+                "该账号会话已失效，无法切号（请换一个可用账号）: {}",
+                email
+            ));
+        }
         Err(err) => {
             logger::log_warn(&format!(
                 "[Cursor Switch] 手动选号刷新失败，仍继续切号: id={}, error={}",
@@ -656,6 +738,9 @@ pub fn account_has_auth_failure_marker(account: &CursorAccount) -> bool {
 pub struct CursorRefreshResult {
     pub account: CursorAccount,
     pub persisted: bool,
+    /// 0012：本次是否**真的**拉到了 usage（成功才为 true）。
+    /// 调用方可据此区分「实时查到」与「只读到磁盘旧值」，禁止把未查到的当成满额度。
+    pub usage_refreshed: bool,
 }
 
 fn cursor_accounts_differ_for_refresh(before: &CursorAccount, after: &CursorAccount) -> bool {
@@ -1125,27 +1210,22 @@ fn collect_account_ids_from_directory() -> Vec<String> {
         let Ok(item) = entry else {
             continue;
         };
-        let path = item.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let is_json = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("json"))
-            .unwrap_or(false);
-        if !is_json {
-            continue;
-        }
-
-        let Some(stem) = path.file_stem().and_then(|name| name.to_str()) else {
+        // 0020：不再对每个 entry 调用 `path.is_file()`（9843 个文件 = 9843 次 stat，
+        // 实测这一项独占 4873ms）。改为纯文件名判断：零 stat、零完整路径拼接。
+        // 若目录中存在以 .json 结尾的子目录，其后续 `load_account` 读取会失败并返回 None，无副作用。
+        let file_name = item.file_name();
+        let Some(name) = file_name.to_str() else {
             continue;
         };
+        let bytes = name.as_bytes();
+        if bytes.len() <= 5 || !bytes[bytes.len() - 5..].eq_ignore_ascii_case(b".json") {
+            continue;
+        }
+        let stem = &name[..name.len() - 5];
         let Ok(account_id) = normalize_account_id(stem) else {
             logger::log_warn(&format!(
                 "[Cursor Account] 检测到非法账号文件名，已忽略: file={}",
-                path.display()
+                name
             ));
             continue;
         };
@@ -1157,34 +1237,114 @@ fn collect_account_ids_from_directory() -> Vec<String> {
     ids
 }
 
-fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount> {
-    let mut loaded_accounts = Vec::new();
-    let mut seen_account_ids = HashSet::new();
-    let mut seen_summary_ids = HashSet::new();
+/// 0019：并发读取账号详情。
+///
+/// 动机（本机实测）：单条 `load_account()` 约 15ms（其中路径解析约 2.2ms、读文件约 2.5ms、
+/// 解密+双层 JSON 约 5.6ms，其余为 exists 等固定开销），串行读 4472 条约 **57 秒**。
+/// 本机 20 核，且详情文件之间完全独立（纯读、无共享写），适合分块并发。
+///
+/// 返回 `(原始下标, 账号)`，调用方据此保留既有顺序与去重语义。
+fn load_accounts_concurrently(ids: &[String]) -> Vec<(usize, CursorAccount)> {
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(1, 16);
 
-    for summary in &index.accounts {
-        if !seen_summary_ids.insert(summary.id.clone()) {
-            continue;
+    if ids.len() < 32 || workers <= 1 {
+        return ids
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, id)| load_account(id).map(|account| (idx, account)))
+            .collect();
+    }
+
+    let chunk_size = ids.len().div_ceil(workers);
+    let mut out: Vec<(usize, CursorAccount)> = Vec::with_capacity(ids.len());
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = ids
+            .chunks(chunk_size)
+            .enumerate()
+            .map(|(chunk_idx, chunk)| {
+                let base = chunk_idx * chunk_size;
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, id)| load_account(id).map(|account| (base + i, account)))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        for handle in handles {
+            if let Ok(part) = handle.join() {
+                out.extend(part);
+            }
         }
-        if let Some(account) = load_account(&summary.id) {
-            if seen_account_ids.insert(account.id.clone()) {
-                loaded_accounts.push(account);
+    });
+    out.sort_by_key(|(idx, _)| *idx);
+    out
+}
+
+/// 0021：判断索引是否**真的需要**跑全量维护（`normalize_account_index`）。
+///
+/// 背景：`list_accounts()` 每次调用都会跑一遍完整维护——读出全部详情、扫账号目录、
+/// 做邮箱去重合并、重建并写回索引。但维护动作是**幂等**的：当
+///
+/// 1. 索引内没有重复 id；
+/// 2. 索引内没有重复邮箱（去重合并已做过）；
+/// 3. 账号目录里没有游离账号文件（不存在"索引缺失需补扫"）；
+///
+/// 三者同时成立时，跑与不跑维护的结果**完全一致**。本函数用 O(n) 哈希检测给出该判定，
+/// 让"打开账号页"这条热路径不再每次都做整表维护。
+fn index_needs_normalize(index: &CursorAccountIndex) -> bool {
+    let mut seen_ids: HashSet<&str> = HashSet::new();
+    let mut seen_emails: HashSet<String> = HashSet::new();
+    for summary in &index.accounts {
+        if !seen_ids.insert(summary.id.as_str()) {
+            return true;
+        }
+        if let Some(email) = normalize_email_identity(Some(summary.email.as_str())) {
+            if !seen_emails.insert(email) {
+                return true;
             }
         }
     }
+    for account_id in collect_account_ids_from_directory() {
+        if !seen_ids.contains(account_id.as_str()) {
+            return true;
+        }
+    }
+    false
+}
+
+fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount> {
+    let mut seen_summary_ids = HashSet::new();
+    let mut candidate_ids: Vec<String> = Vec::new();
+
+    for summary in &index.accounts {
+        if seen_summary_ids.insert(summary.id.clone()) {
+            candidate_ids.push(summary.id.clone());
+        }
+    }
+    let summary_candidate_count = candidate_ids.len();
 
     let mut recovered_count = 0usize;
     for account_id in collect_account_ids_from_directory() {
-        if seen_account_ids.contains(&account_id) {
+        if seen_summary_ids.contains(&account_id) {
             continue;
         }
-        if let Some(account) = load_account(&account_id) {
-            if seen_account_ids.insert(account.id.clone()) {
-                if !seen_summary_ids.contains(&account_id) {
-                    recovered_count += 1;
-                }
-                loaded_accounts.push(account);
+        candidate_ids.push(account_id);
+    }
+
+    // 0019：候选 id 先定序去重，再并发读取，最后按原顺序回收，保持既有语义不变。
+    let mut loaded_accounts = Vec::new();
+    let mut seen_account_ids = HashSet::new();
+    for (candidate_idx, account) in load_accounts_concurrently(&candidate_ids) {
+        if seen_account_ids.insert(account.id.clone()) {
+            if candidate_idx >= summary_candidate_count {
+                recovered_count += 1;
             }
+            loaded_accounts.push(account);
         }
     }
     if recovered_count > 0 {
@@ -1223,10 +1383,24 @@ fn normalize_account_index(index: &mut CursorAccountIndex) -> Vec<CursorAccount>
     }
 
     let total = loaded_accounts.len();
-    for left in 0..total {
-        for right in (left + 1)..total {
-            if accounts_are_duplicates(&loaded_accounts[left], &loaded_accounts[right]) {
-                union(&mut parents, left, right);
+    // 0020：原实现是 O(n²) 两两比较（4471² / 2 ≈ 1000 万次，实测约 3.6 秒）。
+    // `accounts_are_duplicates` 只比较「规范化邮箱」，因此按邮箱分组、仅在组内两两比较，
+    // 判定结果与原实现完全等价，复杂度降为 O(n)。
+    let mut email_groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, account) in loaded_accounts.iter().enumerate() {
+        if let Some(email) = normalize_email_identity(Some(account.email.as_str())) {
+            email_groups.entry(email).or_default().push(idx);
+        }
+    }
+    for group in email_groups.values() {
+        if group.len() < 2 {
+            continue;
+        }
+        for i in 0..group.len() {
+            for j in (i + 1)..group.len() {
+                if accounts_are_duplicates(&loaded_accounts[group[i]], &loaded_accounts[group[j]]) {
+                    union(&mut parents, group[i], group[j]);
+                }
             }
         }
     }
@@ -1362,6 +1536,25 @@ pub fn list_accounts() -> Vec<CursorAccount> {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut index = load_account_index();
     let had_index_accounts = !index.accounts.is_empty();
+
+    // 0021 快速路径：索引已一致（无重复 id/邮箱、目录无游离账号）→ 整表维护是幂等的，
+    // 直接并发读取即可，不再"每次打开都做整的"。
+    if had_index_accounts && !index_needs_normalize(&index) {
+        let ids: Vec<String> = index
+            .accounts
+            .iter()
+            .map(|summary| summary.id.clone())
+            .collect();
+        let loaded: Vec<CursorAccount> = load_accounts_concurrently(&ids)
+            .into_iter()
+            .map(|(_, account)| account)
+            .collect();
+        if !loaded.is_empty() {
+            return loaded;
+        }
+        // 详情全部读不到 → 落回原路径，保留既有告警与"不写回空索引"语义
+    }
+
     let index_before_normalize = serde_json::to_vec(&index).ok();
     let accounts = normalize_account_index(&mut index);
     if had_index_accounts && accounts.is_empty() {
@@ -1382,12 +1575,116 @@ pub fn list_accounts() -> Vec<CursorAccount> {
     accounts
 }
 
+/// 前端列表分页：按索引切片读详情并去令牌；不每次全表 normalize，避免四千号一次堵死。
+pub fn list_accounts_page_for_ui(offset: usize, limit: usize) -> CursorAccountListPage {
+    let limit = limit.clamp(1, 500);
+    let _lock = CURSOR_ACCOUNT_INDEX_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut index = load_account_index();
+    if index.accounts.is_empty() {
+        let accounts = normalize_account_index(&mut index);
+        if !accounts.is_empty() {
+            if let Err(err) = save_account_index(&index) {
+                logger::log_warn(&format!(
+                    "[Cursor Account] 空索引补扫后保存失败: {}",
+                    err
+                ));
+            }
+        }
+    }
+    let total = index.accounts.len();
+    if offset >= total {
+        return CursorAccountListPage {
+            accounts: Vec::new(),
+            total,
+            offset,
+            next_offset: offset,
+            has_more: false,
+        };
+    }
+    let end = (offset + limit).min(total);
+    let slice = &index.accounts[offset..end];
+    // 0019：本页详情并发读取（本机 20 核；单条约 15ms，200 条串行 0.9~2.5s）。
+    let page_ids: Vec<String> = slice
+        .iter()
+        .map(|summary| summary.id.clone())
+        .collect();
+    let loaded: HashMap<usize, CursorAccount> = load_accounts_concurrently(&page_ids)
+        .into_iter()
+        .collect();
+    let mut accounts = Vec::with_capacity(slice.len());
+    for (page_idx, summary) in slice.iter().enumerate() {
+        if let Some(account) = loaded.get(&page_idx) {
+            accounts.push(account.clone().for_ui_list());
+        } else {
+            accounts.push(
+                CursorAccount {
+                    id: summary.id.clone(),
+                    email: summary.email.clone(),
+                    auth_id: summary.auth_id.clone(),
+                    name: None,
+                    tags: summary.tags.clone(),
+                    access_token: String::new(),
+                    refresh_token: None,
+                    membership_type: summary.membership_type.clone(),
+                    subscription_status: None,
+                    sign_up_type: None,
+                    cursor_auth_raw: None,
+                    cursor_usage_raw: None,
+                    status: None,
+                    status_reason: None,
+                    quota_query_last_error: None,
+                    quota_query_last_error_at: None,
+                    usage_updated_at: None,
+                    chat_probe: None,
+                    created_at: summary.created_at,
+                    last_used: summary.last_used,
+                }
+                .for_ui_list(),
+            );
+        }
+    }
+    CursorAccountListPage {
+        accounts,
+        total,
+        offset,
+        next_offset: end,
+        has_more: end < total,
+    }
+}
+
+/// 兼容整表 list：去令牌后返回（仍可能慢；前端应优先分页）。
+pub fn list_accounts_for_ui() -> Vec<CursorAccount> {
+    list_accounts()
+        .into_iter()
+        .map(CursorAccount::for_ui_list)
+        .collect()
+}
+
 pub fn list_accounts_checked() -> Result<Vec<CursorAccount>, String> {
     let _lock = CURSOR_ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|_| "获取 Cursor 账号锁失败".to_string())?;
     let mut index = load_account_index_checked()?;
     let had_index_accounts = !index.accounts.is_empty();
+
+    // 0021 快速路径：同上，索引一致时跳过整表维护。
+    if had_index_accounts && !index_needs_normalize(&index) {
+        let ids: Vec<String> = index
+            .accounts
+            .iter()
+            .map(|summary| summary.id.clone())
+            .collect();
+        let loaded: Vec<CursorAccount> = load_accounts_concurrently(&ids)
+            .into_iter()
+            .map(|(_, account)| account)
+            .collect();
+        if !loaded.is_empty() {
+            return Ok(loaded);
+        }
+    }
+
     let index_before_normalize = serde_json::to_vec(&index).ok();
     let accounts = normalize_account_index(&mut index);
     if had_index_accounts && accounts.is_empty() {
@@ -2089,6 +2386,26 @@ fn write_cursor_auth_fields_to_conn(
     // 恢复 WAL mode
     conn.execute_batch("PRAGMA journal_mode=WAL;")
         .map_err(|e| format!("恢复 journal_mode=WAL 失败: {}", e))?;
+    let _ = sync_cursor_auth_json(&account.access_token, account.refresh_token.as_deref());
+    Ok(())
+}
+
+/// 同步写入 %APPDATA%\Cursor\auth.json，供 DSH（DeepSeek Harness）及外部工具通过文件监听器感知最新凭据
+pub fn sync_cursor_auth_json(access_token: &str, refresh_token: Option<&str>) -> Result<(), String> {
+    let cursor_root = cursor_appdata_root()?;
+    fs::create_dir_all(&cursor_root).map_err(|e| format!("创建 Cursor AppData 失败: {}", e))?;
+    let rt = refresh_token.unwrap_or(access_token);
+    let doc = serde_json::json!({
+        "accessToken": access_token,
+        "refreshToken": rt,
+    });
+    let content = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    crate::modules::atomic_write::write_string_atomic(
+        &cursor_root.join("auth.json"),
+        &content,
+    )
+    .map_err(|e| format!("写入 Cursor auth.json 失败: {}", e))?;
+    logger::log_info("[Cursor Switch] 已同步写入 %APPDATA%\\Cursor\\auth.json (供 DSH 监听同步)");
     Ok(())
 }
 
@@ -2247,6 +2564,16 @@ fn clear_switch_auth_keys_for_profile(profile_dir: &Path) -> Result<(), String> 
     Ok(())
 }
 
+/// 续杯/虚备已在 main.js 打补丁时，禁止 Cockpit 重写 storage.json / machineId（保留「重置机器码」）。
+fn should_skip_fingerprint_reset_for_third_party_renewal() -> bool {
+    crate::modules::cursor_instance::resolve_cursor_launch_path()
+        .ok()
+        .map(|exe| {
+            crate::modules::cursor_switch_align::cursor_main_js_has_third_party_renewal_patch(&exe)
+        })
+        .unwrap_or(false)
+}
+
 /// 无忧传统切号 `i()`：close → Kh → Gh → Jh → Yh → Nc（默认 profile）。
 fn nirvana_traditional_switch_steps(account_id: &str, manual_user_pick: bool) -> Result<(), String> {
     let account =
@@ -2257,8 +2584,15 @@ fn nirvana_traditional_switch_steps(account_id: &str, manual_user_pick: bool) ->
     let default_dir = get_default_cursor_data_dir()?;
     // 多开逻辑：不关闭 Cursor，直接切换 token
     switch_tokens_in_profile_db(&default_dir, account_id, manual_user_pick)?;
-    reset_storage_json_ids_for_profile(&default_dir)?;
-    reset_machine_id_file_for_profile(&default_dir)?;
+
+    if should_skip_fingerprint_reset_for_third_party_renewal() {
+        logger::log_info(
+            "[Cursor Switch] main.js 含续杯/虚备补丁，跳过 storage.json 与 machineId 文件重置（保留续杯重置机器码）",
+        );
+    } else {
+        reset_storage_json_ids_for_profile(&default_dir)?;
+        reset_machine_id_file_for_profile(&default_dir)?;
+    }
 
     if let Ok(cursor_exe) = crate::modules::cursor_instance::resolve_cursor_launch_path() {
         crate::modules::cursor_switch_align::apply_nirvana_traditional_switch_patches_main_js_only(
@@ -2290,7 +2624,35 @@ fn cursor_appdata_root() -> Result<PathBuf, String> {
     Ok(PathBuf::from(appdata).join("Cursor"))
 }
 
-/// 对齐虚备 `apply_account`：写 seamless_state + wx_*，并关掉自动换号偏好，避免管家 get-token 通道立刻盖回。
+/// 热路径落盘用的 auto_switch 有效值。
+/// - 用户 pref 为 true：原样跟 pref 写 true
+/// - 读到 false（污染/历史硬编码残留）：只升级为 true，禁止回写 false 固化偷关
+/// 历史病根：曾硬编码 `auto_switch_pref.enabled=false` 与 `config.auto_switch=false`。
+/// `emit_audit=true` 时写 `[偷关防御][换号链路]` 审计；单测可关。
+fn hot_path_effective_auto_switch(user_auto_switch: bool, emit_audit: bool) -> bool {
+    if user_auto_switch {
+        true
+    } else {
+        if emit_audit {
+            crate::modules::logger::log_warn(
+                "[偷关防御][换号链路] 读到 auto_switch=false 污染值，按升级为 true 处理，不回写 false",
+            );
+        }
+        true
+    }
+}
+
+/// 与 `apply_xubei_seamless_hot_path` 双写字段同构：pref.enabled + seamless config.auto_switch。
+/// 单测用此构造回归「禁止落盘 false」；生产路径必须与此一致。
+fn hot_path_auto_switch_disk_payload(user_auto_switch: bool) -> (serde_json::Value, serde_json::Value) {
+    let v = hot_path_effective_auto_switch(user_auto_switch, /*emit_audit*/ false);
+    (
+        serde_json::json!({ "enabled": v }),
+        serde_json::json!({ "auto_switch": v }),
+    )
+}
+
+/// 对齐续杯管家 `apply_account`：写 seamless_state + wx_*（保留用户四开关设置，不自动关闭）。
 fn apply_xubei_seamless_hot_path(
     email: &str,
     access_token: &str,
@@ -2337,17 +2699,30 @@ fn apply_xubei_seamless_hot_path(
         }
     }
 
-    // 总控切号时关掉自动换号偏好，否则管家进程会继续按用量把 get-token 盖回自家号。
+    // 读取用户当前四开关偏好；auto_switch 经升级后再落盘（禁写 false）
+    let user_prefs = crate::modules::xubei_renewal_prefs::read_xubei_renewal_prefs()
+        .unwrap_or(crate::modules::xubei_renewal_prefs::XubeiRenewalPrefs {
+            seamless_enabled: true,
+            auto_switch: true,
+            auto_reset_machine: true,
+            auto_send_continue: true,
+        });
+    // 一律跟用户 pref；读到 false 只升级。历史病根：硬编码 enabled/auto_switch=false。
+    let effective_auto_switch =
+        hot_path_effective_auto_switch(user_prefs.auto_switch, /*emit_audit*/ true);
     let pref_path = wuxian_auto_switch_pref_path()?;
-    let pref_body = serde_json::json!({ "enabled": false });
+    let pref_body = serde_json::json!({ "enabled": effective_auto_switch });
     crate::modules::atomic_write::write_string_atomic(
         &pref_path,
         &serde_json::to_string_pretty(&pref_body).map_err(|e| e.to_string())?,
     )
     .map_err(|e| format!("写入 auto_switch_pref 失败: {}", e))?;
 
-    let st = serde_json::json!({
-        "config": { "enabled": true, "auto_switch": false },
+    // 对齐原版 apply 后：偏好开启则落 pending_resume，供注入 AutoResume 轮询 /api/pending-resume
+    // config.auto_switch 必须与 auto_switch_pref 同写 effective_auto_switch，
+    // 禁止 seamless_state 残留 false 而 pref 已升 true（双写不一致会让 HTTP/FO 侧读到假关）。
+    let mut st = serde_json::json!({
+        "config": { "enabled": user_prefs.seamless_enabled, "auto_switch": effective_auto_switch },
         "accessToken": access_token,
         "refreshToken": refresh_token,
         "email": email,
@@ -2359,6 +2734,12 @@ fn apply_xubei_seamless_hot_path(
         "updated_at": chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
         "source": "cockpit-tools",
     });
+    if user_prefs.auto_send_continue {
+        if let Some(obj) = st.as_object_mut() {
+            obj.insert("pending_resume".into(), serde_json::json!(true));
+            obj.insert("resume_text".into(), serde_json::json!("继续"));
+        }
+    }
     crate::modules::atomic_write::write_string_atomic(
         &state_path,
         &serde_json::to_string_pretty(&st).map_err(|e| e.to_string())?,
@@ -2388,7 +2769,6 @@ fn apply_xubei_seamless_hot_path(
     )
     .map_err(|e| format!("写入 wx_eh_map 失败: {}", e))?;
 
-    // 对齐虚备 write_machine_id_file（默认 profile 根）。
     crate::modules::atomic_write::write_string_atomic(
         &cursor_root.join("machineId"),
         &ids["telemetry.machineId"],
@@ -2407,116 +2787,243 @@ fn apply_xubei_seamless_hot_path(
     )
     .map_err(|e| format!("写入 machine-id 失败: {}", e))?;
 
+    let _ = sync_cursor_auth_json(access_token, Some(refresh_token));
+
     logger::log_info(&format!(
-        "[Cursor Switch] 虚备热替换落盘完成: email={}, state={}, auto_switch=false",
+        "[Cursor Switch] 续杯无感热替换落盘完成: email={}, state={}, seamless={}, auto_switch={}, auto_reset={}, auto_continue={}",
         email,
-        state_path.display()
+        state_path.display(),
+        user_prefs.seamless_enabled,
+        effective_auto_switch,
+        user_prefs.auto_reset_machine,
+        user_prefs.auto_send_continue,
     ));
     Ok(())
 }
 
-/// 管家进程仍开着「自动换号」时会盖回 seamless_state；反复落盘直到 get-token 连续粘住，再顶住一段时间。
 fn reassert_xubei_hot_path_until_stuck(
     email: &str,
     access_token: &str,
     refresh_token: &str,
     ids: &HashMap<&'static str, String>,
 ) -> Result<(), String> {
+    // WP-4 / 模块三：事件/漂移驱动。禁止固定 20×500ms 盲写 + 24×500ms 盲守（≈22s）。
+    // 一致即返回；仅 get-token 与期望 email 不一致时才重写。通常 <2s，异常才拉长。
     let expected = email.trim().to_lowercase();
-    let mut last_ok_streak = 0u32;
-    let mut stuck = false;
-    for round in 1..=20u32 {
-        // 每轮都重写 pref+state，对抗管家内存态仍把 auto_switch 报成 true、随后盖文件。
-        apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
-        std::thread::sleep(Duration::from_millis(500));
+    const MAX_ROUNDS: u32 = 12;
+    const SLEEP_MS: u64 = 150;
+
+    apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
+
+    for round in 1..=MAX_ROUNDS {
         match read_wuxian_get_token_email() {
             Ok(Some(got)) if got.trim().to_lowercase() == expected => {
-                last_ok_streak += 1;
                 logger::log_info(&format!(
-                    "[Cursor Switch] 热替换粘号确认 round={}, streak={}, email={}",
-                    round, last_ok_streak, email
-                ));
-                if last_ok_streak >= 5 {
-                    stuck = true;
-                    break;
-                }
-            }
-            Ok(Some(got)) => {
-                last_ok_streak = 0;
-                logger::log_warn(&format!(
-                    "[Cursor Switch] 热替换仍被管家盖回 round={}, get-token={}, 期望={}",
-                    round, got, email
-                ));
-            }
-            Ok(None) => {
-                last_ok_streak = 0;
-                logger::log_warn(&format!(
-                    "[Cursor Switch] 热替换 get-token 空 round={}, 期望={}",
+                    "[Cursor Switch] 续杯无感粘号确认（漂移驱动）round={}, email={}（一致，立即返回）",
                     round, email
                 ));
-            }
-            Err(err) => {
-                last_ok_streak = 0;
-                logger::log_warn(&format!(
-                    "[Cursor Switch] 热替换 get-token 读失败 round={}: {}",
-                    round, err
-                ));
-            }
-        }
-    }
-    if !stuck {
-        return Err(format!(
-            "热替换未挤掉管家: get-token 未能连续粘住 {}",
-            email
-        ));
-    }
-    // 粘住后再顶住约 12 秒，让 Cursor 注入轮询吃到总控号（避免刚返回就被管家盖回）。
-    for hold in 1..=24u32 {
-        apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
-        std::thread::sleep(Duration::from_millis(500));
-        match read_wuxian_get_token_email() {
-            Ok(Some(got)) if got.trim().to_lowercase() == expected => {
-                logger::log_info(&format!(
-                    "[Cursor Switch] 热替换顶住 hold={}/24, email={}",
-                    hold, email
-                ));
+                return Ok(());
             }
             Ok(Some(got)) => {
                 logger::log_warn(&format!(
-                    "[Cursor Switch] 热替换顶住期间被盖回 hold={}, get-token={}, 重写",
-                    hold, got
+                    "[Cursor Switch] 续杯无感仍被盖回 round={}/{}, get-token={}, 期望={}，重写",
+                    round, MAX_ROUNDS, got, email
                 ));
+                apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
             }
-            other => {
+            Ok(None) => {
                 logger::log_warn(&format!(
-                    "[Cursor Switch] 热替换顶住期间读失败 hold={}: {:?}",
-                    hold, other
+                    "[Cursor Switch] 续杯无感 get-token 空 round={}/{}, 期望={}，重写",
+                    round, MAX_ROUNDS, email
                 ));
+                apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
+            }
+            Err(err) => {
+                logger::log_warn(&format!(
+                    "[Cursor Switch] 续杯无感 get-token 读失败 round={}/{}: {}，重写",
+                    round, MAX_ROUNDS, err
+                ));
+                apply_xubei_seamless_hot_path(email, access_token, refresh_token, ids)?;
             }
         }
+        std::thread::sleep(Duration::from_millis(SLEEP_MS));
     }
+
     match read_wuxian_get_token_email() {
         Ok(Some(got)) if got.trim().to_lowercase() == expected => Ok(()),
         Ok(Some(got)) => Err(format!(
-            "热替换顶住结束仍被管家盖回: 期望={} get-token={}",
+            "续杯无感未粘住: 期望={} get-token={}",
             email, got
         )),
-        Ok(None) => Err(format!("热替换顶住结束 get-token 空, 期望={}", email)),
-        Err(err) => Err(format!("热替换顶住结束读失败: {}", err)),
+        Ok(None) => Err(format!("续杯无感未粘住: get-token 空, 期望={}", email)),
+        Err(err) => Err(format!("续杯无感未粘住: 读失败: {}", err)),
     }
 }
 
-/// 读管家/虚备本地 get-token 当前邮箱（侧栏热替换权威；只写库不够）。
-pub fn read_wuxian_get_token_email() -> Result<Option<String>, String> {
-    let ports: &[u16] = &[14520, 14521, 14522, 14523, 14524, 35420, 35421, 35422, 35423, 35424];
+fn spawn_xubei_hot_path_keeper(
+    email: String,
+    access_token: String,
+    refresh_token: String,
+    ids: HashMap<&'static str, String>,
+) {
+    let _ = std::thread::Builder::new()
+        .name("xubei-hot-path-keeper".into())
+        .spawn(move || {
+            let expected = email.trim().to_lowercase();
+            // 仅漂移才写；轮询从 1s×45 降噪为 2s×24（总监视窗≈48s，唤醒次数减半）
+            for round in 1..=24u32 {
+                std::thread::sleep(Duration::from_secs(2));
+                let need = match read_wuxian_get_token_email() {
+                    Ok(Some(got)) => got.trim().to_lowercase() != expected,
+                    Ok(None) => true,
+                    Err(_) => true,
+                };
+                if need {
+                    if let Err(err) =
+                        apply_xubei_seamless_hot_path(&email, &access_token, &refresh_token, &ids)
+                    {
+                        logger::log_warn(&format!(
+                            "[Cursor Switch] 续杯无感续盖失败 round={}: {}",
+                            round, err
+                        ));
+                    } else {
+                        logger::log_info(&format!(
+                            "[Cursor Switch] 续杯无感续盖 round={}, email={}",
+                            round, email
+                        ));
+                    }
+                }
+            }
+        });
+}
+
+const XUBEI_SEAMLESS_SWITCH_TAG: &str = "续杯无感换号";
+
+/// 续杯管家式无感换号：写 wuxian 热替换通道 + 默认 profile 库（不关窗）。
+pub fn xubei_seamless_switch_account(
+    account_id: &str,
+    manual_user_pick: bool,
+) -> Result<(), String> {
+    // 对齐原版 on_seamless：先起本地无感服务，然后直接 apply；不先卡 get-token
+    match crate::modules::wuxian_seamless_server::start(None) {
+        Ok(port) => logger::log_info(&format!(
+            "[Cursor Switch] wuxian 就绪 port={} adopted={}",
+            port,
+            crate::modules::wuxian_seamless_server::is_adopted_external()
+        )),
+        Err(e) => logger::log_warn(&format!(
+            "[Cursor Switch] wuxian 启动失败（仍继续写盘，对齐原版 apply_account）: {e}"
+        )),
+    }
+
+    let account =
+        load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
+    ensure_cursor_switch_allowed(&account, manual_user_pick)?;
+    let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
+    let default_dir = get_default_cursor_data_dir()?;
+    let ids = build_cursor_fingerprint_ids();
+    logger::log_info(&format!(
+        "[Cursor Switch] 续杯无感换号(热替换+写库): email={}, profile={}",
+        account.email,
+        default_dir.display()
+    ));
+
+    apply_xubei_seamless_hot_path(
+        &account.email,
+        &access_token,
+        &refresh_token,
+        &ids,
+    )?;
+    switch_tokens_in_profile_db_live(&default_dir, account_id, manual_user_pick)?;
+    let storage_json = default_dir
+        .join("User")
+        .join("globalStorage")
+        .join("storage.json");
+    if should_skip_fingerprint_reset_for_third_party_renewal() {
+        logger::log_info(
+            "[Cursor Switch] main.js 含续杯补丁，续杯无感路径跳过 storage.json 指纹写入",
+        );
+    } else {
+        upsert_storage_json_ids(&storage_json, &ids)?;
+    }
+    reassert_xubei_hot_path_until_stuck(
+        &account.email,
+        &access_token,
+        &refresh_token,
+        &ids,
+    )?;
+    spawn_xubei_hot_path_keeper(
+        account.email.clone(),
+        access_token,
+        refresh_token,
+        ids.clone(),
+    );
+
+    let mut tags = account.tags.clone().unwrap_or_default();
+    if !tags.iter().any(|t| t == XUBEI_SEAMLESS_SWITCH_TAG) {
+        tags.push(XUBEI_SEAMLESS_SWITCH_TAG.to_string());
+        let _ = update_account_tags(&account.id, tags);
+    }
+
+    logger::log_info(&format!(
+        "[Cursor Switch] 续杯无感换号完成: email={}",
+        account.email
+    ));
+    crate::modules::renewal_console_status::invalidate_renewal_console_status_cache();
+    Ok(())
+}
+
+/// Cockpit 内置 wuxian 服务 auto-switch 回调：对齐原版 —— 云端 /api/v1/switch + apply，
+/// 不再只从空池轮换（关管家后池空会直接「拉不到号」）。
+pub fn xubei_seamless_switch_from_wuxian_state() -> Result<String, String> {
+    logger::log_info("[WuxianServer] auto-switch：走云端拉号+无感写入（对齐管家 do_switch）");
+    let account = crate::modules::xubei_switch_client::pull_and_xubei_seamless_switch()?;
+    logger::log_info(&format!(
+        "[WuxianServer] auto-switch 完成: email={}",
+        account.email
+    ));
+    Ok(account.email)
+}
+
+fn wuxian_candidate_ports() -> Vec<u16> {
+    const DEFAULT: &[u16] = &[14520, 14521, 14522, 14523, 14524, 35420, 35421, 35422, 35423, 35424];
+    let mut ports = Vec::with_capacity(DEFAULT.len() + 1);
+    let active = crate::modules::wuxian_seamless_server::active_port();
+    if active != 0 {
+        ports.push(active);
+    }
+    for &p in DEFAULT {
+        if !ports.contains(&p) {
+            ports.push(p);
+        }
+    }
+    ports
+}
+
+fn tcp_port_open(port: u16, timeout_ms: u64) -> bool {
+    use std::net::{SocketAddr, TcpStream};
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(timeout_ms)).is_ok()
+}
+
+/// HTTP get-token 探测：任一端口成功响应即视为可达（邮箱可空 → `Ok(None)`）；
+/// 全部端口无成功响应 → `Err`（不可达）。不含 seamless_state 文件回退。
+pub fn probe_wuxian_get_token_http() -> Result<Option<String>, String> {
+    let ports = wuxian_candidate_ports();
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_millis(1200))
+        .connect_timeout(Duration::from_millis(250))
+        .timeout(Duration::from_millis(800))
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    let mut saw_http_ok = false;
     for port in ports {
+        if !tcp_port_open(port, 120) {
+            continue;
+        }
         let url = format!("http://127.0.0.1:{}/api/get-token", port);
         match client.get(&url).send() {
             Ok(resp) if resp.status().is_success() => {
+                saw_http_ok = true;
                 let body = resp.text().unwrap_or_default();
                 if let Ok(v) = serde_json::from_str::<Value>(&body) {
                     if let Some(email) = v.get("email").and_then(|x| x.as_str()) {
@@ -2530,103 +3037,247 @@ pub fn read_wuxian_get_token_email() -> Result<Option<String>, String> {
             _ => continue,
         }
     }
-    // HTTP 未起时，直接读 state 文件（与 get-token 同源）。
+    if saw_http_ok {
+        Ok(None)
+    } else {
+        Err("get-token 服务不可达".to_string())
+    }
+}
+
+/// 只读：续杯/虚备 get-token 当前邮箱（对照用）。禁止写入对方通道。
+/// 优先 HTTP；HTTP 不可达时回退读 seamless_state。
+pub fn read_wuxian_get_token_email() -> Result<Option<String>, String> {
+    match probe_wuxian_get_token_http() {
+        Ok(v) => return Ok(v),
+        Err(_) => {}
+    }
     let state_path = wuxian_seamless_state_path()?;
     if !state_path.exists() {
         return Ok(None);
     }
     let raw = fs::read_to_string(&state_path)
         .map_err(|e| format!("读 seamless_state 失败: {}", e))?;
-    let v: Value = serde_json::from_str(&raw).map_err(|e| format!("解析 seamless_state 失败: {}", e))?;
+    let v: Value =
+        serde_json::from_str(&raw).map_err(|e| format!("解析 seamless_state 失败: {}", e))?;
     Ok(v.get("email")
         .and_then(|x| x.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty()))
 }
 
-/// 默认 profile 无感：对齐虚备 apply_account（热替换通道 + 写库），不关正在用的默认窗（方案甲）。
-/// 无忧传统关窗路径仍由 `nirvana_traditional_switch_steps` 保留，勿删。
+/// 手动发送继续：对齐原版 —— 写 `seamless_state.pending_resume` + `resume_text=继续`。
+/// 原版不扫 HTTP `/api/resume-continue`（管家也无此路由）。
+pub fn manual_send_continue_to_xubei() -> Result<String, String> {
+    let _ = crate::modules::wuxian_seamless_server::start(None);
+
+    let state_path = wuxian_seamless_state_path()?;
+    let mut st = if state_path.exists() {
+        let raw = fs::read_to_string(&state_path)
+            .map_err(|e| format!("读 seamless_state 失败: {e}"))?;
+        serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    let email = st
+        .get("email")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    if let Some(obj) = st.as_object_mut() {
+        obj.insert("pending_resume".into(), serde_json::json!(true));
+        obj.insert("resume_text".into(), serde_json::json!("继续"));
+    } else {
+        st = serde_json::json!({
+            "pending_resume": true,
+            "resume_text": "继续",
+            "email": email,
+        });
+    }
+
+    if let Some(parent) = state_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建 wuxian 目录失败: {e}"))?;
+    }
+    crate::modules::atomic_write::write_string_atomic(
+        &state_path,
+        &serde_json::to_string_pretty(&st).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("写入 seamless_state pending_resume 失败: {e}"))?;
+
+    let msg = format!("已标记发送继续: {email}");
+    logger::log_info(&format!("[Xubei Continue] {msg}"));
+    Ok(msg)
+}
+
+/// 重置本机 Cursor 机器码：对齐续杯管家「重置机器码」按钮。
+pub fn reset_cursor_machine_id_live() -> Result<String, String> {
+    hard_reset_cursor_fingerprint_state()?;
+    let msg = "机器码已重置 (storage.json / machineId / state.vscdb)";
+    logger::log_info(&format!("[Xubei Reset] {}", msg));
+    Ok(msg.to_string())
+}
+
+/// 还原续杯注入：从 .bak 备份恢复被注入的 Cursor 文件。
+/// 对齐原版 `cursor_injector.restore()` — workbench / exthost / main / util 四个文件。
+pub fn restore_cursor_injection() -> Result<String, String> {
+    use crate::modules::cursor_instance;
+
+    let exe = cursor_instance::resolve_cursor_launch_path()
+        .map_err(|_| "未找到 Cursor 安装路径")?;
+    let install_root = exe
+        .parent()
+        .ok_or_else(|| "无法解析 Cursor 安装根目录")?;
+    let app_root = install_root.join("resources").join("app");
+
+    // 与原版 resolve_paths() 一致的四个注入文件
+    let targets: Vec<(&str, std::path::PathBuf)> = vec![
+        (
+            "workbench",
+            app_root.join("out/vs/workbench/workbench.desktop.main.js"),
+        ),
+        (
+            "exthost",
+            app_root.join("out/vs/workbench/api/node/extensionHostProcess.js"),
+        ),
+        ("main", app_root.join("out/main.js")),
+    ];
+
+    let mut steps: Vec<String> = Vec::new();
+    let mut any_work = false;
+
+    for (label, path) in &targets {
+        if !path.exists() {
+            steps.push(format!("{label}: 文件不存在，跳过"));
+            continue;
+        }
+        let bak = path.with_extension(format!(
+            "{}.bak",
+            path.extension().unwrap_or_default().to_str().unwrap_or("js")
+        ));
+        // 修正：bak 路径是 <file>.bak（如 workbench.desktop.main.js.bak）
+        let bak = std::path::PathBuf::from(format!("{}.bak", path.display()));
+        if bak.exists() {
+            std::fs::copy(&bak, path).map_err(|e| {
+                format!("{label}: 从 .bak 还原失败: {e}")
+            })?;
+            steps.push(format!("{label}: 已从 .bak 还原"));
+            any_work = true;
+        } else {
+            steps.push(format!("{label}: 无 .bak 备份，跳过"));
+        }
+    }
+
+    // util: alwaysLocalSingletonMain.js（glob 搜索）
+    if let Ok(entries) = glob_simple(&app_root, "alwaysLocalSingletonMain.js") {
+        for util_path in entries {
+            let bak = std::path::PathBuf::from(format!("{}.bak", util_path.display()));
+            if bak.exists() {
+                if let Err(e) = std::fs::copy(&bak, &util_path) {
+                    steps.push(format!("util: 从 .bak 还原失败: {e}"));
+                } else {
+                    steps.push("util: 已从 .bak 还原".into());
+                    any_work = true;
+                }
+            } else {
+                steps.push("util: 无 .bak 备份，跳过".into());
+            }
+        }
+    }
+
+    let summary = if any_work {
+        "还原完成（已从备份恢复注入文件）"
+    } else {
+        "当前未注入，无需还原"
+    };
+    logger::log_info(&format!("[Xubei Restore] {summary}: {:?}", steps));
+    Ok(format!("{summary}\n{}", steps.join("\n")))
+}
+
+/// 简易 glob：在 dir 下递归搜索匹配文件名的文件。
+fn glob_simple(dir: &std::path::Path, filename: &str) -> Result<Vec<std::path::PathBuf>, ()> {
+    let mut results = Vec::new();
+    fn walk(dir: &std::path::Path, filename: &str, out: &mut Vec<std::path::PathBuf>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, filename, out);
+                } else if path.file_name().map(|n| n == filename).unwrap_or(false) {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    walk(dir, filename, &mut results);
+    Ok(results)
+}
+
+/// 默认 profile 无感：写本机默认 Cursor 库与 storage，不关窗。
+/// 默认 Play（`manual_user_pick=false`）：不抢续杯热通道。
+/// 显式切号（`manual_user_pick=true`）：写库成功后若 get-token HTTP 可达，再对齐热通道。
+/// 无忧传统路径仍由 `nirvana_traditional_switch_steps` 保留，勿删。
 fn default_seamless_switch_steps(account_id: &str, manual_user_pick: bool) -> Result<(), String> {
     let account =
         load_account(account_id).ok_or_else(|| format!("Cursor 账号不存在: {}", account_id))?;
     ensure_cursor_switch_allowed(&account, manual_user_pick)?;
-    let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
     let default_dir = get_default_cursor_data_dir()?;
     let ids = build_cursor_fingerprint_ids();
     logger::log_info(&format!(
-        "[Cursor Switch] 默认无感(虚备热替换+写库): email={}, profile={}",
+        "[Cursor Switch] 默认无感(只写本库{}): email={}, profile={}",
+        if manual_user_pick {
+            "；显式切号可后续对齐热通道"
+        } else {
+            "，不碰续杯通道"
+        },
         account.email,
         default_dir.display()
     ));
-    // 先写 get-token / wx_*，侧栏才会在 1–2 秒内变成总控号；只写 vscdb 挤不掉管家。
-    apply_xubei_seamless_hot_path(
-        &account.email,
-        &access_token,
-        &refresh_token,
-        &ids,
-    )?;
-    // 对齐虚备 patch_vscdb_auth：Cursor 仍占用 state.vscdb 时不得切 journal / 删 -wal。
+    // Cursor 仍占用 state.vscdb 时不得切 journal / 删 -wal。
     switch_tokens_in_profile_db_live(&default_dir, account_id, manual_user_pick)?;
     let storage_json = default_dir
         .join("User")
         .join("globalStorage")
         .join("storage.json");
-    upsert_storage_json_ids(&storage_json, &ids)?;
-    // 管家仍开自动换号时会盖回 state；同步粘住后再后台续盖一段时间。
-    reassert_xubei_hot_path_until_stuck(
-        &account.email,
-        &access_token,
-        &refresh_token,
-        &ids,
-    )?;
-    spawn_xubei_hot_path_keeper(
-        account.email.clone(),
-        access_token,
-        refresh_token,
-        ids.clone(),
-    );
+    if should_skip_fingerprint_reset_for_third_party_renewal() {
+        logger::log_info(
+            "[Cursor Switch] main.js 含续杯/虚备补丁，默认无感路径跳过 storage.json 指纹写入（保留续杯重置机器码）",
+        );
+    } else {
+        upsert_storage_json_ids(&storage_json, &ids)?;
+    }
+
+    // 显式切号 + 默认 profile：写库后若管家 get-token HTTP 可达，对齐热通道，避免 stick 仍读到旧号。
+    // 默认 Play 不走此分支，避免抢热通道。
+    if manual_user_pick {
+        match probe_wuxian_get_token_http() {
+            Ok(_) => {
+                let (access_token, refresh_token) = nirvana_kh_auth_tokens(&account)?;
+                apply_xubei_seamless_hot_path(
+                    &account.email,
+                    &access_token,
+                    &refresh_token,
+                    &ids,
+                )?;
+                logger::log_info(&format!(
+                    "[Cursor Switch] 显式切号已对齐续杯热通道: email={}",
+                    account.email
+                ));
+            }
+            Err(err) => {
+                logger::log_info(&format!(
+                    "[Cursor Switch] 显式切号 get-token 不可达，仅写默认库: {}",
+                    err
+                ));
+            }
+        }
+    }
+
     logger::log_info(&format!(
         "[Cursor Switch] 默认无感完成: email={}",
         account.email
     ));
     Ok(())
-}
-
-/// 切号返回后继续对抗管家自动换号盖写（约 45 秒）。
-fn spawn_xubei_hot_path_keeper(
-    email: String,
-    access_token: String,
-    refresh_token: String,
-    ids: HashMap<&'static str, String>,
-) {
-    let _ = std::thread::Builder::new()
-        .name("xubei-hot-path-keeper".into())
-        .spawn(move || {
-            let expected = email.trim().to_lowercase();
-            for round in 1..=45u32 {
-                std::thread::sleep(Duration::from_secs(1));
-                let need = match read_wuxian_get_token_email() {
-                    Ok(Some(got)) => got.trim().to_lowercase() != expected,
-                    Ok(None) => true,
-                    Err(_) => true,
-                };
-                if need {
-                    if let Err(err) =
-                        apply_xubei_seamless_hot_path(&email, &access_token, &refresh_token, &ids)
-                    {
-                        logger::log_warn(&format!(
-                            "[Cursor Switch] 热替换续盖失败 round={}: {}",
-                            round, err
-                        ));
-                    } else {
-                        logger::log_info(&format!(
-                            "[Cursor Switch] 热替换续盖 round={}, email={}",
-                            round, email
-                        ));
-                    }
-                }
-            }
-        });
 }
 
 /// 读默认 profile 当前 `cursorAuth/cachedEmail`（粘号复查用）。
@@ -2906,6 +3557,98 @@ pub fn switch_cursor_account_to_profile(
     Ok(())
 }
 
+/// 冷启动后 CDP 才就绪：从实例热换目录读 state，延迟重推 window.store / 侧栏邮箱。
+pub fn spawn_multi_cdp_auth_resync_after_launch(profile_dir: PathBuf) {
+    let _ = std::thread::Builder::new()
+        .name("multi-cdp-auth-resync".into())
+        .spawn(move || {
+            let dir_s = profile_dir.to_string_lossy().to_string();
+            let state_path = multi_profile_seamless_dir(&profile_dir).join("state.json");
+            for round in 1..=12u32 {
+                std::thread::sleep(Duration::from_secs(2));
+                let Some(port) =
+                    crate::modules::cursor_instance::resolve_cdp_port_for_user_data_dir(&dir_s)
+                else {
+                    logger::log_warn(&format!(
+                        "[Cursor Switch] 多开 CDP 重推跳过 round={}: 无 CDP 端口",
+                        round
+                    ));
+                    continue;
+                };
+                let Ok(raw) = fs::read_to_string(&state_path) else {
+                    logger::log_warn(&format!(
+                        "[Cursor Switch] 多开 CDP 重推跳过 round={}: 无 state.json",
+                        round
+                    ));
+                    continue;
+                };
+                let Ok(st) = serde_json::from_str::<Value>(&raw) else {
+                    continue;
+                };
+                let email = st
+                    .get("email")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                let access = st
+                    .get("accessToken")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                let refresh = st
+                    .get("refreshToken")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(access)
+                    .trim();
+                if email.is_empty() || access.is_empty() {
+                    continue;
+                }
+                let mut ids: HashMap<&'static str, String> = HashMap::new();
+                if let Some(m) = st.get("machineIds").and_then(|v| v.as_object()) {
+                    for (k, field) in [
+                        ("machineId", "telemetry.machineId"),
+                        ("macMachineId", "telemetry.macMachineId"),
+                        ("devDeviceId", "telemetry.devDeviceId"),
+                        ("sqmId", "telemetry.sqmId"),
+                    ] {
+                        if let Some(v) = m.get(k).and_then(|x| x.as_str()) {
+                            ids.insert(field, v.to_string());
+                        }
+                    }
+                }
+                if ids.len() < 4 {
+                    ids = build_cursor_fingerprint_ids();
+                }
+                match push_multi_auth_via_cdp(&profile_dir, email, access, refresh, &ids) {
+                    Ok(v) => {
+                        let got = v
+                            .get("value")
+                            .and_then(|x| x.get("email"))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_lowercase();
+                        if got == email.to_lowercase() {
+                            logger::log_info(&format!(
+                                "[Cursor Switch] 多开 CDP 启动后重推已对齐 round={}, email={}",
+                                round, email
+                            ));
+                            break;
+                        }
+                        logger::log_warn(&format!(
+                            "[Cursor Switch] 多开 CDP 启动后重推未对齐 round={}, want={}, got={}",
+                            round, email, got
+                        ));
+                    }
+                    Err(err) => logger::log_warn(&format!(
+                        "[Cursor Switch] 多开 CDP 启动后重推失败 round={}: {}",
+                        round, err
+                    )),
+                }
+            }
+        });
+}
+
 /// 显式走无忧传统关窗切号（保留；默认入口已改无感）。
 #[allow(dead_code)]
 pub fn switch_cursor_account_traditional_default(
@@ -3040,7 +3783,9 @@ fn switch_tokens_in_profile_db_inner(
                         "[Cursor Switch] 写库忙重试 {}/8 (live={}): {}",
                         attempt, live_cursor, last_err
                     ));
-                    std::thread::sleep(Duration::from_millis(250 * attempt as u64));
+                    // WP-4：线性退避加上限，避免 250ms*attempt 在多次重试时无界拉长
+                    let backoff_ms = (250u64 * attempt as u64).min(800);
+                    std::thread::sleep(Duration::from_millis(backoff_ms));
                     continue;
                 }
                 break;
@@ -3063,7 +3808,8 @@ fn switch_tokens_in_profile_db_once(
 
     let conn = Connection::open(db_path)
         .map_err(|e| format!("打开 Cursor state.vscdb 失败({}): {}", db_path.display(), e))?;
-    conn.busy_timeout(Duration::from_secs(if live_cursor { 15 } else { 5 }))
+    // WP-4：live busy_timeout 15s → 8s，缩短最坏阻塞
+    conn.busy_timeout(Duration::from_secs(if live_cursor { 8 } else { 5 }))
         .map_err(|e| format!("设置 busy_timeout 失败: {}", e))?;
 
     let mut switched_to_delete = false;
@@ -3081,7 +3827,7 @@ fn switch_tokens_in_profile_db_once(
                         msg
                     ));
                     wal_only = true;
-                    conn.busy_timeout(Duration::from_secs(15))
+                    conn.busy_timeout(Duration::from_secs(8))
                         .map_err(|e| format!("设置 busy_timeout 失败: {}", e))?;
                     let _ = conn.execute_batch("PRAGMA journal_mode;");
                 } else {
@@ -3302,8 +4048,14 @@ pub fn should_auto_switch(current_account_id: &str) -> bool {
         }
     }
     let threshold = cfg.auto_switch_threshold.clamp(0, 100);
+    // 同 refresh_account_async_once 的既有语义：先认「实时刷新成功」这一事实。
+    let refreshed_ok = account.quota_query_last_error.is_none() && account.usage_updated_at.is_some();
     match cursor_overview_remaining_percent(&account) {
         Some(remaining) if remaining <= threshold => true,
+        // 与耗尽判定对齐：配额查失败时 remaining=None，也必须触发换号，否则开关形同虚设
+        None if has_quota_query_failed(&account) => true,
+        // 刷新成功但没有 quota 数据（例如无套餐字段的老数据）：不得靠假 remaining 永远 skip
+        None if refreshed_ok => true,
         _ => false,
     }
 }
@@ -3652,17 +4404,38 @@ async fn fetch_usage_summary_with_client(
     let cookie = build_session_cookie(access_token)
         .ok_or_else(|| "无法从 accessToken 解析 WorkOS 用户 ID".to_string())?;
 
+    // 第一次：Cookie 方式请求
     let response = client
         .get(CURSOR_USAGE_SUMMARY_URL)
         .header("Accept", "application/json")
         .header("Cookie", &cookie)
         .header(
             "User-Agent",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         )
+        .header("Referer", "https://cursor.com/cn/dashboard")
         .send()
         .await
         .map_err(|e| format!("请求 Cursor usage API 失败: {}", e))?;
+
+    // 若 401：第二次 Bearer Token 方式重试（对齐上游 nirvana 原版标准逻辑）
+    let response = if response.status().as_u16() == 401 {
+        logger::log_info("[Cursor Refresh] Cookie 方式返回 401，改用 Bearer Token 重试 usage-summary...");
+        client
+            .get(CURSOR_USAGE_SUMMARY_URL)
+            .header("Accept", "application/json")
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
+            .header("Referer", "https://cursor.com/cn/dashboard")
+            .send()
+            .await
+            .map_err(|e| format!("Bearer 重试请求 Cursor usage API 失败: {}", e))?
+    } else {
+        response
+    };
 
     let status = response.status().as_u16();
     if status == 401 {
@@ -3688,7 +4461,10 @@ async fn fetch_usage_summary_with_client(
 // Refresh (updates our own account storage + fetches usage from official APIs)
 // ---------------------------------------------------------------------------
 
-async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshResult, String> {
+async fn refresh_account_async_once(
+    account_id: &str,
+    defer_index_write: bool,
+) -> Result<CursorRefreshResult, String> {
     let existing = load_account(account_id).ok_or_else(|| "账号不存在".to_string())?;
     logger::log_info(&format!(
         "[Cursor Refresh] 开始刷新账号: id={}, email={}",
@@ -3716,12 +4492,51 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshRes
         }
     }
 
+    let api_started = std::time::Instant::now();
     let access_token = account.access_token.clone();
     let (meta_result, stripe_result, usage_result) = tokio::join!(
         fetch_user_meta_with_client(&client, &access_token),
         fetch_stripe_profile_with_client(&client, &access_token),
         fetch_usage_summary_with_client(&client, &access_token),
     );
+    let mut api_ms = api_started.elapsed().as_millis();
+
+    // 0013：JWT 的 exp 不可信——批量号 exp 未到期（实测到 2026-11），服务端却已 401。
+    // 因此 `access_token_needs_refresh` 会判「不需要刷新」，配额查询带着过期 token 直接 401，
+    // 再被当成「配额查询失败」触发换号，白白换掉本来还能用的号。
+    // 401 才是真信号：这里先刷新 access token，再用新 token 重试一次配额查询。
+    let usage_result = match &usage_result {
+        Err(err) if is_cursor_auth_quota_error(err) => {
+            let retry_started = std::time::Instant::now();
+            match refresh_account_access_token_with_client(&client, &mut account).await {
+                Ok(true) => {
+                    logger::log_info(&format!(
+                        "[Cursor Refresh] 配额 401，access token 刷新成功后重试: id={}, email={}",
+                        account.id, account.email
+                    ));
+                    let new_token = account.access_token.clone();
+                    let retried = fetch_usage_summary_with_client(&client, &new_token).await;
+                    api_ms += retry_started.elapsed().as_millis();
+                    retried
+                }
+                Ok(false) => {
+                    logger::log_info(&format!(
+                        "[Cursor Refresh] 配额 401，但账号无 refresh_token 可刷新: id={}",
+                        account.id
+                    ));
+                    usage_result
+                }
+                Err(refresh_err) => {
+                    logger::log_warn(&format!(
+                        "[Cursor Refresh] 配额 401，refresh token 刷新失败: id={}, error={}",
+                        account.id, refresh_err
+                    ));
+                    usage_result
+                }
+            }
+        }
+        _ => usage_result,
+    };
 
     match meta_result {
         Ok(meta) => {
@@ -3805,11 +4620,10 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshRes
                     account.membership_type = Some(mt.to_string());
                 }
             }
-            account.cursor_usage_raw = Some(merge_usage_preserving_nonzero_history(
-                account.cursor_usage_raw.as_ref(),
-                usage,
-                &account.id,
-            ));
+            // 去掉过度保护：本次是真实拉取成功（Ok），API 回什么就写什么，
+            // 包括真的 0%。原 merge_usage_preserving_nonzero_history 会以「防闲置号假 0%」
+            // 为由拒绝写入，导致用户刷新后额度永远是旧值（拿不到真实额度）。
+            account.cursor_usage_raw = Some(usage);
             account.quota_query_last_error = None;
             account.quota_query_last_error_at = None;
             usage_refreshed = true;
@@ -3819,22 +4633,15 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshRes
             ));
         }
         Err(err) => {
-            if is_cursor_transient_quota_error(&err) {
-                logger::log_warn(&format!(
-                    "[Cursor Refresh] transient 失败，跳过写盘: id={}, error={}",
-                    account.id, err
-                ));
-                return Ok(CursorRefreshResult {
-                    account: existing,
-                    persisted: false,
-                });
-            }
+            let is_transient = is_cursor_transient_quota_error(&err);
             logger::log_warn(&format!(
-                "[Cursor Refresh] API 配额拉取失败: id={}, error={}",
-                account.id, err
+                "[Cursor Refresh] API 配额拉取失败 (transient={}): id={}, error={}",
+                is_transient, account.id, err
             ));
-            account.quota_query_last_error = Some(err);
-            account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
+            if !is_transient {
+                account.quota_query_last_error = Some(err);
+                account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
+            }
         }
     }
 
@@ -3845,23 +4652,52 @@ async fn refresh_account_async_once(account_id: &str) -> Result<CursorRefreshRes
     account.last_used = refreshed_at;
     backfill_quota_pool_auth_id(&mut account);
     let updated = account.clone();
-    upsert_account_record(account)?;
+    let persist_started = std::time::Instant::now();
+    if defer_index_write {
+        upsert_account_record_deferred(account)?;
+    } else {
+        upsert_account_record(account)?;
+    }
+    let persist_ms = persist_started.elapsed().as_millis();
+    if persist_ms >= 200 || api_ms >= 1000 {
+        logger::log_info(&format!(
+            "[Cursor Perf] id={}, 三接口={}ms, 写盘={}ms",
+            updated.id, api_ms, persist_ms
+        ));
+    }
     logger::log_info(&format!(
-        "[Cursor Refresh] 刷新完成: id={}, email={}",
-        updated.id, updated.email
+        "[Cursor Refresh] 刷新处理完成 (usage_refreshed={}): id={}, email={}",
+        usage_refreshed, updated.id, updated.email
     ));
     Ok(CursorRefreshResult {
         account: updated.clone(),
         persisted: cursor_accounts_differ_for_refresh(&existing, &updated),
+        usage_refreshed,
     })
 }
 
 pub async fn refresh_account_async(account_id: &str) -> Result<CursorRefreshResult, String> {
-    let result = refresh_account_async_once(account_id).await;
+    refresh_account_async_with_options(account_id, false).await
+}
+
+/// 0012：批量刷新用——不逐账号重写整表索引（索引由批末统一回写）。
+pub async fn refresh_account_async_deferred(
+    account_id: &str,
+) -> Result<CursorRefreshResult, String> {
+    refresh_account_async_with_options(account_id, true).await
+}
+
+pub async fn refresh_account_async_with_options(
+    account_id: &str,
+    defer_index_write: bool,
+) -> Result<CursorRefreshResult, String> {
+    let result = refresh_account_async_once(account_id, defer_index_write).await;
     if let Err(err) = &result {
         if !is_cursor_transient_quota_error(err) {
             persist_quota_query_error(account_id, err);
         }
+    }
+    if let Ok(refreshed) = &result {
     }
     result
 }
@@ -3881,6 +4717,7 @@ pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorRefres
             return Ok(CursorRefreshResult {
                 account,
                 persisted: false,
+                usage_refreshed: false,
             });
         }
     }
@@ -3891,6 +4728,53 @@ pub async fn refresh_account_fast_async(account_id: &str) -> Result<CursorRefres
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .remove(account_id);
     result
+}
+
+/// 0012：当前绑定账号的**实时**额度快照。
+/// 强制走一次 usage API（与磁盘值无关）：查到才算可用，查不到返回 queried=false，
+/// 由前端显示「未刷新/查询失败」，禁止拿磁盘旧值伪装满额度。
+pub async fn current_account_quota_realtime() -> CursorCurrentQuotaSnapshot {
+    let accounts = list_accounts();
+    let Some(account_id) = resolve_current_account_id(&accounts) else {
+        return CursorCurrentQuotaSnapshot {
+            account_id: None,
+            queried: false,
+            remaining_percent: None,
+            error: Some("当前没有绑定账号".to_string()),
+            account: None,
+        };
+    };
+
+    match refresh_account_async(&account_id).await {
+        Ok(refreshed) => {
+            let remaining = cursor_overview_remaining_percent(&refreshed.account);
+            let error = refreshed.account.quota_query_last_error.clone();
+            logger::log_info(&format!(
+                "[Cursor Refresh] 当前账号实时额度: id={}, queried={}, remaining={:?}, error={:?}",
+                account_id, refreshed.usage_refreshed, remaining, error
+            ));
+            CursorCurrentQuotaSnapshot {
+                account_id: Some(account_id),
+                queried: refreshed.usage_refreshed,
+                remaining_percent: remaining,
+                error,
+                account: Some(refreshed.account.for_ui_list()),
+            }
+        }
+        Err(err) => {
+            logger::log_warn(&format!(
+                "[Cursor Refresh] 当前账号实时额度失败: id={}, error={}",
+                account_id, err
+            ));
+            CursorCurrentQuotaSnapshot {
+                account_id: Some(account_id.clone()),
+                queried: false,
+                remaining_percent: None,
+                error: Some(err),
+                account: load_account(&account_id).map(|a| a.for_ui_list()),
+            }
+        }
+    }
 }
 
 fn mark_refresh_attempted(account_id: &str) {
@@ -3920,7 +4804,7 @@ fn refresh_schedule_ts(account: &CursorAccount) -> i64 {
         .map(|ms| ms / 1000)
         .unwrap_or(0);
     let recent = recent_refresh_attempt_ts(&account.id);
-    let last_touch = recent.max(err_at);
+    let last_touch = recent.max(err_at).max(account.last_used);
     if last_touch > usage {
         last_touch
     } else {
@@ -3964,30 +4848,83 @@ pub async fn refresh_tokens_stale_first(
     ));
 
     let started = std::time::Instant::now();
-    let mut results = Vec::with_capacity(active_accounts.len());
-    for account in active_accounts {
-        if let Some(max_dur) = max_duration {
-            if started.elapsed() >= max_dur {
-                logger::log_info(&format!(
-                    "[Cursor Refresh] 达到时限提前结束: elapsed={}ms, done={}",
-                    started.elapsed().as_millis(),
-                    results.len()
-                ));
-                break;
+    // 0012：并发刷新 + 批末统一回写索引。
+    // 旧实现逐个账号串行，且每个账号都重写一遍 4482 条索引（1.1MB），
+    // 单账号被拖到 20~40 秒，8 分钟一轮只刷得完十几个，池子永远扫不完。
+    const REFRESH_CONCURRENCY: usize = 8;
+    let mut results: Vec<(String, Result<CursorRefreshResult, String>)> =
+        Vec::with_capacity(active_accounts.len());
+    let mut pending: tokio::task::JoinSet<(String, Result<CursorRefreshResult, String>)> =
+        tokio::task::JoinSet::new();
+    let mut queue = active_accounts.into_iter();
+    let mut stop_launching = false;
+
+    loop {
+        while !stop_launching && pending.len() < REFRESH_CONCURRENCY {
+            let Some(account) = queue.next() else { break };
+            if let Some(max_dur) = max_duration {
+                if started.elapsed() >= max_dur {
+                    stop_launching = true;
+                    break;
+                }
             }
+            let id = account.id.clone();
+            mark_refresh_attempted(&id);
+            pending.spawn(async move {
+                let result = refresh_account_async_deferred(&id).await;
+                (id, result)
+            });
         }
-        let id = account.id.clone();
-        mark_refresh_attempted(&id);
-        let result = refresh_account_async(&id).await;
-        results.push((id, result));
+        if pending.is_empty() {
+            break;
+        }
+        match pending.join_next().await {
+            Some(joined) => match joined {
+                Ok(item) => results.push(item),
+                Err(err) => logger::log_warn(&format!(
+                    "[Cursor Refresh] 刷新任务异常: {}",
+                    err
+                )),
+            },
+            None => break,
+        }
     }
+
+    if !pending.is_empty() {
+        pending.abort_all();
+    }
+
+    // 批末统一回写索引（一次读、一次写）
+    let flushed: Vec<CursorAccount> = results
+        .iter()
+        .filter_map(|(_, result)| result.as_ref().ok().map(|item| item.account.clone()))
+        .collect();
+    flush_account_index_for(&flushed);
+
+    logger::log_info(&format!(
+        "[Cursor Refresh] 最旧优先刷新结束: done={}, elapsed={}ms, index_flushed={}",
+        results.len(),
+        started.elapsed().as_millis(),
+        flushed.len()
+    ));
     Ok(results)
 }
 
 pub async fn refresh_all_tokens(
 ) -> Result<Vec<(String, Result<CursorRefreshResult, String>)>, String> {
-    // 全量仍串行；改为最旧优先，避免每轮只按索引从头扫、旧号长期得不到成功写回。
-    refresh_tokens_stale_first(None, None).await
+    let accounts = list_accounts();
+    let active_accounts: Vec<CursorAccount> = accounts
+        .into_iter()
+        .filter(|account| !is_banned_account(account))
+        .collect();
+
+    let mut results = Vec::with_capacity(active_accounts.len());
+    for account in active_accounts {
+        let id = account.id.clone();
+        let result = refresh_account_async(&id).await;
+        results.push((id, result));
+    }
+    Ok(results)
 }
 
 // ---------------------------------------------------------------------------
@@ -4054,26 +4991,7 @@ fn usage_raw_total_percent(raw: &serde_json::Value) -> Option<f64> {
     pick_number(plan_value, &["totalPercentUsed", "total_percent_used"])
 }
 
-/// API 新回 0% 不得覆盖磁盘上已有非 0 用量（闲置号假 0% 会冲掉真历史）。
-fn merge_usage_preserving_nonzero_history(
-    prior: Option<&serde_json::Value>,
-    incoming: serde_json::Value,
-    account_id: &str,
-) -> serde_json::Value {
-    let Some(prior) = prior else {
-        return incoming;
-    };
-    let prior_total = usage_raw_total_percent(prior).unwrap_or(0.0);
-    let new_total = usage_raw_total_percent(&incoming).unwrap_or(0.0);
-    if prior_total > 0.5 && new_total <= 0.5 {
-        logger::log_warn(&format!(
-            "[Cursor Refresh] 拒绝用 API 0% 覆盖历史非 0 用量: id={}, prior_total={:.1}, new_total={:.1}",
-            account_id, prior_total, new_total
-        ));
-        return prior.clone();
-    }
-    incoming
-}
+
 
 fn read_usage_percent(account: &CursorAccount) -> CursorUsagePercent {
     let Some(raw) = account.cursor_usage_raw.as_ref() else {
@@ -4214,8 +5132,11 @@ pub fn is_cursor_quota_exhausted_for_switch(account: &CursorAccount) -> bool {
         }
     }
     match cursor_switch_remaining_percent_from_usage(account) {
+        // 只有真正算得出「剩余 <= 0」才算用尽。
+        // 查不到（刷新失败/未查/零额度）绝不等同于用尽——上游口径：失败只在
+        // quota_query_last_error 上标「配额查询失败」，不把账号打成额度用尽。
         Some(remaining) => remaining <= 0,
-        None => has_quota_query_failed(account),
+        None => false,
     }
 }
 
@@ -4236,10 +5157,10 @@ pub struct CursorRotationPick {
     pub remaining_pct: i32,
 }
 
-fn plan_limit_value(account: &CursorAccount) -> Option<f64> {
-    let raw = account.cursor_usage_raw.as_ref()?;
+/// usage-summary 的 `individualUsage.plan` 节点（兼容 snake_case 与旧 planUsage 键）。
+fn plan_usage_node<'a>(raw: &'a serde_json::Value) -> Option<&'a serde_json::Value> {
     let raw_obj = raw.as_object()?;
-    let plan_value = raw_obj
+    raw_obj
         .get("individualUsage")
         .and_then(|value| value.as_object())
         .and_then(|value| value.get("plan"))
@@ -4250,12 +5171,44 @@ fn plan_limit_value(account: &CursorAccount) -> Option<f64> {
                 .and_then(|value| value.get("plan"))
         })
         .or_else(|| raw_obj.get("planUsage"))
-        .or_else(|| raw_obj.get("plan_usage"));
-    pick_number(plan_value, &["limit"])
+        .or_else(|| raw_obj.get("plan_usage"))
 }
 
+/// 真实套餐上限（美元侧）。Cockpit 本地库字段单位为分，取到即回退兼容「元」。
+fn plan_limit_value(account: &CursorAccount) -> Option<f64> {
+    let raw = account.cursor_usage_raw.as_ref()?;
+    pick_number(plan_usage_node(raw), &["limit"])
+}
+
+/// 套餐包含额度的真实规模：breakdown.included > limit > breakdown.total。
+/// 0013：Cockpit 本地库 free 号实测 `plan.limit=0`，若只看百分比会 100-0=100 得到
+/// 「假满额」——真正切到 DSH/Cursor 里根本不能用。额度可用性必须以规模字段为准。
+fn plan_budget_scale(account: &CursorAccount) -> Option<f64> {
+    let raw = account.cursor_usage_raw.as_ref()?;
+    let plan_value = plan_usage_node(raw);
+    let included = pick_number(plan_value, &["breakdown"])
+        .map(|_| ())
+        .and_then(|_| {
+            plan_value
+                .and_then(|value| value.get("breakdown"))
+                .and_then(|value| pick_number(Some(value), &["included"]))
+        });
+    let limit = pick_number(plan_value, &["limit"]);
+    let breakdown_total = plan_value
+        .and_then(|value| value.get("breakdown"))
+        .and_then(|value| pick_number(Some(value), &["total"]));
+
+    [included, limit, breakdown_total]
+        .into_iter()
+        .flatten()
+        .fold(None::<f64>, |acc, value| {
+            Some(acc.map_or(value, |current| current.max(value)))
+        })
+}
+
+/// 是否有真实可用的套餐预算（scale > 0）。
 pub fn has_effective_plan_budget(account: &CursorAccount) -> bool {
-    plan_limit_value(account).is_some_and(|limit| limit > 0.0)
+    plan_budget_scale(account).is_some_and(|scale| scale > 0.0)
 }
 
 fn has_nirvana_switch_ready_tokens(account: &CursorAccount) -> bool {
@@ -4280,11 +5233,122 @@ fn normalize_quota_alert_threshold(value: i32) -> i32 {
     value.clamp(0, 100)
 }
 
+/// 从 Cursor 本地登录态解析「当前账号」在账号库里的 id（用户 2026-09-17 指令）。
+///
+/// 为什么不再用 `list_accounts()`：那条路径会无条件调用 `normalize_account_index()`，
+/// 即逐条读 4472 个详情文件 + 扫 9843 个文件的账号目录，并全程持有
+/// `CURSOR_ACCOUNT_INDEX_LOCK`（实测等锁 41783 / 48471 / 75870 ms），
+/// 期间把同期的列表首屏请求 `list_accounts_page_for_ui` 一并堵死。
+///
+/// 本函数只做两件轻量事：
+/// 1. `read_local_cursor_auth()` 读 Cursor `state.vscdb` 的 `cursorAuth/cachedEmail` 与 `cursorAuth/authId`；
+/// 2. 在账号索引 summary（自带 `email` / `auth_id`）里匹配，只读 1.1MB 索引。
+/// 不调用 `load_account()`、不扫账号目录，因此不会长时间持锁。
+pub fn resolve_current_account_id_from_local_state() -> Option<String> {
+    let local_payload = read_local_cursor_auth().ok().flatten();
+
+    let _lock = CURSOR_ACCOUNT_INDEX_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let index = load_account_index();
+
+    if let Some(payload) = local_payload.as_ref() {
+        // 1) 以 Cursor 本地 authId 精确匹配
+        if let Some(auth_id) = payload
+            .auth_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if let Some(hit) = index
+                .accounts
+                .iter()
+                .find(|summary| summary.auth_id.as_deref().map(str::trim) == Some(auth_id))
+            {
+                return Some(hit.id.clone());
+            }
+        }
+        // 2) 再以本地邮箱（规范化）匹配
+        if let Some(email) = normalize_email_identity(Some(payload.email.as_str())) {
+            if let Some(hit) = index.accounts.iter().find(|summary| {
+                normalize_email_identity(Some(summary.email.as_str()))
+                    .map(|candidate| candidate == email)
+                    .unwrap_or(false)
+            }) {
+                return Some(hit.id.clone());
+            }
+        }
+    }
+
+    // 3) 本地态缺失或未命中：回退到既有「记录的当前 id ∩ 现有账号 id」校验，同样不读详情文件
+    crate::modules::provider_current_state::resolve_existing_current_account_id(
+        "cursor",
+        index.accounts.iter().map(|summary| summary.id.as_str()),
+    )
+}
+
 pub(crate) fn resolve_current_account_id(accounts: &[CursorAccount]) -> Option<String> {
+    if let Ok(Some(local_payload)) = read_local_cursor_auth() {
+        let incoming_auth_id = resolve_payload_auth_id(&local_payload);
+        let incoming_email = normalize_email_identity(Some(local_payload.email.as_str()));
+        let incoming_token = normalize_token_identity(Some(local_payload.access_token.as_str()));
+
+        if let Some(account_id) = accounts
+            .iter()
+            .find(|account| {
+                let existing_auth_id = resolve_account_auth_id(account);
+                if let (Some(existing), Some(incoming)) =
+                    (existing_auth_id.as_ref(), incoming_auth_id.as_ref())
+                {
+                    return existing == incoming;
+                }
+                if existing_auth_id.is_some() || incoming_auth_id.is_some() {
+                    return false;
+                }
+
+                let existing_email = normalize_email_identity(Some(account.email.as_str()));
+                let existing_token = normalize_token_identity(Some(account.access_token.as_str()));
+                if let (Some(existing), Some(incoming)) =
+                    (existing_email.as_ref(), incoming_email.as_ref())
+                {
+                    if existing == incoming {
+                        return true;
+                    }
+                }
+                if let (Some(existing), Some(incoming)) =
+                    (existing_token.as_ref(), incoming_token.as_ref())
+                {
+                    if existing == incoming {
+                        return true;
+                    }
+                }
+                false
+            })
+            .map(|account| account.id.clone())
+        {
+            return Some(account_id);
+        }
+    }
+
+    if let Ok(settings) = crate::modules::cursor_instance::load_default_settings() {
+        if let Some(bind_id) = settings.bind_account_id {
+            let trimmed = bind_id.trim();
+            if !trimmed.is_empty() && accounts.iter().any(|account| account.id == trimmed) {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
     crate::modules::provider_current_state::resolve_existing_current_account_id(
         "cursor",
         accounts.iter().map(|account| account.id.as_str()),
     )
+    .or_else(|| {
+        accounts
+            .iter()
+            .max_by_key(|account| account.last_used)
+            .map(|account| account.id.clone())
+    })
 }
 
 pub fn resolve_current_account_id_for_refresh() -> Option<String> {
@@ -4671,7 +5735,8 @@ mod cursor_overview_pick_tests {
                 "individualUsage": {
                     "plan": {
                         "totalPercentUsed": total,
-                        "autoPercentUsed": auto
+                        "autoPercentUsed": auto,
+                        "limit": 1000
                     }
                 }
             })),
@@ -4694,11 +5759,61 @@ mod cursor_overview_pick_tests {
     }
 
     #[test]
-    fn free_zero_used_counts_as_full_pool() {
+    fn paid_zero_used_counts_as_full_pool() {
+        // 有真实套餐上限（limit=1000）且 0% 用量 → 100% 满额，可切。
         let account = account_with_usage("b", 0, 0);
+        assert!(has_effective_plan_budget(&account));
         assert_eq!(cursor_overview_remaining_percent(&account), Some(100));
         assert!(ensure_cursor_overview_pickable(&account).is_ok());
     }
+
+    /// 0013 回归：这一条正是用户报的「看着满额，DSH 里不能用」。
+    /// plan.limit=0 的 Free 号以前算出 100% 满额并通过 pick，切过去无法对话。
+    #[test]
+    fn zero_limit_account_is_not_full_and_not_pickable() {
+        let mut account = account_with_usage("b2", 0, 0);
+        account.cursor_usage_raw = Some(serde_json::json!({
+            "individualUsage": {
+                "plan": {
+                    "totalPercentUsed": 0,
+                    "autoPercentUsed": 0,
+                    "limit": 0
+                }
+            }
+        }));
+
+
+    /// 0013：free 号真实响应形态（官方 usage-summary）。
+    #[test]
+    fn free_membership_zero_limit_is_not_pickable() {
+        let mut account = account_with_usage("b3", 0, 0);
+        account.membership_type = Some("free".into());
+        account.cursor_usage_raw = Some(serde_json::json!({
+            "membershipType": "free",
+            "individualUsage": {
+                "plan": {
+                    "enabled": true,
+                    "used": 0,
+                    "limit": 0,
+                    "remaining": 0,
+                    "breakdown": { "included": 0, "bonus": 0, "total": 0 },
+                    "autoPercentUsed": 0,
+                    "apiPercentUsed": 0,
+                    "totalPercentUsed": 0
+                },
+                "onDemand": { "enabled": false }
+            }
+        }));
+
+
+    /// 0013：breakdown.total（已用量合计）不为 0 时不得误判成零额度。
+    #[test]
+
+    /// 0013：完全没有规模字段的老数据不得被当成零额度误杀。
+    #[test]
+
+    /// 0013：零额度号即使 chat_probe=ok，也不得被判成「满额可切」。
+    #[test]
 
     #[test]
     fn session_expired_is_abnormal_and_not_pickable() {
@@ -4736,7 +5851,8 @@ mod cursor_rotation_pick_tests {
     fn account_with_usage_dims(id: &str, total: i32, auto: i32, api: Option<i32>) -> CursorAccount {
         let mut plan = serde_json::json!({
             "totalPercentUsed": total,
-            "autoPercentUsed": auto
+            "autoPercentUsed": auto,
+            "limit": 1000
         });
         if let Some(api_used) = api {
             plan.as_object_mut()
@@ -4852,6 +5968,8 @@ mod cursor_auth_token_tests {
             last_used: 0,
         };
         assert!(has_nirvana_switch_ready_tokens(&account));
+        // 0011：0% 用量即为 100% 满额可用，overview 判定有效并可挑
+        assert_eq!(cursor_overview_remaining_percent(&account), Some(100));
         assert!(ensure_cursor_overview_pickable(&account).is_ok());
     }
 
@@ -5029,3 +6147,118 @@ mod cursor_auth_token_tests {
     }
 }
 
+
+#[cfg(test)]
+mod hot_path_auto_switch_defense_tests {
+    use super::{hot_path_auto_switch_disk_payload, hot_path_effective_auto_switch};
+
+    #[test]
+    fn hot_path_never_writes_auto_switch_false() {
+        assert!(hot_path_effective_auto_switch(false, false));
+        assert!(hot_path_effective_auto_switch(true, false));
+    }
+
+    #[test]
+    fn polluted_false_is_upgraded_only() {
+        // 读到 false 只升级，禁止原样回写 false（对齐历史硬编码病根）。
+        assert_eq!(hot_path_effective_auto_switch(false, false), true);
+    }
+
+    #[test]
+    fn disk_payload_pref_and_seamless_never_false() {
+        for user in [false, true] {
+            let (pref, seamless_field) = hot_path_auto_switch_disk_payload(user);
+            assert_eq!(
+                pref.get("enabled").and_then(|x| x.as_bool()),
+                Some(true),
+                "auto_switch_pref.enabled must not be false (user={user})"
+            );
+            assert_eq!(
+                seamless_field.get("auto_switch").and_then(|x| x.as_bool()),
+                Some(true),
+                "seamless config.auto_switch must not be false (user={user})"
+            );
+            assert_eq!(
+                pref["enabled"], seamless_field["auto_switch"],
+                "pref/seamless dual-write must stay consistent"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_historical_hardcoded_false_shape() {
+        // HEAD 曾写 {"enabled": false} 与 config.auto_switch=false；payload 不得再现。
+        let (pref, field) = hot_path_auto_switch_disk_payload(false);
+        let pref_s = serde_json::to_string(&pref).unwrap();
+        let field_s = serde_json::to_string(&field).unwrap();
+        assert!(!pref_s.contains("false"), "pref payload leaked false: {pref_s}");
+        assert!(!field_s.contains("false"), "seamless field leaked false: {field_s}");
+    }
+}
+}
+}
+
+/// 0017 临时探针：分解 load_account 单条 12.9ms 的去向。测量完成即删除本模块。
+#[cfg(test)]
+mod zz_perf_probe_0017 {
+    use super::*;
+
+    #[test]
+    fn probe_0017_load_account_breakdown() {
+        let index = load_account_index();
+        let ids: Vec<String> = index
+            .accounts
+            .iter()
+            .take(200)
+            .map(|s| s.id.clone())
+            .collect();
+
+        let t = std::time::Instant::now();
+        let mut paths = Vec::new();
+        for id in &ids {
+            paths.push(resolve_account_file_path(id).ok());
+        }
+        println!(
+            "[PROBE17] resolve_account_file_path x{}: {}ms",
+            ids.len(),
+            t.elapsed().as_millis()
+        );
+
+        let t = std::time::Instant::now();
+        let mut contents = Vec::new();
+        for p in paths.iter().flatten() {
+            contents.push(std::fs::read_to_string(p).ok());
+        }
+        println!(
+            "[PROBE17] read_to_string x{}: {}ms",
+            ids.len(),
+            t.elapsed().as_millis()
+        );
+
+        let t = std::time::Instant::now();
+        for (p, c) in paths.iter().flatten().zip(contents.iter().flatten()) {
+            let _ = crate::modules::secure_account_storage::deserialize_account_file::<
+                CursorAccount,
+            >(p, c);
+        }
+        println!(
+            "[PROBE17] deserialize(decrypt+parse) x{}: {}ms",
+            ids.len(),
+            t.elapsed().as_millis()
+        );
+
+        let t = std::time::Instant::now();
+        let mut ok = 0usize;
+        for id in &ids {
+            if load_account(id).is_some() {
+                ok += 1;
+            }
+        }
+        println!(
+            "[PROBE17] load_account x{}: {}ms (ok={})",
+            ids.len(),
+            t.elapsed().as_millis(),
+            ok
+        );
+    }
+}

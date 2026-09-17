@@ -54,8 +54,6 @@ import {
   isCursorAccountBanned,
   isCursorQuotaPendingQuery,
   resolveCursorQuotaAvailability,
-  resolveCursorQuotaAvailabilityUi,
-  resolveCursorChatProbeUi,
   resolveCursorSortRemainingPercent,
 } from '../types/cursor';
 import type { CursorAccount } from '../types/cursor';
@@ -82,6 +80,7 @@ import {
 import { useProviderAccountsPage } from '../hooks/useProviderAccountsPage';
 import { CursorOverviewTabsHeader, CursorTab } from '../components/CursorOverviewTabsHeader';
 import { CursorInstancesContent } from './CursorInstancesPage';
+import { CursorRenewalConsole } from './CursorRenewalConsole';
 
 const CURSOR_FLOW_NOTICE_COLLAPSED_KEY = 'agtools.cursor.flow_notice_collapsed';
 const CURSOR_CURRENT_ACCOUNT_ID_KEY = 'agtools.cursor.current_account_id';
@@ -101,6 +100,8 @@ const CURSOR_TOKEN_BATCH_EXAMPLE = `[
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"a@example.com"},
   {"access_token":"eyJhbGciOiJIUzI1NiIs...","email":"b@example.com"}
 ]`;
+
+const EMPTY_CURSOR_ACCOUNTS: CursorAccount[] = [];
 
 function getCursorQuotaClass(percentage: number): string {
   if (percentage >= 90) return 'critical';
@@ -124,16 +125,35 @@ type CursorAccountsPageProps = {
   /** App 层 deep link 传入的子 Tab，解决懒加载前 window 事件丢失 */
   requestedTab?: CursorTab;
   onRequestedTabApplied?: () => void;
+  /** keep-alive 时是否当前可见；隐藏时不拉全表 */
+  pageActive?: boolean;
 };
 
-export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: CursorAccountsPageProps = {}) {
+export function CursorAccountsPage({
+  requestedTab,
+  onRequestedTabApplied,
+  pageActive = true,
+}: CursorAccountsPageProps = {}) {
   const [activeTab, setActiveTab] = useState<CursorTab>(() => requestedTab ?? 'overview');
+  // 子 Tab 首次进入后保活：续费台 ↔ 总览互切不得卸载整表（~4000 账号重挂会卡死）
+  const [visitedCursorTabs, setVisitedCursorTabs] = useState<Set<CursorTab>>(
+    () => new Set<CursorTab>([requestedTab ?? 'overview']),
+  );
 
   useEffect(() => {
     if (!requestedTab) return;
     setActiveTab(requestedTab);
     onRequestedTabApplied?.();
   }, [requestedTab, onRequestedTabApplied]);
+
+  useEffect(() => {
+    setVisitedCursorTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -154,7 +174,21 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
   );
   const untaggedKey = '__untagged__';
 
-  const store = useCursorAccountStore();
+  // 隐藏 keep-alive 时订空表常量引用，全表更新不触发本页重渲，避免 Cursor 大池拖死其它页
+  const accounts = useCursorAccountStore((state) =>
+    pageActive ? state.accounts : EMPTY_CURSOR_ACCOUNTS,
+  );
+  const storeCurrentAccountId = useCursorAccountStore((state) => state.currentAccountId);
+  const loading = useCursorAccountStore((state) => (pageActive ? state.loading : false));
+  const error = useCursorAccountStore((state) => (pageActive ? state.error : null));
+  const fetchAccounts = useCursorAccountStore((state) => state.fetchAccounts);
+  const cancelPendingFetches = useCursorAccountStore((state) => state.cancelPendingFetches);
+  const fetchCurrentAccountId = useCursorAccountStore((state) => state.fetchCurrentAccountId);
+  const deleteAccounts = useCursorAccountStore((state) => state.deleteAccounts);
+  const refreshToken = useCursorAccountStore((state) => state.refreshToken);
+  const refreshAllTokens = useCursorAccountStore((state) => state.refreshAllTokens);
+  const setCurrentAccountId = useCursorAccountStore((state) => state.setCurrentAccountId);
+  const updateAccountTags = useCursorAccountStore((state) => state.updateAccountTags);
 
   const page = useProviderAccountsPage<CursorAccount>({
     platformKey: 'Cursor',
@@ -162,18 +196,20 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
     flowNoticeCollapsedKey: CURSOR_FLOW_NOTICE_COLLAPSED_KEY,
     currentAccountIdKey: CURSOR_CURRENT_ACCOUNT_ID_KEY,
     exportFilePrefix: 'cursor_accounts',
+    pageActive,
     store: {
-      accounts: store.accounts,
-      currentAccountId: store.currentAccountId,
-      loading: store.loading,
-      error: store.error,
-      fetchAccounts: store.fetchAccounts,
-      fetchCurrentAccountId: store.fetchCurrentAccountId,
-      deleteAccounts: store.deleteAccounts,
-      refreshToken: store.refreshToken,
-      refreshAllTokens: store.refreshAllTokens,
-      setCurrentAccountId: store.setCurrentAccountId,
-      updateAccountTags: store.updateAccountTags,
+      accounts,
+      currentAccountId: storeCurrentAccountId,
+      loading,
+      error,
+      fetchAccounts,
+      cancelPendingFetches,
+      fetchCurrentAccountId,
+      deleteAccounts,
+      refreshToken,
+      refreshAllTokens,
+      setCurrentAccountId,
+      updateAccountTags,
     },
     oauthService: {
       startLogin: async () => {
@@ -205,7 +241,7 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
     filterPersistenceEnabled, filterPersistenceScope,
     sortBy, setSortBy, sortDirection, setSortDirection,
     selected, toggleSelect, toggleSelectAll,
-    tagFilter, groupByTag, setGroupByTag, showTagFilter, setShowTagFilter,
+    tagFilter, setTagFilter, groupByTag, setGroupByTag, showTagFilter, setShowTagFilter,
     showTagModal, setShowTagModal, tagFilterRef, availableTags,
     toggleTagFilterValue, clearTagFilter, tagDeleteConfirm, tagDeleteConfirmError, tagDeleteConfirmErrorScrollKey, setTagDeleteConfirm,
     deletingTag, requestDeleteTag, confirmDeleteTag, openTagModal, handleSaveTags,
@@ -275,13 +311,13 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
     try {
       const result = await cursorService.injectCursorAccountAuto();
       setMessage({ tone: 'success', text: result });
-      await store.fetchAccounts();
+      await fetchAccounts();
     } catch (error) {
       setMessage({ tone: 'error', text: String(error) });
     } finally {
       setAutoInjecting(false);
     }
-  }, [setMessage, store]);
+  }, [fetchAccounts, setMessage]);
 
   const handleProbeChat = useCallback(async (accountId: string) => {
     setProbingChatId(accountId);
@@ -301,13 +337,13 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
                 )
               : t('cursor.chatProbe.failed', '对话验活结果：{{outcome}}', { outcome }),
       });
-      await store.fetchAccounts();
+      await fetchAccounts();
     } catch (error) {
       setMessage({ tone: 'error', text: String(error) });
     } finally {
       setProbingChatId(null);
     }
-  }, [setMessage, store, t]);
+  }, [fetchAccounts, setMessage, t]);
 
   const handleProbeChatSelected = useCallback(async () => {
     const ids = Array.from(selected);
@@ -334,13 +370,13 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
           },
         ),
       });
-      await store.fetchAccounts();
+      await fetchAccounts();
     } catch (error) {
       setMessage({ tone: 'error', text: String(error) });
     } finally {
       setProbingChatBatch(false);
     }
-  }, [selected, setMessage, store, t]);
+  }, [fetchAccounts, selected, setMessage, t]);
 
   useEffect(() => {
     if (!filterPersistenceEnabled) {
@@ -363,8 +399,7 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
     setFilterTypes([]);
   }, []);
 
-  const accounts = store.accounts;
-  const loading = store.loading;
+  // accounts / loading 已由上方选择器提供（隐藏页为空表）
 
   // ─── Platform-specific: Plan resolution ────────────────────────────
 
@@ -668,8 +703,9 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
   }, [compareUsageUpdatedAt, currentAccountId, resolveRemainingQuotaPercent, sortBy, sortDirection]);
 
   const sortedAccountsForInstances = useMemo(
-    () => [...accounts].sort(compareAccountsBySort),
-    [accounts, compareAccountsBySort],
+    () =>
+      activeTab === 'instances' ? [...accounts].sort(compareAccountsBySort) : EMPTY_CURSOR_ACCOUNTS,
+    [activeTab, accounts, compareAccountsBySort],
   );
 
   const filteredAccounts = useMemo(() => {
@@ -789,9 +825,6 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
-      const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
-      const quotaAvailUi = resolveCursorQuotaAvailabilityUi(account);
-      const chatProbeUi = resolveCursorChatProbeUi(account);
       const probingThis = probingChatId === account.id;
 
       return (
@@ -807,14 +840,6 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
               {maskAccountText(emailText)}
             </span>
             {isCurrent && (<span className="current-tag">{t('accounts.status.current')}</span>)}
-            <span className={`tier-badge ${quotaAvailUi.className}`} title={quotaAvailUi.title}>
-              {quotaAvailUi.label}
-            </span>
-            {chatProbeUi && (
-              <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
-                {chatProbeUi.label}
-              </span>
-            )}
             {hasStatusError && (
               <span className="status-pill warning" title={errorTitle}>
                 <CircleAlert size={12} />
@@ -833,12 +858,8 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
                 {t('accounts.status.forbidden')}
               </span>
             )}
-            {planLabel && planLabel !== 'UNKNOWN' ? (
+            {planLabel ? (
               <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
-            ) : !quotaError && pendingQuota ? (
-              <span className="tier-badge pending-query" title={pendingBadgeLabel}>
-                {pendingBadgeLabel}
-              </span>
             ) : null}
           </div>
 
@@ -930,7 +951,7 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
             <span className="card-date">{formatDate(account.created_at)}</span>
             <div className="card-actions">
               <button className="card-action-btn success" data-action-id="cursor-inject" onClick={() => handleInjectToVSCode?.(account.id)} disabled={!!injecting || isBanned}
-                title={isBanned ? t('accounts.status.forbidden_msg') : t('cursor.injectToCursor', '切换到 Cursor')}>
+                title={isBanned ? t('accounts.status.forbidden_msg') : t('cursor.switchAccount', '换号（写入 Cursor）')}>
                 {injecting === account.id ? <RefreshCw size={14} className="loading-spinner" /> : <Play size={14} />}
               </button>
               <button className="card-action-btn" onClick={() => openTagModal(account.id)} title={t('accounts.editTags', '编辑标签')}>
@@ -988,9 +1009,6 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
       const statusReason = account.status_reason ?? null;
       const bannedTitle = statusReason || t('accounts.status.forbidden_tooltip');
       const errorTitle = statusReason || t('accounts.status.refreshFailed');
-      const pendingBadgeLabel = t('common.shared.quota.pendingQueryBadge', '配额未查询');
-      const quotaAvailUi = resolveCursorQuotaAvailabilityUi(account);
-      const chatProbeUi = resolveCursorChatProbeUi(account);
       const probingThis = probingChatId === account.id;
 
       return (
@@ -1001,14 +1019,6 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
               <div className="account-main-line">
                 <span className="account-email-text" title={maskAccountText(emailText)}>{maskAccountText(emailText)}</span>
                 {isCurrent && <span className="mini-tag current">{t('accounts.status.current')}</span>}
-                <span className={`tier-badge ${quotaAvailUi.className}`} title={quotaAvailUi.title}>
-                  {quotaAvailUi.label}
-                </span>
-                {chatProbeUi && (
-                  <span className={`tier-badge ${chatProbeUi.className}`} title={chatProbeUi.title}>
-                    {chatProbeUi.label}
-                  </span>
-                )}
               </div>
               {(hasStatusError || isBanned) && (
                 <div className="account-sub-line">
@@ -1038,10 +1048,6 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
           <td>
             {planLabel && planLabel !== 'UNKNOWN' ? (
               <span className={`tier-badge ${resolvePlanBadgeClass(account)}`}>{planLabel}</span>
-            ) : !quotaError && pendingQuota ? (
-              <span className="tier-badge pending-query" title={pendingBadgeLabel}>
-                {pendingBadgeLabel}
-              </span>
             ) : null}
           </td>
           <td>
@@ -1124,7 +1130,7 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
           <td className="sticky-action-cell table-action-cell">
             <div className="action-buttons">
               <button className="action-btn success" data-action-id="cursor-play" onClick={() => handleInjectToVSCode?.(account.id)} disabled={!!injecting || isBanned}
-                title={isBanned ? t('accounts.status.forbidden_msg') : t('cursor.injectToCursor', '切换到 Cursor')}>
+                title={isBanned ? t('accounts.status.forbidden_msg') : t('cursor.switchAccount', '换号（写入 Cursor）')}>
                 {injecting === account.id ? <RefreshCw size={14} className="loading-spinner" /> : <Play size={14} />}
               </button>
               <button className="action-btn" onClick={() => openTagModal(account.id)} title={t('accounts.editTags', '编辑标签')}>
@@ -1181,15 +1187,19 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
         )}
       </div>
 
-      {activeTab === 'overview' && (
-        <>
-      {message && (
-        <div className={`message-bar ${message.tone === 'error' ? 'error' : 'success'}`}>
+      {message && (activeTab === 'overview' || activeTab === 'renewal') && (
+        <div className={`message-bar ${message.tone === 'error' ? 'error' : message.tone === 'info' ? 'info' : 'success'}`}>
           {message.text}
           <button onClick={() => setMessage(null)}><X size={14} /></button>
         </div>
       )}
 
+      {visitedCursorTabs.has('overview') && (
+        <div
+          className="app-page-keep-alive cursor-tab-keep-alive"
+          hidden={activeTab !== 'overview'}
+          aria-hidden={activeTab !== 'overview'}
+        >
       <div className="toolbar">
         <div className="toolbar-left">
           <div className="search-box">
@@ -1276,8 +1286,8 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
             data-action-id="cursor-auto-inject"
             onClick={() => void handleAutoInject()}
             disabled={autoInjecting || accounts.length === 0}
-            title={t('cursor.autoInject', '自动选号')}
-            aria-label={t('cursor.autoInject', '自动选号')}
+            title={t('cursor.autoInject', '换号（自动选号）')}
+            aria-label={t('cursor.autoInject', '换号（自动选号）')}
           >
             <Zap size={14} className={autoInjecting ? 'loading-spinner' : ''} />
           </button>
@@ -1638,11 +1648,31 @@ export function CursorAccountsPage({ requestedTab, onRequestedTabApplied }: Curs
         onClose={() => setShowTagModal(null)}
         onSave={handleSaveTags}
       />
-        </>
+        </div>
       )}
 
-      {activeTab === 'instances' && (
-        <CursorInstancesContent accountsForSelect={sortedAccountsForInstances} />
+      {visitedCursorTabs.has('instances') && (
+        <div
+          className="app-page-keep-alive cursor-tab-keep-alive"
+          hidden={activeTab !== 'instances'}
+          aria-hidden={activeTab !== 'instances'}
+        >
+          <CursorInstancesContent accountsForSelect={sortedAccountsForInstances} />
+        </div>
+      )}
+
+      {visitedCursorTabs.has('renewal') && (
+        <div
+          className="app-page-keep-alive cursor-tab-keep-alive"
+          hidden={activeTab !== 'renewal'}
+          aria-hidden={activeTab !== 'renewal'}
+        >
+          <CursorRenewalConsole
+            onMessage={setMessage}
+            onTagFilter={setTagFilter}
+            onAccountsChanged={fetchAccounts}
+          />
+        </div>
       )}
     </div>
   );
