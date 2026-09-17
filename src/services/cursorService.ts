@@ -79,21 +79,9 @@ export async function refreshCursorToken(accountId: string): Promise<CursorAccou
   return await invoke('refresh_cursor_token', { accountId });
 }
 
-/** 0012：maxDurationSecs 为墙钟预算（不按条数截断）时可滚动覆盖全池。 */
-export async function refreshAllCursorTokens(
-  maxCount?: number | null,
-  maxDurationSecs?: number | null,
-): Promise<number> {
-  return await invoke('refresh_all_cursor_tokens', {
-    maxCount: maxCount ?? null,
-    maxDurationSecs: maxDurationSecs ?? null,
-  });
+export async function refreshAllCursorTokens(): Promise<number> {
+  return await invoke('refresh_all_cursor_tokens');
 }
-
-/** 0012：自动刷新每轮墙钟预算（秒）。不按 120 条截断，最旧优先滚动覆盖全池。 */
-export const CURSOR_AUTO_REFRESH_WINDOW_SECS = 240;
-/** @deprecated 仅作兼容保留：不再作为每轮条数硬上限，见 CURSOR_AUTO_REFRESH_WINDOW_SECS */
-export const CURSOR_AUTO_REFRESH_BATCH_SIZE = 120;
 
 export async function addCursorAccountWithToken(accessToken: string): Promise<CursorAccount> {
   return await invoke('add_cursor_account_with_token', { accessToken });

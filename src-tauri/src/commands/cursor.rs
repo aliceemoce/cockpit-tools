@@ -150,55 +150,12 @@ pub async fn refresh_cursor_token(
 }
 
 #[tauri::command]
-pub async fn refresh_all_cursor_tokens(
-    app: AppHandle,
-    max_count: Option<i32>,
-    max_duration_secs: Option<u64>,
-) -> Result<i32, String> {
+pub async fn refresh_all_cursor_tokens(app: AppHandle) -> Result<i32, String> {
     let started_at = Instant::now();
-    let limit = max_count.and_then(|n| if n > 0 { Some(n as usize) } else { None });
-    // 0012：允许「不按条数截断、只按墙钟预算」的滚动刷新，保证 4482 大池长期能扫完。
-    // 未指定时限时沿用自动刷新默认时限，避免一轮占死 guard。
-    let max_duration = match max_duration_secs {
-        Some(0) => None,
-        Some(secs) => Some(std::time::Duration::from_secs(secs)),
-        None => {
-            if limit.is_some() {
-                Some(std::time::Duration::from_secs(
-                    cursor_account::CURSOR_AUTO_REFRESH_MAX_DURATION_SECS,
-                ))
-            } else {
-                Some(std::time::Duration::from_secs(
-                    cursor_account::CURSOR_AUTO_REFRESH_MAX_DURATION_SECS,
-                ))
-            }
-        }
-    };
-    logger::log_info(&format!(
-        "[Cursor Command] 批量刷新开始: max_count={:?}, max_duration_secs={:?}",
-        limit,
-        max_duration.map(|d| d.as_secs())
-    ));
+    logger::log_info("[Cursor Command] 批量刷新开始");
 
-    let results = cursor_account::refresh_tokens_stale_first(limit, max_duration).await?;
-
-    let mut success_count = 0usize;
-    let mut persisted_any = false;
-    for (_id, result) in results {
-        match result {
-            Ok(refreshed) => {
-                success_count += 1;
-                if refreshed.persisted {
-                    persisted_any = true;
-                }
-            }
-            Err(_) => {}
-        }
-    }
-
-    if persisted_any {
-        emit_cursor_accounts_changed(&app, "", "refresh-batch-complete");
-    }
+    let results = cursor_account::refresh_all_tokens().await?;
+    let success_count = results.iter().filter(|(_, r)| r.is_ok()).count();
 
     if success_count > 0 {
         if let Err(e) = cursor_account::run_quota_alert_if_needed() {
@@ -209,10 +166,8 @@ pub async fn refresh_all_cursor_tokens(
         }
     }
 
-    let app_for_tray = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let _ = crate::modules::tray::update_tray_menu(&app_for_tray);
-    });
+    emit_cursor_accounts_changed(&app, "", "refresh-batch-complete");
+    let _ = crate::modules::tray::update_tray_menu(&app);
     logger::log_info(&format!(
         "[Cursor Command] 批量刷新完成: success={}, elapsed={}ms",
         success_count,
