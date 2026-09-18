@@ -5136,6 +5136,14 @@ fn cursor_switch_remaining_percent_from_usage(account: &CursorAccount) -> Option
     Some(100 - max_used.clamp(0, 100))
 }
 
+/// pick 降级用：忽略 quota_query_last_error（暂时性失败），只看磁盘 usage 数据估算剩余。
+/// 仅在 cursor_overview_remaining_percent 返回 None 时使用，保证有额度号不被永久跳过。
+fn deferred_remaining_percent_from_usage(account: &CursorAccount) -> Option<i32> {
+    let usage = read_usage_percent(account);
+    let max_used = cursor_switch_max_used_percent(account, &usage)?;
+    Some(100 - max_used.clamp(0, 100))
+}
+
 /// total/auto/api 按 Agent 对话口径判断是否用尽（api 维度优先于过期 total）。
 pub fn is_cursor_quota_exhausted_for_switch(account: &CursorAccount) -> bool {
     if let Some(probe) = account.chat_probe.as_ref() {
@@ -5485,6 +5493,12 @@ pub fn pick_cursor_rotation_account(
     let mut full_pool: Vec<(CursorAccount, i32)> = Vec::new();
     let mut good_pool: Vec<(CursorAccount, i32)> = Vec::new();
     let mut excluded_exhausted = 0usize;
+    let mut excluded_no_info = 0usize;
+    // 暂时性查询失败（超时/限流等，非认证错误）但磁盘上仍有 usage 数据的号：
+    // 不能因为「本次没查成功」就跳过，否则 4471 池里大量有额度号会被永久排除，
+    // 只剩少数完全没查询错误的号（实测常退化为零额度当前号）。
+    // 认证类错误已在上面 is_cursor_overview_abnormal 被过滤，走到这里的是可恢复失败。
+    let mut fallback_deferred: Vec<(CursorAccount, i32)> = Vec::new();
 
     for account in list_accounts() {
         if exclude_ids.contains(&account.id) {
@@ -5496,8 +5510,22 @@ pub fn pick_cursor_rotation_account(
         if !has_nirvana_switch_ready_tokens(&account) {
             continue;
         }
-        let Some(remaining) = cursor_overview_remaining_percent(&account) else {
-            continue;
+        let remaining = match cursor_overview_remaining_percent(&account) {
+            Some(value) => value,
+            None => {
+                // remaining 为 None 的含义是「算不出剩余」，即信息缺失，而非用尽。
+                // 若磁盘上有 usage 数据，退化为按 usage 直接估算剩余，保证有额度号仍可被选中。
+                match deferred_remaining_percent_from_usage(&account) {
+                    Some(value) => {
+                        fallback_deferred.push((account, value));
+                        continue;
+                    }
+                    None => {
+                        excluded_no_info += 1;
+                        continue;
+                    }
+                }
+            }
         };
         if remaining <= 0 {
             excluded_exhausted += 1;
@@ -5516,6 +5544,15 @@ pub fn pick_cursor_rotation_account(
             excluded_exhausted
         ));
     }
+    if excluded_no_info > 0 || !fallback_deferred.is_empty() {
+        logger::log_info(&format!(
+            "[Cursor Switch] pick 降级: 查询失败但有 usage 数据={}, 完全无信息={}",
+            fallback_deferred.len(),
+            excluded_no_info
+        ));
+    }
+    // 降级候选放在最后：优先用查询正常的号，池空时才用「查询失败但有 usage」的号。
+    good_pool.extend(fallback_deferred);
 
     let mut rng = rand::thread_rng();
 
