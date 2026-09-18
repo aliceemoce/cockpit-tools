@@ -187,9 +187,7 @@
         "weekly": "Mensajes de chat",
         "resetAt": "Restablece: {{time}}",
         "expiresAt": "Vence el: {{time}}",
-        "leftPercent": "Queda un {{value}} %",
-        "pendingQueryBadge": "Cuota no consultada",
-        "pendingQuery": "Cuota pendiente"
+        "leftPercent": "Queda un {{value}} %"
       },
       "subtitle": "Supervisa en tiempo real el estado de cuota de todas las cuentas.",
       "time": {

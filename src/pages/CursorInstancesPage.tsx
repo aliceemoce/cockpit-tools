@@ -58,11 +58,7 @@ export function CursorInstancesContent({
       fetchAccounts={fetchAccounts}
       renderAccountQuotaPreview={renderCursorQuotaPreview}
       renderAccountBadge={(account) => {
-        // 「配额未查询」由 presentation 层 resolveCursorPlanUiBadge 统一产出，此处不再重复判定
         const presentation = buildCursorAccountPresentation(account, t);
-        if (!presentation.planLabel || presentation.planLabel.toUpperCase() === 'UNKNOWN') {
-          return null;
-        }
         return (
           <span className={`instance-plan-badge cursor-plan-badge ${presentation.planClass}`}>
             {presentation.planLabel}

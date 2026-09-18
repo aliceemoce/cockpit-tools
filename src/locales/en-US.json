@@ -194,9 +194,7 @@
         "weekly": "Chat messages",
         "resetAt": "Reset: {{time}}",
         "expiresAt": "Expires at: {{time}}",
-        "leftPercent": "{{value}}% left",
-        "pendingQueryBadge": "Quota not queried",
-        "pendingQuery": "Quota pending"
+        "leftPercent": "{{value}}% left"
       },
       "subtitle": "Monitor quota status for all accounts in real time.",
       "time": {

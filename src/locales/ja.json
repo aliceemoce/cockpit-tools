@@ -187,9 +187,7 @@
         "weekly": "週次クォータ",
         "resetAt": "リセット: {{time}}",
         "expiresAt": "有効期限：{{time}}",
-        "leftPercent": "残り {{value}}%",
-        "pendingQueryBadge": "クォータ未照会",
-        "pendingQuery": "クォータ照会待ち"
+        "leftPercent": "残り {{value}}%"
       },
       "subtitle": "GitHub Copilot アカウントを管理します",
       "time": {

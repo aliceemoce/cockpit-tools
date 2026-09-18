@@ -818,7 +818,6 @@ export function CursorAccountsPage({
       const isSelected = selected.has(account.id);
       const isCurrent = currentAccountId === account.id;
       const quotaError = account.quota_query_last_error?.trim();
-      const pendingQuota = isCursorQuotaPendingQuery(account);
       const hasQuotaData = hasCursorQuotaData(account);
       const isBanned = isCursorAccountBanned(account);
       const hasStatusError = (account.status || '').toLowerCase() === 'error';
@@ -940,8 +939,6 @@ export function CursorAccountsPage({
                   </div>
                 </div>
               </>
-            ) : pendingQuota ? (
-              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}
@@ -1003,7 +1000,6 @@ export function CursorAccountsPage({
       const isCurrent = currentAccountId === account.id;
       const isBanned = isCursorAccountBanned(account);
       const quotaError = account.quota_query_last_error?.trim();
-      const pendingQuota = isCursorQuotaPendingQuery(account);
       const hasQuotaData = hasCursorQuotaData(account);
       const hasStatusError = (account.status || '').toLowerCase() === 'error';
       const statusReason = account.status_reason ?? null;
@@ -1075,8 +1071,6 @@ export function CursorAccountsPage({
                   <div className={`quota-progress-bar ${total.quotaClass}`} style={{ width: `${Math.min(total.percentage, 100)}%` }} />
                 </div>
               </div>
-            ) : pendingQuota ? (
-              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}
@@ -1121,8 +1115,6 @@ export function CursorAccountsPage({
                   </div>
                 </div>
               </>
-            ) : pendingQuota ? (
-              <div className="quota-empty pending">{t('common.shared.quota.pendingQuery', '待查询配额')}</div>
             ) : (
               <div className="quota-empty">{t('common.shared.quota.noData', '暂无配额数据')}</div>
             )}

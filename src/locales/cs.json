@@ -182,9 +182,7 @@
         "weekly": "Týdenní kvóta",
         "resetAt": "Obnovení: {{time}}",
         "expiresAt": "Vyprší: {{time}}",
-        "leftPercent": "Zbývá {{value}} %",
-        "pendingQueryBadge": "Kvóta neověřena",
-        "pendingQuery": "Kvóta čeká na dotaz"
+        "leftPercent": "Zbývá {{value}} %"
       },
       "subtitle": "Spravujte své účty GitHub Copilot",
       "time": {

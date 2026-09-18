@@ -182,9 +182,7 @@
         "weekly": "Limit tygodniowy",
         "resetAt": "Odnowienie: {{time}}",
         "expiresAt": "Wygasa: {{time}}",
-        "leftPercent": "Pozostało {{value}}%",
-        "pendingQueryBadge": "Limit nieodpytany",
-        "pendingQuery": "Limit oczekuje"
+        "leftPercent": "Pozostało {{value}}%"
       },
       "subtitle": "Zarządzaj kontami GitHub Copilot",
       "time": {

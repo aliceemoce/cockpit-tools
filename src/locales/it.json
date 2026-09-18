@@ -187,9 +187,7 @@
         "weekly": "Quota settimanale",
         "resetAt": "Reimpostazione: {{time}}",
         "expiresAt": "Scade il: {{time}}",
-        "leftPercent": "{{value}}% rimanente",
-        "pendingQueryBadge": "Quota non interrogata",
-        "pendingQuery": "Quota in attesa"
+        "leftPercent": "{{value}}% rimanente"
       },
       "subtitle": "Gestisci i tuoi account GitHub Copilot",
       "time": {

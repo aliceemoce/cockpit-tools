@@ -194,9 +194,7 @@
         "weekly": "Pesan obrolan",
         "resetAt": "Atur ulang: {{time}}",
         "expiresAt": "Kedaluwarsa: {{time}}",
-        "leftPercent": "Tersisa {{value}}%",
-        "pendingQueryBadge": "Kuota belum dicek",
-        "pendingQuery": "Kuota menunggu"
+        "leftPercent": "Tersisa {{value}}%"
       },
       "subtitle": "Pantau status kuota seluruh akun secara real-time.",
       "time": {

@@ -671,63 +671,6 @@ export function isCursorChatUsable(account: CursorAccount): boolean {
   return isCursorPlanQuotaUsable(account);
 }
 
-export function resolveCursorQuotaAvailabilityUi(
-  account: CursorAccount,
-): { label: string; className: string; title?: string } | null {
-  const usage = hasCursorQuotaData(account) ? getCursorUsage(account) : null;
-  const total = usage?.totalPercentUsed;
-  const totalHint =
-    typeof total === 'number' && Number.isFinite(total)
-      ? `；Total Usage ${total}%`
-      : '';
-  const chatAvail = resolveCursorChatProbeAvailability(account);
-
-  const availability = resolveCursorQuotaAvailability(account);
-  if (availability === 'exhausted') {
-    return {
-      label: '额度用尽',
-      className: 'quota-exhausted',
-      title:
-        chatAvail === 'cannot_chat'
-          ? `已限额${totalHint}`
-          : `totalPercentUsed≥100%${totalHint}`,
-    };
-  }
-
-  // 去除「有剩余」和「未验活/核实中」等伪逻辑标签，正常账号直接由 Plan 徽章与额度条展示
-  return null;
-}
-
-/** 抽样 CLI 次要标注（主徽标已由验活结果决定）。 */
-export function resolveCursorChatProbeUi(
-  account: CursorAccount,
-): { label: string; className: string; title?: string } | null {
-  const outcome = getCursorChatProbeOutcome(account);
-  if (!outcome) {
-    return null;
-  }
-  const detail = account.chat_probe?.detail?.trim() || undefined;
-  switch (outcome) {
-    case 'ok':
-      return {
-        label: '验活有回话',
-        className: 'chat-probe-sample-ok',
-        title: detail || 'Agent 真实对话验活通过',
-      };
-    case 'rate_limited':
-      return { label: '抽样已限额', className: 'chat-limited', title: detail };
-    case 'auth_failed':
-      return { label: '抽样认证失败', className: 'chat-auth-failed', title: detail };
-    case 'network_error':
-      return { label: '抽样网络失败', className: 'chat-network', title: detail };
-    case 'agent_missing':
-      return { label: '缺少 Agent CLI', className: 'chat-missing', title: detail };
-    case 'unknown_error':
-      return { label: '抽样失败', className: 'chat-unknown', title: detail };
-    default:
-      return null;
-  }
-}
 
 /** 从未查过配额：无 usage_raw 且无 quota_query_last_error */
 export function isCursorQuotaPendingQuery(account: CursorAccount): boolean {
@@ -735,33 +678,6 @@ export function isCursorQuotaPendingQuery(account: CursorAccount): boolean {
     return false;
   }
   return !hasCursorQuotaData(account);
-}
-
-export type CursorPlanUiBadge = {
-  label: string;
-  className: string;
-};
-
-/**
- * Cursor 套餐角标 UI（HR-20260701-003 / HR-20260714-007）：
- * 禁止红 UNKNOWN；未查配额显示「配额未查询」。
- */
-export function resolveCursorPlanUiBadge(
-  account: CursorAccount,
-  pendingLabel: string = '配额未查询',
-): CursorPlanUiBadge | null {
-  const quotaError = (account.quota_query_last_error || '').trim();
-  const plan = getCursorPlanBadge(account);
-  if (plan === 'UNKNOWN') {
-    if (!quotaError && isCursorQuotaPendingQuery(account)) {
-      return { label: pendingLabel, className: 'pending-query' };
-    }
-    return null;
-  }
-  return {
-    label: getCursorPlanDisplayName(account),
-    className: getCursorPlanBadgeClass(account.membership_type, account),
-  };
 }
 
 /** 磁盘/后端旧文案识别（pick 判定与 UI 脱敏共用） */
