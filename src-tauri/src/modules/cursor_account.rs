@@ -1582,14 +1582,29 @@ pub fn list_accounts_page_for_ui(offset: usize, limit: usize) -> CursorAccountLi
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut index = load_account_index();
-    if index.accounts.is_empty() {
-        let accounts = normalize_account_index(&mut index);
-        if !accounts.is_empty() {
-            if let Err(err) = save_account_index(&index) {
-                logger::log_warn(&format!(
-                    "[Cursor Account] 空索引补扫后保存失败: {}",
-                    err
-                ));
+    // 与 list_accounts() 对齐：只要索引需要整表维护（含目录里的游离账号），
+    // 先 normalize 再计数，否则页面 total 会小于磁盘真实账号数（表现为「账号变少」）。
+    let had_index_accounts = !index.accounts.is_empty();
+    if !had_index_accounts || index_needs_normalize(&index) {
+        let index_before_normalize = serde_json::to_vec(&index).ok();
+        let normalized = normalize_account_index(&mut index);
+        if had_index_accounts && normalized.is_empty() {
+            // 与 list_accounts() 同语义：详情全读不到时不写回空索引
+            logger::log_warn(
+                "[Cursor Account] 账号索引中存在账号，但详情文件均无法读取，已跳过空索引写回",
+            );
+        } else {
+            let index_changed = index_before_normalize
+                .as_ref()
+                .map(|before| Some(before.as_slice()) != serde_json::to_vec(&index).ok().as_deref())
+                .unwrap_or(true);
+            if index_changed {
+                if let Err(err) = save_account_index(&index) {
+                    logger::log_warn(&format!(
+                        "[Cursor Account] 分页补扫后保存失败: {}",
+                        err
+                    ));
+                }
             }
         }
     }
